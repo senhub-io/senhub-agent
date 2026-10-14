@@ -440,6 +440,7 @@ func (p *snmppollProbe) pollDiscoveredDevice(ctx context.Context, d discoveredDe
 
 	if p.entitySource != nil && p.entitySource.registry != nil {
 		p.entitySource.registry.recordPolled(self, deviceID, time.Now())
+		p.entitySource.registry.recordPortStates(deviceID, ifaces, time.Now())
 	}
 
 	resolveNeighbor := func(n deviceIdentity) string {
@@ -457,6 +458,9 @@ func (p *snmppollProbe) pollDiscoveredDevice(ctx context.Context, d discoveredDe
 	}
 	routes, routesOmitted := selectRoutes(routes, self.MgmtIP, maxRoutes)
 	obs := buildObservation(self, topo, routes, ifaces, addrs, resolveNeighbor)
+	if p.entitySource != nil {
+		dropLinksToDownPorts(&obs, p.entitySource.registry, time.Now())
+	}
 	applyRouteCounters(&obs, deviceID, routesOmitted, maxRoutes)
 	applyLag(&obs, collectLagData(client, ifaces, p.moduleLogger), ifaces, deviceID)
 	applyDiscoveredGovernance(&obs, p.cfg.Discovery.GovernanceRules, self, deviceID)

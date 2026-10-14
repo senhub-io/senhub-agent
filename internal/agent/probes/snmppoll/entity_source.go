@@ -332,6 +332,7 @@ func (s *snmpEntitySource) build(res sweepResult, now time.Time) (entity.Observa
 		return resolveDeviceID(n)
 	}
 	obs := buildObservation(res.self, res.topo, res.routes, res.ifaces, res.addrs, resolveNeighbor)
+	dropLinksToDownPorts(&obs, s.registry, now)
 	maxRoutes := s.cfg.MaxRoutes
 	if maxRoutes <= 0 {
 		maxRoutes = defaultMaxRoutes
@@ -491,6 +492,7 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	// mac: shadow (one node per device, not several).
 	if s.registry != nil {
 		s.registry.recordPolled(self, deviceID, now)
+		s.registry.recordPortStates(deviceID, ifaces, now)
 	}
 	if idx := s.macIndex; idx != nil && idx.Enabled() && deviceID != "" {
 		s.registerInterfaceMacs(deviceID, ifaces)

@@ -1,6 +1,7 @@
 package snmppoll
 
 import (
+	"senhub-agent.go/internal/agent/services/entity"
 	"testing"
 	"time"
 )
@@ -105,5 +106,49 @@ func TestBuildObservation_NeighborReconciledViaRegistry(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected a connected_to edge to the reconciled neighbour")
+	}
+}
+
+// TestDropLinksToDownPorts checks a link a neighbour still lists is dropped
+// when the far end's own sweep read its port down (an admin shutdown on one
+// side of a virtual link leaves the other side up), and kept otherwise.
+func TestDropLinksToDownPorts(t *testing.T) {
+	now := time.Unix(1780272000, 0)
+	link := func() entity.Observation {
+		return entity.Observation{Relations: []entity.Relation{{
+			Type:     relConnectedTo,
+			FromType: entityTypeNetworkInterface, FromID: interfacePortKey("sw2", "Ethernet1"),
+			ToType: entityTypeNetworkInterface, ToID: interfacePortKey("sw1", "Ethernet2"),
+		}}}
+	}
+	for _, tc := range []struct {
+		name  string
+		state int
+		age   time.Duration
+		want  int
+	}{
+		{"far port down", ifOperDown, 0, 0},
+		{"far port up", ifOperUp, 0, 1},
+		{"far port down, stale", ifOperDown, polledRegistryTTL + time.Second, 1},
+		{"far port unread", 0, 0, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newPolledRegistry()
+			r.recordPortStates("sw1", []ifaceRow{{Index: "2", Name: "Ethernet2", OperStatus: tc.state}}, now)
+			obs := link()
+			dropLinksToDownPorts(&obs, r, now.Add(tc.age))
+			if len(obs.Relations) != tc.want {
+				t.Errorf("relations = %d, want %d", len(obs.Relations), tc.want)
+			}
+		})
+	}
+
+	r := newPolledRegistry()
+	r.recordPortStates("sw1", []ifaceRow{{Name: "Ethernet2", OperStatus: ifOperDown}}, now)
+	r.recordPortStates("sw1", []ifaceRow{{Name: "Ethernet2", OperStatus: ifOperUp}}, now.Add(time.Minute))
+	obs := link()
+	dropLinksToDownPorts(&obs, r, now.Add(time.Minute))
+	if len(obs.Relations) != 1 {
+		t.Errorf("a port read up again must carry the link again")
 	}
 }

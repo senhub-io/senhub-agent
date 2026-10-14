@@ -30,6 +30,10 @@ import (
 type polledRegistry struct {
 	mu    sync.Mutex
 	byMAC map[string]registryEntry
+	// downPorts holds the interfaces a recent sweep read as not up, keyed
+	// by device id and interface name, so a link a neighbour still lists
+	// can be checked against the far end's own view of its port.
+	downPorts map[string]time.Time
 	// started is when the registry began filling: the agent's start for
 	// the shared one. It is empty then, and fills in the order the probe
 	// instances happen to sweep.
@@ -54,7 +58,7 @@ const polledRegistryTTL = 3 * defaultTopologyInterval
 var sharedPolledRegistry = newPolledRegistry()
 
 func newPolledRegistry() *polledRegistry {
-	return &polledRegistry{byMAC: map[string]registryEntry{}, started: time.Now()}
+	return &polledRegistry{byMAC: map[string]registryEntry{}, downPorts: map[string]time.Time{}, started: time.Now()}
 }
 
 // warming reports whether the registry may still be missing devices that
@@ -122,4 +126,66 @@ func (r *polledRegistry) evictLocked(now time.Time) {
 			delete(r.byMAC, k)
 		}
 	}
+}
+
+func portKey(deviceID, ifName string) string { return deviceID + "\x00" + ifName }
+
+// recordPortStates stores which of a swept device's interfaces are not up.
+// An interface read as up clears a previous down mark; an unread status
+// changes nothing.
+func (r *polledRegistry) recordPortStates(deviceID string, ifaces []ifaceRow, now time.Time) {
+	if deviceID == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.downPorts == nil {
+		r.downPorts = map[string]time.Time{}
+	}
+	for _, ifc := range ifaces {
+		if ifc.Name == "" || ifc.OperStatus == 0 {
+			continue
+		}
+		k := portKey(deviceID, ifc.Name)
+		if ifc.OperStatus == ifOperUp {
+			delete(r.downPorts, k)
+		} else {
+			r.downPorts[k] = now
+		}
+	}
+	for k, seen := range r.downPorts {
+		if now.Sub(seen) > polledRegistryTTL {
+			delete(r.downPorts, k)
+		}
+	}
+}
+
+// portDown reports whether a fresh sweep read this interface as not up.
+func (r *polledRegistry) portDown(deviceID, ifName string, now time.Time) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	seen, ok := r.downPorts[portKey(deviceID, ifName)]
+	return ok && now.Sub(seen) <= polledRegistryTTL
+}
+
+// dropLinksToDownPorts removes connected_to edges whose far end a sweep read
+// as down. Each device only knows its own ports: a switch keeps a neighbour
+// whose link the other side shut (a virtual link can stay up on one end), and
+// without this the link outlives the cut for as long as that neighbour lists it.
+func dropLinksToDownPorts(obs *entity.Observation, r *polledRegistry, now time.Time) {
+	if r == nil {
+		return
+	}
+	kept := obs.Relations[:0]
+	for _, rel := range obs.Relations {
+		if rel.Type == relConnectedTo {
+			dev, _ := rel.ToID[idKeyNetworkDevice].(string)
+			ifn, _ := rel.ToID[idKeyInterfaceName].(string)
+			if r.portDown(dev, ifn, now) {
+				continue
+			}
+		}
+		kept = append(kept, rel)
+	}
+	obs.Relations = kept
 }
