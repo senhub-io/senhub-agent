@@ -899,3 +899,42 @@ windows.service.start_type:
       text: "Automatic (delayed start)"
       severity: "ok"
   desired_value: 2
+
+senhub.probe.check.result:
+  description: "Probe check result"
+  type: enum
+  source: "senhub-agent probes/dbcommon/checkresult.go (ClassifyError, ClassifyHTTPStatus)"
+  mappings:
+    0:
+      text: "OK"
+      severity: "ok"
+      description: "The probe reached the target and read it"
+    1:
+      text: "Target down"
+      severity: "error"
+      description: "The target refused or did not answer: connection refused, unreachable, reset"
+    2:
+      text: "Authentication denied"
+      severity: "unknown"
+      description: "The target answered but refused the probe's credentials; the target itself may be fine"
+    3:
+      text: "Timeout"
+      severity: "warning"
+      description: "The target did not answer in time; often an outage seen from outside"
+    4:
+      text: "TLS error"
+      severity: "unknown"
+      description: "The TLS handshake failed: unknown authority, expired or mismatched certificate"
+    5:
+      text: "Configuration error"
+      severity: "unknown"
+      description: "A probe parameter is wrong: unknown database, invalid value"
+    6:
+      text: "Protocol error"
+      severity: "unknown"
+      description: "The target answered something the probe could not read"
+    7:
+      text: "Permission denied"
+      severity: "unknown"
+      description: "Authenticated, but not allowed to read the statistics"
+  desired_value: 0
