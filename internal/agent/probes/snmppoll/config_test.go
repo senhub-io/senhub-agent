@@ -144,6 +144,41 @@ func TestParseConfig_Discovery(t *testing.T) {
 	if d.MaxDevices != defaultMaxDevices {
 		t.Errorf("max_devices = %d, want default %d", d.MaxDevices, defaultMaxDevices)
 	}
+	if !d.SeedFromHost {
+		t.Error("SeedFromHost = false, want default true")
+	}
+	if d.AllowedFromHost {
+		t.Error("AllowedFromHost = true with explicit allowed_cidrs")
+	}
+}
+
+func TestParseConfig_DiscoveryAutoHost(t *testing.T) {
+	cfg, err := parseConfig(map[string]interface{}{
+		"target": "10.0.0.1",
+		"mibs":   []interface{}{"if-mib"},
+		"discovery": map[string]interface{}{
+			"profile": map[string]interface{}{"version": "v2c", "community": "ro"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	d := cfg.Discovery
+	if d == nil {
+		t.Fatal("discovery is nil")
+	}
+	if !d.SeedFromHost {
+		t.Error("SeedFromHost = false, want true")
+	}
+	if !d.AllowedFromHost {
+		t.Error("AllowedFromHost = false, want true when allowed_cidrs is absent")
+	}
+	if len(d.Seeds) != 0 {
+		t.Errorf("seeds = %+v, want empty", d.Seeds)
+	}
+	if len(d.AllowedCIDRs) != 0 {
+		t.Errorf("allowed_cidrs = %+v, want empty", d.AllowedCIDRs)
+	}
 }
 
 func TestParseConfig_DiscoveryAbsentIsNil(t *testing.T) {
@@ -166,14 +201,69 @@ func TestParseConfig_DiscoveryErrors(t *testing.T) {
 		disc    map[string]interface{}
 		wantSub string
 	}{
-		{"no seeds", map[string]interface{}{"profile": goodProfile, "allowed_cidrs": []interface{}{"10.0.0.0/8"}}, "seeds is required"},
-		{"bad seed ip", map[string]interface{}{"seeds": []interface{}{"not-an-ip"}, "profile": goodProfile, "allowed_cidrs": []interface{}{"10.0.0.0/8"}}, "not a valid IP"},
-		{"no profile", map[string]interface{}{"seeds": []interface{}{"10.0.0.1"}, "allowed_cidrs": []interface{}{"10.0.0.0/8"}}, "discovery.profile is required"},
-		{"no community", map[string]interface{}{"seeds": []interface{}{"10.0.0.1"}, "profile": map[string]interface{}{"version": "v2c"}, "allowed_cidrs": []interface{}{"10.0.0.0/8"}}, "community is required"},
-		{"v3 crawl profile rejected", map[string]interface{}{"seeds": []interface{}{"10.0.0.1"}, "profile": map[string]interface{}{"version": "v3", "community": "ro"}, "allowed_cidrs": []interface{}{"10.0.0.0/8"}}, "v2c-only"},
-		{"no allowed_cidrs", map[string]interface{}{"seeds": []interface{}{"10.0.0.1"}, "profile": goodProfile}, "allowed_cidrs is required"},
-		{"bad cidr", map[string]interface{}{"seeds": []interface{}{"10.0.0.1"}, "profile": goodProfile, "allowed_cidrs": []interface{}{"10.0.0.0/99"}}, "not a valid CIDR"},
-		{"zero max_devices", map[string]interface{}{"seeds": []interface{}{"10.0.0.1"}, "profile": goodProfile, "allowed_cidrs": []interface{}{"10.0.0.0/8"}, "max_devices": 0}, "max_devices must be positive"},
+		{
+			"seed_from_host false without seeds",
+			map[string]interface{}{
+				"profile":        goodProfile,
+				"allowed_cidrs":  []interface{}{"10.0.0.0/8"},
+				"seed_from_host": false,
+			},
+			"discovery needs seeds or seed_from_host",
+		},
+		{
+			"bad seed ip",
+			map[string]interface{}{
+				"seeds":         []interface{}{"not-an-ip"},
+				"profile":       goodProfile,
+				"allowed_cidrs": []interface{}{"10.0.0.0/8"},
+			},
+			"not a valid IP",
+		},
+		{
+			"no profile",
+			map[string]interface{}{
+				"seeds":         []interface{}{"10.0.0.1"},
+				"allowed_cidrs": []interface{}{"10.0.0.0/8"},
+			},
+			"discovery.profile is required",
+		},
+		{
+			"no community",
+			map[string]interface{}{
+				"seeds":         []interface{}{"10.0.0.1"},
+				"profile":       map[string]interface{}{"version": "v2c"},
+				"allowed_cidrs": []interface{}{"10.0.0.0/8"},
+			},
+			"community is required",
+		},
+		{
+			"v3 crawl profile rejected",
+			map[string]interface{}{
+				"seeds":         []interface{}{"10.0.0.1"},
+				"profile":       map[string]interface{}{"version": "v3", "community": "ro"},
+				"allowed_cidrs": []interface{}{"10.0.0.0/8"},
+			},
+			"v2c-only",
+		},
+		{
+			"bad cidr",
+			map[string]interface{}{
+				"seeds":         []interface{}{"10.0.0.1"},
+				"profile":       goodProfile,
+				"allowed_cidrs": []interface{}{"10.0.0.0/99"},
+			},
+			"not a valid CIDR",
+		},
+		{
+			"zero max_devices",
+			map[string]interface{}{
+				"seeds":         []interface{}{"10.0.0.1"},
+				"profile":       goodProfile,
+				"allowed_cidrs": []interface{}{"10.0.0.0/8"},
+				"max_devices":   0,
+			},
+			"max_devices must be positive",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

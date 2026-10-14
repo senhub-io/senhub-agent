@@ -3,6 +3,7 @@ package snmppoll
 import (
 	"context"
 	"fmt"
+	"net"
 	"strconv"
 	"sync"
 	"time"
@@ -29,12 +30,18 @@ type snmppollProbe struct {
 	// newClient is the SNMP client factory, overridable in tests.
 	newClient func(*config) snmpClient
 
+	// hostScope supplies the host's default gateways and private connected
+	// networks for per-run discovery bounds. Overridable in tests.
+	hostScope func() (gateways []string, networks []*net.IPNet, err error)
+
 	// Discovery background loop lifecycle. discoveryCancel cancels the loop
 	// started by OnStart; discoveryWG waits for it in OnShutdown.
-	discoveryCancel context.CancelFunc
-	discoveryWG     sync.WaitGroup
-	discoveryMet    discoveryMetrics
-	discovered      map[string]*discoveredState
+	discoveryCancel    context.CancelFunc
+	discoveryWG        sync.WaitGroup
+	discoveryMet       discoveryMetrics
+	discovered         map[string]*discoveredState
+	hostScopeErrStreak int
+	noSeedStreak       int
 }
 
 // NewSnmpPollProbe builds an snmp_poll probe from its raw params block.
@@ -88,6 +95,7 @@ func NewSnmpPollProbe(rawConfig map[string]interface{}, baseLogger *logger.Logge
 		moduleLogger: moduleLogger,
 		entitySource: entitySrc,
 		newClient:    func(c *config) snmpClient { return newGosnmpClient(c) },
+		hostScope:    defaultHostScope,
 	}
 	probe.SetProbeType(probeType)
 	probe.SetEntitySource(entitySrc)
