@@ -20,9 +20,10 @@ func init() {
 				{Key: "priv_passphrase", Kind: probes.KindString, Secret: true, Description: "Required with priv_protocol"},
 			}},
 			{Key: "retries", Kind: probes.KindInt, Default: 2, Group: "collection", Description: "Retries per request"},
+			{Key: "max_routes", Kind: probes.KindInt, Default: 500, Group: "collection", Description: "Maximum number of route entities emitted per device"},
 			{Key: "timeout", Kind: probes.KindDuration, Default: "5s", Group: "collection", Description: "Per-request timeout"},
 			{Key: "interval", Kind: probes.KindDuration, Default: "60s", Group: "collection", Description: "Metric polling cadence"},
-			{Key: "topology_interval", Kind: probes.KindDuration, Default: "10m", Group: "collection", Description: "Entity and topology sweep cadence"},
+			{Key: "topology_interval", Kind: probes.KindDuration, Default: "1m", Group: "collection", Description: "Entity and topology sweep cadence"},
 			{Key: "mibs", Kind: probes.KindStringList, Enum: []string{"mib-2", "if-mib"}, Essential: true, Group: "metrics", Description: "Built-in MIB modules to poll; this or custom_mappings is required"},
 			{Key: "mib_paths", Kind: probes.KindStringList, Group: "metrics", Description: "Local MIB files or folders used to name custom mappings"},
 			{Key: "custom_mappings", Kind: probes.KindBlockList, Group: "metrics", Description: "OID to metric mappings", Fields: []probes.ParamSpec{
@@ -31,13 +32,14 @@ func init() {
 				{Key: "type", Kind: probes.KindString, Default: "gauge", Enum: []string{"gauge", "counter"}, Description: "How the value is reported: a gauge as read, a counter as a monotonic total"},
 				{Key: "index_label", Kind: probes.KindString, Description: "Walk the OID as a table and tag rows with this label"},
 			}},
-			{Key: "discovery", Kind: probes.KindBlock, Group: "discovery", Description: "Topology crawl from seed devices. Not active yet (#953): the block is validated and ignored", Fields: []probes.ParamSpec{
-				{Key: "seeds", Kind: probes.KindStringList, Required: true, Description: "Entry-point device addresses"},
+			{Key: "discovery", Kind: probes.KindBlock, Group: "discovery", Description: "Topology crawl from seed devices: every device found through LLDP, within allowed_cidrs, is put on the map (topology only, no metrics)", Fields: []probes.ParamSpec{
+				{Key: "seeds", Kind: probes.KindStringList, Description: "Entry-point device addresses; default: the host's default gateways"},
+				{Key: "seed_from_host", Kind: probes.KindBool, Default: true, Description: "Add the host's default gateways as crawl seeds"},
 				{Key: "profile", Kind: probes.KindBlock, Required: true, Description: "Credentials for crawled devices (v2c only)", Fields: []probes.ParamSpec{
 					{Key: "version", Kind: probes.KindString, Default: "v2c", Enum: []string{"v2c", "2c", "2"}, Description: "SNMP version used to probe the discovered devices"},
 					{Key: "community", Kind: probes.KindString, Required: true, Secret: true, Description: "Community string used to probe the discovered devices"},
 				}},
-				{Key: "allowed_cidrs", Kind: probes.KindStringList, Required: true, Description: "The crawl never leaves these ranges"},
+				{Key: "allowed_cidrs", Kind: probes.KindStringList, Description: "The crawl never leaves these ranges; default: the host's own private networks"},
 				{Key: "max_devices", Kind: probes.KindInt, Default: 200, Description: "Hard cap on the number of discovered devices"},
 				{Key: "max_hops", Kind: probes.KindInt, Default: 4, Description: "Crawl depth from the seeds"},
 				{Key: "interval", Kind: probes.KindDuration, Description: "Crawl cadence; topology_interval by default"},

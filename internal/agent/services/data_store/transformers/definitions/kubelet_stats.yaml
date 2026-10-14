@@ -1,0 +1,213 @@
+probe_name: "kubelet_stats"
+friendly_name: "Kubelet Stats"
+version: "1.0.0"
+host_level: false
+multi_instance_labels: ["k8s.node.name", "k8s.namespace.name", "k8s.pod.name", "k8s.container.name", "direction", "reason"]
+
+# FREE probe — per-node kubelet Summary API statistics.
+# Reports CPU, memory, filesystem and network usage for the local node and
+# its pods and containers. It does not report volumes, container restarts or
+# limit-derived utilisation ratios.
+metrics:
+  - name: "senhub.kubelet_stats.scrape_errors"
+    multi_instance_labels: ["reason"]
+    channel: "kubelet_stats_scrape_errors_{reason}"
+    display_name: "Kubelet scrape errors {reason}"
+    unit: "#"
+    category: "availability"
+    description: "Kubelet summary scrapes that failed since the agent started, by reason (connect, auth, status, decode)"
+    otel:
+      name: senhub.kubelet_stats.scrape_errors
+      unit: "{error}"
+      type: counter
+    tag_to_attribute:
+      reason: reason
+
+  - name: "senhub.kubelet_stats.pods_seen"
+    multi_instance_labels: []
+    channel: "kubelet_stats_pods_seen"
+    display_name: "Kubelet pods seen"
+    unit: "#"
+    category: "pod"
+    description: "Number of pods on the node after namespace filters"
+    otel:
+      name: senhub.kubelet_stats.pods_seen
+      unit: "{pod}"
+      type: gauge
+
+  - name: "k8s.node.cpu.usage"
+    multi_instance_labels: ["k8s.node.name"]
+    channel: "kubelet_node_{k8s.node.name}_cpu_usage"
+    display_name: "Node {k8s.node.name} CPU Usage"
+    unit: "cores"
+    category: "node"
+    description: "Node CPU usage in cores, derived from usageNanoCores"
+    otel:
+      name: k8s.node.cpu.usage
+      unit: "{cpu}"
+      type: gauge
+    tag_to_attribute:
+      k8s.node.name: k8s.node.name
+
+  - name: "k8s.node.memory.working_set"
+    multi_instance_labels: ["k8s.node.name"]
+    channel: "kubelet_node_{k8s.node.name}_memory_working_set"
+    display_name: "Node {k8s.node.name} Memory Working Set"
+    unit: "bytes"
+    category: "node"
+    description: "Node memory working set in bytes"
+    otel:
+      name: k8s.node.memory.working_set
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      k8s.node.name: k8s.node.name
+
+  - name: "k8s.node.memory.available"
+    multi_instance_labels: ["k8s.node.name"]
+    channel: "kubelet_node_{k8s.node.name}_memory_available"
+    display_name: "Node {k8s.node.name} Memory Available"
+    unit: "bytes"
+    category: "node"
+    description: "Node memory available in bytes"
+    otel:
+      name: k8s.node.memory.available
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      k8s.node.name: k8s.node.name
+
+  - name: "k8s.node.filesystem.usage"
+    multi_instance_labels: ["k8s.node.name"]
+    channel: "kubelet_node_{k8s.node.name}_filesystem_usage"
+    display_name: "Node {k8s.node.name} Filesystem Usage"
+    unit: "bytes"
+    category: "filesystem"
+    description: "Node filesystem used bytes"
+    otel:
+      name: k8s.node.filesystem.usage
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      k8s.node.name: k8s.node.name
+
+  - name: "k8s.node.filesystem.capacity"
+    multi_instance_labels: ["k8s.node.name"]
+    channel: "kubelet_node_{k8s.node.name}_filesystem_capacity"
+    display_name: "Node {k8s.node.name} Filesystem Capacity"
+    unit: "bytes"
+    category: "filesystem"
+    description: "Node filesystem capacity in bytes"
+    otel:
+      name: k8s.node.filesystem.capacity
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      k8s.node.name: k8s.node.name
+
+  - name: "k8s.node.filesystem.available"
+    multi_instance_labels: ["k8s.node.name"]
+    channel: "kubelet_node_{k8s.node.name}_filesystem_available"
+    display_name: "Node {k8s.node.name} Filesystem Available"
+    unit: "bytes"
+    category: "filesystem"
+    description: "Node filesystem available bytes"
+    otel:
+      name: k8s.node.filesystem.available
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      k8s.node.name: k8s.node.name
+
+  - name: "k8s.node.network.io"
+    multi_instance_labels: ["k8s.node.name", "direction"]
+    channel: "kubelet_node_{k8s.node.name}_network_io_{direction}"
+    display_name: "Node {k8s.node.name} Network {direction}"
+    unit: "bytes"
+    category: "network"
+    description: "Node network bytes on its default interface, tagged with direction receive or transmit"
+    otel:
+      name: k8s.node.network.io
+      unit: "By"
+      type: counter
+    tag_to_attribute:
+      k8s.node.name: k8s.node.name
+      direction: network.io.direction
+
+  - name: "k8s.pod.cpu.usage"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.pod.name"]
+    channel: "kubelet_pod_{k8s.namespace.name}_{k8s.pod.name}_cpu_usage"
+    display_name: "Pod {k8s.namespace.name}/{k8s.pod.name} CPU Usage"
+    unit: "cores"
+    category: "pod"
+    description: "Pod CPU usage in cores, derived from usageNanoCores"
+    otel:
+      name: k8s.pod.cpu.usage
+      unit: "{cpu}"
+      type: gauge
+    tag_to_attribute:
+      k8s.namespace.name: k8s.namespace.name
+      k8s.pod.name: k8s.pod.name
+
+  - name: "k8s.pod.memory.working_set"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.pod.name"]
+    channel: "kubelet_pod_{k8s.namespace.name}_{k8s.pod.name}_memory_working_set"
+    display_name: "Pod {k8s.namespace.name}/{k8s.pod.name} Memory Working Set"
+    unit: "bytes"
+    category: "pod"
+    description: "Pod memory working set in bytes"
+    otel:
+      name: k8s.pod.memory.working_set
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      k8s.namespace.name: k8s.namespace.name
+      k8s.pod.name: k8s.pod.name
+
+  - name: "k8s.pod.network.io"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.pod.name", "direction"]
+    channel: "kubelet_pod_{k8s.namespace.name}_{k8s.pod.name}_network_io_{direction}"
+    display_name: "Pod {k8s.namespace.name}/{k8s.pod.name} Network {direction}"
+    unit: "bytes"
+    category: "network"
+    description: "Pod network bytes, tagged with direction receive or transmit"
+    otel:
+      name: k8s.pod.network.io
+      unit: "By"
+      type: counter
+    tag_to_attribute:
+      k8s.namespace.name: k8s.namespace.name
+      k8s.pod.name: k8s.pod.name
+      direction: network.io.direction
+
+  - name: "container.cpu.usage"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.pod.name", "k8s.container.name"]
+    channel: "kubelet_container_{k8s.namespace.name}_{k8s.pod.name}_{k8s.container.name}_cpu_usage"
+    display_name: "Container {k8s.namespace.name}/{k8s.pod.name}/{k8s.container.name} CPU Usage"
+    unit: "cores"
+    category: "container"
+    description: "Container CPU usage in cores, derived from usageNanoCores"
+    otel:
+      name: container.cpu.usage
+      unit: "{cpu}"
+      type: gauge
+    tag_to_attribute:
+      k8s.namespace.name: k8s.namespace.name
+      k8s.pod.name: k8s.pod.name
+      k8s.container.name: k8s.container.name
+
+  - name: "container.memory.working_set"
+    multi_instance_labels: ["k8s.namespace.name", "k8s.pod.name", "k8s.container.name"]
+    channel: "kubelet_container_{k8s.namespace.name}_{k8s.pod.name}_{k8s.container.name}_memory_working_set"
+    display_name: "Container {k8s.namespace.name}/{k8s.pod.name}/{k8s.container.name} Memory Working Set"
+    unit: "bytes"
+    category: "container"
+    description: "Container memory working set in bytes"
+    otel:
+      name: container.memory.working_set
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      k8s.namespace.name: k8s.namespace.name
+      k8s.pod.name: k8s.pod.name
+      k8s.container.name: k8s.container.name

@@ -80,6 +80,10 @@ func (a *Assembler) Append(line string) []string {
 	return nil
 }
 
+// Pending reports whether a logical record is being assembled, so a caller
+// that carries per-record metadata knows which line opened it.
+func (a *Assembler) Pending() bool { return len(a.pending) > 0 }
+
 // Flush returns any record still being assembled. Called when the file
 // goes idle / on shutdown so a trailing partial message is not lost.
 func (a *Assembler) Flush() []string {
