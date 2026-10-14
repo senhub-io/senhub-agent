@@ -44,6 +44,7 @@ import (
 	_ "senhub-agent.go/internal/agent/probes/ipmi"
 	_ "senhub-agent.go/internal/agent/probes/jenkins"
 	_ "senhub-agent.go/internal/agent/probes/kafka"
+	_ "senhub-agent.go/internal/agent/probes/kubeletstats"
 	_ "senhub-agent.go/internal/agent/probes/kubernetes"
 	_ "senhub-agent.go/internal/agent/probes/kuberneteslogs"
 	_ "senhub-agent.go/internal/agent/probes/linuxlogs"

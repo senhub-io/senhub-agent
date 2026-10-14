@@ -88,6 +88,22 @@ podLogs:
   # -- Probe parameters (include_namespaces, exclude_namespaces, ...).
   params: {}
 
+# Resource usage of the node, its pods and containers, read from the
+# node's kubelet (/stats/summary). DaemonSet only, like podLogs.
+kubeletStats:
+  # -- Adds a `kubelet_stats` probe (probes.d/57-kubelet-stats.yaml), a
+  # ClusterRole with get on nodes/stats bound to the service account, and
+  # mounts the service account token.
+  enabled: true
+  name: kubelet
+  # -- Most kubelets serve a self-signed certificate the cluster CA does
+  # not sign (kubeadm's default), which the probe cannot verify. Set
+  # false once kubelet serving certificates are signed by the cluster CA
+  # (serverTLSBootstrap).
+  insecureSkipVerify: true
+  # -- Probe parameters (include_namespaces, exclude_namespaces, interval).
+  params: {}
+
 # -- `info` or `debug`. `debug` starts the agent with --verbose.
 logLevel: info
 # -- With `debug`, limits debug lines to the modules whose name starts

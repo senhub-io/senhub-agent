@@ -419,6 +419,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 
 	// Kubernetes — one series per resource instance; the discriminant
 	// tag identifies the node, pod, container, or deployment.
+	"kubelet_stats": {"k8s.node.name", "k8s.namespace.name", "k8s.pod.name", "k8s.container.name", "direction", "reason"},
 	"kubernetes": {
 		"k8s.node.name",       // per-node metrics (k8s.node.*)
 		"k8s.pod.name",        // per-pod metrics (k8s.pod.*)

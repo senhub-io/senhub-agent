@@ -77,7 +77,7 @@ Whether the pod needs the service account token: only the kubernetes
 probe talks to the API server.
 */}}
 {{- define "senhub-agent.automountToken" -}}
-{{- if or .Values.rbac.kubernetesProbe.enabled .Values.serviceAccount.automountToken }}true{{ else }}false{{ end }}
+{{- if or .Values.rbac.kubernetesProbe.enabled .Values.serviceAccount.automountToken (eq (include "senhub-agent.kubeletStats" .) "true") }}true{{ else }}false{{ end }}
 {{- end }}
 
 {{/*
@@ -210,4 +210,12 @@ HTTPS (the kubelet does not verify the certificate). */}}
 {{- $_ := set $p.httpGet "scheme" "HTTPS" }}
 {{- end }}
 {{- toYaml $p }}
+{{- end }}
+
+{{/*
+Whether the kubelet_stats probe runs: DaemonSet only, since each agent
+reads the kubelet of its own node.
+*/}}
+{{- define "senhub-agent.kubeletStats" -}}
+{{- if and (eq (include "senhub-agent.kind" .) "DaemonSet") .Values.kubeletStats.enabled }}true{{ else }}false{{ end }}
 {{- end }}
