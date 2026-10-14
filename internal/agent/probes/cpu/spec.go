@@ -13,6 +13,7 @@ func init() {
 		DefaultInterval: 30,
 		Params: []probes.ParamSpec{
 			{Key: "interval", Kind: probes.KindInt, Default: 30, Group: "collection", Description: "Collection interval in seconds"},
+			{Key: "per_core_details", Kind: probes.KindBool, Default: false, Group: "collection", Description: "Windows only: restore per-core user, system, irq and softirq metrics; the default emits only per-core usage while _Total keeps all metrics, and true restores the full per-core breakdown (ignored on Linux)."},
 		},
 	})
 }

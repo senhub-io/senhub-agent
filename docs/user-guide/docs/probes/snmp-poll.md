@@ -15,7 +15,17 @@ mappings cover the vendor-specific long tail.
 The probe also reads the LLDP neighbor table of each polled device and
 reports its links. A link is reported when the neighbor advertises a
 named port (LLDP port ID subtype interface name or locally assigned);
-a port known only by its MAC address is not linked.
+a port known only by its MAC address is not linked. A link is not reported
+while either of its ports was last read down: a device keeps a neighbor in
+its LLDP table for a while after the link went down, and a virtual link can
+stay up on one side after the other was shut.
+
+When the far end of a link has not been read recently, the local interface
+carries `senhub.link.peer_state`: `unread` (the far device is not polled),
+`stale` (its last reading is older than three of its sweeps) or
+`unreachable` (it stopped answering). The attribute is absent when both ends
+were read. A device that stops answering is no longer reported after three
+topology intervals; it leaves the map as unmonitored, not as gone.
 
 One probe instance polls one device for its metrics. With a `discovery`
 block it also crawls the network outward from seed devices (by default the
@@ -42,7 +52,7 @@ one series per interface (`if_index` tag).
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:c6d235a1e3caab692da04a39b3fa36e85aa4e1e1e6671211823fec3bf09700a7 -->
+<!-- sha256:8e4189d935c497b5a56ad4c89c7500dada00a58579c3ef785a235b693e62282c -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -57,6 +67,7 @@ one series per interface (`if_index` tag).
 | `v3.priv_protocol` | No | - | Privacy protocol; needs auth_protocol. One of `DES`, `AES`, `AES192`, `AES256` |
 | `v3.priv_passphrase` | No | - | Required with priv_protocol. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `retries` | No | `2` | Retries per request |
+| `max_routes` | No | `500` | Maximum number of route entities emitted per device |
 | `timeout` | No | `5s` | Per-request timeout |
 | `interval` | No | `60s` | Metric polling cadence |
 | `topology_interval` | No | `10m` | Entity and topology sweep cadence |
@@ -221,6 +232,43 @@ The `governance` parameter of this probe and the `governance` block every
 probe entry accepts (see [Governance per probe](../configuration.md#governance-per-probe))
 share one vocabulary. Both stamp the polled device; on a key present in both,
 the probe-level parameter wins, and a matched discovery rule wins over either.
+
+#### Routes
+
+The routing table of the polled device and of every discovered device is
+published as `network.route` entities, read from `ipCidrRouteTable` and
+`inetCidrRouteTable` (IPv4 and IPv6). A route is identified by its device,
+its destination and its next hop, so two next hops to one destination (ECMP,
+or a backup route) are two routes. Each route carries:
+
+| Attribute | Meaning |
+|---|---|
+| `route.type` | `local` (directly connected), `remote` (through a next hop), `reject`, `blackhole` or `other` |
+| `route.protocol` | Where the route comes from, in the IANA vocabulary: `netmgmt` (static), `ospf`, `bgp`, `local`, `rip`, `isis`, `cisco_eigrp`… Absent when the code has no name |
+| `network.route.protocol.code` | The raw protocol code the device gave |
+| `network.interface.name` | The egress interface; absent on `reject` and `blackhole` routes, which end by design |
+| `metric` | The route metric, when the device gives one |
+
+A route without a next hop (`local`, `reject`, `blackhole`) carries `0.0.0.0`
+(`::` in IPv6) as next hop, the encoding the MIB itself uses. A connected
+route is what lets a path reach a destination on the device's own networks.
+
+At most `max_routes` routes are published per device (500 by default).
+Connected, default, reject and blackhole routes are always kept. The device
+entity carries `senhub.routes.limit` and `senhub.routes.omitted`, the number
+of routes it listed and that were not published, so a table cut by the bound
+is never mistaken for a complete one. A device carrying a full Internet table
+is not meant to be inventoried route by route.
+
+#### Link aggregation
+
+With `entities.aggregation.enabled`, the probe reads `ifStackTable` (IF-MIB)
+and the IEEE 802.3ad LAG MIB on the polled and discovered devices: each member
+port is linked to its port-channel (`aggregated_into`), the port-channel
+carries its mode (`lacp`, or `static` when the LAG MIB says nothing about it),
+and a LACP member carries `active` (collecting and distributing) or `standby`.
+A port-channel borrows a member's MAC address, so for MAC-based resolution the
+member owns it, never the port-channel.
 
 #### Governance for discovered devices
 

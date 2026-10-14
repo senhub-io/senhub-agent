@@ -1,6 +1,7 @@
 package snmppoll
 
 import (
+	"senhub-agent.go/internal/agent/services/entity"
 	"testing"
 	"time"
 )
@@ -105,5 +106,92 @@ func TestBuildObservation_NeighborReconciledViaRegistry(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected a connected_to edge to the reconciled neighbour")
+	}
+}
+
+// TestDropLinksToDownPorts checks a link a neighbour still lists is dropped
+// when the far end's own sweep read its port down (an admin shutdown on one
+// side of a virtual link leaves the other side up), and kept otherwise.
+func TestDropLinksToDownPorts(t *testing.T) {
+	now := time.Unix(1780272000, 0)
+	link := func() entity.Observation {
+		return entity.Observation{Relations: []entity.Relation{{
+			Type:     relConnectedTo,
+			FromType: entityTypeNetworkInterface, FromID: interfacePortKey("sw2", "Ethernet1"),
+			ToType: entityTypeNetworkInterface, ToID: interfacePortKey("sw1", "Ethernet2"),
+		}}}
+	}
+	for _, tc := range []struct {
+		name  string
+		state int
+		age   time.Duration
+		want  int
+	}{
+		{"far port down", ifOperDown, 0, 0},
+		{"far port up", ifOperUp, 0, 1},
+		{"far port down, stale", ifOperDown, silentAfterSweeps*time.Minute + time.Second, 1},
+		{"far port unread", 0, 0, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newPolledRegistry()
+			r.recordPortStates("sw1", []ifaceRow{{Index: "2", Name: "Ethernet2", OperStatus: tc.state}}, time.Minute, now)
+			obs := link()
+			dropLinksToDownPorts(&obs, r, now.Add(tc.age))
+			if len(obs.Relations) != tc.want {
+				t.Errorf("relations = %d, want %d", len(obs.Relations), tc.want)
+			}
+		})
+	}
+
+	r := newPolledRegistry()
+	r.recordPortStates("sw1", []ifaceRow{{Name: "Ethernet2", OperStatus: ifOperDown}}, time.Minute, now)
+	r.recordPortStates("sw1", []ifaceRow{{Name: "Ethernet2", OperStatus: ifOperUp}}, time.Minute, now.Add(time.Minute))
+	obs := link()
+	dropLinksToDownPorts(&obs, r, now.Add(time.Minute))
+	if len(obs.Relations) != 1 {
+		t.Errorf("a port read up again must carry the link again")
+	}
+}
+
+// TestAnnotatePeerState checks the local interface of a link says how much
+// evidence stands behind the far end, and says nothing when both ends were read.
+func TestAnnotatePeerState(t *testing.T) {
+	now := time.Unix(1780272000, 0)
+	const iv = 10 * time.Minute
+	obs := func() entity.Observation {
+		return entity.Observation{
+			Entities: []entity.Entity{{Type: entityTypeNetworkInterface, ID: interfacePortKey("sw2", "Ethernet1")}},
+			Relations: []entity.Relation{{
+				Type:     relConnectedTo,
+				FromType: entityTypeNetworkInterface, FromID: interfacePortKey("sw2", "Ethernet1"),
+				ToType: entityTypeNetworkInterface, ToID: interfacePortKey("sw1", "Ethernet2"),
+			}},
+		}
+	}
+	up := []ifaceRow{{Name: "Ethernet2", OperStatus: ifOperUp}}
+	for _, tc := range []struct {
+		name string
+		set  func(r *polledRegistry)
+		at   time.Duration
+		want any
+	}{
+		{"far end never read", func(*polledRegistry) {}, 0, peerStateUnread},
+		{"far end read", func(r *polledRegistry) { r.recordPortStates("sw1", up, iv, now) }, 0, nil},
+		{"slow far end between two sweeps", func(r *polledRegistry) { r.recordPortStates("sw1", up, iv, now) }, iv + time.Minute, nil},
+		{"far end read too long ago", func(r *polledRegistry) { r.recordPortStates("sw1", up, iv, now) }, silentAfterSweeps*iv + time.Second, peerStateStale},
+		{"far end stopped answering", func(r *polledRegistry) {
+			r.recordPortStates("sw1", up, iv, now)
+			r.recordUnreachable("sw1", iv, now)
+		}, 0, peerStateUnreachable},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newPolledRegistry()
+			tc.set(r)
+			o := obs()
+			annotatePeerState(&o, r, now.Add(tc.at))
+			if got := o.Entities[0].Attributes[attrLinkPeerState]; got != tc.want {
+				t.Errorf("%s = %v, want %v", attrLinkPeerState, got, tc.want)
+			}
+		})
 	}
 }

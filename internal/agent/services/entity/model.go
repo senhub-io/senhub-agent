@@ -64,6 +64,12 @@ const (
 	// probe stopped, or was removed from the configuration), or it failed for
 	// longer than lastGoodTTL. Says nothing about the resource.
 	ReasonUnmonitored = "unmonitored"
+	// ReasonAgedOut: a cache the source reads forgot the entry (an ARP or
+	// NDP neighbour aged out, a bridge forgot a MAC). Nobody saw the thing
+	// leave; it simply went quiet long enough to be dropped. Not "evicted":
+	// Toise's contract already gives that word to a workload its scheduler
+	// removed, a resource that really ended, the opposite reading.
+	ReasonAgedOut = "aged_out"
 )
 
 // Entity is a node: a thing in the infrastructure the agent reports on.
@@ -108,6 +114,7 @@ const (
 	ScopeSNMPRoute = "senhub-agent/snmp-route" // device routing table (network.route)
 	ScopeSNMPIFMIB = "senhub-agent/snmp-ifmib" // device + IF-MIB ports/addresses
 	ScopeHostRoute = "senhub-agent/host-route" // host kernel routing table
+	ScopeHostARP   = "senhub-agent/host-arp"   // host ARP/NDP neighbour inventory
 	ScopeHostSvc   = "senhub-agent/host-svc"   // host listening-service inventory
 	ScopeHostIface = "senhub-agent/host-iface" // host interface/address inventory
 	ScopeHostDep   = "senhub-agent/host-dep"   // host outbound dependency flows

@@ -148,6 +148,18 @@
     "unit": "Percent"
   },
   {
+    "channel": "Host Clock Offset",
+    "value": 65,
+    "float": 1,
+    "unit": "TimeSeconds"
+  },
+  {
+    "channel": "Host Clock Synchronized",
+    "value": 53.5,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
     "channel": "Processes Running",
     "value": 111,
     "float": 1,

@@ -55,6 +55,17 @@ type EntitiesConfig struct {
 	// DependsOn maps this host's outbound dependencies. Off by default:
 	// reading which peers a host talks to can be privacy-sensitive.
 	DependsOn *EntitiesDependsOnConfig `yaml:"depends_on,omitempty"`
+	// Neighbors reports this host's ARP/NDP neighbours as network.neighbor
+	// entities. Off by default: a Toise older than the type rejects them.
+	Neighbors *EntitiesNeighborsConfig `yaml:"neighbors,omitempty"`
+	// Aggregation links a LAG member port to its aggregate
+	// (aggregated_into). Off by default: a Toise older than the relation
+	// rejects it.
+	Aggregation *EntitiesAggregationConfig `yaml:"aggregation,omitempty"`
+}
+
+type EntitiesAggregationConfig struct {
+	Enabled bool `yaml:"enabled"`
 }
 
 type EntitiesDependsOnConfig struct {
@@ -64,6 +75,11 @@ type EntitiesDependsOnConfig struct {
 	// dependency and a passing connection.
 	Debounce     int      `yaml:"debounce,omitempty"`
 	ExcludeCIDRs []string `yaml:"exclude_cidrs,omitempty"`
+}
+
+type EntitiesNeighborsConfig struct {
+	Enabled    bool `yaml:"enabled"`
+	ResolvesTo bool `yaml:"resolves_to,omitempty"`
 }
 
 // LocalAgentConfig represents agent-specific configuration
