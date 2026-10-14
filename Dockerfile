@@ -45,7 +45,10 @@ LABEL org.opencontainers.image.title="SenHub Agent" \
 
 # ca-certificates for TLS to a collector, tzdata so a timestamp is not
 # stamped in UTC by accident when the operator sets TZ.
-RUN apk add --no-cache ca-certificates tzdata
+# Upgrade the base image's packages: a pinned Alpine minor still ships
+# whatever patch level its last image had, and a scanner flags the fixed
+# CVEs it missed (zlib in 0.6.3).
+RUN apk upgrade --no-cache && apk add --no-cache ca-certificates tzdata
 
 # The agent needs no privileges to run: only the service-lifecycle
 # commands do, and a container never calls them.
