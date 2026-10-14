@@ -1,6 +1,7 @@
 package snmppoll
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -601,8 +602,8 @@ func TestSelfAttrs_Readable(t *testing.T) {
 	if a["sys.name"] != "core-sw-01" {
 		t.Errorf("sys.name = %v, want core-sw-01 (dotted key, not sys_name)", a["sys.name"])
 	}
-	if a["mgmt.ip"] != "10.0.0.1" {
-		t.Errorf("mgmt.ip = %v", a["mgmt.ip"])
+	if _, ok := a["mgmt.ip"]; ok {
+		t.Errorf("mgmt.ip is observer-dependent and must not be an attribute: %v", a)
 	}
 	if a["device.role"] != "router" {
 		t.Errorf("device.role = %v, want router (L2+L3)", a["device.role"])
@@ -699,5 +700,16 @@ func TestBuildObservation_NoMonitorsWithoutAgentID(t *testing.T) {
 	obs := buildObservation(self, lldpTopology{}, nil, nil, nil, resolveDeviceID)
 	if len(obs.Relations) != 0 {
 		t.Errorf("relations = %+v, want none without an agent id", obs.Relations)
+	}
+}
+
+// TestSelfAttrs_SameDeviceTwoObservers checks two agents reaching one device
+// through two of its addresses describe it identically.
+func TestSelfAttrs_SameDeviceTwoObservers(t *testing.T) {
+	base := deviceIdentity{SysName: "ceos-r1", VendorPEN: "30065", Services: 0x06}
+	a, b := base, base
+	a.MgmtIP, b.MgmtIP = "10.10.0.1", "10.20.0.1"
+	if fmt.Sprint(selfAttrs(a)) != fmt.Sprint(selfAttrs(b)) {
+		t.Errorf("two observers disagree: %v vs %v", selfAttrs(a), selfAttrs(b))
 	}
 }
