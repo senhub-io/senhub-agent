@@ -20,24 +20,26 @@ func tagValue(ts []tags.Tag, key string) (string, bool) {
 	return "", false
 }
 
-func TestEntitySourceFallbackInstanceID(t *testing.T) {
-	s := newEntitySource("fallback-host")
-	s.setUnits([]string{"nginx.service"}, "", "fallback-host")
+// TestEntitySourceNoHostIDNoKey checks a unit gets no identity while the host
+// id is unknown: the entity is not emitted then, and a key would name nothing.
+func TestEntitySourceNoHostIDNoKey(t *testing.T) {
+	s := newEntitySource("some-host")
+	s.setUnits([]string{"nginx.service"}, "", "some-host")
+	if got := s.ServiceInstanceID("nginx.service"); got != "" {
+		t.Fatalf("ServiceInstanceID = %q without a host id; want none", got)
+	}
 
-	const wantID = "systemd://fallback-host/nginx.service"
+	s.setUnits([]string{"nginx.service"}, "host-123", "some-host")
+	const wantID = "systemd://host-123/nginx.service"
 	if got := s.ServiceInstanceID("nginx.service"); got != wantID {
 		t.Fatalf("ServiceInstanceID = %q; want %q", got, wantID)
 	}
-
 	obs, ok := s.Observe()
-	if !ok {
-		t.Fatal("Observe returned ok=false after setUnits")
-	}
-	if len(obs.Entities) != 1 {
-		t.Fatalf("Observe entities = %d; want 1", len(obs.Entities))
+	if !ok || len(obs.Entities) != 1 {
+		t.Fatalf("Observe: ok=%v, %d entities; want 1", ok, len(obs.Entities))
 	}
 	if got := obs.Entities[0].ID["service.instance.id"]; got != wantID {
-		t.Fatalf("entity service.instance.id = %v; want %q", got, wantID)
+		t.Fatalf("entity service.instance.id = %v; want %q (the series key must match it)", got, wantID)
 	}
 }
 
