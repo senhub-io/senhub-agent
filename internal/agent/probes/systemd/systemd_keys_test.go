@@ -47,7 +47,7 @@ func TestBuildDatapointsCarriesServiceInstanceID(t *testing.T) {
 	u := makeUnit("nginx.service", "active", "running", "loaded")
 	const entityID = "systemd://host-123/nginx.service"
 
-	pts := buildDatapoints(u, time.Now(), nil, entityID)
+	pts := buildDatapoints(u, time.Now(), nil, entityID, systemdDetailFull)
 	if len(pts) == 0 {
 		t.Fatal("buildDatapoints returned no datapoints")
 	}

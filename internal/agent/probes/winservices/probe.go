@@ -10,8 +10,8 @@
 // compiles and registers across mixed-OS fleets (same approach as
 // windows_eventlog / linux_logs).
 //
-// Entity rail (#185): the host's service-control surface is reported as a
-// single service.instance entity (winservices://localhost) so a backend can
+// Entity rail: the host's service-control surface is reported as a
+// single service.instance entity (winservices@<host.id>) so a backend can
 // anchor the per-service metrics to a host. The per-service rows ride as
 // metrics (windows.service.state / windows.service.status), not as entities.
 package winservices
@@ -32,7 +32,7 @@ import (
 
 // ProbeType is the canonical registry / license / transformer name for
 // this probe. It is part of license JWT claims and config files in the
-// wild — renaming it is a breaking change (see .claude/rules/probes.md).
+// wild — renaming it is a breaking change.
 const ProbeType = "winservices"
 
 // DefaultInterval is the poll cadence used when the config omits interval.
@@ -62,6 +62,13 @@ const (
 	startAutomaticDelayed = 5
 )
 
+// Detail levels available to operators. The default keeps the probe
+// cheap in series volume; full restores the pre-detail metric set.
+const (
+	serviceDetailState = "state"
+	serviceDetailFull  = "full"
+)
+
 // serviceState is one service's name and SCM state at a point in time.
 // startType is -1 when the configuration could not be read, which leaves
 // the start type unreported rather than guessed.
@@ -82,8 +89,12 @@ type hostIDFunc func() string
 // probe YAML `params` block.
 type WinServicesProbeConfig struct {
 	// Services restricts the report to these service names. Empty means
-	// every service the SCM enumerates.
+	// the default automatic-start selection.
 	Services []string
+
+	// Detail is "state" (default) for only the per-service running state,
+	// or "full" for state, raw status, and start type.
+	Detail string
 
 	// Interval is the poll cadence. Defaults to DefaultInterval.
 	Interval time.Duration
@@ -136,9 +147,18 @@ func defaultHostID() string {
 }
 
 func parseConfig(config map[string]interface{}) (WinServicesProbeConfig, error) {
-	parsed := WinServicesProbeConfig{Interval: DefaultInterval}
+	parsed := WinServicesProbeConfig{Interval: DefaultInterval, Detail: serviceDetailState}
 
 	parsed.Services, _ = types.StringSliceParam(config, "services")
+
+	if raw, ok := config["detail"]; ok {
+		if s, ok := raw.(string); ok && s != "" {
+			if s != serviceDetailState && s != serviceDetailFull {
+				return parsed, fmt.Errorf("winservices: detail must be %q or %q, got %q", serviceDetailState, serviceDetailFull, s)
+			}
+			parsed.Detail = s
+		}
+	}
 
 	if d, ok, err := durationSeconds(config["interval"]); err != nil {
 		return parsed, fmt.Errorf("winservices: interval: %w", err)
@@ -159,6 +179,7 @@ func (p *WinServicesProbe) GetInterval() time.Duration { return p.config.Interva
 func (p *WinServicesProbe) OnStart(_ chan struct{}) error {
 	p.moduleLogger.Info().
 		Strs("services", p.config.Services).
+		Str("detail", p.config.Detail).
 		Dur("interval", p.config.Interval).
 		Msg("Starting winservices probe")
 	return nil
@@ -166,6 +187,19 @@ func (p *WinServicesProbe) OnStart(_ chan struct{}) error {
 
 func (p *WinServicesProbe) OnShutdown(_ context.Context) error {
 	return nil
+}
+
+// selectAutomaticServices is the pure default selection policy for an
+// empty services list: only services configured for automatic start,
+// including delayed automatic, are selected.
+func selectAutomaticServices(states []serviceState) []serviceState {
+	out := make([]serviceState, 0, len(states))
+	for _, s := range states {
+		if s.startType == startAutomatic || s.startType == startAutomaticDelayed {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // Collect queries the SCM for the selected services. A SCM failure is not a
@@ -186,12 +220,16 @@ func (p *WinServicesProbe) Collect() ([]data_store.DataPoint, error) {
 		p.moduleLogger.Warn().Err(err).Msg("winservices collection failed")
 	}
 
+	if len(p.config.Services) == 0 {
+		states = selectAutomaticServices(states)
+	}
+
 	points := []data_store.DataPoint{
 		{Name: "senhub.winservices.up", Value: up, Timestamp: now, Tags: p.statusTags()},
 		{Name: dbcommon.CheckResultMetric, Value: float64(dbcommon.ClassifyError(err)), Timestamp: now, Tags: p.statusTags()},
 	}
 	for _, s := range states {
-		points = append(points, p.buildServiceDatapoints(s, now)...)
+		points = append(points, p.buildServiceDatapoints(s, now, p.config.Detail)...)
 	}
 	if err == nil {
 		p.reportMissing(states)
@@ -225,7 +263,7 @@ func (p *WinServicesProbe) reportMissing(states []serviceState) {
 	}
 }
 
-func (p *WinServicesProbe) buildServiceDatapoints(s serviceState, ts time.Time) []data_store.DataPoint {
+func (p *WinServicesProbe) buildServiceDatapoints(s serviceState, ts time.Time, detail string) []data_store.DataPoint {
 	serviceTags := []tags.Tag{
 		{Key: "windows.service.name", Value: s.name},
 		{Key: "metric_type", Value: "service"},
@@ -236,8 +274,11 @@ func (p *WinServicesProbe) buildServiceDatapoints(s serviceState, ts time.Time) 
 	}
 	points := []data_store.DataPoint{
 		{Name: "windows.service.state", Value: running, Timestamp: ts, Tags: serviceTags},
-		{Name: "windows.service.status", Value: float64(s.state), Timestamp: ts, Tags: serviceTags},
 	}
+	if detail != serviceDetailFull {
+		return points
+	}
+	points = append(points, data_store.DataPoint{Name: "windows.service.status", Value: float64(s.state), Timestamp: ts, Tags: serviceTags})
 	if s.startType >= 0 {
 		points = append(points, data_store.DataPoint{Name: "windows.service.start_type", Value: float64(s.startType), Timestamp: ts, Tags: serviceTags})
 	}
@@ -257,5 +298,5 @@ func (p *WinServicesProbe) statusTags() []tags.Tag {
 }
 
 func (p *WinServicesProbe) String() string {
-	return fmt.Sprintf("WinServicesProbe{services=%v, interval=%s}", p.config.Services, p.config.Interval)
+	return fmt.Sprintf("WinServicesProbe{services=%v, detail=%s, interval=%s}", p.config.Services, p.config.Detail, p.config.Interval)
 }

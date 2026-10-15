@@ -25,12 +25,13 @@ All non-transient units are monitored by default; every parameter is optional.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:35a81450ce5ec571e785b556be8331759d0f090940e238a3a730b5e5fe4da2cf -->
+<!-- sha256:f1322500755306ed87f18c15c14a849719467e5de67d40e490d609f2990eac9f -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `units` | No | - | Unit names or shell globs to watch; empty watches every unit of the included types. Example: `nginx.service, ssh*.service` |
+| `units` | No | - | Unit names or shell globs to watch; empty watches enabled units of the included types. Example: `nginx.service, ssh*.service` |
 | `include_types` | No | `[service socket timer mount]` | Unit type suffixes to include. Example: `service, timer` |
+| `detail` | No | `state` | Metrics detail: state emits only active_state per unit; full emits all systemd families |
 | `interval` | No | `30` | Seconds between collections |
 
 <!-- schema:params:end -->
@@ -50,6 +51,8 @@ series per cycle.
 
 ## Operational notes
 
+- When `units` is empty, only the units systemd is supposed to start by itself are watched: `UnitFileState` enabled or enabled-runtime, among the included types. Name a static, disabled or masked unit in `units` to watch it.
+- `detail: state` (the default) emits `systemd.unit.active_state` alone, one series per watched unit; `detail: full` adds `load_state`, `sub_state` and the restart counter. The probe is installed on every host, so its default stays at one series per unit.
 - Without `units`, the probe watches every loaded unit of the included
   types, except the units systemd creates for each user login and removes
   at logout (`run-user-*.mount`, `user@*.service`,

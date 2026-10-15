@@ -26,11 +26,12 @@ restrict to a subset.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:bbd70d969aadcd3e95a5789062ca61c7d63aa9cefae3a0eae290ce6a45adfbd1 -->
+<!-- sha256:40df3e35dbc4aaca3727731a44b80223853b71376950d4a8cf6a68bc5e786a2a -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `services` | No | - | Service short names to monitor; empty means every service. Example: `wuauserv, Spooler` |
+| `services` | No | - | Service short names to monitor; empty means services configured for automatic start. Example: `wuauserv, Spooler` |
+| `detail` | No | `state` | Metrics detail: state emits only windows.service.state per service; full emits all winservices families |
 | `interval` | No | `30s` | Collection interval |
 
 <!-- schema:params:end -->
@@ -51,7 +52,8 @@ than failing the whole collection.
 ## Operational notes
 
 - The agent must run with sufficient privileges to query the SCM. Administrator or LocalSystem is required for full enumeration.
-- When `services` is empty, every service the SCM enumerates is reported — this can generate a large number of PRTG channels on busy servers. Restrict with an explicit list for PRTG deployments.
+- When `services` is empty, only the services Windows is supposed to start by itself are watched: start type Automatic, delayed included. Name a demand-start or disabled service in `services` to watch it.
+- `detail: state` (the default) emits one state series per watched service; `detail: full` adds the raw status and the start type. The probe is installed on every host, so its default stays at one series per service.
 - Service names are the short internal names used by `sc query` and `Get-Service`, not display names (e.g. `wuauserv` not "Windows Update").
 
 ## Metric reference
