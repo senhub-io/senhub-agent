@@ -222,6 +222,19 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 				// Transient failure: keep the consumer's view of this
 				// slice of the graph until the TTL says it is real.
 				o = cached.obs
+				// A replayed fact keeps the time it was originally
+				// observed. An entity that already carries an older
+				// ObservedAt keeps that older time.
+				// Stamped on a copy: the cached slice is shared with the
+				// source, whose next good read must come back as fresh.
+				replayed := make([]Entity, len(o.Entities))
+				copy(replayed, o.Entities)
+				for i := range replayed {
+					if replayed[i].ObservedAt.IsZero() {
+						replayed[i].ObservedAt = cached.at
+					}
+				}
+				o.Entities = replayed
 			} else {
 				// Failing beyond the TTL (or never succeeded): the
 				// empty set flows through and absence-deletes fire. We
