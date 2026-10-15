@@ -33,6 +33,7 @@ type targetInfo struct {
 	targetType   string
 	targetID     map[string]any
 	emitsEntity  bool
+	local        bool
 	identityTags []tags.Tag
 }
 
@@ -99,6 +100,7 @@ func buildTargetInfo(configured, hostID string) targetInfo {
 		return targetInfo{
 			targetType:   "service.listener",
 			targetID:     m,
+			local:        true,
 			identityTags: tagsFromEntityID(m),
 		}
 	}

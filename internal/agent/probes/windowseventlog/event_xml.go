@@ -48,6 +48,9 @@ type renderedEvent struct {
 			Value string `xml:",chardata"`
 		} `xml:"Data"`
 	} `xml:"EventData"`
+	UserData struct {
+		InnerXML string `xml:",innerxml"`
+	} `xml:"UserData"`
 	RenderingInfo struct {
 		Message string `xml:"Message"`
 		Level   string `xml:"Level"`
@@ -69,6 +72,12 @@ type parsedEvent struct {
 	Message   string
 	Timestamp time.Time
 	EventData map[string]string
+
+	// MessageFromFallback records that RenderingInfo.Message was empty
+	// and Message was built from the fallback renderer. The Windows
+	// subscription uses this to replace the fallback with a publisher-
+	// formatted message when available.
+	MessageFromFallback bool
 }
 
 // parseEventXML decodes one rendered Event Log XML document into a
@@ -84,7 +93,7 @@ func parseEventXML(raw string) (parsedEvent, bool) {
 	eventID, _ := strconv.Atoi(strings.TrimSpace(ev.System.EventID))
 	level, _ := strconv.Atoi(strings.TrimSpace(ev.System.Level))
 
-	data := make(map[string]string, len(ev.EventData.Data))
+	data := make(map[string]string, len(ev.EventData.Data)+8)
 	for i, d := range ev.EventData.Data {
 		key := d.Name
 		if key == "" {
@@ -93,25 +102,68 @@ func parseEventXML(raw string) (parsedEvent, bool) {
 		}
 		data[key] = strings.TrimSpace(d.Value)
 	}
+	for k, v := range parseUserData(ev.UserData.InnerXML) {
+		if _, exists := data[k]; !exists {
+			data[k] = v
+		}
+	}
 
 	message := strings.TrimSpace(ev.RenderingInfo.Message)
+	fromFallback := false
 	if message == "" {
 		message = renderFallbackMessage(eventID, ev.System.Provider.Name, data)
+		fromFallback = true
 	}
 
 	return parsedEvent{
-		EventID:   eventID,
-		Level:     level,
-		Provider:  ev.System.Provider.Name,
-		Channel:   ev.System.Channel,
-		Computer:  ev.System.Computer,
-		RecordID:  strings.TrimSpace(ev.System.EventRecord),
-		ProcessID: ev.System.Execution.ProcessID,
-		UserID:    ev.System.Security.UserID,
-		Message:   message,
-		Timestamp: parseSystemTime(ev.System.TimeCreated.SystemTime),
-		EventData: data,
+		EventID:             eventID,
+		Level:               level,
+		Provider:            ev.System.Provider.Name,
+		Channel:             ev.System.Channel,
+		Computer:            ev.System.Computer,
+		RecordID:            strings.TrimSpace(ev.System.EventRecord),
+		ProcessID:           ev.System.Execution.ProcessID,
+		UserID:              ev.System.Security.UserID,
+		Message:             message,
+		Timestamp:           parseSystemTime(ev.System.TimeCreated.SystemTime),
+		EventData:           data,
+		MessageFromFallback: fromFallback,
 	}, true
+}
+
+// parseUserData extracts the first child of <UserData> and its direct
+// child elements as name=value pairs. Many modern providers place their
+// payload under <UserData> instead of <EventData>, with an opaque schema
+// such as <UserData><MemoryExhaustionInfo><SystemInfo>...</SystemInfo>.
+func parseUserData(innerXML string) map[string]string {
+	inner := strings.TrimSpace(innerXML)
+	if inner == "" {
+		return nil
+	}
+
+	var parent struct {
+		XMLName  xml.Name
+		Children []struct {
+			XMLName xml.Name
+			Value   string `xml:",chardata"`
+		} `xml:",any"`
+	}
+	if err := xml.Unmarshal([]byte(inner), &parent); err != nil {
+		return nil
+	}
+	if parent.XMLName.Local == "" {
+		return nil
+	}
+
+	attrs := make(map[string]string, len(parent.Children))
+	for _, child := range parent.Children {
+		key := child.XMLName.Local
+		if key == "" {
+			continue
+		}
+		attrs[key] = strings.TrimSpace(child.Value)
+	}
+	return attrs
 }
 
 // renderFallbackMessage builds a human-readable body when the rendered
