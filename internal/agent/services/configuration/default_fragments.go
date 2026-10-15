@@ -15,6 +15,11 @@ import (
 const (
 	dockerSocketPath  = "/var/run/docker.sock"
 	systemdRuntimeDir = "/run/systemd/system"
+	// defaultsMarkerName records that the defaults were added on this host,
+	// so a fragment the operator deletes stays deleted. The package writes
+	// the same name in its state directory.
+	defaultsMarkerName    = ".default-probes-0.6.4"
+	packageDefaultsMarker = "/var/lib/senhub-agent/" + defaultsMarkerName
 	// defaultProbesEnv set to "off" keeps the agent from adding default
 	// fragments: an image or a fleet whose configuration is managed
 	// elsewhere decides its probes itself.
@@ -32,6 +37,9 @@ const (
 type DefaultFragmentOptions struct {
 	GOOS             string
 	DockerSocketStat func(string) (os.FileInfo, error)
+	// PackageMarker is where the Linux package records that it added the
+	// defaults; empty uses the packaged state directory.
+	PackageMarker string
 	// SystemdRunning reports whether systemd is the init system; a Linux
 	// container has no systemd, and the probe would only fail there.
 	SystemdRunning func() bool
@@ -125,6 +133,20 @@ func EnsureDefaultProbeFragments(configPath string, log *logger.ModuleLogger, op
 		}
 		return
 	}
+
+	marker := filepath.Join(filepath.Dir(configPath), defaultsMarkerName)
+	pkgMarker := opts.PackageMarker
+	if pkgMarker == "" {
+		pkgMarker = packageDefaultsMarker
+	}
+	if fragmentFileExists(marker) || fragmentFileExists(pkgMarker) {
+		return
+	}
+	defer func() {
+		if err := atomicWriteFile(marker, nil, 0600); err != nil && log != nil {
+			log.Warn().Err(err).Str("path", marker).Msg("Default probe fragments marker not written; they may be added again at the next start")
+		}
+	}()
 
 	for _, spec := range defaultFragmentSpecs(opts) {
 		if !spec.enabled {
