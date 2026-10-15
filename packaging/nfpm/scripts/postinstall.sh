@@ -52,7 +52,7 @@ add_default_fragment() {
     grep -Eqs "^[[:space:]]*type:[[:space:]]*\"?$2\"?[[:space:]]*$" /etc/senhub-agent/probes.d/*.yaml && return 0
     cat > "${file}" <<FRAGMENT
 # $3 Rename to *.disabled to
-# turn it off (deleting it lets the agent add it back at its next start).
+# turn it off (it is added once per host: deleting it also works).
 
 - name: $4
   type: $2
