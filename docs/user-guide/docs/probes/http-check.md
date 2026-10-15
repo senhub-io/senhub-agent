@@ -83,5 +83,6 @@ series' tags.
 | `senhub.httpcheck.tls.valid` | `senhub.httpcheck.tls.valid` | HTTP {target} Certificate Valid | # | 1 when the leaf TLS certificate is currently valid (not expired), 0 otherwise |
 | `senhub.httpcheck.content.match` | `senhub.httpcheck.content.match` | HTTP {target} Content Match | # | 1 when the configured content_match regexp matched the response body |
 | `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
+| `senhub.probe.check.target.unresolved` | `senhub.probe.check.target.unresolved` | Check Target Unresolved | # | 1 when a local target is not listening and the check failed with connection refused |
 
 <!-- schema:metrics:end -->
