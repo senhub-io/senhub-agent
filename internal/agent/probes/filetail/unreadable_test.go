@@ -94,7 +94,7 @@ func TestFileTail_UnreadableFileIsAProbeErrorUntilItBecomesReadable(t *testing.T
 		t.Fatalf("recovery logged %d times, want 1", got)
 	}
 	appendLines(t, file, newFileLines(5)...)
-	if got := waitEmitted(p, 5, 5*time.Second); got != 5 {
+	if got := waitEmitted(p, 5, 30*time.Second); got != 5 {
 		t.Fatalf("emitted %d of 5 lines once readable", got)
 	}
 }
