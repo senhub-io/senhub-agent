@@ -938,3 +938,18 @@ senhub.probe.check.result:
       severity: "unknown"
       description: "Authenticated, but not allowed to read the statistics"
   desired_value: 0
+
+senhub.probe.check.target.unresolved:
+  description: "Local check target not resolved"
+  type: enum
+  source: "senhub-agent probes/dbcommon/checkresult.go (UnresolvedTargetMetric)"
+  mappings:
+    0:
+      text: "Resolved"
+      severity: "ok"
+      description: "The local target answers; the series is only emitted while it does not"
+    1:
+      text: "Not listening"
+      severity: "warning"
+      description: "The check targets a local port nothing listens on, so the listener it monitors does not exist; the reason tag says why"
+  desired_value: 0

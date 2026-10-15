@@ -177,3 +177,18 @@ metrics:
       type: gauge
     tag_to_attribute:
       target: httpcheck.target
+
+
+  - name: "senhub.probe.check.target.unresolved"
+    channel: "check_target_unresolved"
+    display_name: "Check Target Unresolved"
+    unit: "#"
+    category: "availability"
+    description: "1 when a local target is not listening and the check failed with connection refused"
+    lookup: "senhub.probe.check.target.unresolved"
+    otel:
+      name: senhub.probe.check.target.unresolved
+      unit: "{status}"
+      type: gauge
+    tag_to_attribute:
+      target: httpcheck.target
