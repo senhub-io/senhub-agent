@@ -82,6 +82,102 @@ func TestParseEventXML_FallbackMessage(t *testing.T) {
 	}
 }
 
+func TestParseEventXML_UserData(t *testing.T) {
+	const userDataEvent = `<Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'>
+  <System>
+    <Provider Name='Microsoft-Windows-Resource-Exhaustion-Detector'/>
+    <EventID>2004</EventID>
+    <Level>3</Level>
+    <Channel>System</Channel>
+    <TimeCreated SystemTime='2026-06-01T12:00:00Z'/>
+  </System>
+  <UserData>
+    <MemoryExhaustionInfo xmlns='http://example.com/mem'>
+      <SystemInfo>Windows successfully diagnosed a low virtual memory condition.</SystemInfo>
+      <ProcessInfo>PRTG Server.exe (3644) consumed 5463076864 bytes</ProcessInfo>
+    </MemoryExhaustionInfo>
+  </UserData>
+</Event>`
+
+	ev, ok := parseEventXML(userDataEvent)
+	if !ok {
+		t.Fatal("parseEventXML returned ok=false for UserData event")
+	}
+	if ev.EventID != 2004 {
+		t.Errorf("EventID = %d, want 2004", ev.EventID)
+	}
+	if ev.EventData["SystemInfo"] != "Windows successfully diagnosed a low virtual memory condition." {
+		t.Errorf("SystemInfo = %q", ev.EventData["SystemInfo"])
+	}
+	if ev.EventData["ProcessInfo"] != "PRTG Server.exe (3644) consumed 5463076864 bytes" {
+		t.Errorf("ProcessInfo = %q", ev.EventData["ProcessInfo"])
+	}
+	if !strings.Contains(ev.Message, "Windows successfully diagnosed a low virtual memory condition.") {
+		t.Errorf("fallback body should include UserData SystemInfo: %q", ev.Message)
+	}
+	if !strings.Contains(ev.Message, "PRTG Server.exe (3644) consumed 5463076864 bytes") {
+		t.Errorf("fallback body should include UserData ProcessInfo: %q", ev.Message)
+	}
+}
+
+func TestParseEventXML_UserDataDoesNotOverwriteEventData(t *testing.T) {
+	const both = `<Event><System>
+		<Provider Name='P'/><EventID>42</EventID><Level>0</Level>
+	</System>
+	<EventData><Data Name='TargetUserName'>eventdata-user</Data></EventData>
+	<UserData><EventXML><TargetUserName>userdata-user</TargetUserName><Other>other-value</Other></EventXML></UserData>
+	</Event>`
+
+	ev, ok := parseEventXML(both)
+	if !ok {
+		t.Fatal("ok=false")
+	}
+	if ev.EventData["TargetUserName"] != "eventdata-user" {
+		t.Errorf("EventData value should not be overwritten by UserData: %q", ev.EventData["TargetUserName"])
+	}
+	if ev.EventData["Other"] != "other-value" {
+		t.Errorf("UserData key Other should be included: %q", ev.EventData["Other"])
+	}
+}
+
+func TestToLogRecord_UserDataSensitiveFieldsRedacted(t *testing.T) {
+	const userDataSecurityEvent = `<Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'>
+  <System>
+    <Provider Name='Microsoft-Windows-Security-Auditing'/>
+    <EventID>4624</EventID>
+    <Level>0</Level>
+    <Channel>Security</Channel>
+    <EventRecordID>42</EventRecordID>
+  </System>
+  <UserData>
+    <EventXML>
+      <TargetUserName>jdoe</TargetUserName>
+      <IpAddress>10.0.0.5</IpAddress>
+      <LogonType>3</LogonType>
+    </EventXML>
+  </UserData>
+</Event>`
+
+	ev, ok := parseEventXML(userDataSecurityEvent)
+	if !ok {
+		t.Fatal("parseEventXML returned ok=false for UserData Security event")
+	}
+	rec := ev.toLogRecord("sec", true)
+
+	if got := rec.Attributes["eventdata.TargetUserName"]; got != redactedPlaceholder {
+		t.Errorf("TargetUserName should be redacted, got %q", got)
+	}
+	if got := rec.Attributes["eventdata.IpAddress"]; got != redactedPlaceholder {
+		t.Errorf("IpAddress should be redacted, got %q", got)
+	}
+	if got := rec.Attributes["eventdata.LogonType"]; got != "3" {
+		t.Errorf("non-sensitive LogonType should survive, got %q", got)
+	}
+	if !strings.Contains(rec.Body, "REDACTED") {
+		t.Errorf("Security body should be redacted, got %q", rec.Body)
+	}
+}
+
 func TestParseEventXML_RejectsGarbage(t *testing.T) {
 	if _, ok := parseEventXML("not xml at all <<<"); ok {
 		t.Error("expected ok=false for malformed XML")
