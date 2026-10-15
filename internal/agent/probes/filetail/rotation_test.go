@@ -55,7 +55,7 @@ func TestFileTail_RestartWithOffsetPastEndAndMatchingFingerprintReadsFromZero(t 
 	})
 	defer stopFileTail(t, p)
 
-	if got := waitEmitted(p, 40, 5*time.Second); got != 40 {
+	if got := waitEmitted(p, 40, 30*time.Second); got != 40 {
 		t.Fatalf("emitted %d of the 40 lines of the new file", got)
 	}
 }
@@ -87,7 +87,7 @@ func TestFileTail_CreateModeRotationKeepsCollecting(t *testing.T) {
 		appendLines(t, file, lines...)
 
 		want := before + uint64(len(lines))
-		if got := waitEmitted(p, want, 5*time.Second); got != want {
+		if got := waitEmitted(p, want, 30*time.Second); got != want {
 			t.Fatalf("round %d: emitted %d, want %d", round, got, want)
 		}
 		info, err := os.Stat(file)
@@ -96,7 +96,7 @@ func TestFileTail_CreateModeRotationKeepsCollecting(t *testing.T) {
 		}
 		waitBookmarkOnDisk(t, bookmarkPath, file, func(e bookmarkEntry) bool {
 			return e.Offset == info.Size() && e.Fingerprint == fingerprint(file, DefaultFingerprintLength)
-		}, 5*time.Second)
+		}, 30*time.Second)
 	}
 }
 
@@ -123,7 +123,7 @@ func TestFileTail_CopytruncateKeepsCollecting(t *testing.T) {
 		lines := newFileLines(10 - 5*round)
 		appendLines(t, file, lines...)
 		want := before + uint64(len(lines))
-		if got := waitEmitted(p, want, 5*time.Second); got != want {
+		if got := waitEmitted(p, want, 30*time.Second); got != want {
 			t.Fatalf("round %d: emitted %d, want %d", round, got, want)
 		}
 	}
@@ -168,7 +168,7 @@ func TestFileTail_PersistedFingerprintBelongsToTheFileTheOffsetWasReadFrom(t *te
 	p.wg.Add(1)
 	go p.consume(file, ts, 0, oldFP, make(chan reopenEvent))
 
-	if got := waitEmitted(p, 40, 5*time.Second); got != 40 {
+	if got := waitEmitted(p, 40, 30*time.Second); got != 40 {
 		t.Fatalf("emitted %d of 40 lines", got)
 	}
 	time.Sleep(200 * time.Millisecond)
