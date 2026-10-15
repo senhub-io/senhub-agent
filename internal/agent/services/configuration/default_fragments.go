@@ -13,7 +13,12 @@ import (
 )
 
 const (
-	dockerSocketPath         = "/var/run/docker.sock"
+	dockerSocketPath  = "/var/run/docker.sock"
+	systemdRuntimeDir = "/run/systemd/system"
+	// defaultProbesEnv set to "off" keeps the agent from adding default
+	// fragments: an image or a fleet whose configuration is managed
+	// elsewhere decides its probes itself.
+	defaultProbesEnv         = "SENHUB_DEFAULT_PROBES"
 	servicesFragmentFile     = "05-services.yaml"
 	swarmFragmentFile        = "06-swarm.yaml"
 	probeTypeSystemd         = "systemd"
@@ -27,6 +32,14 @@ const (
 type DefaultFragmentOptions struct {
 	GOOS             string
 	DockerSocketStat func(string) (os.FileInfo, error)
+	// SystemdRunning reports whether systemd is the init system; a Linux
+	// container has no systemd, and the probe would only fail there.
+	SystemdRunning func() bool
+}
+
+func systemdRunning() bool {
+	info, err := os.Stat(systemdRuntimeDir)
+	return err == nil && info.IsDir()
 }
 
 type defaultFragmentSpec struct {
@@ -47,6 +60,11 @@ func defaultFragmentSpecs(opts DefaultFragmentOptions) []defaultFragmentSpec {
 		stat = os.Stat
 	}
 
+	running := opts.SystemdRunning
+	if running == nil {
+		running = systemdRunning
+	}
+
 	var specs []defaultFragmentSpec
 
 	switch goos {
@@ -56,7 +74,7 @@ func defaultFragmentSpecs(opts DefaultFragmentOptions) []defaultFragmentSpec {
 			name:      "services",
 			probeType: probeTypeSystemd,
 			content:   fmt.Sprintf(ServicesProbeFragmentTemplate, probeTypeSystemd),
-			enabled:   true,
+			enabled:   running(),
 		})
 		if _, err := stat(dockerSocketPath); err == nil {
 			specs = append(specs, defaultFragmentSpec{
@@ -84,7 +102,7 @@ func defaultFragmentSpecs(opts DefaultFragmentOptions) []defaultFragmentSpec {
 // a fresh install writes but an existing multi-file install may not have.
 // It leaves a legacy monolithic configuration untouched.
 func EnsureDefaultProbeFragments(configPath string, log *logger.ModuleLogger, opts DefaultFragmentOptions) {
-	if configPath == "" {
+	if configPath == "" || strings.EqualFold(os.Getenv(defaultProbesEnv), "off") {
 		return
 	}
 

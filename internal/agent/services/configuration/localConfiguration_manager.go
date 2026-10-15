@@ -350,6 +350,9 @@ func (lc *LocalConfiguration) createDefaultProbesConfig() []ProbeConfig {
 		},
 	}
 
+	if strings.EqualFold(os.Getenv(defaultProbesEnv), "off") {
+		return probes
+	}
 	for _, spec := range defaultFragmentSpecs(DefaultFragmentOptions{}) {
 		if !spec.enabled {
 			continue
