@@ -38,6 +38,7 @@
 
 ## Fixes
 
+- **Windows events carry their message.** `windows_eventlog` sends the message Windows renders for each event (as `Get-WinEvent` shows it), not only the provider, the event id and the insertion strings, and it reads the `UserData` payload some providers use instead of `EventData`. A low-virtual-memory warning now names the processes that consumed the memory.
 - **A discovered device that answers in part keeps what it could not read.** When one SNMP table walk fails on a device found by discovery (its interface table, say), the interfaces it could not read leave the map as unmonitored instead of as removed, as the polled target already did.
 - **A cut link leaves the map, and a silent device leaves as unmonitored.** `snmp_poll` no longer reports a link while either of its ports reads down, even when the far switch still lists the neighbour. A device that stops answering is no longer replayed after three topology intervals and leaves with the reason "unmonitored", not as gone; a device answering nothing at all no longer appears under an address-only identity. The local interface of a link whose far end was not read recently carries `senhub.link.peer_state` (`unread`, `stale`, `unreachable`).
 - **A neighbour the ARP cache forgot is not reported as ended.** When an ARP or NDP entry ages out, on the host or in a device's tables read over SNMP, its `network.neighbor` now leaves with the reason "aged_out" instead of "terminated".
