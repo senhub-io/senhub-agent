@@ -51,10 +51,41 @@ func assertFileContains(t *testing.T, path, want string) {
 func TestEnsureDefaultProbeFragments(t *testing.T) {
 	socketYes := func(string) (os.FileInfo, error) { return nil, nil }
 
+	t.Run("linux without systemd writes no services probe", func(t *testing.T) {
+		dir := t.TempDir()
+		cfg := writeTestAgentConfig(t, dir)
+		EnsureDefaultProbeFragments(cfg, nil, DefaultFragmentOptions{
+			SystemdRunning:   func() bool { return false },
+			GOOS:             "linux",
+			DockerSocketStat: socketYes,
+		})
+		if _, err := os.Stat(filepath.Join(dir, "probes.d", "05-services.yaml")); !os.IsNotExist(err) {
+			t.Fatalf("a host without systemd must not get the systemd probe, stat err=%v", err)
+		}
+		assertFileContains(t, filepath.Join(dir, "probes.d", "06-swarm.yaml"), "type: swarm")
+	})
+
+	t.Run("SENHUB_DEFAULT_PROBES=off writes nothing", func(t *testing.T) {
+		t.Setenv("SENHUB_DEFAULT_PROBES", "off")
+		dir := t.TempDir()
+		cfg := writeTestAgentConfig(t, dir)
+		EnsureDefaultProbeFragments(cfg, nil, DefaultFragmentOptions{
+			SystemdRunning:   func() bool { return true },
+			GOOS:             "linux",
+			DockerSocketStat: socketYes,
+		})
+		for _, name := range []string{"05-services.yaml", "06-swarm.yaml"} {
+			if _, err := os.Stat(filepath.Join(dir, "probes.d", name)); !os.IsNotExist(err) {
+				t.Errorf("%s written despite the opt-out", name)
+			}
+		}
+	})
+
 	t.Run("linux with docker socket writes services and swarm", func(t *testing.T) {
 		dir := t.TempDir()
 		cfg := writeTestAgentConfig(t, dir)
 		EnsureDefaultProbeFragments(cfg, nil, DefaultFragmentOptions{
+			SystemdRunning:   func() bool { return true },
 			GOOS:             "linux",
 			DockerSocketStat: socketYes,
 		})
@@ -71,6 +102,7 @@ func TestEnsureDefaultProbeFragments(t *testing.T) {
 		dir := t.TempDir()
 		cfg := writeTestAgentConfig(t, dir)
 		EnsureDefaultProbeFragments(cfg, nil, DefaultFragmentOptions{
+			SystemdRunning:   func() bool { return true },
 			GOOS:             "windows",
 			DockerSocketStat: socketYes,
 		})
@@ -87,6 +119,7 @@ func TestEnsureDefaultProbeFragments(t *testing.T) {
 		dir := t.TempDir()
 		cfg := writeTestAgentConfig(t, dir)
 		EnsureDefaultProbeFragments(cfg, nil, DefaultFragmentOptions{
+			SystemdRunning:   func() bool { return true },
 			GOOS:             "linux",
 			DockerSocketStat: socketYes,
 		})
@@ -110,6 +143,7 @@ func TestEnsureDefaultProbeFragments(t *testing.T) {
 		}
 
 		EnsureDefaultProbeFragments(cfg, nil, DefaultFragmentOptions{
+			SystemdRunning:   func() bool { return true },
 			GOOS:             "linux",
 			DockerSocketStat: socketYes,
 		})
@@ -140,6 +174,7 @@ func TestEnsureDefaultProbeFragments(t *testing.T) {
 		}
 
 		EnsureDefaultProbeFragments(cfg, nil, DefaultFragmentOptions{
+			SystemdRunning:   func() bool { return true },
 			GOOS:             "linux",
 			DockerSocketStat: socketYes,
 		})
@@ -156,6 +191,7 @@ func TestEnsureDefaultProbeFragments(t *testing.T) {
 		dir := t.TempDir()
 		cfg := writeTestAgentConfig(t, dir)
 		EnsureDefaultProbeFragments(cfg, nil, DefaultFragmentOptions{
+			SystemdRunning:   func() bool { return true },
 			GOOS:             "darwin",
 			DockerSocketStat: socketYes,
 		})
@@ -176,6 +212,7 @@ func TestEnsureDefaultProbeFragments(t *testing.T) {
 		}
 
 		EnsureDefaultProbeFragments(cfg, nil, DefaultFragmentOptions{
+			SystemdRunning:   func() bool { return true },
 			GOOS:             "linux",
 			DockerSocketStat: socketYes,
 		})
