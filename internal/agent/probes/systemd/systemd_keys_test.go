@@ -24,45 +24,81 @@ func tagValue(ts []tags.Tag, key string) (string, bool) {
 // id is unknown: the entity is not emitted then, and a key would name nothing.
 func TestEntitySourceNoHostIDNoKey(t *testing.T) {
 	s := newEntitySource("some-host")
-	s.setUnits([]string{"nginx.service"}, "", "some-host")
-	if got := s.ServiceInstanceID("nginx.service"); got != "" {
-		t.Fatalf("ServiceInstanceID = %q without a host id; want none", got)
+	s.setUnits([]hostServiceUnit{
+		{Name: "nginx.service", ActiveState: "active", UnitFileState: "enabled"},
+	}, "", "some-host")
+
+	obs, ok := s.Observe()
+	if !ok {
+		t.Fatal("Observe() ok=false")
+	}
+	if len(obs.Entities) != 0 || len(obs.Relations) != 0 {
+		t.Fatalf("no host id must yield no entity, got %+v", obs)
 	}
 
-	s.setUnits([]string{"nginx.service"}, "host-123", "some-host")
-	const wantID = "systemd://host-123/nginx.service"
-	if got := s.ServiceInstanceID("nginx.service"); got != wantID {
-		t.Fatalf("ServiceInstanceID = %q; want %q", got, wantID)
-	}
-	obs, ok := s.Observe()
+	s.setUnits([]hostServiceUnit{
+		{Name: "nginx.service", ActiveState: "active", UnitFileState: "enabled"},
+	}, "host-123", "some-host")
+
+	obs, ok = s.Observe()
 	if !ok || len(obs.Entities) != 1 {
 		t.Fatalf("Observe: ok=%v, %d entities; want 1", ok, len(obs.Entities))
 	}
-	if got := obs.Entities[0].ID["service.instance.id"]; got != wantID {
-		t.Fatalf("entity service.instance.id = %v; want %q (the series key must match it)", got, wantID)
+	if got := obs.Entities[0].ID["host.id"]; got != "host-123" {
+		t.Fatalf("entity host.id = %v; want host-123", got)
+	}
+	if got := obs.Entities[0].ID["host.service.name"]; got != "nginx.service" {
+		t.Fatalf("entity host.service.name = %v; want nginx.service", got)
 	}
 }
 
-func TestBuildDatapointsCarriesServiceInstanceID(t *testing.T) {
+func TestBuildDatapointsCarriesHostServiceTags(t *testing.T) {
 	u := makeUnit("nginx.service", "active", "running", "loaded")
-	const entityID = "systemd://host-123/nginx.service"
 
-	pts := buildDatapoints(u, time.Now(), nil, entityID, systemdDetailFull)
+	pts := buildDatapoints(u, time.Now(), nil, "host-123", "some-host", systemdDetailFull)
 	if len(pts) == 0 {
 		t.Fatal("buildDatapoints returned no datapoints")
 	}
 
 	for _, p := range pts {
-		got, ok := tagValue(p.Tags, "service.instance.id")
-		if !ok || got != entityID {
-			t.Fatalf("datapoint %q missing service.instance.id = %q: tags=%v", p.Name, entityID, p.Tags)
+		if got, ok := tagValue(p.Tags, "host.id"); !ok || got != "host-123" {
+			t.Fatalf("datapoint %q missing host.id = %q: tags=%v", p.Name, got, p.Tags)
+		}
+		if got, ok := tagValue(p.Tags, "host.service.name"); !ok || got != "nginx.service" {
+			t.Fatalf("datapoint %q missing host.service.name = %q: tags=%v", p.Name, got, p.Tags)
+		}
+		if got, ok := tagValue(p.Tags, "host.name"); !ok || got != "some-host" {
+			t.Fatalf("datapoint %q missing host.name = %q: tags=%v", p.Name, got, p.Tags)
+		}
+		if _, ok := tagValue(p.Tags, "service.instance.id"); ok {
+			t.Fatalf("datapoint %q must not carry service.instance.id: tags=%v", p.Name, p.Tags)
+		}
+	}
+}
+
+func TestBuildDatapointsOmitsIdentityWithoutHostID(t *testing.T) {
+	u := makeUnit("nginx.service", "active", "running", "loaded")
+
+	pts := buildDatapoints(u, time.Now(), nil, "", "some-host", systemdDetailState)
+	if len(pts) == 0 {
+		t.Fatal("buildDatapoints returned no datapoints")
+	}
+
+	for _, p := range pts {
+		if _, ok := tagValue(p.Tags, "host.id"); ok {
+			t.Fatalf("datapoint %q must not carry host.id without hostID: tags=%v", p.Name, p.Tags)
+		}
+		if _, ok := tagValue(p.Tags, "host.service.name"); ok {
+			t.Fatalf("datapoint %q must not carry host.service.name without hostID: tags=%v", p.Name, p.Tags)
+		}
+		if got, ok := tagValue(p.Tags, "host.name"); !ok || got != "some-host" {
+			t.Fatalf("datapoint %q missing host.name = %q: tags=%v", p.Name, got, p.Tags)
 		}
 	}
 }
 
 func TestBuildCheckResultDatapointOK(t *testing.T) {
-	const entityID = "systemd://host-123/nginx.service"
-	baseTags := baseTagsForUnit(makeUnit("nginx.service", "active", "running", "loaded"), entityID)
+	baseTags := baseTagsForUnit(makeUnit("nginx.service", "active", "running", "loaded"), "host-123", "some-host")
 
 	dp := buildCheckResultDatapoint(time.Now(), nil, baseTags)
 
@@ -72,9 +108,11 @@ func TestBuildCheckResultDatapointOK(t *testing.T) {
 	if dp.Value != float64(dbcommon.CheckOK) {
 		t.Fatalf("check result value = %v; want 0", dp.Value)
 	}
-	gotID, ok := tagValue(dp.Tags, "service.instance.id")
-	if !ok || gotID != entityID {
-		t.Fatalf("check result missing service.instance.id = %q: tags=%v", entityID, dp.Tags)
+	if _, ok := tagValue(dp.Tags, "service.instance.id"); ok {
+		t.Fatalf("check result must not carry service.instance.id: tags=%v", dp.Tags)
+	}
+	if got, ok := tagValue(dp.Tags, "host.id"); !ok || got != "host-123" {
+		t.Fatalf("check result missing host.id = %q: tags=%v", got, dp.Tags)
 	}
 	gotType, ok := tagValue(dp.Tags, "metric_type")
 	if !ok || gotType != "status" {
@@ -83,9 +121,8 @@ func TestBuildCheckResultDatapointOK(t *testing.T) {
 }
 
 func TestBuildCheckResultDatapointFailedConnection(t *testing.T) {
-	const entityID = "systemd://fallback-host/nginx.service"
 	err := &net.DNSError{IsNotFound: true}
-	baseTags := baseTagsForUnit(makeUnit("nginx.service", "active", "running", "loaded"), entityID)
+	baseTags := baseTagsForUnit(makeUnit("nginx.service", "active", "running", "loaded"), "host-123", "some-host")
 
 	dp := buildCheckResultDatapoint(time.Now(), err, baseTags)
 
@@ -96,8 +133,10 @@ func TestBuildCheckResultDatapointFailedConnection(t *testing.T) {
 	if dp.Value != float64(wantClass) {
 		t.Fatalf("check result value = %v; want %v", dp.Value, float64(wantClass))
 	}
-	gotID, ok := tagValue(dp.Tags, "service.instance.id")
-	if !ok || gotID != entityID {
-		t.Fatalf("check result missing service.instance.id = %q: tags=%v", entityID, dp.Tags)
+	if _, ok := tagValue(dp.Tags, "service.instance.id"); ok {
+		t.Fatalf("check result must not carry service.instance.id: tags=%v", dp.Tags)
+	}
+	if got, ok := tagValue(dp.Tags, "host.id"); !ok || got != "host-123" {
+		t.Fatalf("check result missing host.id = %q: tags=%v", got, dp.Tags)
 	}
 }

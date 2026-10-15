@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -90,5 +91,64 @@ func TestCollectFailureCarriesFallbackIdentityAndClassifiedResult(t *testing.T) 
 	}
 	if check.Value != float64(dbcommon.CheckTimeout) {
 		t.Errorf("check result = %v, want %d", check.Value, dbcommon.CheckTimeout)
+	}
+}
+
+func TestBuildServiceDatapointsCarriesHostServiceTags(t *testing.T) {
+	p := newTestProbe(t, map[string]interface{}{})
+	s := serviceState{
+		name:         "Spooler",
+		state:        stateRunning,
+		startType:    startAutomaticDelayed,
+		startDelayed: true,
+		triggerStart: boolPtr(true),
+	}
+
+	pts := p.buildServiceDatapoints(s, time.Now(), "host-1", "host-name", serviceDetailFull)
+	if len(pts) == 0 {
+		t.Fatal("buildServiceDatapoints returned no datapoints")
+	}
+
+	for _, pt := range pts {
+		if got := tagValue(pt, "host.id"); got != "host-1" {
+			t.Fatalf("datapoint %q host.id = %q, want host-1", pt.Name, got)
+		}
+		if got := tagValue(pt, "host.service.name"); got != "Spooler" {
+			t.Fatalf("datapoint %q host.service.name = %q, want Spooler", pt.Name, got)
+		}
+		if got := tagValue(pt, "host.name"); got != "host-name" {
+			t.Fatalf("datapoint %q host.name = %q, want host-name", pt.Name, got)
+		}
+		if got := tagValue(pt, idKeyServiceInstanceID); got != "" {
+			t.Fatalf("datapoint %q must not carry service.instance.id: %q", pt.Name, got)
+		}
+	}
+}
+
+func TestBuildServiceDatapointsOmitsIdentityWithoutHostID(t *testing.T) {
+	p := newTestProbe(t, map[string]interface{}{})
+	s := serviceState{
+		name:         "Spooler",
+		state:        stateStopped,
+		startType:    startManual,
+		startDelayed: false,
+		triggerStart: boolPtr(false),
+	}
+
+	pts := p.buildServiceDatapoints(s, time.Now(), "", "host-name", serviceDetailFull)
+	if len(pts) == 0 {
+		t.Fatal("buildServiceDatapoints returned no datapoints")
+	}
+
+	for _, pt := range pts {
+		if got := tagValue(pt, "host.id"); got != "" {
+			t.Fatalf("datapoint %q host.id = %q without hostID, want none", pt.Name, got)
+		}
+		if got := tagValue(pt, "host.service.name"); got != "" {
+			t.Fatalf("datapoint %q host.service.name = %q without hostID, want none", pt.Name, got)
+		}
+		if got := tagValue(pt, "host.name"); got != "host-name" {
+			t.Fatalf("datapoint %q host.name = %q, want host-name", pt.Name, got)
+		}
 	}
 }

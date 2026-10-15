@@ -167,18 +167,25 @@ func filterUnits(cfg probeConfig, all []dbus.UnitStatus, unitFileStates map[stri
 	return out
 }
 
-// baseTagsForUnit builds the tag set common to every datapoint for a
-// systemd unit. The entity identity is included here so all series for
-// this unit are born with service.instance.id.
-func baseTagsForUnit(u dbus.UnitStatus, entityID string) []tags.Tag {
+// baseTagsForUnit builds the tag set common to every per-service datapoint
+// for a systemd unit. The entity identity is host.id + host.service.name;
+// host.name is carried as a descriptive tag. While host.id is unknown, the
+// identity tags are omitted.
+func baseTagsForUnit(u dbus.UnitStatus, hostID, hostName string) []tags.Tag {
 	unitType := unitTypeSuffix(u.Name)
 	t := []tags.Tag{
 		{Key: "systemd.unit", Value: u.Name},
 		{Key: "systemd.unit.type", Value: unitType},
 		{Key: "metric_type", Value: "status"},
 	}
-	if entityID != "" {
-		t = append(t, tags.Tag{Key: "service.instance.id", Value: entityID})
+	if hostID != "" {
+		t = append(t,
+			tags.Tag{Key: "host.id", Value: hostID},
+			tags.Tag{Key: "host.service.name", Value: u.Name},
+		)
+	}
+	if hostName != "" {
+		t = append(t, tags.Tag{Key: "host.name", Value: hostName})
 	}
 	return t
 }
@@ -211,9 +218,9 @@ func buildCheckResultDatapoint(ts time.Time, err error, baseTags []tags.Tag) dat
 // buildDatapoints emits the per-unit metrics for one unit. detail=state
 // emits only active_state; detail=full emits active_state, sub_state,
 // load_state, and restarts for service units when NRestarts is known.
-func buildDatapoints(u dbus.UnitStatus, ts time.Time, nRestarts *float64, entityID string, detail string) []data_store.DataPoint {
+func buildDatapoints(u dbus.UnitStatus, ts time.Time, nRestarts *float64, hostID, hostName, detail string) []data_store.DataPoint {
 	unitType := unitTypeSuffix(u.Name)
-	baseTags := baseTagsForUnit(u, entityID)
+	baseTags := baseTagsForUnit(u, hostID, hostName)
 
 	// systemd.unit.active_state: 1=active, 0=otherwise
 	var activeVal float64

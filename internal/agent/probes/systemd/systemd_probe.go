@@ -133,26 +133,45 @@ func (p *SystemdProbe) Collect() ([]data_store.DataPoint, error) {
 
 	selected := filterUnits(p.config, all, stateByName)
 
-	// Resolve host identity for the runs_on relation. Best-effort: an
-	// empty hostID silently omits the relation rather than failing the
-	// collect cycle.
-	hostID, hostName := "", ""
-	if hi, err := common.GetHostIdentity(); err == nil {
-		hostID, hostName = hi.ID, hi.Name
+	// Explicit selections bypass the default enabled-only filter, so
+	// UnitFileState has not been read for them yet. Read it for every
+	// selected unit that is still missing it to fill host.service.start_mode.
+	for _, u := range selected {
+		if _, ok := stateByName[u.Name]; ok {
+			continue
+		}
+		prop, err := conn.GetUnitProperty(u.Name, "UnitFileState")
+		if err != nil {
+			continue
+		}
+		if v, ok := prop.Value.Value().(string); ok {
+			stateByName[u.Name] = v
+		}
 	}
 
-	// Feed entity rail with unit names from this cycle.
-	names := make([]string, 0, len(selected))
-	for _, u := range selected {
-		names = append(names, u.Name)
+	// Resolve host identity for the runs_on relation and datapoint tags.
+	hostID, hostName := "", p.hostname
+	if hi, err := common.GetHostIdentity(); err == nil {
+		hostID = hi.ID
+		if hi.Name != "" {
+			hostName = hi.Name
+		}
 	}
-	p.entitySource.setUnits(names, hostID, hostName)
+
+	// Feed entity rail with the selected unit snapshots from this cycle.
+	units := make([]hostServiceUnit, 0, len(selected))
+	for _, u := range selected {
+		units = append(units, hostServiceUnit{
+			Name:          u.Name,
+			ActiveState:   u.ActiveState,
+			UnitFileState: stateByName[u.Name],
+		})
+	}
+	p.entitySource.setUnits(units, hostID, hostName)
 
 	now := time.Now()
 	var points []data_store.DataPoint
 	for _, u := range selected {
-		entityID := p.entitySource.ServiceInstanceID(u.Name)
-
 		var nRestarts *float64
 		if p.config.Detail == systemdDetailFull && unitTypeSuffix(u.Name) == "service" {
 			prop, err := conn.GetUnitTypeProperty(u.Name, "Service", "NRestarts")
@@ -164,7 +183,7 @@ func (p *SystemdProbe) Collect() ([]data_store.DataPoint, error) {
 			}
 		}
 
-		pts := buildDatapoints(u, now, nRestarts, entityID, p.config.Detail)
+		pts := buildDatapoints(u, now, nRestarts, hostID, hostName, p.config.Detail)
 		points = append(points, pts...)
 	}
 	points = append(points, checkResultPoint(now, nil))
