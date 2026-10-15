@@ -51,7 +51,11 @@ AmbientCapabilities=
 # Kernel and system surfaces the agent reads but must never change. It
 # reports the clock, the hostname and cgroup usage; it has no reason to be
 # able to write any of them.
-ProtectClock=true
+#
+# ProtectClock is NOT set: it filters every clock system call, including the
+# read-only adjtimex() the cpu probe uses to report clock synchronisation.
+# The clock stays unwritable all the same: setting it needs CAP_SYS_TIME,
+# which the empty CapabilityBoundingSet above removes.
 ProtectHostname=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
@@ -77,7 +81,12 @@ UMask=0077
 
 # System calls: the standard service set, on this machine's ABI only.
 SystemCallArchitectures=native
-SystemCallFilter=@system-service
+# adjtimex is outside @system-service; the cpu probe reads clock
+# synchronisation with it (modes 0, which changes nothing).
+SystemCallFilter=@system-service adjtimex
+# A call outside the list fails with EPERM instead of killing the agent:
+# a probe can report what it could not read, a SIGSYS takes every probe down.
+SystemCallErrorNumber=EPERM
 
 # Socket families the agent actually uses: unix (docker/containerd), inet and
 # inet6 (probes, OTLP, receivers), netlink (host network metrics). Notably NOT
