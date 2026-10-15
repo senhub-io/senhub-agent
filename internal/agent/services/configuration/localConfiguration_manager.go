@@ -40,6 +40,10 @@ func (lc *LocalConfiguration) loadOrCreateConfiguration() error {
 // preserved by content-based detection inside LoadFromDisk — no
 // operator action needed to keep an older config working.
 func (lc *LocalConfiguration) loadConfiguration() error {
+	// Ensure install-default fragments exist before this load reads probes.d.
+	// The call is a no-op for a legacy monolithic configuration.
+	EnsureDefaultProbeFragments(lc.configPath, lc.logger, DefaultFragmentOptions{})
+
 	config, err := LoadFromDisk(lc.configPath, lc.logger)
 	if err != nil {
 		return err // already wrapped with the offending path
@@ -149,6 +153,11 @@ func (lc *LocalConfiguration) createDefaultConfiguration() error {
 		return fmt.Errorf("failed to write %s: %w", httpPath, err)
 	}
 
+	// 4. Platform default fragments (05-services.yaml and, on Linux
+	// Docker hosts, 06-swarm.yaml). Best-effort: write failures are
+	// logged by the function and do not stop a fresh install.
+	EnsureDefaultProbeFragments(lc.configPath, lc.logger, DefaultFragmentOptions{})
+
 	// Populate the in-memory data so the rest of Start() works without
 	// re-reading the files we just wrote.
 	lc.storeData(LocalConfigurationData{
@@ -161,6 +170,7 @@ func (lc *LocalConfiguration) createDefaultConfiguration() error {
 		AutoUpdate: lc.createDefaultAutoUpdateConfig(),
 		Cache:      lc.createDefaultCacheConfig(),
 	})
+
 	lc.logger.Info().
 		Str("agent_yaml", lc.configPath).
 		Str("probes_d", probesDir).
@@ -314,11 +324,10 @@ func (lc *LocalConfiguration) createDefaultStorageConfig() []StorageConfig {
 	}
 }
 
-// createDefaultProbesConfig creates default probes configuration
+// createDefaultProbesConfig creates the default probes present on a
+// fresh install for the current platform.
 func (lc *LocalConfiguration) createDefaultProbesConfig() []ProbeConfig {
-	// In config version 2: 'name' is display name, 'type' is technical identifier
-	// For default config, we use the same value for both
-	return []ProbeConfig{
+	probes := []ProbeConfig{
 		{
 			Name:   "cpu", // Display name
 			Type:   "cpu", // Probe type
@@ -340,6 +349,19 @@ func (lc *LocalConfiguration) createDefaultProbesConfig() []ProbeConfig {
 			Params: map[string]interface{}{"interval": 30},
 		},
 	}
+
+	for _, spec := range defaultFragmentSpecs(DefaultFragmentOptions{}) {
+		if !spec.enabled {
+			continue
+		}
+		probes = append(probes, ProbeConfig{
+			Name:   spec.name,
+			Type:   spec.probeType,
+			Params: map[string]interface{}{"interval": 60},
+		})
+	}
+
+	return probes
 }
 
 // createDefaultAutoUpdateConfig creates default auto-update configuration
