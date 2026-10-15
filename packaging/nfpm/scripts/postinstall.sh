@@ -52,7 +52,7 @@ add_default_fragment() {
     grep -Eqs "^[[:space:]]*type:[[:space:]]*\"?$2\"?[[:space:]]*$" /etc/senhub-agent/probes.d/*.yaml && return 0
     cat > "${file}" <<FRAGMENT
 # $3 Rename to *.disabled to
-# turn it off; deleting it brings it back at the next start or upgrade.
+# turn it off (deleting it lets the agent add it back at its next start).
 
 - name: $4
   type: $2
@@ -62,11 +62,25 @@ FRAGMENT
     chown senhub:senhub "${file}" 2>/dev/null || true
     chmod 0600 "${file}"
 }
-if [ -d /etc/senhub-agent/probes.d ] && ! grep -Eq '^(probes|storage):' /etc/senhub-agent/agent.yaml 2>/dev/null; then
-    add_default_fragment 05-services.yaml systemd "Default OS service supervisor probe." services
+# Once per host: an upgrade after this one must not bring back a fragment
+# the operator deleted. The opt-out the agent honours is honoured here too.
+defaults_marker=/var/lib/senhub-agent/.default-probes-0.6.4
+defaults_off=0
+if command -v systemctl >/dev/null 2>&1 && \
+    systemctl show -p Environment senhub-agent.service 2>/dev/null | grep -qi 'SENHUB_DEFAULT_PROBES=off'; then
+    defaults_off=1
+fi
+if [ "${defaults_off}" = 0 ] && [ ! -e "${defaults_marker}" ] && [ -d /etc/senhub-agent/probes.d ] && \
+    ! grep -Eq '^(probes|storage):' /etc/senhub-agent/agent.yaml 2>/dev/null; then
+    if [ -d /run/systemd/system ]; then
+        add_default_fragment 05-services.yaml systemd "Default OS service supervisor probe." services
+    fi
     if [ -S /var/run/docker.sock ]; then
         add_default_fragment 06-swarm.yaml swarm "Default Docker Swarm probe (declares overlay networks on a manager)." swarm
     fi
+    mkdir -p /var/lib/senhub-agent
+    : > "${defaults_marker}"
+    chown senhub:senhub "${defaults_marker}" 2>/dev/null || true
 fi
 
 # The shipped config carries an empty agent key; the agent refuses to start
