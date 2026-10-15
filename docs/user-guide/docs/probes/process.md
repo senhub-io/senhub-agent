@@ -46,7 +46,7 @@ Reports the per-name roll-up for every process by default. Add a `filter` block 
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:4f9a7547433c14c9a6d8d729cd2d7cb16915218818a9822ac4575a517b397d12 -->
+<!-- sha256:dd1862660c09214f02daaa36e3dd6d062fcde84118208e401bf61a56fa6cac50 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -54,7 +54,8 @@ Reports the per-name roll-up for every process by default. Add a `filter` block 
 | `filter` | No | - | Narrows the process table and turns on the per-process detail; empty reports the per-name roll-up over every process |
 | `filter.by_name` | No | - | Regular expression (RE2) a process name must match. Example: `^(nginx\|php-fpm)` |
 | `filter.by_user` | No | - | OS user owning the processes; empty accepts every user. Example: `www-data` |
-| `filter.top_n` | No | `0` | Keep only the N processes with the highest CPU usage; 0 keeps all. A positive value also turns on the per-process detail, because it bounds how many processes carry it |
+| `filter.top_n` | No | `0` | Keep only the N processes ranking highest on top_by; 0 keeps all. A positive value also turns on the per-process detail, because it bounds how many processes carry it |
+| `filter.top_by` | No | `cpu` | What top_n ranks on: cpu, or memory (resident set, the working set on Windows). Example: `memory` |
 | `aggregate` | No | - | Roll-up of the processes sharing a name |
 | `aggregate.enabled` | No | `true` | Emit one process count per distinct process name |
 
@@ -113,7 +114,7 @@ Reports the per-name roll-up for every process by default. Add a `filter` block 
   monitoring is, and the filter is what bounds it: only the programs
   you named can produce those series. An unfiltered view reports the
   roll-up alone for that reason.
-- `filter.top_n` is applied after all other filters. It is useful for "monitor the 5 most CPU-hungry processes" scenarios, and it turns on the per-process detail because it bounds how many processes can carry it.
+- `filter.top_n` is applied after all other filters. It is useful for "monitor the 5 most CPU-hungry processes" scenarios, and it turns on the per-process detail because it bounds how many processes can carry it. Set `filter.top_by: memory` to rank on resident memory instead (the working set on Windows): it names the process behind a low-memory condition.
 - The processes you name with `by_name` or `by_user` also become entities on the topology graph, with an edge to their host. A `top_n` or unfiltered view does not, because its membership changes every cycle.
 
 ## Metric reference

@@ -87,6 +87,14 @@ type discoveredState struct {
 	misses int
 }
 
+// discoveredTopologyResult is one polled device's observation plus whether
+// the poll was partial: at least one table walk failed, so missing entities
+// were not read rather than seen gone.
+type discoveredTopologyResult struct {
+	obs     entity.Observation
+	partial bool
+}
+
 func (p *snmppollProbe) discoveryInterval() time.Duration {
 	if p.cfg.Discovery != nil && p.cfg.Discovery.Interval > 0 {
 		return p.cfg.Discovery.Interval
@@ -214,7 +222,6 @@ func (p *snmppollProbe) runDiscovery(ctx context.Context) {
 	}
 	discovered := crawlWithWorkers(seeds, poll, bounds, discoveryMaxConcurrent)
 	discovered = p.filterOwnTarget(discovered)
-	answered := 0
 
 	fresh := p.collectDiscoveredTopology(ctx, discovered)
 	obs := p.retainRecentlySeen(fresh)
@@ -223,7 +230,7 @@ func (p *snmppollProbe) runDiscovery(ctx context.Context) {
 	}
 
 	elapsed := time.Since(start)
-	answered = len(fresh)
+	answered := len(fresh)
 	p.discoveryMet.record(answered, elapsed)
 
 	if elapsed > p.discoveryInterval() {
@@ -322,12 +329,17 @@ func (p *snmppollProbe) discoveryClientConfig(target string) *config {
 // retainRecentlySeen merges this run's per-device observations with the
 // devices that answered in one of the last discoveryMissGrace runs.
 // Only the discovery goroutine calls it, so p.discovered needs no lock.
-func (p *snmppollProbe) retainRecentlySeen(fresh map[string]entity.Observation) entity.Observation {
+func (p *snmppollProbe) retainRecentlySeen(fresh map[string]discoveredTopologyResult) entity.Observation {
 	if p.discovered == nil {
 		p.discovered = map[string]*discoveredState{}
 	}
-	for id, obs := range fresh {
-		p.discovered[id] = &discoveredState{obs: obs, at: time.Now()}
+	for id, res := range fresh {
+		if prev, ok := p.discovered[id]; ok && res.partial && p.entitySource != nil {
+			// A partial poll could not read some tables, so entities missing
+			// from it left unobserved, not removed as if they were seen gone.
+			p.entitySource.markUnobserved(droppedEntities(prev.obs, res.obs))
+		}
+		p.discovered[id] = &discoveredState{obs: res.obs, at: time.Now()}
 	}
 	ids := make([]string, 0, len(p.discovered))
 	for id, st := range p.discovered {
@@ -371,15 +383,15 @@ func copyObservationWithObservedAt(obs entity.Observation, at time.Time) entity.
 	return out
 }
 
-// collectDiscoveredTopology polls each device and returns its observation
+// collectDiscoveredTopology polls each device and returns its result
 // keyed by device id; a device that fails this run is absent from the map.
-func (p *snmppollProbe) collectDiscoveredTopology(ctx context.Context, devices []discoveredDevice) map[string]entity.Observation {
-	out := map[string]entity.Observation{}
+func (p *snmppollProbe) collectDiscoveredTopology(ctx context.Context, devices []discoveredDevice) map[string]discoveredTopologyResult {
+	out := map[string]discoveredTopologyResult{}
 	if len(devices) == 0 {
 		return out
 	}
 
-	results := make([]entity.Observation, len(devices))
+	results := make([]discoveredTopologyResult, len(devices))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, discoveryMaxConcurrent)
 
@@ -397,24 +409,24 @@ func (p *snmppollProbe) collectDiscoveredTopology(ctx context.Context, devices [
 	}
 	wg.Wait()
 
-	for i, obs := range results {
-		if len(obs.Entities) > 0 {
-			out[devices[i].ID] = obs
+	for i, res := range results {
+		if len(res.obs.Entities) > 0 {
+			out[devices[i].ID] = res
 		}
 	}
 	return out
 }
 
-func (p *snmppollProbe) pollDiscoveredDevice(ctx context.Context, d discoveredDevice) entity.Observation {
+func (p *snmppollProbe) pollDiscoveredDevice(ctx context.Context, d discoveredDevice) discoveredTopologyResult {
 	if ctx.Err() != nil {
-		return entity.Observation{}
+		return discoveredTopologyResult{}
 	}
 
 	client := p.newClient(p.discoveryClientConfig(d.MgmtIP))
 	if err := client.Connect(); err != nil {
 		p.discoveryMet.addFailure("unreachable")
 		p.moduleLogger.Warn().Err(err).Str("target", d.MgmtIP).Msg("discovery topology: SNMP connect failed")
-		return entity.Observation{}
+		return discoveredTopologyResult{}
 	}
 	defer func() {
 		if err := client.Close(); err != nil {
@@ -422,25 +434,31 @@ func (p *snmppollProbe) pollDiscoveredDevice(ctx context.Context, d discoveredDe
 		}
 	}()
 
+	partial := false
+
 	topo, err := collectLLDP(client)
 	if err != nil {
 		p.moduleLogger.Debug().Err(err).Str("target", d.MgmtIP).Msg("discovery topology: LLDP walk failed")
 		topo = lldpTopology{}
+		partial = true
 	}
 	routes, err := collectRoutes(client)
 	if err != nil {
 		p.moduleLogger.Debug().Err(err).Str("target", d.MgmtIP).Msg("discovery topology: routing walk failed")
 		routes = nil
+		partial = true
 	}
 	ifaces, err := collectInterfaces(client)
 	if err != nil {
 		p.moduleLogger.Debug().Err(err).Str("target", d.MgmtIP).Msg("discovery topology: ifTable walk failed")
 		ifaces = nil
+		partial = true
 	}
 	addrs, err := collectIPAddrs(client)
 	if err != nil {
 		p.moduleLogger.Debug().Err(err).Str("target", d.MgmtIP).Msg("discovery topology: ipAddrTable walk failed")
 		addrs = nil
+		partial = true
 	}
 
 	self := readSelfIdentity(client, d.MgmtIP, topo.Local)
@@ -448,7 +466,7 @@ func (p *snmppollProbe) pollDiscoveredDevice(ctx context.Context, d discoveredDe
 	if deviceID == "" {
 		p.discoveryMet.addFailure("identity")
 		p.moduleLogger.Warn().Str("target", d.MgmtIP).Msg("discovery topology: unable to resolve device identity")
-		return entity.Observation{}
+		return discoveredTopologyResult{}
 	}
 	if deviceID != d.ID {
 		p.moduleLogger.Warn().
@@ -456,7 +474,7 @@ func (p *snmppollProbe) pollDiscoveredDevice(ctx context.Context, d discoveredDe
 			Str("crawl_id", d.ID).
 			Str("topology_id", deviceID).
 			Msg("discovery topology: identity changed between crawl and topology collection")
-		return entity.Observation{}
+		return discoveredTopologyResult{}
 	}
 
 	if p.entitySource != nil && p.entitySource.registry != nil {
@@ -498,7 +516,7 @@ func (p *snmppollProbe) pollDiscoveredDevice(ctx context.Context, d discoveredDe
 		}
 		obs = es.appendResolvesNeighbors(obs, res)
 	}
-	return obs
+	return discoveredTopologyResult{obs: obs, partial: partial}
 }
 
 // ifaceNameMap is the ifIndex → ifName map of a set of interface rows.

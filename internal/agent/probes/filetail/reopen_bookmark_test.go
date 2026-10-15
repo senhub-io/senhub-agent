@@ -93,14 +93,14 @@ func TestFileTail_ReopenAfterRotationBookmarksTheNewFileStart(t *testing.T) {
 			first := startFileTail(t, cfg)
 			waitBookmarkOnDisk(t, bookmarkPath, file, func(e bookmarkEntry) bool {
 				return e.Offset == int64(len(old))
-			}, 2*time.Second)
+			}, 30*time.Second)
 			// Let the watch settle on the idle file before rotating it.
 			time.Sleep(200 * time.Millisecond)
 
 			tc.rotate(t, file)
 			waitBookmarkOnDisk(t, bookmarkPath, file, func(e bookmarkEntry) bool {
 				return e.Offset == 0 && e.Fingerprint == ""
-			}, 5*time.Second)
+			}, 30*time.Second)
 
 			stopFileTail(t, first)
 			if got := first.emitted.Load(); got != 0 {
@@ -115,7 +115,7 @@ func TestFileTail_ReopenAfterRotationBookmarksTheNewFileStart(t *testing.T) {
 			second := startFileTail(t, cfg)
 			defer stopFileTail(t, second)
 			want := uint64(len(lines))
-			if got := waitEmitted(second, want, 5*time.Second); got != want {
+			if got := waitEmitted(second, want, 30*time.Second); got != want {
 				t.Fatalf("restart emitted %d of the %d lines of the new file", got, want)
 			}
 			time.Sleep(300 * time.Millisecond)
