@@ -13,6 +13,15 @@ import (
 
 const CheckResultMetric = "senhub.probe.check.result"
 
+// UnresolvedTargetMetric is emitted when a local target's listener entity
+// does not exist. It is separate from CheckResultMetric so a reason change
+// never splits the check-result series.
+const UnresolvedTargetMetric = "senhub.probe.check.target.unresolved"
+
+// UnresolvedReasonNoListener is the reason tag value used on
+// UnresolvedTargetMetric when a local target refused the connection.
+const UnresolvedReasonNoListener = "no_listener"
+
 // CheckResult classifies the outcome of a single probe check.
 type CheckResult int
 
@@ -26,6 +35,25 @@ const (
 	CheckProtocolError
 	CheckPermissionDenied
 )
+
+// IsConnectionRefused reports whether err indicates the target actively
+// refused the connection. It mirrors the refusal branches in ClassifyError so
+// callers can qualify CheckTargetDown with the specific no_listener reason.
+func IsConnectionRefused(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		if errors.Is(opErr.Err, syscall.ECONNREFUSED) {
+			return true
+		}
+	}
+
+	msg := strings.ToLower(err.Error())
+	return containsAny(msg, "connection refused", "actively refused")
+}
 
 // ClassifyError maps an error returned by a probe attempt to a
 // CheckResult. It first checks standard error types, then falls back
