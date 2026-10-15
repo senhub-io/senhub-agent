@@ -803,7 +803,7 @@ func TestRetainRecentlySeen_AgedOutDeviceIsUnobserved(t *testing.T) {
 	dev := entity.Observation{Entities: []entity.Entity{{
 		Type: entityTypeNetworkDevice, ID: map[string]any{idKeyNetworkDevice: "name:sw2"},
 	}}}
-	p.retainRecentlySeen(map[string]entity.Observation{"name:sw2": dev})
+	p.retainRecentlySeen(map[string]discoveredTopologyResult{"name:sw2": {obs: dev}})
 	for i := 0; i < discoveryMissGrace-1; i++ {
 		p.retainRecentlySeen(nil)
 		if u := p.entitySource.Unobserved(); len(u) != 0 {
