@@ -100,6 +100,13 @@ type Entity struct {
 	Attributes    map[string]any
 	Relationships []Relationship
 	Scope         string
+	// ObservedAt is the producer-side observation time for this entity.
+	// Zero means "observed now" — the detector/tracker stamps the current
+	// tick. A source that re-uses a previous observation sets it to the
+	// time of that original observation, so a replayed fact keeps its
+	// original event_time. It is deliberately outside entity identity and
+	// change hashing.
+	ObservedAt time.Time
 }
 
 // Scope* are the frozen instrumentation-scope names that carry an entity's

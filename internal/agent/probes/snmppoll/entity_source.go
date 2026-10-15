@@ -258,6 +258,8 @@ func (s *snmpEntitySource) Observe() (entity.Observation, bool) {
 func (s *snmpEntitySource) observeSingle() (entity.Observation, bool) {
 	s.mu.Lock()
 	res, swept := s.cache, s.swept
+	lastSweep := s.lastSweep
+	replaying := !s.failingSince.IsZero()
 	s.mu.Unlock()
 	if !swept || s.silent() {
 		return entity.Observation{}, false
@@ -268,6 +270,11 @@ func (s *snmpEntitySource) observeSingle() (entity.Observation, bool) {
 		return entity.Observation{}, false
 	}
 	obs = s.appendResolvesNeighbors(obs, res)
+	if replaying && !lastSweep.IsZero() {
+		// The cache came from an earlier successful sweep. A consumer must
+		// not see a fresh event_time on facts we have not re-read.
+		stampObservedAt(&obs, lastSweep)
+	}
 	return obs, true
 }
 
@@ -1191,6 +1198,16 @@ func vendorName(pen string) string {
 func (s *snmpEntitySource) buildQuiet(res sweepResult, now time.Time) entity.Observation {
 	obs, _ := s.build(res, now)
 	return obs
+}
+
+// stampObservedAt sets ObservedAt on entities that do not already carry an
+// older observation time.
+func stampObservedAt(obs *entity.Observation, at time.Time) {
+	for i := range obs.Entities {
+		if obs.Entities[i].ObservedAt.IsZero() {
+			obs.Entities[i].ObservedAt = at
+		}
+	}
 }
 
 // droppedEntities returns the entities of before that after no longer holds.

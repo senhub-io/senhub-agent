@@ -232,6 +232,22 @@ func (p *HTTPCheckProbe) Collect() ([]data_store.DataPoint, error) {
 		extraTags = append(extraTags, tags.Tag{Key: "url.full", Value: res.target})
 		extraTags = append(extraTags, info.identityTags()...)
 		points = append(points, p.buildDatapoints(res, now, extraTags)...)
+
+		if info.kind == httpTargetLocalListener && res.err != nil &&
+			dbcommon.ClassifyError(res.err) == dbcommon.CheckTargetDown &&
+			dbcommon.IsConnectionRefused(res.err) {
+			diagnosticTags := make([]tags.Tag, 0, len(extraTags)+2)
+			diagnosticTags = append(diagnosticTags, tags.Tag{Key: "target", Value: res.target})
+			diagnosticTags = append(diagnosticTags, extraTags...)
+			diagnosticTags = append(diagnosticTags, tags.Tag{Key: "reason", Value: dbcommon.UnresolvedReasonNoListener})
+
+			points = append(points, data_store.DataPoint{
+				Name:      dbcommon.UnresolvedTargetMetric,
+				Value:     1,
+				Timestamp: now,
+				Tags:      diagnosticTags,
+			})
+		}
 	}
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }

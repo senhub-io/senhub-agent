@@ -6,9 +6,10 @@ import (
 )
 
 // Observation is the set of entities and relations a Source currently sees.
-// It carries identity + descriptive attributes only — the detector stamps
-// event_time and the liveness interval uniformly, so sources never deal with
-// timestamps. Returning a smaller set than last cycle is how a source signals
+// It carries identity + descriptive attributes. The detector stamps event_time
+// and the liveness interval uniformly; a source that re-uses a previous read
+// can set Entity.ObservedAt to that read's time, and zero means the detector's
+// current tick. Returning a smaller set than last cycle is how a source signals
 // that something it used to observe is gone (the tracker emits the delete).
 type Observation struct {
 	Entities  []Entity
@@ -244,7 +245,11 @@ func stateEvents(entities []Entity, ts time.Time, interval time.Duration) []Even
 	out := make([]Event, len(entities))
 	for i := range entities {
 		e := entities[i]
-		out[i] = Event{Kind: EntityState, Entity: &e, Time: ts, Interval: interval}
+		eventTime := ts
+		if !e.ObservedAt.IsZero() {
+			eventTime = e.ObservedAt
+		}
+		out[i] = Event{Kind: EntityState, Entity: &e, Time: eventTime, Interval: interval}
 	}
 	return out
 }
