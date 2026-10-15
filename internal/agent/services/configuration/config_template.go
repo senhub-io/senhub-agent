@@ -79,7 +79,7 @@ const HostProbesFragmentTemplate = `# Default host probes. Add more via new file
 //
 //  1. probe type (str) %s — systemd on Linux, winservices on Windows
 const ServicesProbeFragmentTemplate = `# Default OS service supervisor probe. Rename to *.disabled to
-# turn it off; deleting it brings it back at the next start or upgrade.
+# turn it off (deleting it lets the agent add it back at its next start).
 
 - name: services
   type: %s
@@ -95,7 +95,7 @@ const ServicesProbeFragmentTemplate = `# Default OS service supervisor probe. Re
 const SwarmProbeFragmentTemplate = `# Default Docker Swarm probe. The docker probe links containers to
 # swarm overlay networks; the swarm probe declares those networks on a
 # manager, so without it those links are dropped. Rename to *.disabled
-# to turn it off; deleting it brings it back at the next start or upgrade.
+# to turn it off (deleting it lets the agent add it back at its next start).
 
 - name: swarm
   type: swarm
