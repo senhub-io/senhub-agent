@@ -52,6 +52,7 @@ series per cycle.
 ## Operational notes
 
 - When `units` is empty, only the units systemd is supposed to start by itself are watched: `UnitFileState` enabled or enabled-runtime, among the included types. Name a static, disabled or masked unit in `units` to watch it.
+- Each watched unit is a `host.service` entity on the topology graph (identity `host.id` + `host.service.name`, the full unit name, so `nginx.service` and `nginx.socket` are two entities), linked to its host by `runs_on`, with `host.service.manager` (`systemd`), `host.service.start_mode` and `host.service.state`. Its series carry the same `host.id` and `host.service.name`. Agents before 0.6.4 published units as `service.instance`; the first start retires those with the reason `rekeyed` and links each new entity to its old one.
 - `detail: state` (the default) emits `systemd.unit.active_state` alone, one series per watched unit; `detail: full` adds `load_state`, `sub_state` and the restart counter. The probe is installed on every host, so its default stays at one series per unit.
 - Without `units`, the probe watches every loaded unit of the included
   types, except the units systemd creates for each user login and removes

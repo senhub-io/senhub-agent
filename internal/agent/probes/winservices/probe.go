@@ -11,9 +11,8 @@
 // windows_eventlog / linux_logs).
 //
 // Entity rail: the host's service-control surface is reported as a
-// single service.instance entity (winservices@<host.id>) so a backend can
-// anchor the per-service metrics to a host. The per-service rows ride as
-// metrics (windows.service.state / windows.service.status), not as entities.
+// service.instance entity (winservices@<host.id>) and each selected service
+// is additionally reported as a host.service entity.
 package winservices
 
 import (
@@ -69,13 +68,17 @@ const (
 	serviceDetailFull  = "full"
 )
 
-// serviceState is one service's name and SCM state at a point in time.
-// startType is -1 when the configuration could not be read, which leaves
-// the start type unreported rather than guessed.
+// serviceState is one service's name, SCM state, and SCM configuration at
+// a point in time. startType is -1 when the configuration could not be
+// read, which leaves the start type unreported rather than guessed.
+// triggerStart is nil when trigger info could not be read, otherwise it
+// reports whether at least one trigger is configured.
 type serviceState struct {
-	name      string
-	state     int
-	startType int
+	name         string
+	state        int
+	startType    int
+	startDelayed bool
+	triggerStart *bool
 }
 
 // collectFunc returns the current state of the selected services. The real
@@ -84,6 +87,7 @@ type serviceState struct {
 type collectFunc func(selected []string) ([]serviceState, error)
 
 type hostIDFunc func() string
+type hostNameFunc func() string
 
 // WinServicesProbeConfig captures the operator-supplied options from the
 // probe YAML `params` block.
@@ -109,6 +113,7 @@ type WinServicesProbe struct {
 
 	entitySource *winServicesEntitySource
 	getHostID    hostIDFunc
+	getHostName  hostNameFunc
 
 	// reportedMissing holds the selected names already reported as not
 	// found, so each is logged once rather than every cycle.
@@ -133,6 +138,7 @@ func NewWinServicesProbe(config map[string]interface{}, baseLogger *logger.Logge
 		collect:      collectServices,
 		entitySource: newEntitySource(),
 		getHostID:    defaultHostID,
+		getHostName:  defaultHostName,
 	}
 	probe.SetProbeType(ProbeType)
 	probe.SetEntitySource(probe.entitySource)
@@ -144,6 +150,13 @@ func defaultHostID() string {
 		return hi.ID
 	}
 	return ""
+}
+
+func defaultHostName() string {
+	if hi, err := common.GetHostIdentity(); err == nil && hi.Name != "" {
+		return hi.Name
+	}
+	return common.CanonicalHostName()
 }
 
 func parseConfig(config map[string]interface{}) (WinServicesProbeConfig, error) {
@@ -205,13 +218,12 @@ func selectAutomaticServices(states []serviceState) []serviceState {
 // Collect queries the SCM for the selected services. A SCM failure is not a
 // collection error: the probe emits senhub.winservices.up=0 so the outage is
 // observable, mirroring the always-emit-up contract of the other probes.
-// Host identity is resolved once per cycle so the entity source can attach
-// the runs_on → host relation as soon as the ID is available.
 func (p *WinServicesProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 	up := float64(1)
 
 	hostID := p.getHostID()
+	hostName := p.getHostName()
 	p.entitySource.setHostID(hostID)
 
 	states, err := p.collect(p.config.Services)
@@ -224,12 +236,16 @@ func (p *WinServicesProbe) Collect() ([]data_store.DataPoint, error) {
 		states = selectAutomaticServices(states)
 	}
 
+	if err == nil {
+		p.entitySource.setServices(hostID, hostName, states)
+	}
+
 	points := []data_store.DataPoint{
 		{Name: "senhub.winservices.up", Value: up, Timestamp: now, Tags: p.statusTags()},
 		{Name: dbcommon.CheckResultMetric, Value: float64(dbcommon.ClassifyError(err)), Timestamp: now, Tags: p.statusTags()},
 	}
 	for _, s := range states {
-		points = append(points, p.buildServiceDatapoints(s, now, p.config.Detail)...)
+		points = append(points, p.buildServiceDatapoints(s, now, hostID, hostName, p.config.Detail)...)
 	}
 	if err == nil {
 		p.reportMissing(states)
@@ -263,11 +279,21 @@ func (p *WinServicesProbe) reportMissing(states []serviceState) {
 	}
 }
 
-func (p *WinServicesProbe) buildServiceDatapoints(s serviceState, ts time.Time, detail string) []data_store.DataPoint {
+func (p *WinServicesProbe) buildServiceDatapoints(s serviceState, ts time.Time, hostID, hostName, detail string) []data_store.DataPoint {
 	serviceTags := []tags.Tag{
 		{Key: "windows.service.name", Value: s.name},
 		{Key: "metric_type", Value: "service"},
 	}
+	if hostID != "" {
+		serviceTags = append(serviceTags,
+			tags.Tag{Key: "host.id", Value: hostID},
+			tags.Tag{Key: "host.service.name", Value: s.name},
+		)
+	}
+	if hostName != "" {
+		serviceTags = append(serviceTags, tags.Tag{Key: "host.name", Value: hostName})
+	}
+
 	running := float64(0)
 	if s.state == stateRunning {
 		running = 1
