@@ -13,18 +13,26 @@ type config struct {
 	byName *regexp.Regexp
 	// byUser filters by OS username (empty = accept all).
 	byUser string
-	// topN, if positive, retains only the N processes with highest CPU.
+	// topN, if positive, retains only the N processes ranking highest on topBy.
 	topN int
+	// topBy is what top_n ranks on: "cpu" (default) or "memory".
+	topBy string
 	// aggregate emits one extra rolled-up datapoint per distinct process name.
 	aggregate bool
 	// interval between collection cycles.
 	interval time.Duration
 }
 
+const (
+	topByCPU    = "cpu"
+	topByMemory = "memory"
+)
+
 // parseConfig validates and converts the raw YAML params block.
 func parseConfig(raw map[string]interface{}) (config, error) {
 	cfg := config{
 		topN:      0,
+		topBy:     topByCPU,
 		aggregate: true,
 		interval:  30 * time.Second,
 	}
@@ -46,6 +54,12 @@ func parseConfig(raw map[string]interface{}) (config, error) {
 		}
 		if n, ok := types.IntParam(filter, "top_n"); ok {
 			cfg.topN = n
+		}
+		if s, ok := filter["top_by"].(string); ok && s != "" {
+			if s != topByCPU && s != topByMemory {
+				return config{}, fmt.Errorf("filter.top_by: %q is neither %q nor %q", s, topByCPU, topByMemory)
+			}
+			cfg.topBy = s
 		}
 	}
 

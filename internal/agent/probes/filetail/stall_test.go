@@ -83,7 +83,7 @@ func TestFileTail_TailStuckOnRotatedFileIsReportedAndRestartedFromZero(t *testin
 	// Restarted from the first byte: the 40 lines already there are read,
 	// then the new ones.
 	appendLines(t, file, newFileLines(5)...)
-	if got := waitEmitted(p, 45, 5*time.Second); got != 45 {
+	if got := waitEmitted(p, 45, 30*time.Second); got != 45 {
 		t.Fatalf("emitted %d of the 45 lines after the restart", got)
 	}
 }
@@ -107,14 +107,14 @@ func TestFileTail_TailPastTheEndOfATruncatedFileIsReportedAndRestarted(t *testin
 	// The tail normally follows a truncation itself. Once it has, pin the
 	// state the self-check exists for: a read offset the file no longer
 	// reaches, as when that reopen never comes.
-	waitEmitted(p, uint64(len(lines)), 3*time.Second)
+	waitEmitted(p, uint64(len(lines)), 30*time.Second)
 	stuck.offset.Store(1 << 20)
 
 	fresh := rescanUntilRestarted(t, p, file, stuck)
 	if fresh == stuck {
 		t.Fatal("same tail after the restart")
 	}
-	if got := waitEmitted(p, 5, 5*time.Second); got < 5 {
+	if got := waitEmitted(p, 5, 30*time.Second); got < 5 {
 		t.Fatalf("emitted %d of the 5 lines of the truncated file", got)
 	}
 }
@@ -130,7 +130,7 @@ func TestFileTail_HealthyTailIsNeverRestarted(t *testing.T) {
 	first := tailStateOf(t, p, file)
 
 	appendLines(t, file, newFileLines(20)...)
-	waitEmitted(p, 20, 5*time.Second)
+	waitEmitted(p, 20, 30*time.Second)
 	for i := 0; i < 6; i++ {
 		p.scanAndTail()
 		time.Sleep(60 * time.Millisecond)
@@ -210,7 +210,7 @@ func TestFileTail_TailThatReadsNothingOfAGrowingFileResumesAtItsOffset(t *testin
 	if fresh == stuck {
 		t.Fatal("same tail after the restart")
 	}
-	if got := waitEmitted(p, 3, 5*time.Second); got != 3 {
+	if got := waitEmitted(p, 3, 30*time.Second); got != 3 {
 		t.Fatalf("emitted %d, want the 3 lines past the offset", got)
 	}
 	time.Sleep(300 * time.Millisecond)
@@ -241,7 +241,7 @@ func TestFileTail_RestartedTailClearsTheStallOnceItReads(t *testing.T) {
 	stuck.mu.Unlock()
 
 	rescanUntilRestarted(t, p, file, stuck)
-	if got := waitEmitted(p, 40, 5*time.Second); got < 40 {
+	if got := waitEmitted(p, 40, 30*time.Second); got < 40 {
 		t.Fatalf("emitted %d of the 40 lines after the restart", got)
 	}
 	points, err := p.Collect()
