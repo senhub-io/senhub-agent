@@ -255,10 +255,13 @@ func checkAndPrompt(updater auto_update.AutoUpdate, includeBeta bool, log *logge
 
 // readIncludeBetaFromConfig reads include_beta from the YAML config file
 func readIncludeBetaFromConfig(configPath string) bool {
-	if configPath == "" {
-		configPath = "./agent-config.yaml"
+	// The same resolution the agent uses: with no --config-path that is the
+	// OS-canonical agent.yaml, where the daemon read include_beta from.
+	resolved, err := cliArgs.GetAbsoluteConfigPath(configPath)
+	if err != nil {
+		return false
 	}
-	data, err := os.ReadFile(configPath) // #nosec G304 - CLI tool reads user config
+	data, err := os.ReadFile(resolved) // #nosec G304 - CLI tool reads user config
 	if err != nil {
 		return false
 	}
