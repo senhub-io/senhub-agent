@@ -29,6 +29,7 @@ type discoveryFakeClient struct {
 	target      string
 	connectErr  error
 	walkRawData map[string][]snmpRawBind
+	walkErrs    map[string]error
 }
 
 func (c *discoveryFakeClient) Connect() error { return c.connectErr }
@@ -39,6 +40,9 @@ func (c *discoveryFakeClient) BulkWalk(string) ([]snmpVarBind, error) {
 	return nil, nil
 }
 func (c *discoveryFakeClient) WalkRaw(base string) ([]snmpRawBind, error) {
+	if err := c.walkErrs[base]; err != nil {
+		return nil, err
+	}
 	return c.walkRawData[base], nil
 }
 func (c *discoveryFakeClient) Close() error { return nil }
@@ -50,6 +54,7 @@ type discoveryFakeFactory struct {
 	mu          sync.Mutex
 	data        map[string]map[string][]snmpRawBind // target IP -> walkRawData
 	connectErrs map[string]error                    // target IP -> connect error
+	walkErrs    map[string]map[string]error         // target IP -> base -> error
 }
 
 func newDiscoveryFakeFactory(t *testing.T) *discoveryFakeFactory {
@@ -58,6 +63,7 @@ func newDiscoveryFakeFactory(t *testing.T) *discoveryFakeFactory {
 		t:           t,
 		data:        map[string]map[string][]snmpRawBind{},
 		connectErrs: map[string]error{},
+		walkErrs:    map[string]map[string]error{},
 	}
 }
 
@@ -73,6 +79,19 @@ func (f *discoveryFakeFactory) setConnectError(ip string, err error) {
 	f.connectErrs[ip] = err
 }
 
+func (f *discoveryFakeFactory) setWalkError(ip, base string, err error) {
+	f.t.Helper()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.walkErrs == nil {
+		f.walkErrs = map[string]map[string]error{}
+	}
+	if f.walkErrs[ip] == nil {
+		f.walkErrs[ip] = map[string]error{}
+	}
+	f.walkErrs[ip][base] = err
+}
+
 func (f *discoveryFakeFactory) clientFor(cfg *config) snmpClient {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -81,7 +100,12 @@ func (f *discoveryFakeFactory) clientFor(cfg *config) snmpClient {
 	if !ok {
 		return &discoveryFakeClient{target: cfg.Target, connectErr: errors.New("no such host")}
 	}
-	return &discoveryFakeClient{target: cfg.Target, connectErr: err, walkRawData: data}
+	return &discoveryFakeClient{
+		target:      cfg.Target,
+		connectErr:  err,
+		walkRawData: data,
+		walkErrs:    f.walkErrs[cfg.Target],
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -424,6 +448,80 @@ func TestRunDiscovery_MaxDevices(t *testing.T) {
 	assertDeviceIDs(t, obs, wantIDs)
 	assertDiscoveryMetric(t, probe, metricDiscoveryDevices, 2)
 	assertDiscoveryMetric(t, probe, metricDiscoveryRuns, 1)
+}
+
+func TestRunDiscovery_PartialIfTableRetainsDeviceAndUnobservesInterfaces(t *testing.T) {
+	f := newDiscoveryFakeFactory(t)
+	f.setDevice("10.0.0.1", deviceFixture{
+		serial:           "A-serial",
+		vendorPEN:        "9",
+		sysName:          "A",
+		descr:            "Device A",
+		chassisMAC:       []byte{0xAA, 0x01},
+		services:         0x02,
+		entPhysicalIndex: "1",
+		ifNames: map[string]string{
+			"1": "Gi0/0",
+			"2": "Gi0/1",
+		},
+	})
+
+	raw := baseRawDiscoveryConfig([]string{"10.0.0.1"}, 200)
+	probe := newDiscoveryTestProbe(t, raw, f)
+
+	probe.runDiscovery(context.Background())
+	obs := probe.entitySource.getDiscoveryObservation()
+	assertDeviceIDs(t, obs, []string{"serial:9:A-serial"})
+
+	ifaceCount := 0
+	for _, e := range obs.Entities {
+		if e.Type == entityTypeNetworkInterface {
+			ifaceCount++
+		}
+	}
+	if ifaceCount != 2 {
+		t.Fatalf("first complete run: %d network.interface entities, want 2", ifaceCount)
+	}
+	if u := probe.entitySource.Unobserved(); len(u) != 0 {
+		t.Fatalf("first complete run: Unobserved() = %v, want none", u)
+	}
+
+	f.setWalkError("10.0.0.1", ifName, errors.New("ifTable timeout"))
+	probe.runDiscovery(context.Background())
+
+	obs = probe.entitySource.getDiscoveryObservation()
+	assertDeviceIDs(t, obs, []string{"serial:9:A-serial"})
+
+	ifaceCount = 0
+	for _, e := range obs.Entities {
+		if e.Type == entityTypeNetworkInterface {
+			ifaceCount++
+		}
+	}
+	if ifaceCount != 0 {
+		t.Fatalf("partial run: %d network.interface entities in view, want 0", ifaceCount)
+	}
+
+	u := probe.entitySource.Unobserved()
+	gotIfaces := map[string]bool{}
+	for _, e := range u {
+		if e.Type != entityTypeNetworkInterface {
+			continue
+		}
+		id, _ := e.ID[idKeyInterfaceName].(string)
+		if id != "" {
+			gotIfaces[id] = true
+		}
+	}
+	wantIfaces := []string{"Gi0/0", "Gi0/1"}
+	if len(gotIfaces) != len(wantIfaces) {
+		t.Fatalf("Unobserved() interfaces = %v, want %v", gotIfaces, wantIfaces)
+	}
+	for _, name := range wantIfaces {
+		if !gotIfaces[name] {
+			t.Errorf("Unobserved() did not include interface %q", name)
+		}
+	}
 }
 
 // Case 3: a previously discovered device is kept for discoveryMissGrace runs
