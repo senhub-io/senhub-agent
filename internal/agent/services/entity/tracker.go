@@ -81,6 +81,13 @@ func (t *Tracker) Reconcile(current []Event, now time.Time, reasons map[string]s
 	}
 
 	for _, ev := range current {
+		if ev.Kind == EntityState {
+			if ev.Entity != nil && !ev.Entity.ObservedAt.IsZero() {
+				ev.Time = ev.Entity.ObservedAt
+			} else if ev.Time.IsZero() {
+				ev.Time = now
+			}
+		}
 		k := eventKey(ev)
 		cur[k] = true
 		t.seen[k] = deleteFor(ev)
@@ -128,6 +135,7 @@ func (t *Tracker) Forget() {
 // stateHash renders the mutable content of a state event (attributes +
 // relationships + liveness interval) into a stable string, so unchanged
 // heartbeats are recognizable. Identity is excluded — it is the map key.
+// ObservedAt is also excluded: a replayed fact must not count as a change.
 func stateHash(ev Event) string {
 	if ev.Entity == nil {
 		return ""

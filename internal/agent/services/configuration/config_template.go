@@ -70,6 +70,39 @@ const HostProbesFragmentTemplate = `# Default host probes. Add more via new file
     interval: 30
 `
 
+// ServicesProbeFragmentTemplate is the default probes.d/05-services.yaml
+// written on a fresh Linux or Windows install and added to an existing
+// multi-file configuration when no service supervisor probe is already
+// configured. The OS-specific probe type is the single Sprintf arg.
+//
+// Sprintf args:
+//
+//  1. probe type (str) %s — systemd on Linux, winservices on Windows
+const ServicesProbeFragmentTemplate = `# Default OS service supervisor probe. Rename to *.disabled to
+# turn it off; deleting it brings it back at the next start or upgrade.
+
+- name: services
+  type: %s
+  params:
+    interval: 60
+`
+
+// SwarmProbeFragmentTemplate is the default probes.d/06-swarm.yaml
+// written on a fresh Linux Docker host and added to an existing
+// multi-file configuration when the Docker Engine socket exists. The
+// swarm probe declares overlay networks on a manager; the docker probe
+// links containers to those networks, so they are dropped without it.
+const SwarmProbeFragmentTemplate = `# Default Docker Swarm probe. The docker probe links containers to
+# swarm overlay networks; the swarm probe declares those networks on a
+# manager, so without it those links are dropped. Rename to *.disabled
+# to turn it off; deleting it brings it back at the next start or upgrade.
+
+- name: swarm
+  type: swarm
+  params:
+    interval: 60
+`
+
 // HTTPStrategyFragmentTemplate is the default strategies.d/00-http.yaml.
 // The HTTP strategy exposes PRTG / Nagios / Prometheus / Web UI endpoints. Each
 // fragment in strategies.d/ MUST carry exactly one top-level key

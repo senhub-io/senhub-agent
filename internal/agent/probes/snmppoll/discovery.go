@@ -83,6 +83,7 @@ func (m *discoveryMetrics) snapshotSeeds() (configured, host int) {
 // and how many runs in a row it has been missing since.
 type discoveredState struct {
 	obs    entity.Observation
+	at     time.Time
 	misses int
 }
 
@@ -338,7 +339,7 @@ func (p *snmppollProbe) retainRecentlySeen(fresh map[string]discoveredTopologyRe
 			// from it left unobserved, not removed as if they were seen gone.
 			p.entitySource.markUnobserved(droppedEntities(prev.obs, res.obs))
 		}
-		p.discovered[id] = &discoveredState{obs: res.obs}
+		p.discovered[id] = &discoveredState{obs: res.obs, at: time.Now()}
 	}
 	ids := make([]string, 0, len(p.discovered))
 	for id, st := range p.discovered {
@@ -360,9 +361,26 @@ func (p *snmppollProbe) retainRecentlySeen(fresh map[string]discoveredTopologyRe
 	sort.Strings(ids)
 	var merged entity.Observation
 	for _, id := range ids {
-		merged = mergeObservations(merged, p.discovered[id].obs)
+		obs := p.discovered[id].obs
+		if _, ok := fresh[id]; !ok {
+			at := p.discovered[id].at
+			if at.IsZero() {
+				at = time.Now()
+				p.discovered[id].at = at
+			}
+			obs = copyObservationWithObservedAt(obs, at)
+		}
+		merged = mergeObservations(merged, obs)
 	}
 	return merged
+}
+
+func copyObservationWithObservedAt(obs entity.Observation, at time.Time) entity.Observation {
+	out := obs
+	out.Entities = make([]entity.Entity, len(obs.Entities))
+	copy(out.Entities, obs.Entities)
+	stampObservedAt(&out, at)
+	return out
 }
 
 // collectDiscoveredTopology polls each device and returns its result

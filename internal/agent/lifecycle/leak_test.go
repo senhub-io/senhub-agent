@@ -40,6 +40,9 @@ import (
 // agents accumulate scheduler goroutines until the process was
 // restarted.
 func TestNoGoroutineLeakAcrossStartReloadStop(t *testing.T) {
+	// The cycle counts the probes its own config declares; the platform
+	// defaults the agent adds on a real host would change that count.
+	t.Setenv("SENHUB_DEFAULT_PROBES", "off")
 	// One warm-up cycle absorbs the process-wide one-time work a first
 	// bring-up does (lookup registry, transformer definitions, secret
 	// backend) so the baseline measures a steady state, not a cold one.
