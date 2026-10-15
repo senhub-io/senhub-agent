@@ -8,9 +8,9 @@ import (
 	"io"
 	"net"
 	"sort"
+	"sync/atomic"
 	"syscall"
 	"testing"
-	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -89,6 +89,10 @@ func newSingleStringRows(v string) driver.Rows {
 	return &fakeRows{cols: []string{"value"}, rows: [][]driver.Value{{v}}}
 }
 
+// fakeDriverSeq names each fake driver: sql.Register panics on a reused
+// name, and the Windows clock is too coarse for a timestamp to be unique.
+var fakeDriverSeq atomic.Int64
+
 func newProbeWithFakeDB(t *testing.T, conn *fakeMySQLConn) *mysqlProbe {
 	t.Helper()
 
@@ -99,7 +103,7 @@ func newProbeWithFakeDB(t *testing.T, conn *fakeMySQLConn) *mysqlProbe {
 		"password": "p",
 	})
 
-	driverName := fmt.Sprintf("mysql-fake-%d", time.Now().UnixNano())
+	driverName := fmt.Sprintf("mysql-fake-%d", fakeDriverSeq.Add(1))
 	sql.Register(driverName, &fakeMySQLDriver{conn: conn})
 	db, err := sql.Open(driverName, "")
 	if err != nil {
