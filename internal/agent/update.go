@@ -66,6 +66,19 @@ func UpdateAgent(args *cliArgs.ParsedArgs, opts ...UpdateOption) {
 		OperatorDriven: true,
 	})
 
+	if args.WantedVersion != "list" {
+		if exe, err := os.Executable(); err == nil {
+			switch auto_update.PackageOwner(exe) {
+			case "deb":
+				fmt.Fprintln(os.Stderr, "This agent was installed from the .deb package: update it with apt (sudo apt update && sudo apt upgrade), using the beta repository for a beta. Replacing the binary here would leave dpkg recording a version that no longer runs.")
+				os.Exit(cliexit.Failure)
+			case "rpm":
+				fmt.Fprintln(os.Stderr, "This agent was installed from the .rpm package: update it with dnf (sudo dnf upgrade), using the beta repository for a beta. Replacing the binary here would leave rpm recording a version that no longer runs.")
+				os.Exit(cliexit.Failure)
+			}
+		}
+	}
+
 	// Read include_beta from config file
 	includeBeta := readIncludeBetaFromConfig(args.ConfigPath)
 
