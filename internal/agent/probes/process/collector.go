@@ -120,12 +120,8 @@ func collectWithBaseTags(ts time.Time, cfg config, log *logger.ModuleLogger, bas
 		snaps = append(snaps, snap)
 	}
 
-	// top_n filter: keep the N processes with highest CPU usage.
 	if cfg.topN > 0 && len(snaps) > cfg.topN {
-		sort.Slice(snaps, func(i, j int) bool {
-			return snaps[i].cpuPct > snaps[j].cpuPct
-		})
-		snaps = snaps[:cfg.topN]
+		snaps = topProcesses(snaps, cfg.topN, cfg.topBy)
 	}
 
 	points := make([]data_store.DataPoint, 0, len(snaps)*7+1)
@@ -415,4 +411,16 @@ func appendProcessPoints(
 	}
 
 	return points
+}
+
+// topProcesses keeps the n processes ranking highest on by: resident memory
+// (the working set on Windows) for "memory", CPU otherwise.
+func topProcesses(snaps []processSnapshot, n int, by string) []processSnapshot {
+	sort.SliceStable(snaps, func(i, j int) bool {
+		if by == topByMemory {
+			return snaps[i].rss > snaps[j].rss
+		}
+		return snaps[i].cpuPct > snaps[j].cpuPct
+	})
+	return snaps[:n]
 }
