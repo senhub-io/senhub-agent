@@ -6,7 +6,7 @@
 // ListUnits() to enumerate unit states. For services, NRestarts is
 // fetched via GetUnitTypeProperty to provide a restart counter.
 // Unit selection supports explicit names and shell globs; when the
-// units list is empty, all active units matching include_types are
+// units list is empty, only enabled units matching include_types are
 // returned.
 //
 // Linux-only: the D-Bus systemd manager is a Linux concept. The stub
@@ -74,6 +74,7 @@ func (p *SystemdProbe) GetInterval() time.Duration { return p.config.Interval }
 func (p *SystemdProbe) OnStart(quitChannel chan struct{}) error {
 	p.moduleLogger.Info().
 		Strs("units", p.config.Units).
+		Str("detail", p.config.Detail).
 		Msg("Starting systemd probe")
 	return nil
 }
@@ -91,10 +92,10 @@ func checkResultPoint(now time.Time, err error) data_store.DataPoint {
 	return buildCheckResultDatapoint(now, err, t)
 }
 
-// Collect opens a D-Bus connection, lists units and emits datapoints.
-// The connection is opened and closed per cycle: this keeps the probe
-// lightweight (no persistent goroutine) and avoids stale connection
-// issues after a systemd restart.
+// Collect opens a D-Bus connection, lists units, selects the units to
+// report, and emits datapoints. The connection is opened and closed per
+// cycle: this keeps the probe lightweight (no persistent goroutine) and
+// avoids stale connection issues after a systemd restart.
 func (p *SystemdProbe) Collect() ([]data_store.DataPoint, error) {
 	conn, err := dbus.NewSystemConnection()
 	if err != nil {
@@ -111,7 +112,26 @@ func (p *SystemdProbe) Collect() ([]data_store.DataPoint, error) {
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), fmt.Errorf("listing systemd units: %w", err)
 	}
 
-	selected := filterUnits(p.config, all)
+	stateByName := make(map[string]string)
+	if len(p.config.Units) == 0 {
+		for _, u := range all {
+			unitType := unitTypeSuffix(u.Name)
+			if !p.config.IncludeTypes[unitType] || isSessionUnit(u.Name) {
+				continue
+			}
+			prop, err := conn.GetUnitProperty(u.Name, "UnitFileState")
+			if err != nil {
+				// Unreadable UnitFileState means the unit cannot be
+				// selected by the default enabled-only policy.
+				continue
+			}
+			if v, ok := prop.Value.Value().(string); ok {
+				stateByName[u.Name] = v
+			}
+		}
+	}
+
+	selected := filterUnits(p.config, all, stateByName)
 
 	// Resolve host identity for the runs_on relation. Best-effort: an
 	// empty hostID silently omits the relation rather than failing the
@@ -134,7 +154,7 @@ func (p *SystemdProbe) Collect() ([]data_store.DataPoint, error) {
 		entityID := p.entitySource.ServiceInstanceID(u.Name)
 
 		var nRestarts *float64
-		if unitTypeSuffix(u.Name) == "service" {
+		if p.config.Detail == systemdDetailFull && unitTypeSuffix(u.Name) == "service" {
 			prop, err := conn.GetUnitTypeProperty(u.Name, "Service", "NRestarts")
 			if err == nil {
 				if v, ok := prop.Value.Value().(uint32); ok {
@@ -144,7 +164,7 @@ func (p *SystemdProbe) Collect() ([]data_store.DataPoint, error) {
 			}
 		}
 
-		pts := buildDatapoints(u, now, nRestarts, entityID)
+		pts := buildDatapoints(u, now, nRestarts, entityID, p.config.Detail)
 		points = append(points, pts...)
 	}
 	points = append(points, checkResultPoint(now, nil))
