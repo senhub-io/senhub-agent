@@ -81,6 +81,43 @@ func TestEnsureDefaultProbeFragments(t *testing.T) {
 		}
 	})
 
+	t.Run("a deleted fragment stays deleted", func(t *testing.T) {
+		dir := t.TempDir()
+		cfg := writeTestAgentConfig(t, dir)
+		opts := DefaultFragmentOptions{
+			SystemdRunning:   func() bool { return true },
+			GOOS:             "linux",
+			DockerSocketStat: func(string) (os.FileInfo, error) { return nil, os.ErrNotExist },
+			PackageMarker:    filepath.Join(dir, "no-package-marker"),
+		}
+		EnsureDefaultProbeFragments(cfg, nil, opts)
+		services := filepath.Join(dir, "probes.d", "05-services.yaml")
+		if err := os.Remove(services); err != nil {
+			t.Fatal(err)
+		}
+		EnsureDefaultProbeFragments(cfg, nil, opts)
+		if _, err := os.Stat(services); !os.IsNotExist(err) {
+			t.Fatalf("a fragment the operator deleted came back, stat err=%v", err)
+		}
+	})
+
+	t.Run("the package marker means the defaults were already added", func(t *testing.T) {
+		dir := t.TempDir()
+		cfg := writeTestAgentConfig(t, dir)
+		pkgMarker := filepath.Join(dir, "pkg-marker")
+		if err := os.WriteFile(pkgMarker, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		EnsureDefaultProbeFragments(cfg, nil, DefaultFragmentOptions{
+			SystemdRunning: func() bool { return true },
+			GOOS:           "linux",
+			PackageMarker:  pkgMarker,
+		})
+		if _, err := os.Stat(filepath.Join(dir, "probes.d", "05-services.yaml")); !os.IsNotExist(err) {
+			t.Fatalf("the agent wrote a default the package had already handled, stat err=%v", err)
+		}
+	})
+
 	t.Run("linux with docker socket writes services and swarm", func(t *testing.T) {
 		dir := t.TempDir()
 		cfg := writeTestAgentConfig(t, dir)
