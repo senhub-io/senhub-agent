@@ -42,6 +42,33 @@ if [ -f "${legacy_unit}" ]; then
     fi
 fi
 
+# Default fragments the agent adds on a multi-file install. The packaged
+# unit runs with /etc read-only, so the agent cannot write them itself:
+# they are written here, under the same rules (no file, no *.disabled
+# twin, no probe of that type configured elsewhere).
+add_default_fragment() {
+    file=/etc/senhub-agent/probes.d/$1
+    [ -e "${file}" ] || [ -e "${file}.disabled" ] && return 0
+    grep -Eqs "^[[:space:]]*type:[[:space:]]*\"?$2\"?[[:space:]]*$" /etc/senhub-agent/probes.d/*.yaml && return 0
+    cat > "${file}" <<FRAGMENT
+# $3 Rename to *.disabled to
+# turn it off; deleting it brings it back at the next start or upgrade.
+
+- name: $4
+  type: $2
+  params:
+    interval: 60
+FRAGMENT
+    chown senhub:senhub "${file}" 2>/dev/null || true
+    chmod 0600 "${file}"
+}
+if [ -d /etc/senhub-agent/probes.d ] && ! grep -Eq '^(probes|storage):' /etc/senhub-agent/agent.yaml 2>/dev/null; then
+    add_default_fragment 05-services.yaml systemd "Default OS service supervisor probe." services
+    if [ -S /var/run/docker.sock ]; then
+        add_default_fragment 06-swarm.yaml swarm "Default Docker Swarm probe (declares overlay networks on a manager)." swarm
+    fi
+fi
+
 # The shipped config carries an empty agent key; the agent refuses to start
 # without one. Each host gets its own, and an operator-set key is never
 # touched. Written in place (cat >) so owner and mode survive.
