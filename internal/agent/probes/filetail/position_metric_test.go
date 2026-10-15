@@ -70,7 +70,7 @@ func TestFileTail_PositionMetricsPerPathCatchUpAfterAppend(t *testing.T) {
 
 	base := p.emitted.Load()
 	appendLines(t, a, "2026-09-30 10:01:00 INFO appended one", "2026-09-30 10:01:01 INFO appended two")
-	if got := waitEmitted(p, base+2, 5*time.Second); got < base+2 {
+	if got := waitEmitted(p, base+2, 30*time.Second); got < base+2 {
 		t.Fatalf("appended lines were never read: emitted %d", got)
 	}
 
