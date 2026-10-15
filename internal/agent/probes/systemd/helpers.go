@@ -6,6 +6,7 @@
 package systemd
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
@@ -18,6 +19,13 @@ import (
 	"senhub-agent.go/internal/agent/tags"
 )
 
+// Detail levels available to operators. The default keeps the probe
+// cheap in series volume; full restores the pre-detail metric set.
+const (
+	systemdDetailState = "state"
+	systemdDetailFull  = "full"
+)
+
 // defaultIncludeTypes is the set of unit type suffixes enabled when
 // include_types is not specified.
 var defaultIncludeTypes = []string{"service", "socket", "timer", "mount"}
@@ -26,6 +34,7 @@ var defaultIncludeTypes = []string{"service", "socket", "timer", "mount"}
 type probeConfig struct {
 	Units        []string
 	IncludeTypes map[string]bool
+	Detail       string
 	Interval     time.Duration
 }
 
@@ -33,6 +42,7 @@ func parseConfig(config map[string]interface{}) (probeConfig, error) {
 	cfg := probeConfig{
 		Interval:     30 * time.Second,
 		IncludeTypes: make(map[string]bool),
+		Detail:       systemdDetailState,
 	}
 
 	// units: explicit list or globs
@@ -55,6 +65,16 @@ func parseConfig(config map[string]interface{}) (probeConfig, error) {
 	if len(cfg.IncludeTypes) == 0 {
 		for _, t := range defaultIncludeTypes {
 			cfg.IncludeTypes[t] = true
+		}
+	}
+
+	// detail
+	if raw, ok := config["detail"]; ok {
+		if s, ok := raw.(string); ok && s != "" {
+			if s != systemdDetailState && s != systemdDetailFull {
+				return cfg, fmt.Errorf("systemd: detail must be %q or %q, got %q", systemdDetailState, systemdDetailFull, s)
+			}
+			cfg.Detail = s
 		}
 	}
 
@@ -92,19 +112,49 @@ func isSessionUnit(name string) bool {
 	return false
 }
 
-// filterUnits applies the include_types filter and, when units is
-// non-empty, restricts to units matching at least one glob pattern.
-func filterUnits(cfg probeConfig, all []dbus.UnitStatus) []dbus.UnitStatus {
-	var out []dbus.UnitStatus
-	for _, u := range all {
-		unitType := unitTypeSuffix(u.Name)
-		if !cfg.IncludeTypes[unitType] {
+// selectEnabledByDefault applies the default policy: with no explicit
+// units list, only units whose UnitFileState is enabled or
+// enabled-runtime are selected. A missing or unreadable UnitFileState
+// is not selected.
+func selectEnabledByDefault(candidates []dbus.UnitStatus, unitFileStates map[string]string) []dbus.UnitStatus {
+	out := make([]dbus.UnitStatus, 0, len(candidates))
+	for _, u := range candidates {
+		unitFileState, ok := unitFileStates[u.Name]
+		if !ok {
 			continue
 		}
-		if len(cfg.Units) == 0 {
-			if !isSessionUnit(u.Name) {
-				out = append(out, u)
+		if unitFileState != "enabled" && unitFileState != "enabled-runtime" {
+			continue
+		}
+		out = append(out, u)
+	}
+	return out
+}
+
+// filterUnits applies the selection policy. An explicit units list
+// selects the units of the included types matching at least one glob
+// pattern, whatever their session or UnitFileState. With
+// an empty units list it restricts to the included types, removes
+// session units, and keeps only enabled units.
+func filterUnits(cfg probeConfig, all []dbus.UnitStatus, unitFileStates map[string]string) []dbus.UnitStatus {
+	if len(cfg.Units) == 0 {
+		candidates := make([]dbus.UnitStatus, 0, len(all))
+		for _, u := range all {
+			unitType := unitTypeSuffix(u.Name)
+			if !cfg.IncludeTypes[unitType] {
+				continue
 			}
+			if isSessionUnit(u.Name) {
+				continue
+			}
+			candidates = append(candidates, u)
+		}
+		return selectEnabledByDefault(candidates, unitFileStates)
+	}
+
+	var out []dbus.UnitStatus
+	for _, u := range all {
+		if !cfg.IncludeTypes[unitTypeSuffix(u.Name)] {
 			continue
 		}
 		for _, pattern := range cfg.Units {
@@ -158,13 +208,10 @@ func buildCheckResultDatapoint(ts time.Time, err error, baseTags []tags.Tag) dat
 	}
 }
 
-// buildDatapoints emits the per-unit metrics for one unit.
-//
-// nRestarts is non-nil only for service units when the NRestarts
-// property was successfully retrieved from dbus (linux only). Callers
-// on non-linux platforms or in tests that don't have a live dbus
-// connection pass nil to omit the restart counter datapoint.
-func buildDatapoints(u dbus.UnitStatus, ts time.Time, nRestarts *float64, entityID string) []data_store.DataPoint {
+// buildDatapoints emits the per-unit metrics for one unit. detail=state
+// emits only active_state; detail=full emits active_state, sub_state,
+// load_state, and restarts for service units when NRestarts is known.
+func buildDatapoints(u dbus.UnitStatus, ts time.Time, nRestarts *float64, entityID string, detail string) []data_store.DataPoint {
 	unitType := unitTypeSuffix(u.Name)
 	baseTags := baseTagsForUnit(u, entityID)
 
@@ -175,6 +222,10 @@ func buildDatapoints(u dbus.UnitStatus, ts time.Time, nRestarts *float64, entity
 	}
 	points := []data_store.DataPoint{
 		{Name: "systemd.unit.active_state", Value: activeVal, Timestamp: ts, Tags: baseTags},
+	}
+
+	if detail != systemdDetailFull {
+		return points
 	}
 
 	// systemd.unit.sub_state: 1=running|listening, 0=dead|exited
