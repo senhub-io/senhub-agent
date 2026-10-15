@@ -43,12 +43,14 @@ import (
 var (
 	modwevtapi = windows.NewLazySystemDLL("wevtapi.dll")
 
-	procEvtSubscribe      = modwevtapi.NewProc("EvtSubscribe")
-	procEvtNext           = modwevtapi.NewProc("EvtNext")
-	procEvtRender         = modwevtapi.NewProc("EvtRender")
-	procEvtClose          = modwevtapi.NewProc("EvtClose")
-	procEvtCreateBookmark = modwevtapi.NewProc("EvtCreateBookmark")
-	procEvtUpdateBookmark = modwevtapi.NewProc("EvtUpdateBookmark")
+	procEvtSubscribe             = modwevtapi.NewProc("EvtSubscribe")
+	procEvtNext                  = modwevtapi.NewProc("EvtNext")
+	procEvtRender                = modwevtapi.NewProc("EvtRender")
+	procEvtClose                 = modwevtapi.NewProc("EvtClose")
+	procEvtCreateBookmark        = modwevtapi.NewProc("EvtCreateBookmark")
+	procEvtUpdateBookmark        = modwevtapi.NewProc("EvtUpdateBookmark")
+	procEvtOpenPublisherMetadata = modwevtapi.NewProc("EvtOpenPublisherMetadata")
+	procEvtFormatMessage         = modwevtapi.NewProc("EvtFormatMessage")
 )
 
 // EvtSubscribe flags (winevt.h EVT_SUBSCRIBE_FLAGS).
@@ -60,14 +62,120 @@ const (
 
 // EvtRender flags (winevt.h EVT_RENDER_FLAGS).
 const (
-	evtRenderEventXml = 1
-	evtRenderBookmark = 2
+	evtRenderEventXml     = 1
+	evtRenderBookmark     = 2
+	evtFormatMessageEvent = 1
 )
 
 // drainBatchSize bounds one EvtNext call. 64 keeps the per-call render
 // loop short so the stop event is observed promptly even on a busy
 // channel.
 const drainBatchSize = 64
+
+// publisherMetadataCacheMax bounds the number of cached publisher
+// metadata handles. Publisher metadata handles are light but not free,
+// and the set of providers on a host is usually small.
+const publisherMetadataCacheMax = 64
+
+// publisherMetadataEntry is a cached EvtOpenPublisherMetadata handle
+// with a small reference count. A handle may be evicted only when no
+// goroutine is holding a reference to it.
+type publisherMetadataEntry struct {
+	handle windows.Handle
+	refs   int
+}
+
+// publisherMetadataCache gives the Windows subscription a bounded,
+// provider-keyed metadata handle cache. Failed opens are remembered so
+// they are not retried on every event from the same provider.
+type publisherMetadataCache struct {
+	mu           sync.Mutex
+	handles      map[string]*publisherMetadataEntry
+	openFailed   map[string]bool
+	formatFailed map[string]bool
+}
+
+func newPublisherMetadataCache() *publisherMetadataCache {
+	return &publisherMetadataCache{
+		handles:      make(map[string]*publisherMetadataEntry),
+		openFailed:   make(map[string]bool),
+		formatFailed: make(map[string]bool),
+	}
+}
+
+// acquire returns a publisher metadata handle and a release function.
+// The release function must be called exactly once when formatting is
+// done. alreadyFailed is true when this provider had previously failed
+// to open; the caller uses that to log only once per provider.
+func (c *publisherMetadataCache) acquire(provider string) (windows.Handle, func(), error, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.openFailed[provider] {
+		return 0, nil, fmt.Errorf("publisher metadata previously failed to open for %q", provider), true
+	}
+
+	if entry, ok := c.handles[provider]; ok {
+		entry.refs++
+		return entry.handle, func() { c.release(provider) }, nil, false
+	}
+
+	h, err := evtOpenPublisherMetadata(provider)
+	if err != nil {
+		c.openFailed[provider] = true
+		return 0, nil, fmt.Errorf("open publisher metadata %q: %w", provider, err), false
+	}
+
+	if len(c.handles) >= publisherMetadataCacheMax {
+		for oldProvider, oldEntry := range c.handles {
+			if oldEntry.refs == 0 {
+				evtClose(oldEntry.handle)
+				delete(c.handles, oldProvider)
+				break
+			}
+		}
+	}
+
+	// If all cached handles are in use, do not cache this one; keeping
+	// the map bounded matters more than caching a bursty extra provider.
+	// The caller closes the temporary handle through its release func.
+	if len(c.handles) >= publisherMetadataCacheMax {
+		return h, func() { evtClose(h) }, nil, false
+	}
+
+	c.handles[provider] = &publisherMetadataEntry{handle: h, refs: 1}
+	return h, func() { c.release(provider) }, nil, false
+}
+
+func (c *publisherMetadataCache) release(provider string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if entry, ok := c.handles[provider]; ok {
+		entry.refs--
+		if entry.refs < 0 {
+			entry.refs = 0
+		}
+	}
+}
+
+func (c *publisherMetadataCache) markFormatFailed(provider string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.formatFailed[provider] {
+		return true
+	}
+	c.formatFailed[provider] = true
+	return false
+}
+
+func (c *publisherMetadataCache) close() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for provider, entry := range c.handles {
+		evtClose(entry.handle)
+		delete(c.handles, provider)
+	}
+}
 
 // eventReader holds one subscription goroutine per configured channel,
 // a shared stop event to unblock them, and the bookmark store they flush
@@ -81,6 +189,7 @@ type eventReader struct {
 
 	stopEvent windows.Handle
 	bookmarks *bookmarkStore
+	metadata  *publisherMetadataCache
 
 	wg       sync.WaitGroup
 	stopOnce sync.Once
@@ -114,6 +223,7 @@ func newEventReader(cfg WindowsEventLogProbeConfig, log *logger.ModuleLogger, pr
 		emitted:    emitted,
 		stopEvent:  stop,
 		bookmarks:  store,
+		metadata:   newPublisherMetadataCache(),
 	}
 
 	for _, channel := range cfg.Channels {
@@ -224,15 +334,23 @@ func (r *eventReader) drain(channel string, sub, bookmark windows.Handle) {
 			emitted++
 			if xmlStr, rerr := evtRenderXML(ev); rerr != nil {
 				r.log.Debug().Err(rerr).Str("channel", channel).Msg("EvtRender failed; event skipped")
-			} else if parsed, ok := parseEventXML(xmlStr); !ok {
-				r.log.Debug().Str("channel", channel).Str("xml", truncate(xmlStr, 200)).
-					Msg("Unparseable event XML; skipped")
-			} else if r.cfg.shouldEmit(parsed) {
-				rec := parsed.toLogRecord(r.probeName, r.cfg.RedactPII)
-				rec.TargetStrategies = r.logTargets
-				agentstate.PublishLog(rec)
-				if r.emitted != nil {
-					r.emitted.Add(1)
+			} else {
+				parsed, ok := parseEventXML(xmlStr)
+				if !ok {
+					r.log.Debug().Str("channel", channel).Str("xml", truncate(xmlStr, 200)).
+						Msg("Unparseable event XML; skipped")
+				} else if r.cfg.shouldEmit(parsed) {
+					if parsed.MessageFromFallback {
+						if msg, ok := r.renderEventMessage(ev, parsed.Provider); ok {
+							parsed.Message = msg
+						}
+					}
+					rec := parsed.toLogRecord(r.probeName, r.cfg.RedactPII)
+					rec.TargetStrategies = r.logTargets
+					agentstate.PublishLog(rec)
+					if r.emitted != nil {
+						r.emitted.Add(1)
+					}
 				}
 			}
 
@@ -257,6 +375,36 @@ func (r *eventReader) drain(channel string, sub, bookmark windows.Handle) {
 			r.log.Warn().Err(werr).Str("channel", channel).Msg("persist bookmark failed")
 		}
 	}
+}
+
+// renderEventMessage asks wevtapi for the publisher's formatted message
+// for the current event. It is called only when the XML rendering had no
+// RenderingInfo.Message. Failures fall back to the parser's compact
+// provider-and-data message; each distinct provider is logged once.
+func (r *eventReader) renderEventMessage(event windows.Handle, provider string) (string, bool) {
+	if provider == "" {
+		return "", false
+	}
+
+	publisher, release, err, alreadyFailed := r.metadata.acquire(provider)
+	if err != nil {
+		if !alreadyFailed {
+			r.log.Debug().Err(err).Str("provider", provider).
+				Msg("EvtOpenPublisherMetadata failed; using fallback message")
+		}
+		return "", false
+	}
+	defer release()
+
+	message, err := evtFormatMessage(publisher, event)
+	if err != nil {
+		if !r.metadata.markFormatFailed(provider) {
+			r.log.Debug().Err(err).Str("provider", provider).
+				Msg("EvtFormatMessage failed; using fallback message")
+		}
+		return "", false
+	}
+	return message, true
 }
 
 // stop signals every channel goroutine to exit and waits for them within
@@ -285,6 +433,9 @@ func (r *eventReader) stop(ctx context.Context) error {
 		stopErr = fmt.Errorf("windows_eventlog: channel goroutines did not stop before deadline")
 	}
 
+	if stopErr == nil {
+		r.metadata.close()
+	}
 	_ = windows.CloseHandle(r.stopEvent)
 	if perr := r.bookmarks.persist(); perr != nil && stopErr == nil {
 		stopErr = fmt.Errorf("final bookmark persist: %w", perr)
@@ -431,7 +582,70 @@ func evtUpdateBookmark(bookmark, event windows.Handle) error {
 	return nil
 }
 
-// evtClose releases any EVT_HANDLE (subscription, event, bookmark).
+// evtOpenPublisherMetadata opens provider metadata for a provider name.
+// The provider name is the PublisherId used by EvtFormatMessage.
+func evtOpenPublisherMetadata(provider string) (windows.Handle, error) {
+	providerPtr, err := windows.UTF16PtrFromString(provider)
+	if err != nil {
+		return 0, fmt.Errorf("encode provider: %w", err)
+	}
+	r, _, e := procEvtOpenPublisherMetadata.Call(
+		0,                                    // Session = NULL (local)
+		uintptr(unsafe.Pointer(providerPtr)), // PublisherId
+		0,                                    // LogFilePath = NULL
+		0,                                    // Locale = default
+		0,                                    // Flags
+	)
+	if r == 0 {
+		return 0, fmt.Errorf("EvtOpenPublisherMetadata: %w", e)
+	}
+	return windows.Handle(r), nil
+}
+
+// evtFormatMessage renders a publisher's formatted event message.
+// Two-call pattern: the first call with a zero-size buffer returns
+// ERROR_INSUFFICIENT_BUFFER and the required byte count.
+func evtFormatMessage(publisherMetadata, event windows.Handle) (string, error) {
+	var bufferUsed uint32
+	r, _, e := procEvtFormatMessage.Call(
+		uintptr(publisherMetadata),
+		uintptr(event),
+		0, // MessageId
+		0, // ValueCount
+		0, // Values
+		evtFormatMessageEvent,
+		0, // BufferSize
+		0, // Buffer
+		uintptr(unsafe.Pointer(&bufferUsed)),
+	)
+	if r == 0 && e != windows.ERROR_INSUFFICIENT_BUFFER {
+		return "", fmt.Errorf("EvtFormatMessage sizing: %w", e)
+	}
+	if bufferUsed == 0 {
+		return "", fmt.Errorf("EvtFormatMessage returned zero buffer size")
+	}
+
+	// BufferSize and BufferUsed count WCHARs, not bytes.
+	buf := make([]uint16, bufferUsed)
+	r, _, e = procEvtFormatMessage.Call(
+		uintptr(publisherMetadata),
+		uintptr(event),
+		0, // MessageId
+		0, // ValueCount
+		0, // Values
+		evtFormatMessageEvent,
+		uintptr(len(buf)),
+		uintptr(unsafe.Pointer(&buf[0])),
+		uintptr(unsafe.Pointer(&bufferUsed)),
+	)
+	if r == 0 {
+		return "", fmt.Errorf("EvtFormatMessage render: %w", e)
+	}
+	return windows.UTF16ToString(buf), nil
+}
+
+// evtClose releases any EVT_HANDLE (subscription, event, bookmark,
+// publisher metadata).
 func evtClose(h windows.Handle) {
 	if h != 0 {
 		procEvtClose.Call(uintptr(h))

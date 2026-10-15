@@ -441,6 +441,18 @@ func installHTTPFragmentPattern05() *regexp.Regexp {
 	return templatePattern(httpStrategyFragmentTemplate05)
 }
 
+// installServicesFragmentPattern matches probes.d/05-services.yaml as
+// install writes it, with the OS-specific probe type left free.
+func installServicesFragmentPattern() *regexp.Regexp {
+	return templatePattern(ServicesProbeFragmentTemplate)
+}
+
+// installSwarmFragmentPattern matches probes.d/06-swarm.yaml as install
+// writes it.
+func installSwarmFragmentPattern() *regexp.Regexp {
+	return templatePattern(SwarmProbeFragmentTemplate)
+}
+
 // httpStrategyFragmentTemplate05 is the 00-http.yaml the 0.5.x installer
 // wrote, values left as verbs.
 const httpStrategyFragmentTemplate05 = `# Default HTTP strategy — exposes PRTG / Nagios / Web UI endpoints.
@@ -473,8 +485,10 @@ func templatePattern(tmpl string) *regexp.Regexp {
 
 // isInstallDefaultFragment reports whether path is a fragment `install`
 // creates and nobody edited: probes.d/00-host.yaml with the default host
-// probes, strategies.d/00-http.yaml with the default HTTP strategy, or a
-// file holding nothing but comments.
+// probes, probes.d/05-services.yaml with the default service supervisor
+// probe, probes.d/06-swarm.yaml with the default Docker Swarm probe,
+// strategies.d/00-http.yaml with the default HTTP strategy, or a file
+// holding nothing but comments.
 func isInstallDefaultFragment(path string) bool {
 	data, err := os.ReadFile(path) // #nosec G304 - a fragment of the agent's own configuration
 	if err != nil {
@@ -486,6 +500,10 @@ func isInstallDefaultFragment(path string) bool {
 	switch filepath.Base(filepath.Dir(path)) + "/" + filepath.Base(path) {
 	case "probes.d/00-host.yaml":
 		return strings.TrimSpace(string(data)) == strings.TrimSpace(HostProbesFragmentTemplate)
+	case "probes.d/05-services.yaml":
+		return installServicesFragmentPattern().Match(data)
+	case "probes.d/06-swarm.yaml":
+		return installSwarmFragmentPattern().Match(data)
 	case "strategies.d/00-http.yaml":
 		return installHTTPFragmentPattern().Match(data) || installHTTPFragmentPattern05().Match(data)
 	}
