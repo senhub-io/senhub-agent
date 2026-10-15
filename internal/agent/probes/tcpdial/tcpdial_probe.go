@@ -185,10 +185,11 @@ func (p *TCPDialProbe) buildDatapoints(res dialResult, ts time.Time, info target
 		up = 1
 	}
 
-	statusValue := float64(dbcommon.CheckOK)
+	checkResult := dbcommon.CheckOK
 	if res.err != nil {
-		statusValue = float64(dbcommon.ClassifyError(res.err))
+		checkResult = dbcommon.ClassifyError(res.err)
 	}
+	statusValue := float64(checkResult)
 
 	if res.err != nil {
 		p.moduleLogger.Warn().
@@ -206,6 +207,22 @@ func (p *TCPDialProbe) buildDatapoints(res dialResult, ts time.Time, info target
 			data_store.DataPoint{Name: "senhub.tcpdial.duration", Value: res.duration.Seconds() * 1000, Timestamp: ts, Tags: availabilityTags},
 		)
 	}
+
+	if res.err != nil && info.local &&
+		checkResult == dbcommon.CheckTargetDown &&
+		dbcommon.IsConnectionRefused(res.err) {
+		diagnosticTags := make([]tags.Tag, 0, len(identityAndTarget)+1)
+		diagnosticTags = append(diagnosticTags, identityAndTarget...)
+		diagnosticTags = append(diagnosticTags, tags.Tag{Key: "reason", Value: dbcommon.UnresolvedReasonNoListener})
+
+		points = append(points, data_store.DataPoint{
+			Name:      dbcommon.UnresolvedTargetMetric,
+			Value:     1,
+			Timestamp: ts,
+			Tags:      diagnosticTags,
+		})
+	}
+
 	return points
 }
 
