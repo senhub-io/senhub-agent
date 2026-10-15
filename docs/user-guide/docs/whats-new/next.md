@@ -40,6 +40,7 @@
 
 ## Fixes
 
+- **The agent no longer dies under its systemd unit when it reads the clock.** The clock synchronisation metrics read the kernel state with `adjtimex()`, which the unit's system call filter refused by killing the process. The unit now allows that call and makes any other refused call fail with an error instead of stopping the agent. It no longer sets `ProtectClock`, which blocks every clock call including that read; the clock stays unwritable because the unit grants no capability.
 - **A replayed fact keeps the time it was read.** When a source fails for a moment and the agent re-sends what it last read (a silent SNMP device during its grace, a discovered device that missed a run, any source within its last-good window), the entity event now carries the time of that read as its `event_time`, not the current time, so a consumer sees how old the fact is.
 - **Windows events carry their message.** `windows_eventlog` sends the message Windows renders for each event (as `Get-WinEvent` shows it), not only the provider, the event id and the insertion strings, and it reads the `UserData` payload some providers use instead of `EventData`. A low-virtual-memory warning now names the processes that consumed the memory.
 - **A discovered device that answers in part keeps what it could not read.** When one SNMP table walk fails on a device found by discovery (its interface table, say), the interfaces it could not read leave the map as unmonitored instead of as removed, as the polled target already did.
