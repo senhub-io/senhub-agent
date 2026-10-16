@@ -18,6 +18,7 @@ package winservices
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -296,8 +297,15 @@ func (p *WinServicesProbe) buildServiceDatapoints(s serviceState, ts time.Time, 
 		serviceTags = append(serviceTags, tags.Tag{Key: "host.name", Value: hostName})
 	}
 
+	// A trigger-start service stops by design once its job is done. An alert
+	// rule reads series only, so the fact rides on the state series; it
+	// changes only when someone reconfigures the service's triggers.
+	stateTags := serviceTags
+	if s.triggerStart != nil {
+		stateTags = append(append([]tags.Tag(nil), serviceTags...), tags.Tag{Key: "host.service.trigger_start", Value: strconv.FormatBool(*s.triggerStart)})
+	}
 	points := []data_store.DataPoint{
-		{Name: hostservice.StateMetric, Value: float64(hostservice.FromWindows(s.state)), Timestamp: ts, Tags: serviceTags},
+		{Name: hostservice.RunningMetric, Value: hostservice.RunningWindows(s.state), Timestamp: ts, Tags: stateTags},
 	}
 	if detail != serviceDetailFull {
 		return points

@@ -2,26 +2,15 @@ package hostservice
 
 import "testing"
 
-func TestTheSameSituationGivesTheSameValue(t *testing.T) {
-	pairs := []struct {
-		systemd string
-		windows int
-		want    int
-	}{
-		{"active", 4, Running},
-		{"inactive", 1, Stopped},
-		{"activating", 2, Starting},
-		{"deactivating", 3, Stopping},
-	}
-	for _, p := range pairs {
-		if got := FromSystemd(p.systemd); got != p.want {
-			t.Errorf("FromSystemd(%q) = %d, want %d", p.systemd, got, p.want)
-		}
-		if got := FromWindows(p.windows); got != p.want {
-			t.Errorf("FromWindows(%d) = %d, want %d", p.windows, got, p.want)
+func TestOnlyARunningServiceCountsAsRunning(t *testing.T) {
+	for state, want := range map[string]float64{"active": 1, "reloading": 1, "inactive": 0, "failed": 0, "activating": 0, "deactivating": 0, "maintenance": 0} {
+		if got := RunningSystemd(state); got != want {
+			t.Errorf("RunningSystemd(%q) = %v, want %v", state, got, want)
 		}
 	}
-	if FromSystemd("failed") != Failed || FromWindows(7) != Paused || FromSystemd("maintenance") != Other {
-		t.Error("failed, paused and unknown states keep their own values")
+	for state, want := range map[int]float64{4: 1, 1: 0, 2: 0, 3: 0, 5: 0, 6: 0, 7: 0} {
+		if got := RunningWindows(state); got != want {
+			t.Errorf("RunningWindows(%d) = %v, want %v", state, got, want)
+		}
 	}
 }

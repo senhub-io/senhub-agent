@@ -189,13 +189,13 @@ func TestCollect_DefaultSelectionAndDetailState(t *testing.T) {
 	if _, ok := findPoint(points, "senhub.winservices.up", ""); !ok {
 		t.Error("missing senhub.winservices.up")
 	}
-	if _, ok := findPoint(points, "host.service.state", "automatic"); !ok {
+	if _, ok := findPoint(points, "host.service.running", "automatic"); !ok {
 		t.Error("missing state for automatic service")
 	}
-	if _, ok := findPoint(points, "host.service.state", "delayed"); !ok {
+	if _, ok := findPoint(points, "host.service.running", "delayed"); !ok {
 		t.Error("missing state for delayed automatic service")
 	}
-	if _, ok := findPoint(points, "host.service.state", "manual"); ok {
+	if _, ok := findPoint(points, "host.service.running", "manual"); ok {
 		t.Error("default selection must not emit a manual service")
 	}
 	if _, ok := findPoint(points, "windows.service.state", "disabled"); ok {
@@ -225,7 +225,7 @@ func TestCollect_ExplicitSelectionIncludesManual(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 
-	if _, ok := findPoint(points, "host.service.state", "manual"); !ok {
+	if _, ok := findPoint(points, "host.service.running", "manual"); !ok {
 		t.Error("explicit service list must keep a manual service")
 	}
 	if _, ok := findPoint(points, "windows.service.status", "manual"); ok {
@@ -418,7 +418,7 @@ func TestEntitySource_EmitsHostServicePerSelectedService(t *testing.T) {
 	if got := spooler.Attributes["host.service.trigger_start"]; got != true {
 		t.Errorf("Spooler trigger_start = %v, want true", got)
 	}
-	if _, ok := spooler.Attributes["host.service.state"]; ok {
+	if _, ok := spooler.Attributes["host.service.running"]; ok {
 		t.Errorf("Spooler: the running state is a series, not an entity attribute")
 	}
 
@@ -431,7 +431,7 @@ func TestEntitySource_EmitsHostServicePerSelectedService(t *testing.T) {
 	if got := wuau.Attributes["host.service.trigger_start"]; got != false {
 		t.Errorf("wuauserv trigger_start = %v, want false", got)
 	}
-	if _, ok := wuau.Attributes["host.service.state"]; ok {
+	if _, ok := wuau.Attributes["host.service.running"]; ok {
 		t.Errorf("wuauserv: the running state is a series, not an entity attribute")
 	}
 
@@ -514,5 +514,25 @@ func TestCollect_EmitsTheStartTypeWhenItIsKnown(t *testing.T) {
 	}
 	if _, ok := findPoint(points, "windows.service.state", "locked"); !ok {
 		t.Error("the state of that service must still be reported")
+	}
+}
+
+func TestStateSeriesSaysWhetherTheServiceIsTriggerStarted(t *testing.T) {
+	p := &WinServicesProbe{}
+	yes, no := true, false
+	for _, tc := range []struct {
+		trigger *bool
+		want    string
+	}{{&yes, "true"}, {&no, "false"}, {nil, ""}} {
+		pts := p.buildServiceDatapoints(serviceState{name: "sppsvc", state: stateStopped, startType: startAutomatic, triggerStart: tc.trigger}, time.Now(), "h", "h.example", serviceDetailState)
+		got := ""
+		for _, tg := range pts[0].Tags {
+			if tg.Key == "host.service.trigger_start" {
+				got = tg.Value
+			}
+		}
+		if got != tc.want {
+			t.Errorf("trigger %v: label = %q, want %q", tc.trigger, got, tc.want)
+		}
 	}
 }
