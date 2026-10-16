@@ -25,13 +25,13 @@ All non-transient units are monitored by default; every parameter is optional.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:f1322500755306ed87f18c15c14a849719467e5de67d40e490d609f2990eac9f -->
+<!-- sha256:7eca761d811d8dd8093b45ed2cfd5d5f75e13ef2f085476b8c6ed5f164a14371 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `units` | No | - | Unit names or shell globs to watch; empty watches enabled units of the included types. Example: `nginx.service, ssh*.service` |
 | `include_types` | No | `[service socket timer mount]` | Unit type suffixes to include. Example: `service, timer` |
-| `detail` | No | `state` | Metrics detail: state emits only active_state per unit; full emits all systemd families |
+| `detail` | No | `state` | Metrics detail: state emits only host.service.running per unit; full adds systemd.unit.active_state, load and sub state, and restarts |
 | `interval` | No | `30` | Seconds between collections |
 
 <!-- schema:params:end -->
