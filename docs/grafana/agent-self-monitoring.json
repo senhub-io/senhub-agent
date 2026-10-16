@@ -65,7 +65,7 @@
       "title": "Collect errors (total)",
       "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-      "targets": [{ "refId": "A", "expr": "sum(senhub_agent_collect_errors_total{service_name=~\"$service\"})", "instant": true }],
+      "targets": [{ "refId": "A", "expr": "sum(senhub_agent_collect_errors_total{service_name=~\"$service\"}) or vector(0)", "instant": true }],
       "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 100 }] } } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
     },
@@ -106,7 +106,7 @@
       "title": "Collect errors rate (per minute)",
       "gridPos": { "h": 7, "w": 8, "x": 16, "y": 6 },
       "datasource": { "type": "prometheus", "uid": "victoriametrics" },
-      "targets": [{ "refId": "A", "expr": "rate(senhub_agent_collect_errors_total{service_name=~\"$service\"}[$__rate_interval]) * 60", "legendFormat": "{{service_name}}" }],
+      "targets": [{ "refId": "A", "expr": "sum by(service_name, probe, reason) (rate(senhub_agent_collect_errors_total{service_name=~\"$service\"}[$__rate_interval])) * 60", "legendFormat": "{{service_name}} / {{probe}} / {{reason}}" }],
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } } },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
     },
