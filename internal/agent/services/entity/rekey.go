@@ -3,6 +3,8 @@ package entity
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -33,14 +35,11 @@ import (
 // buffer then drops with one log line. They preferred absorbing that to having
 // a producer persist state that would need maintaining, migrating and
 // re-justifying every six months.
-//
-// Generalised out of the db-specific version written for #740, because the
-// second re-key (#742) needed exactly the same thing for a different type.
 type RekeyAnnouncer struct {
-	entityType string
-	idKey      string
-	legacyID   string
-	newID      string
+	legacyType string
+	legacyID   map[string]any
+	newType    string
+	newID      map[string]any
 	// announced counts emissions. The delete repeats for the first few cycles
 	// rather than firing once at startup: PublishEvent is best-effort and drops
 	// under backpressure, and at process start the entity pump may not have
@@ -82,8 +81,16 @@ func EnableRekeyMarkers(dir string, warn func(error)) {
 	markers.Store(&markerStore{dir: dir, warn: warn})
 }
 
+func identityPayload(typ string, id map[string]any) string {
+	payload, _ := json.Marshal(struct {
+		Type string         `json:"type"`
+		ID   map[string]any `json:"id"`
+	}{Type: typ, ID: id})
+	return string(payload)
+}
+
 func (r *RekeyAnnouncer) markerPath(m *markerStore) string {
-	sum := sha256.Sum256([]byte(r.entityType + "|" + r.idKey + "|" + r.legacyID + "|" + r.newID))
+	sum := sha256.Sum256([]byte(r.markerKey()))
 	return filepath.Join(m.dir, "rekey-"+hex.EncodeToString(sum[:8])+".announced")
 }
 
@@ -110,7 +117,7 @@ func (r *RekeyAnnouncer) writeMarker() {
 	}
 	err := os.MkdirAll(m.dir, 0o755)
 	if err == nil {
-		err = os.WriteFile(r.markerPath(m), []byte(r.entityType+" "+r.legacyID+" -> "+r.newID+"\n"), 0o644)
+		err = os.WriteFile(r.markerPath(m), []byte(identityPayload(r.legacyType, r.legacyID)+" -> "+identityPayload(r.newType, r.newID)+"\n"), 0o644)
 	}
 	if err != nil && m.warn != nil {
 		m.warnOnce.Do(func() { m.warn(err) })
@@ -122,6 +129,30 @@ func (r *RekeyAnnouncer) writeMarker() {
 // migration signal into a recurring one.
 const RekeyAnnounceCycles = 3
 
+func cloneID(id map[string]any) map[string]any {
+	if id == nil {
+		return nil
+	}
+	out := make(map[string]any, len(id))
+	for k, v := range id {
+		out[k] = v
+	}
+	return out
+}
+
+func idMapsEqual(a, b map[string]any) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, av := range a {
+		bv, ok := b[k]
+		if !ok || av != bv {
+			return false
+		}
+	}
+	return true
+}
+
 // NewRekeyAnnouncer returns an announcer for an identity that changed, or nil
 // when the two spellings are equal — nothing was re-keyed, so there is no node
 // to retire and no alias to draw. Returning nil rather than an inert object
@@ -130,7 +161,30 @@ func NewRekeyAnnouncer(entityType, idKey, legacyID, newID string) *RekeyAnnounce
 	if legacyID == "" || newID == "" || legacyID == newID {
 		return nil
 	}
-	return &RekeyAnnouncer{entityType: entityType, idKey: idKey, legacyID: legacyID, newID: newID}
+	return NewRekeyAnnouncerWithIDs(
+		entityType,
+		map[string]any{idKey: legacyID},
+		entityType,
+		map[string]any{idKey: newID},
+	)
+}
+
+// NewRekeyAnnouncerWithIDs returns an announcer for identities that changed,
+// including identities of different types with multi-key ids. It returns nil
+// when either identity is empty or the two spellings are equal.
+func NewRekeyAnnouncerWithIDs(legacyType string, legacyID map[string]any, newType string, newID map[string]any) *RekeyAnnouncer {
+	if len(legacyID) == 0 || len(newID) == 0 {
+		return nil
+	}
+	if legacyType == newType && idMapsEqual(legacyID, newID) {
+		return nil
+	}
+	return &RekeyAnnouncer{
+		legacyType: legacyType,
+		legacyID:   cloneID(legacyID),
+		newType:    newType,
+		newID:      cloneID(newID),
+	}
 }
 
 // Announce publishes the delete of the old identity. Call it once per
@@ -151,11 +205,9 @@ func (r *RekeyAnnouncer) Announce() {
 		defer r.writeMarker()
 	}
 	PublishEvent(Event{
-		Kind: EntityDelete,
-		Entity: &Entity{
-			Type: r.entityType,
-			ID:   map[string]any{r.idKey: r.legacyID},
-		},
+		Kind:         EntityDelete,
+		Entity:       &Entity{Type: r.legacyType, ID: r.legacyID},
+		DeleteReason: ReasonRekeyed,
 	})
 }
 
@@ -176,13 +228,27 @@ func (r *RekeyAnnouncer) SameAs() (Relation, bool) {
 	}
 	return Relation{
 		Type:     RelSameAs,
-		FromType: r.entityType,
-		FromID:   map[string]any{r.idKey: r.newID},
-		ToType:   r.entityType,
-		ToID:     map[string]any{r.idKey: r.legacyID},
+		FromType: r.newType,
+		FromID:   r.newID,
+		ToType:   r.legacyType,
+		ToID:     r.legacyID,
 		Attributes: map[string]any{
 			"basis":      "rekey",
 			"confidence": 1.0,
 		},
 	}, true
+}
+
+// markerKey names the marker of this re-key. A single-key re-key within one
+// type keeps the spelling markers were written under before multi-key ids,
+// so a host that already announced it does not announce it again.
+func (r *RekeyAnnouncer) markerKey() string {
+	if r.legacyType == r.newType && len(r.legacyID) == 1 && len(r.newID) == 1 {
+		for k, legacy := range r.legacyID {
+			if newVal, ok := r.newID[k]; ok {
+				return fmt.Sprint(r.legacyType, "|", k, "|", legacy, "|", newVal)
+			}
+		}
+	}
+	return identityPayload(r.legacyType, r.legacyID) + "|" + identityPayload(r.newType, r.newID)
 }
