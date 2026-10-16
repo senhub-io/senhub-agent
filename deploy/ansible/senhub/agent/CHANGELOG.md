@@ -13,6 +13,14 @@ semantic versioning, independently of the agent's own version.
 - Windows: `agent.yaml` is read with `ansible.builtin.slurp`; the role used
   a module that does not exist and stopped at the first configuration task.
 
+- A configuration refused for warnings says so, and names
+  `senhub_agent_check_allow_warnings`; accepted warnings are shown.
+
+- On a host whose agent was installed without the package, the
+  configuration is checked with the binary of the package about to be
+  installed before that package goes in, so a refusal leaves the running
+  agent untouched.
+
 ## 0.1.0
 
 First release. Role `senhub.agent.agent`:
