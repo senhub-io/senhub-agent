@@ -41,6 +41,7 @@
 
 ## Fixes
 
+- **Entities announce the cadence they are actually read at.** An entity whose source re-reads its facts less often than the entity heartbeat (an SNMP topology sweep or discovery crawl set to 10 minutes, a probe polling every 30 minutes) now announces that cadence as its interval, so a consumer no longer orders two changes the agent could not tell apart. The announced interval is never shorter than before, and at most 7 days.
 - **`winservices` reports protected services.** It asked the Service Control Manager for full access, which Windows refuses on protected services (WinDefend, BFE, RpcSs, DcomLaunch, mpssvc…) even to LocalSystem, so they were left out silently. It now opens services read-only.
 - **The Zabbix rule for an automatic Windows service that is not running fires again.** It also required `windows.service.start_type`, which the default `detail: state` no longer emits; the probe already watches only automatic services by default, so the rule now reads the state alone.
 - **`senhub-agent update` follows `include_beta`.** Without `--config-path` the command read `./agent-config.yaml` and so never saw the beta channel the daemon announced; it now reads the same agent.yaml as the agent.

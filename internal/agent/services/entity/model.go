@@ -107,6 +107,12 @@ type Entity struct {
 	// original event_time. It is deliberately outside entity identity and
 	// change hashing.
 	ObservedAt time.Time
+	// Cadence is the interval at which the asserting source actually
+	// re-reads the fact. Zero means unknown or "this tick". It is also
+	// deliberately outside identity and change hashing; it widens the
+	// announced Event.Interval, but a cadence change is not an entity
+	// content change.
+	Cadence time.Duration
 }
 
 // Scope* are the frozen instrumentation-scope names that carry an entity's
