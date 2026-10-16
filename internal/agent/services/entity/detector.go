@@ -328,7 +328,7 @@ func (d *Detector) reportSlowCadence(id uint64, src Source) {
 		return
 	}
 	c := cs.Cadence()
-	if c <= consumerIntervalCeiling {
+	if c <= ConsumerIntervalCeiling {
 		return
 	}
 	if d.warnedCadence == nil {
