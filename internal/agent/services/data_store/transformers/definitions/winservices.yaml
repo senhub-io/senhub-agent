@@ -13,6 +13,22 @@ universal: true
 # is the probe's own heartbeat and carries no service name.
 
 metrics:
+  - name: "host.service.running"
+    platforms: ["windows"]
+    channel: "windows_service_{windows.service.name}_running"
+    display_name: "Service {windows.service.name} Running"
+    unit: "#"
+    multi_instance_labels: ["windows.service.name"]
+    category: "service"
+    description: "1 when the service runs, 0 when it does not (stopped, failed, starting, stopping or paused), the same series for systemd and Windows"
+    lookup: "host.service.running"
+    otel:
+      name: host.service.running
+      unit: "{status}"
+      type: gauge
+    tag_to_attribute:
+      host.service.name: host.service.name
+
   - name: "senhub.winservices.up"
     platforms: ["windows"]
     channel: "winservices_up"
@@ -98,7 +114,7 @@ discovery_filters:
 
 triggers:
   - name: "Service {#WINDOWS_SERVICE_NAME} is set to start automatically and is not running"
-    expression: "max({{windows.service.state}},{$SENHUB.WINSERVICES.GRACE})=0"
+    expression: "max({{host.service.running}},{$SENHUB.WINSERVICES.GRACE})=0"
     priority: AVERAGE
     scope: availability
     description: "Raised when a watched service has not been running for the whole grace period. With no list configured the probe watches only the services set to start automatically (delayed or not). Services Windows starts on demand, or per session, are kept out of discovery by {$SENHUB.WINSERVICES.NOT_MATCHES}."
