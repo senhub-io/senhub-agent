@@ -20,10 +20,19 @@
         dest: /etc/apt/keyrings/senhub.asc
         mode: "0644"
 
+    # A check run does not download the key: on a host that has none yet
+    # there is nothing to read, and the fingerprint is checked on the real run.
+    - name: Key on disk
+      ansible.builtin.stat:
+        path: /etc/apt/keyrings/senhub.asc
+      register: _senhub_agent_key_file
+
     - name: Read the key fingerprint
       ansible.builtin.command: gpg --show-keys --with-colons --with-fingerprint /etc/apt/keyrings/senhub.asc
       register: _senhub_agent_key
       changed_when: false
+      check_mode: false
+      when: _senhub_agent_key_file.stat.exists
 
     - name: Compare with the expected fingerprint
       ansible.builtin.assert:
@@ -32,6 +41,7 @@
           in _senhub_agent_key.stdout_lines
         fail_msg: "The key at {{ senhub_agent_repo_key_url }} does not carry the fingerprint {{ senhub_agent_repo_key_fingerprint }}."
         quiet: true
+      when: _senhub_agent_key_file.stat.exists
   rescue:
     - name: Drop the key that did not match
       ansible.builtin.file:
