@@ -315,7 +315,8 @@ func (s *Service) startLocked(ctx context.Context) error {
 	det.OnCadenceBeyondCeiling(func(cadence time.Duration) {
 		s.logger.Warn().
 			Dur("cadence", cadence).
-			Msg("an entity source reads slower than the graph consumer accepts (7 days); its entities are announced with that cadence and will be refused there")
+			Dur("consumer_ceiling", entity.ConsumerIntervalCeiling).
+			Msg("an entity source reads slower than the graph consumer accepts; its entities are announced with that cadence and will be refused there")
 	})
 	det.OnOrphanEntities(func(orphans []entity.Entity) {
 		for _, e := range orphans {
