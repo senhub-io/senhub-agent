@@ -39,7 +39,7 @@ func TestCollectSuccessCarriesIdentityAndCheckResultOK(t *testing.T) {
 	// describe that service, which is not this entity.
 	for _, pt := range points {
 		want := wantID
-		if strings.HasPrefix(pt.Name, "windows.service.") {
+		if strings.HasPrefix(pt.Name, "windows.service.") || strings.HasPrefix(pt.Name, "host.service.") {
 			want = ""
 		}
 		if got := tagValue(pt, idKeyServiceInstanceID); got != want {

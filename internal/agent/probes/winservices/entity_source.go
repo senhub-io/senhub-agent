@@ -77,7 +77,6 @@ func buildHostServiceEntity(hostID, hostName string, s serviceState) (entity.Ent
 
 	attrs := map[string]any{
 		"host.service.manager": hostServiceManagerWindows,
-		"host.service.state":   windowsServiceStateString(s.state),
 	}
 	if hostName != "" {
 		attrs["host.name"] = hostName

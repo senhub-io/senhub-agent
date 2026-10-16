@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/hostservice"
+
 	dbus "github.com/coreos/go-systemd/v22/dbus"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
@@ -222,18 +224,20 @@ func buildDatapoints(u dbus.UnitStatus, ts time.Time, nRestarts *float64, hostID
 	unitType := unitTypeSuffix(u.Name)
 	baseTags := baseTagsForUnit(u, hostID, hostName)
 
-	// systemd.unit.active_state: 1=active, 0=otherwise
-	var activeVal float64
-	if u.ActiveState == "active" {
-		activeVal = 1
-	}
 	points := []data_store.DataPoint{
-		{Name: "systemd.unit.active_state", Value: activeVal, Timestamp: ts, Tags: baseTags},
+		{Name: hostservice.StateMetric, Value: float64(hostservice.FromSystemd(u.ActiveState)), Timestamp: ts, Tags: baseTags},
 	}
 
 	if detail != systemdDetailFull {
 		return points
 	}
+
+	// systemd.unit.active_state: 1=active, 0=otherwise
+	var activeVal float64
+	if u.ActiveState == "active" {
+		activeVal = 1
+	}
+	points = append(points, data_store.DataPoint{Name: "systemd.unit.active_state", Value: activeVal, Timestamp: ts, Tags: baseTags})
 
 	// systemd.unit.sub_state: 1=running|listening, 0=dead|exited
 	// Carry sub_state as a tag so the operator can filter.

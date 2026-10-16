@@ -10,6 +10,20 @@ multi_instance_labels: ["systemd.unit"]
 # Linux-only — the stub returns ErrNotSupported on other platforms.
 
 metrics:
+  - name: "host.service.state"
+    channel: "systemd_{systemd.unit}_state"
+    display_name: "Service {systemd.unit} State"
+    unit: "#"
+    category: "status"
+    description: "State of a service the supervisor starts by itself, on one scale for systemd and Windows: 1 running, 0 stopped, 2 starting, 3 stopping, 4 failed, 5 paused, 6 other"
+    lookup: "host.service.state"
+    otel:
+      name: host.service.state
+      unit: "{status}"
+      type: gauge
+    tag_to_attribute:
+      host.service.name: host.service.name
+
   - name: "systemd.unit.active_state"
     channel: "systemd_{systemd.unit}_active"
     display_name: "Systemd {systemd.unit} Active State"

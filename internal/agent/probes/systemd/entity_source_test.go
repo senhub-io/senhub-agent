@@ -37,8 +37,8 @@ func TestEntitySource_EmitsHostServiceEntities(t *testing.T) {
 		if got := e.Attributes["host.service.manager"]; got != "systemd" {
 			t.Errorf("entities[%d] manager = %v, want systemd", i, got)
 		}
-		if got := e.Attributes["host.service.state"]; got != "active" {
-			t.Errorf("entities[%d] state = %v, want active", i, got)
+		if _, ok := e.Attributes["host.service.state"]; ok {
+			t.Errorf("entities[%d]: the running state is a series, not an entity attribute", i)
 		}
 		if got := e.Attributes["host.service.start_mode"]; got != "enabled" {
 			t.Errorf("entities[%d] start_mode = %v, want enabled", i, got)
