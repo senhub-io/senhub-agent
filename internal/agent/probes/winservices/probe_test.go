@@ -189,13 +189,13 @@ func TestCollect_DefaultSelectionAndDetailState(t *testing.T) {
 	if _, ok := findPoint(points, "senhub.winservices.up", ""); !ok {
 		t.Error("missing senhub.winservices.up")
 	}
-	if _, ok := findPoint(points, "windows.service.state", "automatic"); !ok {
+	if _, ok := findPoint(points, "host.service.state", "automatic"); !ok {
 		t.Error("missing state for automatic service")
 	}
-	if _, ok := findPoint(points, "windows.service.state", "delayed"); !ok {
+	if _, ok := findPoint(points, "host.service.state", "delayed"); !ok {
 		t.Error("missing state for delayed automatic service")
 	}
-	if _, ok := findPoint(points, "windows.service.state", "manual"); ok {
+	if _, ok := findPoint(points, "host.service.state", "manual"); ok {
 		t.Error("default selection must not emit a manual service")
 	}
 	if _, ok := findPoint(points, "windows.service.state", "disabled"); ok {
@@ -225,7 +225,7 @@ func TestCollect_ExplicitSelectionIncludesManual(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 
-	if _, ok := findPoint(points, "windows.service.state", "manual"); !ok {
+	if _, ok := findPoint(points, "host.service.state", "manual"); !ok {
 		t.Error("explicit service list must keep a manual service")
 	}
 	if _, ok := findPoint(points, "windows.service.status", "manual"); ok {
@@ -418,8 +418,8 @@ func TestEntitySource_EmitsHostServicePerSelectedService(t *testing.T) {
 	if got := spooler.Attributes["host.service.trigger_start"]; got != true {
 		t.Errorf("Spooler trigger_start = %v, want true", got)
 	}
-	if got := spooler.Attributes["host.service.state"]; got != "running" {
-		t.Errorf("Spooler state = %v, want running", got)
+	if _, ok := spooler.Attributes["host.service.state"]; ok {
+		t.Errorf("Spooler: the running state is a series, not an entity attribute")
 	}
 
 	if got := wuau.Attributes["host.service.start_mode"]; got != "demand_start" {
@@ -431,8 +431,8 @@ func TestEntitySource_EmitsHostServicePerSelectedService(t *testing.T) {
 	if got := wuau.Attributes["host.service.trigger_start"]; got != false {
 		t.Errorf("wuauserv trigger_start = %v, want false", got)
 	}
-	if got := wuau.Attributes["host.service.state"]; got != "stopped" {
-		t.Errorf("wuauserv state = %v, want stopped", got)
+	if _, ok := wuau.Attributes["host.service.state"]; ok {
+		t.Errorf("wuauserv: the running state is a series, not an entity attribute")
 	}
 
 	var hostServiceRuns int

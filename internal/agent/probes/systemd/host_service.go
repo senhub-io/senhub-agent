@@ -28,7 +28,6 @@ func buildHostServiceEntity(hostID, hostName string, u hostServiceUnit) (entity.
 			ID:   id,
 			Attributes: map[string]any{
 				"host.service.manager":    systemdManager,
-				"host.service.state":      u.ActiveState,
 				"host.service.start_mode": u.UnitFileState,
 				"host.name":               hostName,
 			},

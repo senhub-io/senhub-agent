@@ -21,6 +21,8 @@ import (
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/hostservice"
+
 	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
@@ -294,16 +296,17 @@ func (p *WinServicesProbe) buildServiceDatapoints(s serviceState, ts time.Time, 
 		serviceTags = append(serviceTags, tags.Tag{Key: "host.name", Value: hostName})
 	}
 
-	running := float64(0)
-	if s.state == stateRunning {
-		running = 1
-	}
 	points := []data_store.DataPoint{
-		{Name: "windows.service.state", Value: running, Timestamp: ts, Tags: serviceTags},
+		{Name: hostservice.StateMetric, Value: float64(hostservice.FromWindows(s.state)), Timestamp: ts, Tags: serviceTags},
 	}
 	if detail != serviceDetailFull {
 		return points
 	}
+	running := float64(0)
+	if s.state == stateRunning {
+		running = 1
+	}
+	points = append(points, data_store.DataPoint{Name: "windows.service.state", Value: running, Timestamp: ts, Tags: serviceTags})
 	points = append(points, data_store.DataPoint{Name: "windows.service.status", Value: float64(s.state), Timestamp: ts, Tags: serviceTags})
 	if s.startType >= 0 {
 		points = append(points, data_store.DataPoint{Name: "windows.service.start_type", Value: float64(s.startType), Timestamp: ts, Tags: serviceTags})

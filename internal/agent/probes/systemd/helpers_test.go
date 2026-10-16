@@ -11,7 +11,6 @@ import (
 	dbus "github.com/coreos/go-systemd/v22/dbus"
 )
 
-
 // ---------------------------------------------------------------------------
 // parseConfig
 // ---------------------------------------------------------------------------
@@ -269,9 +268,9 @@ func TestBuildDatapoints_ActiveRunningLoaded(t *testing.T) {
 	ts := time.Unix(1000, 0)
 	pts := buildDatapoints(u, ts, nil, "host-1", "host-1.example", systemdDetailFull)
 
-	// Expect 3 datapoints (no NRestarts passed).
-	if len(pts) != 3 {
-		t.Fatalf("buildDatapoints: got %d points; want 3", len(pts))
+	// Expect 4 datapoints: host.service.state and 3 systemd states (no NRestarts passed).
+	if len(pts) != 4 {
+		t.Fatalf("buildDatapoints: got %d points; want 4", len(pts))
 	}
 
 	byName := make(map[string]float64, len(pts))
@@ -315,9 +314,9 @@ func TestBuildDatapoints_WithNRestarts(t *testing.T) {
 	restarts := float64(3)
 	pts := buildDatapoints(u, time.Now(), &restarts, "host-1", "host-1.example", systemdDetailFull)
 
-	// Expect 4 datapoints (3 states + restarts).
-	if len(pts) != 4 {
-		t.Fatalf("buildDatapoints with restarts: got %d points; want 4", len(pts))
+	// Expect 5 datapoints: host.service.state, 3 systemd states and restarts.
+	if len(pts) != 5 {
+		t.Fatalf("buildDatapoints with restarts: got %d points; want 5", len(pts))
 	}
 	byName := make(map[string]float64, len(pts))
 	for _, p := range pts {
@@ -408,11 +407,11 @@ func TestBuildDatapoints_DetailState(t *testing.T) {
 	if len(pts) != 1 {
 		t.Fatalf("detail=state: got %d points; want 1", len(pts))
 	}
-	if pts[0].Name != "systemd.unit.active_state" {
-		t.Fatalf("detail=state point = %q; want systemd.unit.active_state", pts[0].Name)
+	if pts[0].Name != "host.service.state" {
+		t.Fatalf("detail=state point = %q; want host.service.state", pts[0].Name)
 	}
 	if pts[0].Value != 1 {
-		t.Errorf("active_state = %v; want 1", pts[0].Value)
+		t.Errorf("host.service.state = %v; want 1 (running)", pts[0].Value)
 	}
 	for _, tag := range pts[0].Tags {
 		if tag.Key == "sub_state" {
