@@ -21,6 +21,10 @@ semantic versioning, independently of the agent's own version.
   installed before that package goes in, so a refusal leaves the running
   agent untouched.
 
+- Windows: fragments written earlier by the role are found by their
+  content with PowerShell; `win_find` has no content filter and the role
+  stopped before building the configuration.
+
 ## 0.1.0
 
 First release. Role `senhub.agent.agent`:
