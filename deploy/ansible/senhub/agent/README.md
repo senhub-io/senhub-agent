@@ -63,6 +63,11 @@ senhub_agent_license: "{{ vault_senhub_licence }}"
   (warnings: the agent would load it, but a setting has no effect, for
   instance) fails the play too unless `senhub_agent_check_allow_warnings` is
   true; then the warnings are shown and the configuration is applied.
+- On a host where the agent runs without the package (an archive install),
+  the package stops that agent when it goes in. The configuration is
+  therefore checked before, with the binary of the package about to be
+  installed (downloaded and unpacked in a scratch directory), so a refusal
+  leaves the running agent as it was.
 - The agent loads changes to `agent.yaml`, `probes.d/` and `strategies.d/`
   by itself, so the role restarts the service only for a new licence (read
   at start), a package switch, or when `senhub_agent_restart_on_config_change`

@@ -1,0 +1,114 @@
+---
+# A host whose agent was installed without the package (an archive
+# install) keeps running it until the package goes in, and the package
+# stops it. The configuration is therefore checked first, with the binary
+# of the package about to be installed, so a refusal leaves that agent and
+# the host as they were. The binary of the running agent cannot stand in:
+# an older version does not know the rules of the new one.
+
+- name: Live agent.yaml
+  ansible.builtin.stat:
+    path: "{{ senhub_agent_config_dir }}/agent.yaml"
+  register: _senhub_agent_live_yaml
+
+- name: Check the configuration with the package about to be installed
+  when: _senhub_agent_live_yaml.stat.exists
+  block:
+    - name: Download directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: senhub-agent-preflight.
+      register: _senhub_agent_preflight
+
+    - name: Package index (apt)
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Tools to download and open the package (dnf)
+      ansible.builtin.dnf:
+        name: [dnf-plugins-core, cpio]
+        state: present
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    - name: Tool to open the package (zypper)
+      community.general.zypper:
+        name: cpio
+        state: present
+      when: ansible_facts['os_family'] == 'Suse'
+
+    - name: Versions the repository offers (apt)
+      ansible.builtin.command: "apt-cache madison {{ _senhub_agent_package }}"
+      register: _senhub_agent_madison
+      changed_when: false
+      when: ansible_facts['os_family'] == 'Debian' and _senhub_agent_pinned | bool
+
+    - name: Package version to download (apt)
+      ansible.builtin.set_fact:
+        _senhub_agent_deb_version: >-
+          {{ _senhub_agent_madison.stdout_lines
+             | map('split', '|') | map(attribute=1) | map('trim')
+             | select('match', (_senhub_agent_pkg_version | regex_escape) ~ '(-|$)')
+             | first | default('') }}
+      when: ansible_facts['os_family'] == 'Debian' and _senhub_agent_pinned | bool
+
+    - name: Pinned version available (apt)
+      ansible.builtin.assert:
+        that: _senhub_agent_deb_version | length > 0
+        fail_msg: "{{ _senhub_agent_package }} {{ senhub_agent_version }} is not in the repository; the running agent was not touched."
+        quiet: true
+      when: ansible_facts['os_family'] == 'Debian' and _senhub_agent_pinned | bool
+
+    - name: Download the package (apt)
+      ansible.builtin.command:
+        cmd: "apt-get download {{ _senhub_agent_package }}{{ ('=' ~ _senhub_agent_deb_version) if _senhub_agent_pinned | bool else '' }}"
+        chdir: "{{ _senhub_agent_preflight.path }}"
+      changed_when: false
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Download the package (dnf)
+      ansible.builtin.command:
+        cmd: "dnf -y download --destdir {{ _senhub_agent_preflight.path }} {{ _senhub_agent_package }}{{ ('-' ~ _senhub_agent_pkg_version) if _senhub_agent_pinned | bool else '' }}"
+      changed_when: false
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    - name: Download the package (zypper)
+      ansible.builtin.command:
+        cmd: "zypper --non-interactive --pkg-cache-dir {{ _senhub_agent_preflight.path }}/cache download {{ _senhub_agent_package }}{{ ('=' ~ _senhub_agent_pkg_version) if _senhub_agent_pinned | bool else '' }}"
+      changed_when: false
+      when: ansible_facts['os_family'] == 'Suse'
+
+    - name: Downloaded package
+      ansible.builtin.find:
+        paths: "{{ _senhub_agent_preflight.path }}"
+        patterns: ["*.deb", "*.rpm"]
+        recurse: true
+      register: _senhub_agent_downloaded
+
+    - name: One package downloaded
+      ansible.builtin.assert:
+        that: _senhub_agent_downloaded.files | length == 1
+        fail_msg: "Expected one {{ _senhub_agent_package }} package, found {{ _senhub_agent_downloaded.files | map(attribute='path') | list }}; the running agent was not touched."
+        quiet: true
+
+    - name: Extract the package
+      ansible.builtin.shell:
+        cmd: >-
+          {{ ('dpkg-deb -x ' ~ (_senhub_agent_downloaded.files[0].path | quote) ~ ' root')
+             if ansible_facts['os_family'] == 'Debian'
+             else ('mkdir -p root && cd root && rpm2cpio ' ~ (_senhub_agent_downloaded.files[0].path | quote) ~ ' | cpio -idm --quiet') }}
+        chdir: "{{ _senhub_agent_preflight.path }}"
+      changed_when: false
+
+    - name: Check the configuration with that binary
+      ansible.builtin.include_tasks: configure_linux.yml
+      vars:
+        _senhub_agent_check_only: true
+        _senhub_agent_check_bin: "{{ _senhub_agent_preflight.path }}/root/usr/bin/senhub-agent"
+  always:
+    - name: Remove the download directory
+      ansible.builtin.file:
+        path: "{{ _senhub_agent_preflight.path }}"
+        state: absent
+      when: _senhub_agent_preflight.path is defined
