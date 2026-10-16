@@ -15,7 +15,7 @@ func init() {
 		Params: []probes.ParamSpec{
 			{Key: "units", Kind: probes.KindStringList, Group: "filter", Description: "Unit names or shell globs to watch; empty watches enabled units of the included types", Example: "nginx.service, ssh*.service"},
 			{Key: "include_types", Kind: probes.KindStringList, Default: []string{"service", "socket", "timer", "mount"}, Group: "filter", Description: "Unit type suffixes to include", Example: "service, timer"},
-			{Key: "detail", Kind: probes.KindString, Default: "state", Group: "collection", Description: "Metrics detail: state emits only active_state per unit; full emits all systemd families"},
+			{Key: "detail", Kind: probes.KindString, Default: "state", Group: "collection", Description: "Metrics detail: state emits only host.service.running per unit; full adds systemd.unit.active_state, load and sub state, and restarts"},
 			{Key: "interval", Kind: probes.KindInt, Default: 30, Group: "collection", Description: "Seconds between collections"},
 		},
 	})
