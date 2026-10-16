@@ -3,7 +3,7 @@
 # with `config check --json`, then copy it over the live files.
 
 - name: Current agent.yaml
-  ansible.windows.win_slurp:
+  ansible.builtin.slurp:
     src: "{{ senhub_agent_windows_config_dir }}\\agent.yaml"
   register: _senhub_agent_yaml
   no_log: "{{ senhub_agent_no_log }}"
