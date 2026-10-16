@@ -116,6 +116,10 @@ type snmpEntitySource struct {
 	interval     time.Duration
 	moduleLogger *logger.ModuleLogger
 
+	// discoveryInterval is the cadence of the discovery crawl when discovery
+	// is configured; zero when it is not.
+	discoveryInterval time.Duration
+
 	mu sync.Mutex
 	// cache is the last good sweep, kept raw: its neighbours are resolved
 	// against the registry when the observation is read, so a device
@@ -178,10 +182,18 @@ func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
 	if iv <= 0 {
 		iv = defaultTopologyInterval
 	}
+	var discInterval time.Duration
+	if cfg.Discovery != nil {
+		discInterval = cfg.Discovery.Interval
+		if discInterval <= 0 {
+			discInterval = iv
+		}
+	}
 	macindex.Default.SetTTL(3 * iv)
 	return &snmpEntitySource{
 		cfg:               cfg,
 		interval:          iv,
+		discoveryInterval: discInterval,
 		moduleLogger:      log,
 		registry:          sharedPolledRegistry,
 		now:               time.Now,
@@ -189,6 +201,17 @@ func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
 		hostInterfaceMACs: hostiface.OwnInterfaceMACs,
 		macIndex:          macindex.Default,
 	}
+}
+
+// Cadence implements entity.CadenceSource: the interval at which this source
+// actually re-reads its facts. The topology sweep and discovery crawl are
+// independent; the coarser one bounds the freshness of anything this source
+// reports.
+func (s *snmpEntitySource) Cadence() time.Duration {
+	if s.discoveryInterval > s.interval {
+		return s.discoveryInterval
+	}
+	return s.interval
 }
 
 // sweepResult is what one topology sweep read from the device.
@@ -1253,6 +1276,7 @@ func (s *snmpEntitySource) DepartureReason(e entity.Entity) string {
 }
 
 var (
+	_ entity.CadenceSource    = (*snmpEntitySource)(nil)
 	_ entity.DepartureSource  = (*snmpEntitySource)(nil)
 	_ entity.UnobservedSource = (*snmpEntitySource)(nil)
 )

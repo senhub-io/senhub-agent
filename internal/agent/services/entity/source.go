@@ -56,6 +56,14 @@ type DepartureSource interface {
 	DepartureReason(e Entity) string
 }
 
+// CadenceSource is a Source that reports the interval at which it actually
+// re-reads what it observes. Some sources re-emit a cached view more often
+// than they re-read the underlying facts; the announced interval must not
+// claim a finer resolution than that read cadence.
+type CadenceSource interface {
+	Cadence() time.Duration
+}
+
 // sourceAs finds the optional interface T on src or on what it wraps.
 func sourceAs[T any](src Source) (T, bool) {
 	for src != nil {
@@ -239,8 +247,14 @@ func dropOrphanEntities(entities []Entity, onOrphan func([]Entity)) (kept, dropp
 	return kept, dropped
 }
 
+// maxAnnouncedInterval is the largest liveness interval the consumer accepts.
+// A coarser cadence cannot be expressed as a single interval; clamping keeps
+// the entity publishable under a consumer-side ceiling.
+const maxAnnouncedInterval = 7 * 24 * time.Hour
+
 // stateEvents stamps entities into state events at instant ts with the given
-// liveness interval.
+// liveness interval, widened by each entity's actual source cadence and
+// clamped to the consumer ceiling.
 func stateEvents(entities []Entity, ts time.Time, interval time.Duration) []Event {
 	out := make([]Event, len(entities))
 	for i := range entities {
@@ -249,7 +263,14 @@ func stateEvents(entities []Entity, ts time.Time, interval time.Duration) []Even
 		if !e.ObservedAt.IsZero() {
 			eventTime = e.ObservedAt
 		}
-		out[i] = Event{Kind: EntityState, Entity: &e, Time: eventTime, Interval: interval}
+		announced := interval
+		if e.Cadence > announced {
+			announced = e.Cadence
+		}
+		if announced > maxAnnouncedInterval {
+			announced = maxAnnouncedInterval
+		}
+		out[i] = Event{Kind: EntityState, Entity: &e, Time: eventTime, Interval: announced}
 	}
 	return out
 }

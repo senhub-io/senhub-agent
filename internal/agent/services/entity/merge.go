@@ -81,6 +81,7 @@ func (o Observation) mergeDuplicates(onConflict func(AttributeConflict), onMerge
 		sort.SliceStable(copies, func(i, j int) bool { return copies[i].Scope < copies[j].Scope })
 		out := Entity{Type: copies[0].Type, ID: copies[0].ID, Scope: copies[0].Scope, Attributes: map[string]any{}}
 		out.ObservedAt = newestObservedAt(copies)
+		out.Cadence = maxCadence(copies)
 		scopeOf := map[string]string{}
 		for _, c := range copies {
 			for attr, v := range c.Attributes {
@@ -126,4 +127,15 @@ func newestObservedAt(copies []Entity) time.Time {
 		}
 	}
 	return newest
+}
+
+// maxCadence picks the coarsest actual read interval among duplicate copies.
+func maxCadence(copies []Entity) time.Duration {
+	var max time.Duration
+	for _, c := range copies {
+		if c.Cadence > max {
+			max = c.Cadence
+		}
+	}
+	return max
 }

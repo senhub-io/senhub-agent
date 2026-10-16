@@ -168,6 +168,26 @@ func (d *Detector) Run(ctx context.Context) {
 	}
 }
 
+// withSourceCadence stamps the source's actual read cadence onto a copy of
+// each entity it asserted. The source may cache and reuse the observation
+// slice, so the entities are never mutated in place.
+func withSourceCadence(o Observation, src Source) Observation {
+	cadence := time.Duration(0)
+	if cs, ok := sourceAs[CadenceSource](src); ok {
+		cadence = cs.Cadence()
+	}
+	if cadence <= 0 || len(o.Entities) == 0 {
+		return o
+	}
+	entities := make([]Entity, len(o.Entities))
+	copy(entities, o.Entities)
+	for i := range entities {
+		entities[i].Cadence = cadence
+	}
+	o.Entities = entities
+	return o
+}
+
 // reconcile observes the host + agent at instant ts and feeds the resulting
 // snapshot to the tracker, which emits state (heartbeat) + any deletes. A
 // failure to read host identity skips this cycle rather than emitting a host
@@ -244,6 +264,7 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 				o = Observation{}
 			}
 		}
+		o = withSourceCadence(o, r.src)
 		obs = obs.merge(o)
 	}
 	// Drop caches of unregistered sources so a stopped probe's topology
