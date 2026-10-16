@@ -3,6 +3,16 @@
 All notable changes to the `senhub.agent` collection. The collection follows
 semantic versioning, independently of the agent's own version.
 
+## 0.1.1
+
+- `--check` runs the role through. Reads (the repository key fingerprint,
+  the release manifest, the installed version) run in check mode, and the
+  configuration is staged and checked with `config check` as on a real
+  run, so a check run reports what the agent would refuse. A repository or
+  a package the real run would add is reported instead of failing the run.
+- Windows: `agent.yaml` is read with `ansible.builtin.slurp`; the role used
+  a module that does not exist and stopped at the first configuration task.
+
 ## 0.1.0
 
 First release. Role `senhub.agent.agent`:
