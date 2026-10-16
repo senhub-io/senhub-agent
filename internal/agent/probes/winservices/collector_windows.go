@@ -5,9 +5,18 @@ package winservices
 import (
 	"fmt"
 	"sort"
+	"syscall"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc/mgr"
+)
+
+const serviceConfigTriggerInfo = 8
+
+var (
+	advapi32DLL              = syscall.NewLazyDLL("advapi32.dll")
+	procQueryServiceConfig2W = advapi32DLL.NewProc("QueryServiceConfig2W")
 )
 
 // The probe only reads. mgr.Connect and mgr.OpenService ask for full access,
@@ -72,17 +81,67 @@ func collectServices(selected []string) ([]serviceState, error) {
 		}
 		status, qerr := s.Query()
 		startType := -1
+		startDelayed := false
 		if cfg, cerr := s.Config(); cerr == nil {
 			startType = int(cfg.StartType)
+			startDelayed = cfg.DelayedAutoStart
 			if startType == int(mgr.StartAutomatic) && cfg.DelayedAutoStart {
 				startType = startAutomaticDelayed
 			}
 		}
+
+		var triggerStart *bool
+		if triggered, known := hasServiceTriggers(s); known {
+			triggerStart = &triggered
+		}
+
 		_ = s.Close()
 		if qerr != nil {
 			continue
 		}
-		out = append(out, serviceState{name: name, state: int(status.State), startType: startType})
+		out = append(out, serviceState{
+			name:         name,
+			state:        int(status.State),
+			startType:    startType,
+			startDelayed: startDelayed,
+			triggerStart: triggerStart,
+		})
 	}
 	return out, nil
+}
+
+// hasServiceTriggers reports whether a service has at least one trigger
+// configured. The read is best effort: on error ok is false and the caller
+// omits the attribute rather than guessing.
+func hasServiceTriggers(s *mgr.Service) (triggered, ok bool) {
+	var needed uint32
+	buf := make([]byte, 256) // SERVICE_TRIGGER_INFO header; resized when triggers exist
+
+	ret, _, _ := procQueryServiceConfig2W.Call(
+		uintptr(s.Handle),
+		uintptr(serviceConfigTriggerInfo),
+		uintptr(unsafe.Pointer(&buf[0])),
+		uintptr(len(buf)),
+		uintptr(unsafe.Pointer(&needed)),
+	)
+	if ret == 0 {
+		if needed > uint32(len(buf)) {
+			buf = make([]byte, needed)
+			ret, _, _ = procQueryServiceConfig2W.Call(
+				uintptr(s.Handle),
+				uintptr(serviceConfigTriggerInfo),
+				uintptr(unsafe.Pointer(&buf[0])),
+				uintptr(len(buf)),
+				uintptr(unsafe.Pointer(&needed)),
+			)
+		}
+		if ret == 0 {
+			return false, false
+		}
+	}
+	if len(buf) < 4 {
+		return false, false
+	}
+	cTriggers := *(*uint32)(unsafe.Pointer(&buf[0]))
+	return cTriggers > 0, true
 }
