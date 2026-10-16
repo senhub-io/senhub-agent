@@ -42,6 +42,7 @@ const (
 	TypeNetworkSegment   = wire.TypeNetworkSegment
 	TypeNetworkNeighbor  = wire.TypeNetworkNeighbor
 	TypeK8sNode          = wire.TypeK8sNode
+	TypeHostService      = wire.TypeHostService
 )
 
 // Relation types, same reasoning. The last three are registered but legacy:
@@ -191,6 +192,15 @@ var TelemetryContract = map[string]TelemetryDeclaration{
 	TypePod: {
 		Status:     StatusOwnKey,
 		SubjectKey: "k8s.pod.uid",
+		Carrier:    CarrierDatapoint,
+		Shipped:    true,
+	},
+	// A service the host's supervisor starts by itself (systemd unit,
+	// Windows service). Its series carry host.id and host.service.name per
+	// datapoint: the probe observes many services from one resource.
+	TypeHostService: {
+		Status:     StatusOwnKey,
+		SubjectKey: "host.service.name",
 		Carrier:    CarrierDatapoint,
 		Shipped:    true,
 	},

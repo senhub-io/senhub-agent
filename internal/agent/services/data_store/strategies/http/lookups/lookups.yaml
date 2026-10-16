@@ -953,3 +953,16 @@ senhub.probe.check.target.unresolved:
       severity: "warning"
       description: "The check targets a local port nothing listens on, so the listener it monitors does not exist; the reason tag says why"
   desired_value: 0
+
+host.service.running:
+  description: "Whether a service managed by the OS supervisor runs"
+  type: enum
+  source: "senhub-agent probes/hostservice/state.go"
+  mappings:
+    0:
+      text: "Not running"
+      severity: "error"
+    1:
+      text: "Running"
+      severity: "ok"
+  desired_value: 1

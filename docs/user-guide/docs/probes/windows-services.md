@@ -53,7 +53,8 @@ than failing the whole collection.
 
 - The agent must run with sufficient privileges to query the SCM. Administrator or LocalSystem is required for full enumeration.
 - When `services` is empty, only the services Windows is supposed to start by itself are watched: start type Automatic, delayed included. Name a demand-start or disabled service in `services` to watch it.
-- `detail: state` (the default) emits one state series per watched service; `detail: full` adds the raw status and the start type. The probe is installed on every host, so its default stays at one series per service.
+- Each watched service is a `host.service` entity on the topology graph (identity `host.id` + `host.service.name`, the service short name), linked to its host by `runs_on`, with `host.service.manager` (`windows_scm`), `host.service.start_mode`, `host.service.start_delayed` and `host.service.trigger_start`. Whether it runs is a measurement, not a graph fact: `host.service.running` gives it as 1 or 0, the same series for systemd and Windows, with the same `host.id` and `host.service.name`. A service started by a trigger (`host.service.trigger_start: true`) stops normally once its job is done: an alert on "automatic and not running" should leave those out. The `host.service.running` series carries `host.service.trigger_start` too, for alert engines that read series only and cannot join the graph; the entity attribute is the reference, and the label a copy that can lag it by one collection after someone reconfigures the service.
+- `detail: state` (the default) emits `host.service.running` alone, one series per watched service; `detail: full` adds `windows.service.state`, the raw status and the start type. The probe is installed on every host, so its default stays at one series per service.
 - Service names are the short internal names used by `sc query` and `Get-Service`, not display names (e.g. `wuauserv` not "Windows Update").
 
 ## Metric reference
@@ -69,6 +70,7 @@ series' tags.
 
 | Metric | Name | PRTG channel | Unit | Description |
 |---|---|---|---|---|
+| `host.service.running` | `host.service.running` | Service {windows.service.name} Running | # | 1 when the service runs, 0 when it does not (stopped, failed, starting, stopping or paused), the same series for systemd and Windows |
 | `senhub.winservices.up` | `senhub.winservices.up` | Windows Services SCM Up | # | 1 when the Service Control Manager is reachable and the probe completed its cycle |
 | `windows.service.state` | `windows.service.state` | Service {windows.service.name} Running | # | 1 when the service is in the Running state, 0 otherwise |
 | `windows.service.status` | `windows.service.status` | Service {windows.service.name} Status | # | Numeric SCM state of the service: 1=stopped 2=start_pending 3=stop_pending 4=running 5=continue_pending 6=pause_pending 7=paused |

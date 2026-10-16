@@ -39,6 +39,7 @@
 - **A local check says when nothing listens.** `tcp_dial` and `http_check` aimed at a local port add `senhub.probe.check.target.unresolved` (value 1, `reason=no_listener`) when the port refuses the connection, next to the check result and with the same `service.endpoint` key as the listener the check monitors.
 - **Top processes by memory.** `process` accepts `filter.top_by: memory` next to `top_n`, to keep the N processes using the most resident memory (the working set on Windows) and name the one behind a low-memory condition.
 
+- **System services on the map.** `systemd` and `winservices` publish each service they watch as a `host.service` entity (identity `host.id` + `host.service.name`), with its start mode, linked to its host. Whether a service runs is the series `host.service.running`, 1 when it runs and 0 otherwise, the same series for both systems, keyed by the same `host.id` and `host.service.name`; it replaces `systemd.unit.active_state` and `windows.service.state` as the default series, which `detail: full` keeps. Units that earlier agents published as `service.instance` are retired with the reason `rekeyed`.
 ## Fixes
 
 - **`winservices` reports protected services.** It asked the Service Control Manager for full access, which Windows refuses on protected services (WinDefend, BFE, RpcSs, DcomLaunch, mpssvc…) even to LocalSystem, so they were left out silently. It now opens services read-only.
