@@ -95,8 +95,10 @@ func refreshedUnitBody(installed string, binaryExists func(string) bool) string 
 // own old default, not an operator's addition, and preserving them would put
 // the retired setting straight back: MemoryDenyWriteExecute=true, removed
 // because the IBM i probe's JVM and native runner cannot start under it,
-// came back on every refreshed unit.
-var retiredUnitDirectives = []string{"MemoryDenyWriteExecute"}
+// came back on every refreshed unit. ProtectClock=true, set up to 0.6.3,
+// filters adjtimex, so a refreshed unit that kept it never let the cpu probe
+// read clock synchronisation again.
+var retiredUnitDirectives = []string{"MemoryDenyWriteExecute", "ProtectClock"}
 
 // withPreservedDirectives carries operator-added [Service] directives from
 // the installed unit over to the refreshed one.
