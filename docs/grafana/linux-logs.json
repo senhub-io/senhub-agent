@@ -82,7 +82,7 @@
         {
           "refId": "A",
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" },
-          "expr": "service.name:~\"$service\" AND severity:~\"ERROR|FATAL\" | stats count() AS errors",
+          "expr": "service.name:~\"$service\" AND (severity_text:~\"ERROR|FATAL\" OR severity:~\"ERROR|FATAL\") | stats count() AS errors",
           "editorMode": "code",
           "queryType": "stats"
         }
@@ -100,7 +100,7 @@
         {
           "refId": "A",
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" },
-          "expr": "service.name:~\"$service\" AND severity:\"WARN\" | stats count() AS warnings",
+          "expr": "service.name:~\"$service\" AND (severity_text:\"WARN\" OR severity:\"WARN\") | stats count() AS warnings",
           "editorMode": "code",
           "queryType": "stats"
         }
@@ -126,7 +126,7 @@
         {
           "refId": "A",
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" },
-          "expr": "service.name:~\"$service\" AND severity:~\"$severity\" AND _msg:~\".*${search:raw}.*\"",
+          "expr": "service.name:~\"$service\" AND (severity_text:~\"$severity\" OR severity:~\"$severity\") AND _msg:~\".*${search:raw}.*\"",
           "editorMode": "code",
           "queryType": "instant",
           "maxLines": 500

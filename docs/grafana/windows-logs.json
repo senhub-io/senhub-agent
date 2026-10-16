@@ -56,7 +56,7 @@
       "type": "stat", "id": 11, "title": "Errors (range)",
       "gridPos": { "h": 4, "w": 8, "x": 8, "y": 1 },
       "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" },
-      "targets": [{ "refId": "A", "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" }, "expr": "service.name:~\"$service\" AND severity:~\"ERROR|FATAL\" | stats count() AS errors", "editorMode": "code", "queryType": "stats" }],
+      "targets": [{ "refId": "A", "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" }, "expr": "service.name:~\"$service\" AND (severity_text:~\"ERROR|FATAL\" OR severity:~\"ERROR|FATAL\") | stats count() AS errors", "editorMode": "code", "queryType": "stats" }],
       "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 50 }] } } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
     },
@@ -64,7 +64,7 @@
       "type": "stat", "id": 12, "title": "Warnings (range)",
       "gridPos": { "h": 4, "w": 8, "x": 16, "y": 1 },
       "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" },
-      "targets": [{ "refId": "A", "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" }, "expr": "service.name:~\"$service\" AND severity:\"WARN\" | stats count() AS warnings", "editorMode": "code", "queryType": "stats" }],
+      "targets": [{ "refId": "A", "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" }, "expr": "service.name:~\"$service\" AND (severity_text:\"WARN\" OR severity:\"WARN\") | stats count() AS warnings", "editorMode": "code", "queryType": "stats" }],
       "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 10 }] } } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value", "colorMode": "value" }
     },
@@ -73,7 +73,7 @@
       "type": "logs", "id": 20, "title": "Recent logs",
       "gridPos": { "h": 20, "w": 24, "x": 0, "y": 6 },
       "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" },
-      "targets": [{ "refId": "A", "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" }, "expr": "service.name:~\"$service\" AND severity:~\"$severity\" AND _msg:~\".*${search:raw}.*\"", "editorMode": "code", "queryType": "instant", "maxLines": 500 }],
+      "targets": [{ "refId": "A", "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" }, "expr": "service.name:~\"$service\" AND (severity_text:~\"$severity\" OR severity:~\"$severity\") AND _msg:~\".*${search:raw}.*\"", "editorMode": "code", "queryType": "instant", "maxLines": 500 }],
       "options": { "showTime": true, "showLabels": false, "showCommonLabels": false, "wrapLogMessage": true, "prettifyLogMessage": false, "enableLogDetails": true, "sortOrder": "Descending", "dedupStrategy": "none" }
     }
   ],

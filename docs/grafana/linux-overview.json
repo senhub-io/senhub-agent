@@ -312,7 +312,7 @@
         {
           "refId": "A",
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" },
-          "expr": "service.name:~\"$service\" AND severity:~\"ERROR|FATAL\"",
+          "expr": "service.name:~\"$service\" AND (severity_text:~\"ERROR|FATAL\" OR severity:~\"ERROR|FATAL\")",
           "editorMode": "code",
           "queryType": "instant",
           "maxLines": 200
