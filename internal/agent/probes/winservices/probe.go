@@ -299,7 +299,9 @@ func (p *WinServicesProbe) buildServiceDatapoints(s serviceState, ts time.Time, 
 
 	// A trigger-start service stops by design once its job is done. An alert
 	// rule reads series only, so the fact rides on the state series; it
-	// changes only when someone reconfigures the service's triggers.
+	// changes only when someone reconfigures the service's triggers. The
+	// entity attribute is the reference: this label is a copy for engines
+	// that cannot join the graph, and may lag it by one collection.
 	stateTags := serviceTags
 	if s.triggerStart != nil {
 		stateTags = append(append([]tags.Tag(nil), serviceTags...), tags.Tag{Key: "host.service.trigger_start", Value: strconv.FormatBool(*s.triggerStart)})
