@@ -17,27 +17,26 @@
 - name: Fragments this role wrote earlier
   when: senhub_agent_purge_stale | bool
   block:
-    - name: Find probes fragments with the marker
-      ansible.windows.win_find:
-        paths: "{{ senhub_agent_windows_config_dir }}\\probes.d"
-        patterns: "*.yaml"
-        contains: "{{ _senhub_agent_marker_regex }}"
-        use_regex: false
-      register: _senhub_agent_found_probes
-
-    - name: Find strategy fragments with the marker
-      ansible.windows.win_find:
-        paths: "{{ senhub_agent_windows_config_dir }}\\strategies.d"
-        patterns: "*.yaml"
-        contains: "{{ _senhub_agent_marker_regex }}"
-        use_regex: false
-      register: _senhub_agent_found_strategies
+    # win_find matches file names only; the marker is in the content.
+    - name: Fragments carrying the marker
+      ansible.windows.win_shell: |
+        $marker = '{{ _senhub_agent_marker }}'
+        foreach ($sub in 'probes.d', 'strategies.d') {
+          $dir = Join-Path '{{ senhub_agent_windows_config_dir }}' $sub
+          if (Test-Path -LiteralPath $dir) {
+            Get-ChildItem -LiteralPath $dir -Filter *.yaml -File |
+              Where-Object { Select-String -LiteralPath $_.FullName -SimpleMatch -Quiet -Pattern $marker } |
+              ForEach-Object { "$sub|$($_.Name)|$($_.FullName)" }
+          }
+        }
+      register: _senhub_agent_marked
+      changed_when: false
+      check_mode: false
 
     - name: Stale fragments
       ansible.builtin.set_fact:
         _senhub_agent_stale: >-
-          {{ (_senhub_agent_found_probes.files | rejectattr('filename', 'in', _senhub_agent_probe_files) | map(attribute='path') | list)
-           + (_senhub_agent_found_strategies.files | rejectattr('filename', 'in', _senhub_agent_strategy_files) | map(attribute='path') | list) }}
+          {% set out = [] %}{% for line in _senhub_agent_marked.stdout_lines %}{% set f = line.split('|', 2) %}{% if f | length == 3 and ((f[0] == 'probes.d' and f[1] not in _senhub_agent_probe_files) or (f[0] == 'strategies.d' and f[1] not in _senhub_agent_strategy_files)) %}{% set _ = out.append(f[2]) %}{% endif %}{% endfor %}{{ out }}
 
 - name: Stale list when purging is off
   ansible.builtin.set_fact:
