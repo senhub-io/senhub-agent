@@ -247,14 +247,15 @@ func dropOrphanEntities(entities []Entity, onOrphan func([]Entity)) (kept, dropp
 	return kept, dropped
 }
 
-// maxAnnouncedInterval is the largest liveness interval the consumer accepts.
-// A coarser cadence cannot be expressed as a single interval; clamping keeps
-// the entity publishable under a consumer-side ceiling.
-const maxAnnouncedInterval = 7 * 24 * time.Hour
+// consumerIntervalCeiling is the longest announced interval the consumer
+// accepts. A cadence beyond it is still announced as it is: shortening it
+// would make the consumer expire an entity that is fine, silently, while the
+// real value gets refused and counted there as a producer defect. The
+// detector reports it locally as well (OnCadenceBeyondCeiling).
+const consumerIntervalCeiling = 7 * 24 * time.Hour
 
 // stateEvents stamps entities into state events at instant ts with the given
-// liveness interval, widened by each entity's actual source cadence and
-// clamped to the consumer ceiling.
+// liveness interval, widened by each entity's actual source cadence.
 func stateEvents(entities []Entity, ts time.Time, interval time.Duration) []Event {
 	out := make([]Event, len(entities))
 	for i := range entities {
@@ -266,9 +267,6 @@ func stateEvents(entities []Entity, ts time.Time, interval time.Duration) []Even
 		announced := interval
 		if e.Cadence > announced {
 			announced = e.Cadence
-		}
-		if announced > maxAnnouncedInterval {
-			announced = maxAnnouncedInterval
 		}
 		out[i] = Event{Kind: EntityState, Entity: &e, Time: eventTime, Interval: announced}
 	}

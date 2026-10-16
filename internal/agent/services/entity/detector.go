@@ -77,8 +77,12 @@ type Detector struct {
 	now            func() time.Time
 	onOrphan       func([]Relation)
 	onOrphanEntity func([]Entity)
-	onConflict     func(AttributeConflict)
-	onMerge        func(Entity, int)
+	// onSlowCadence is told once per source and value about a cadence the
+	// consumer will refuse.
+	onSlowCadence func(cadence time.Duration)
+	warnedCadence map[uint64]time.Duration
+	onConflict    func(AttributeConflict)
+	onMerge       func(Entity, int)
 	// lastGood caches, per registered-source id, the most recent
 	// observation reported with ok=true, so a transient failure serves
 	// stale-but-real topology instead of an empty set (audit D3).
@@ -125,6 +129,14 @@ func (d *Detector) OnDuplicateMerged(fn func(Entity, int)) {
 // its logger.
 func (d *Detector) OnOrphanEntities(fn func([]Entity)) {
 	d.onOrphanEntity = fn
+}
+
+// OnCadenceBeyondCeiling registers a hook called when a source reads slower
+// than the consumer's longest accepted interval. The cadence is still
+// announced as it is; this only makes the misconfiguration visible here too.
+// Nil-safe.
+func (d *Detector) OnCadenceBeyondCeiling(fn func(cadence time.Duration)) {
+	d.onSlowCadence = fn
 }
 
 // Run emits the foundation once immediately, then on every interval tick,
@@ -265,6 +277,7 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 			}
 		}
 		o = withSourceCadence(o, r.src)
+		d.reportSlowCadence(r.id, r.src)
 		obs = obs.merge(o)
 	}
 	// Drop caches of unregistered sources so a stopped probe's topology
@@ -305,4 +318,25 @@ func markUnmonitored(reasons map[string]string, entities []Entity) {
 	for i := range entities {
 		reasons[entityKey(entities[i].Type, entities[i].ID)] = ReasonUnmonitored
 	}
+}
+
+// reportSlowCadence tells the hook about a source reading slower than the
+// consumer accepts, once per source and value.
+func (d *Detector) reportSlowCadence(id uint64, src Source) {
+	cs, ok := sourceAs[CadenceSource](src)
+	if !ok || d.onSlowCadence == nil {
+		return
+	}
+	c := cs.Cadence()
+	if c <= consumerIntervalCeiling {
+		return
+	}
+	if d.warnedCadence == nil {
+		d.warnedCadence = map[uint64]time.Duration{}
+	}
+	if d.warnedCadence[id] == c {
+		return
+	}
+	d.warnedCadence[id] = c
+	d.onSlowCadence(c)
 }
