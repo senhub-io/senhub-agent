@@ -133,9 +133,11 @@ func (t *Tracker) Forget() {
 }
 
 // stateHash renders the mutable content of a state event (attributes +
-// relationships + liveness interval) into a stable string, so unchanged
+// relationships + announced interval) into a stable string, so unchanged
 // heartbeats are recognizable. Identity is excluded — it is the map key.
-// ObservedAt is also excluded: a replayed fact must not count as a change.
+// ObservedAt is excluded: a replayed fact must not count as a change. The
+// announced interval is included: when it changes the consumer must learn
+// the new liveness deadline at once, not at the next heartbeat.
 func stateHash(ev Event) string {
 	if ev.Entity == nil {
 		return ""
