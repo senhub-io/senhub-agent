@@ -154,8 +154,8 @@ func TestDetectorClampsAnnouncedCadence(t *testing.T) {
 	if !ok {
 		t.Fatal("network.device state event not published")
 	}
-	if dev.Interval != maxAnnouncedInterval {
-		t.Fatalf("device interval = %s, want %s", dev.Interval, maxAnnouncedInterval)
+	if dev.Interval != 30*24*time.Hour {
+		t.Fatalf("device interval = %s, want the real 720h: never shortened below what the source reads", dev.Interval)
 	}
 }
 
@@ -183,5 +183,23 @@ func TestTrackerAnnouncedIntervalChangePublishesOnce(t *testing.T) {
 
 	if len(events) != 2 || events[1].Interval != 20*time.Minute {
 		t.Fatalf("got %d state events (%+v), want 2 with the second announcing 20m", len(events), events)
+	}
+}
+
+type slowSource struct{ cadence time.Duration }
+
+func (slowSource) Observe() (Observation, bool) { return Observation{}, true }
+func (s slowSource) Cadence() time.Duration     { return s.cadence }
+
+func TestSlowCadenceIsReportedOncePerValue(t *testing.T) {
+	var seen []time.Duration
+	d := &Detector{}
+	d.OnCadenceBeyondCeiling(func(c time.Duration) { seen = append(seen, c) })
+	month := 30 * 24 * time.Hour
+	d.reportSlowCadence(1, slowSource{month})
+	d.reportSlowCadence(1, slowSource{month})
+	d.reportSlowCadence(2, slowSource{time.Hour})
+	if len(seen) != 1 || seen[0] != month {
+		t.Fatalf("reported %v, want the 30-day cadence once and nothing for 1h", seen)
 	}
 }
