@@ -26,12 +26,12 @@ restrict to a subset.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:40df3e35dbc4aaca3727731a44b80223853b71376950d4a8cf6a68bc5e786a2a -->
+<!-- sha256:4b36c29d31400f667e97d3b1b590c75a017d8f80f2286f22b886e6ffad033fbd -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `services` | No | - | Service short names to monitor; empty means services configured for automatic start. Example: `wuauserv, Spooler` |
-| `detail` | No | `state` | Metrics detail: state emits only windows.service.state per service; full emits all winservices families |
+| `detail` | No | `state` | Metrics detail: state emits only host.service.running per service; full adds windows.service.state, status and start type |
 | `interval` | No | `30s` | Collection interval |
 
 <!-- schema:params:end -->
