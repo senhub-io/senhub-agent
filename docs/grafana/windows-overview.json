@@ -93,7 +93,7 @@
       "type": "logs", "id": 40, "title": "Recent ERROR/FATAL logs",
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 25 },
       "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" },
-      "targets": [{ "refId": "A", "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" }, "expr": "service.name:~\"$service\" AND severity:~\"ERROR|FATAL\"", "editorMode": "code", "queryType": "instant", "maxLines": 200 }],
+      "targets": [{ "refId": "A", "datasource": { "type": "victoriametrics-logs-datasource", "uid": "defqbr545b18gf" }, "expr": "service.name:~\"$service\" AND (severity_text:~\"ERROR|FATAL\" OR severity:~\"ERROR|FATAL\")", "editorMode": "code", "queryType": "instant", "maxLines": 200 }],
       "options": { "showTime": true, "showLabels": false, "showCommonLabels": false, "wrapLogMessage": true, "prettifyLogMessage": false, "enableLogDetails": true, "sortOrder": "Descending", "dedupStrategy": "none" }
     }
   ],
