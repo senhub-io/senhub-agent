@@ -247,12 +247,12 @@ func dropOrphanEntities(entities []Entity, onOrphan func([]Entity)) (kept, dropp
 	return kept, dropped
 }
 
-// consumerIntervalCeiling is the longest announced interval the consumer
-// accepts. A cadence beyond it is still announced as it is: shortening it
+// ConsumerIntervalCeiling is the longest announced interval the consumer
+// accepts (frozen on its side: it tells us before moving it). A cadence beyond it is still announced as it is: shortening it
 // would make the consumer expire an entity that is fine, silently, while the
 // real value gets refused and counted there as a producer defect. The
 // detector reports it locally as well (OnCadenceBeyondCeiling).
-const consumerIntervalCeiling = 7 * 24 * time.Hour
+const ConsumerIntervalCeiling = 7 * 24 * time.Hour
 
 // stateEvents stamps entities into state events at instant ts with the given
 // liveness interval, widened by each entity's actual source cadence.
