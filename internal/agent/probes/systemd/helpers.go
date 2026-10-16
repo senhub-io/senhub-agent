@@ -225,7 +225,7 @@ func buildDatapoints(u dbus.UnitStatus, ts time.Time, nRestarts *float64, hostID
 	baseTags := baseTagsForUnit(u, hostID, hostName)
 
 	points := []data_store.DataPoint{
-		{Name: hostservice.StateMetric, Value: float64(hostservice.FromSystemd(u.ActiveState)), Timestamp: ts, Tags: baseTags},
+		{Name: hostservice.RunningMetric, Value: hostservice.RunningSystemd(u.ActiveState), Timestamp: ts, Tags: baseTags},
 	}
 
 	if detail != systemdDetailFull {

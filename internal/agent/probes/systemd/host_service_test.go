@@ -28,8 +28,8 @@ func TestBuildHostServiceEntity(t *testing.T) {
 	if got := e.Attributes["host.service.manager"]; got != "systemd" {
 		t.Fatalf("entity manager = %v, want systemd", got)
 	}
-	if _, ok := e.Attributes["host.service.state"]; ok {
-		t.Fatal("the running state is a measurement (host.service.state series), not an entity attribute")
+	if _, ok := e.Attributes["host.service.running"]; ok {
+		t.Fatal("the running state is a measurement (host.service.running series), not an entity attribute")
 	}
 	if got := e.Attributes["host.service.start_mode"]; got != "enabled" {
 		t.Fatalf("entity start_mode = %v, want enabled", got)

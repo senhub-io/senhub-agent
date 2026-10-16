@@ -52,8 +52,8 @@ series per cycle.
 ## Operational notes
 
 - When `units` is empty, only the units systemd is supposed to start by itself are watched: `UnitFileState` enabled or enabled-runtime, among the included types. Name a static, disabled or masked unit in `units` to watch it.
-- Each watched unit is a `host.service` entity on the topology graph (identity `host.id` + `host.service.name`, the full unit name, so `nginx.service` and `nginx.socket` are two entities), linked to its host by `runs_on`, with `host.service.manager` (`systemd`) and `host.service.start_mode`. Whether it runs is a measurement, not a graph fact: `host.service.state` gives it on one scale for systemd and Windows (1 running, 0 stopped, 2 starting, 3 stopping, 4 failed, 5 paused, 6 other), with the same `host.id` and `host.service.name`. Agents before 0.6.4 published units as `service.instance`; the first start retires those with the reason `rekeyed` and links each new entity to its old one.
-- `detail: state` (the default) emits `host.service.state` alone, one series per watched unit; `detail: full` adds `systemd.unit.active_state`, `load_state`, `sub_state` and the restart counter. The probe is installed on every host, so its default stays at one series per unit.
+- Each watched unit is a `host.service` entity on the topology graph (identity `host.id` + `host.service.name`, the full unit name, so `nginx.service` and `nginx.socket` are two entities), linked to its host by `runs_on`, with `host.service.manager` (`systemd`) and `host.service.start_mode`. Whether it runs is a measurement, not a graph fact: `host.service.running` gives it as 1 or 0, the same series for systemd and Windows, with the same `host.id` and `host.service.name`. Agents before 0.6.4 published units as `service.instance`; the first start retires those with the reason `rekeyed` and links each new entity to its old one.
+- `detail: state` (the default) emits `host.service.running` alone, one series per watched unit; `detail: full` adds `systemd.unit.active_state`, `load_state`, `sub_state` and the restart counter. The probe is installed on every host, so its default stays at one series per unit.
 - Without `units`, the probe watches every loaded unit of the included
   types, except the units systemd creates for each user login and removes
   at logout (`run-user-*.mount`, `user@*.service`,
@@ -77,7 +77,7 @@ series' tags.
 
 | Metric | Name | PRTG channel | Unit | Description |
 |---|---|---|---|---|
-| `host.service.state` | `host.service.state` | Service {systemd.unit} State | # | State of a service the supervisor starts by itself, on one scale for systemd and Windows: 1 running, 0 stopped, 2 starting, 3 stopping, 4 failed, 5 paused, 6 other |
+| `host.service.running` | `host.service.running` | Service {systemd.unit} Running | # | 1 when the service runs, 0 when it does not (stopped, failed, starting, stopping or paused), the same series for systemd and Windows |
 | `systemd.unit.active_state` | `systemd.unit.active_state` | Systemd {systemd.unit} Active State | # | 1 when the unit active state is 'active', 0 otherwise |
 | `systemd.unit.sub_state` | `systemd.unit.sub_state` | Systemd {systemd.unit} Sub State | # | 1 when the unit sub state is 'running' or 'listening', 0 otherwise. The sub_state tag carries the raw sub state value. |
 | `systemd.unit.load_state` | `systemd.unit.load_state` | Systemd {systemd.unit} Load State | # | 1 when the unit load state is 'loaded', 0 otherwise (not-found, error, masked) |

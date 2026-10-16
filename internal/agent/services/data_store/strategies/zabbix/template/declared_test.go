@@ -158,7 +158,7 @@ func TestTheWindowsServicesTemplateRaisesAnAutomaticServiceNotRunning(t *testing
 	if !ok {
 		t.Fatal("no trigger for an automatic service that is not running")
 	}
-	for _, want := range []string{"host.service.state[", `"eq","1"`, "{#WINDOWS_SERVICE_NAME}"} {
+	for _, want := range []string{"host.service.running[", "{#WINDOWS_SERVICE_NAME}"} {
 		if !strings.Contains(tp.Expression, want) {
 			t.Errorf("expression %q lacks %q", tp.Expression, want)
 		}

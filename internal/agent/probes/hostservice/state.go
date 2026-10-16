@@ -1,69 +1,35 @@
 // Package hostservice holds what the probes of OS service supervisors share:
-// one state scale, so a systemd unit and a Windows service that are in the
-// same situation report the same value under the same series name.
+// one series, so a systemd unit and a Windows service that are in the same
+// situation report the same value under the same name.
 package hostservice
 
-// StateMetric is the series every supervisor probe emits per watched service.
-// The state is a measurement, not a graph attribute: a service that flaps
-// would otherwise write an entity event at each change, forever, and an alert
+// RunningMetric is the series every supervisor probe emits per watched
+// service: 1 when it runs, 0 otherwise. Whether a service runs is a
+// measurement, not a graph attribute: a service that flaps would otherwise
+// write an entity event at each change, forever, and an alert reading it
 // would run at the graph producer's cadence instead of the probe's.
-const StateMetric = "host.service.state"
+//
+// A boolean rather than a state scale: "running == 0" then catches every
+// way of not running, a failed service included, without a mapping table.
+// The detailed state stays in each probe's own series under detail: full.
+const RunningMetric = "host.service.running"
 
-// State values. Running is the only healthy value for a service the
-// supervisor is supposed to start by itself.
-const (
-	Stopped  = 0
-	Running  = 1
-	Starting = 2
-	Stopping = 3
-	Failed   = 4
-	Paused   = 5
-	Other    = 6
-)
-
-// FromSystemd maps a unit's ActiveState.
-func FromSystemd(activeState string) int {
+// RunningSystemd reports whether a unit's ActiveState counts as running.
+func RunningSystemd(activeState string) float64 {
 	switch activeState {
 	case "active", "reloading", "refreshing":
-		return Running
-	case "inactive":
-		return Stopped
-	case "activating":
-		return Starting
-	case "deactivating":
-		return Stopping
-	case "failed":
-		return Failed
-	default:
-		return Other
+		return 1
 	}
+	return 0
 }
 
-// Windows SCM states (SERVICE_STATUS dwCurrentState).
-const (
-	scmStopped         = 1
-	scmStartPending    = 2
-	scmStopPending     = 3
-	scmRunning         = 4
-	scmContinuePending = 5
-	scmPausePending    = 6
-	scmPaused          = 7
-)
+// scmRunning is SERVICE_RUNNING (SERVICE_STATUS dwCurrentState).
+const scmRunning = 4
 
-// FromWindows maps a service's SCM current state.
-func FromWindows(scmState int) int {
-	switch scmState {
-	case scmRunning:
-		return Running
-	case scmStopped:
-		return Stopped
-	case scmStartPending, scmContinuePending:
-		return Starting
-	case scmStopPending, scmPausePending:
-		return Stopping
-	case scmPaused:
-		return Paused
-	default:
-		return Other
+// RunningWindows reports whether a service's SCM current state is running.
+func RunningWindows(scmState int) float64 {
+	if scmState == scmRunning {
+		return 1
 	}
+	return 0
 }
