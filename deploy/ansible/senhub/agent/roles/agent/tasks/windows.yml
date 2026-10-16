@@ -128,3 +128,5 @@
     name: "{{ senhub_agent_windows_service_name }}"
     start_mode: "{{ 'auto' if senhub_agent_service_enabled | bool else 'disabled' }}"
     state: "{{ senhub_agent_service_state }}"
+  # Under --check on a host without the agent there is no service yet.
+  when: not (ansible_check_mode and not _senhub_agent_bin_file.stat.exists)
