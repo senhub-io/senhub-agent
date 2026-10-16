@@ -89,6 +89,12 @@ func seccompMode(statusPath string) string {
 }
 
 func runAdjtimexChild() error {
+	// A binary whose main does not start with RunAdjtimexChild (a test
+	// binary of another package) reaches here again in its child; never
+	// spawn a grandchild.
+	if os.Getenv(adjtimexChildEnv) == "1" {
+		return errors.New("adjtimex child re-entered the probe: this binary does not call RunAdjtimexChild first")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), adjtimexChildTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "/proc/self/exe") // #nosec G204 - this binary, no arguments
