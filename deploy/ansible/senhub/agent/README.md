@@ -58,9 +58,11 @@ senhub_agent_license: "{{ vault_senhub_licence }}"
 ## Behaviour worth knowing
 
 - The configuration is built in a scratch copy of the live directory and
-  checked there. A check that exits 2 (or 1, unless
-  `senhub_agent_check_allow_warnings` is true) fails the play and changes
-  nothing on the host.
+  checked there. A check that exits 2 (errors: the agent would not load it)
+  fails the play and changes nothing on the host. A check that exits 1
+  (warnings: the agent would load it, but a setting has no effect, for
+  instance) fails the play too unless `senhub_agent_check_allow_warnings` is
+  true; then the warnings are shown and the configuration is applied.
 - The agent loads changes to `agent.yaml`, `probes.d/` and `strategies.d/`
   by itself, so the role restarts the service only for a new licence (read
   at start), a package switch, or when `senhub_agent_restart_on_config_change`

@@ -134,10 +134,16 @@
         _senhub_agent_verdict: "{{ _senhub_agent_check.stdout | from_json }}"
       when: _senhub_agent_check.stdout is match('(?s)^\\s*\\{')
 
-    - name: Refuse a configuration the agent would not load
+    # Exit 1 is a warning: the agent would load the configuration. The role
+    # still refuses it unless senhub_agent_check_allow_warnings is true,
+    # because a warning is usually a setting that does nothing.
+    - name: Refuse a configuration with errors, or with warnings unless they are allowed
       ansible.builtin.fail:
         msg: >-
-          senhub-agent config check exited {{ _senhub_agent_check.rc }}; nothing was changed on the host.
+          senhub-agent config check exited {{ _senhub_agent_check.rc }}
+          ({{ 'warnings: the agent would load it; set senhub_agent_check_allow_warnings to accept them'
+              if _senhub_agent_check.rc == 1 else 'errors: the agent would not load it' }});
+          nothing was changed on the host.
           {{ (_senhub_agent_verdict.findings | selectattr('level', 'in', ['error', 'warn']) | map(attribute='message') | list | to_nice_yaml)
              if _senhub_agent_verdict is defined and _senhub_agent_verdict.findings is defined
              else (_senhub_agent_check.stdout ~ _senhub_agent_check.stderr) }}
@@ -145,6 +151,14 @@
         _senhub_agent_check.rc == 2 or
         _senhub_agent_check.rc not in [0, 1] or
         (_senhub_agent_check.rc == 1 and not (senhub_agent_check_allow_warnings | bool))
+
+    - name: Warnings accepted
+      ansible.builtin.debug:
+        msg: >-
+          {{ (_senhub_agent_verdict.findings | selectattr('level', 'eq', 'warn') | map(attribute='message') | list)
+             if _senhub_agent_verdict is defined and _senhub_agent_verdict.findings is defined
+             else (_senhub_agent_check.stdout ~ _senhub_agent_check.stderr) }}
+      when: _senhub_agent_check.rc == 1 and senhub_agent_check_allow_warnings | bool
 
     - name: Probes fragment in place
       ansible.windows.win_copy:
