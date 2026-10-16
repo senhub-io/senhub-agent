@@ -98,10 +98,10 @@ discovery_filters:
 
 triggers:
   - name: "Service {#WINDOWS_SERVICE_NAME} is set to start automatically and is not running"
-    expression: "max({{windows.service.state}},{$SENHUB.WINSERVICES.GRACE})=0 and (last({{windows.service.start_type}})=2 or last({{windows.service.start_type}})=5)"
+    expression: "max({{windows.service.state}},{$SENHUB.WINSERVICES.GRACE})=0"
     priority: AVERAGE
     scope: availability
-    description: "Raised when a service configured to start automatically (delayed or not) has not been running for the whole grace period. Services Windows starts on demand, or per session, are kept out of discovery by {$SENHUB.WINSERVICES.NOT_MATCHES}."
+    description: "Raised when a watched service has not been running for the whole grace period. With no list configured the probe watches only the services set to start automatically (delayed or not). Services Windows starts on demand, or per session, are kept out of discovery by {$SENHUB.WINSERVICES.NOT_MATCHES}."
     macros:
       - name: "{$SENHUB.WINSERVICES.GRACE}"
         value: "5m"

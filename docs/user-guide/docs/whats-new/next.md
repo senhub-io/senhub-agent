@@ -41,6 +41,7 @@
 
 ## Fixes
 
+- **The Zabbix rule for an automatic Windows service that is not running fires again.** It also required `windows.service.start_type`, which the default `detail: state` no longer emits; the probe already watches only automatic services by default, so the rule now reads the state alone.
 - **`senhub-agent update` follows `include_beta`.** Without `--config-path` the command read `./agent-config.yaml` and so never saw the beta channel the daemon announced; it now reads the same agent.yaml as the agent.
 - **`senhub-agent update` leaves package installs to the package manager.** On a host installed from the .deb or .rpm, the command now refuses and says to use apt or dnf, instead of replacing the binary behind the package manager, which then recorded a version that no longer ran.
 - **The agent no longer dies under its systemd unit when it reads the clock.** The clock synchronisation metrics read the kernel state with `adjtimex()`, which the unit's system call filter refused by killing the process. The unit now allows that call and makes any other refused call fail with an error instead of stopping the agent. It no longer sets `ProtectClock`, which blocks every clock call including that read; the clock stays unwritable because the unit grants no capability.
