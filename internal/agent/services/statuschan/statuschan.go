@@ -89,10 +89,25 @@ func (s *Service) Shutdown(ctx context.Context) error {
 	if ln == nil {
 		return nil
 	}
-	_ = ln.Close()
-	select {
-	case <-exited:
-	case <-ctx.Done():
+	// go-winio's pipe listener Close can wait forever: when closing aborts
+	// a pending connect with an error other than ERROR_FILE_CLOSED, its
+	// listener routine goes back to waiting for a close that was already
+	// sent (go-winio v0.6.2 pipe.go makeConnectedServerPipe). Seen hanging
+	// the test package on the Windows runner; the agent's own shutdown
+	// would hang the same way. Close runs aside, bounded by ctx.
+	closed := make(chan struct{})
+	go func() {
+		_ = ln.Close()
+		close(closed)
+	}()
+	for _, done := range []chan struct{}{closed, exited} {
+		select {
+		case <-done:
+		case <-ctx.Done():
+			s.logger.Warn().Msg("Local status channel did not close before the shutdown deadline")
+			cleanup(bound)
+			return nil
+		}
 	}
 	cleanup(bound)
 	return nil
