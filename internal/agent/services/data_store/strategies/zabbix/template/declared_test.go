@@ -159,6 +159,9 @@ func TestTheWindowsServicesTemplateRaisesAnAutomaticServiceNotRunning(t *testing
 		t.Fatal("no trigger for an automatic service that is not running")
 	}
 	for _, want := range []string{"host.service.running[", "{#WINDOWS_SERVICE_NAME}"} {
+		if strings.Contains(tp.Expression, "start_type") {
+			t.Errorf("expression %q reads start_type, which the default detail does not emit", tp.Expression)
+		}
 		if !strings.Contains(tp.Expression, want) {
 			t.Errorf("expression %q lacks %q", tp.Expression, want)
 		}

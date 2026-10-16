@@ -36,7 +36,13 @@ func startTestService(t *testing.T, dir string) *Service {
 	if err := svc.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = svc.Shutdown(context.Background()) })
+	t.Cleanup(func() {
+		// Bounded: on the Windows runner the pipe's accept loop has been seen
+		// not to exit on Close, and an unbounded wait hung the whole package.
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = svc.Shutdown(ctx)
+	})
 	return svc
 }
 
