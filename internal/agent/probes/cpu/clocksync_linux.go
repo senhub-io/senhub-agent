@@ -17,14 +17,32 @@ type linuxClockSync struct {
 	source         string
 	sourceCached   bool
 	sourceCachedAt time.Time
+	// survivable is decided once: the unit's filter cannot change under a
+	// running process.
+	survivable func() error
+	checked    bool
+	guardErr   error
 }
 
 func newClockSync() func() (clockSync, error) {
-	s := &linuxClockSync{root: "/"}
+	s := &linuxClockSync{
+		root: "/",
+		survivable: func() error {
+			return adjtimexSurvivable("/proc/self/status", runAdjtimexChild)
+		},
+	}
 	return s.read
 }
 
 func (s *linuxClockSync) read() (clockSync, error) {
+	if !s.checked {
+		s.guardErr = s.survivable()
+		s.checked = true
+	}
+	if s.guardErr != nil {
+		return clockSync{}, s.guardErr
+	}
+
 	if !s.sourceCached || time.Since(s.sourceCachedAt) > clockSourceCacheTTL {
 		s.source = detectClockSource(s.root)
 		s.sourceCachedAt = time.Now()
