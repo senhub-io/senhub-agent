@@ -19,6 +19,13 @@
   ansible.builtin.set_fact:
     _senhub_agent_swap: "{{ _senhub_agent_other_package in ansible_facts['packages'] and _senhub_agent_package not in ansible_facts['packages'] }}"
 
+- name: Configuration checked before the package replaces an agent installed without it
+  ansible.builtin.include_tasks: preflight_linux.yml
+  when:
+    - not ansible_check_mode
+    - _senhub_agent_package not in ansible_facts['packages']
+    - _senhub_agent_other_package not in ansible_facts['packages']
+
 - name: Switch edition (RHEL family)
   ansible.builtin.command: "dnf -y swap {{ _senhub_agent_other_package }} {{ _senhub_agent_package }}"
   when: _senhub_agent_swap | bool and ansible_facts['os_family'] == 'RedHat'
