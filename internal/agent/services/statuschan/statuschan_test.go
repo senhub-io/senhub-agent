@@ -173,3 +173,36 @@ func TestClientInputIsNeverRead(t *testing.T) {
 		t.Fatalf("the agent answers regardless of what was sent: %v", err)
 	}
 }
+
+// stuckListener stands for go-winio's pipe listener whose Close never
+// returns once a pending connect was aborted with an unexpected error.
+type stuckListener struct {
+	net.Listener
+	release chan struct{}
+}
+
+func (l stuckListener) Close() error {
+	<-l.release
+	return nil
+}
+
+func TestShutdownIsBoundedWhenCloseHangs(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	svc := New(logger.NewLogger(&cliArgs.ParsedArgs{}), filepath.Join(t.TempDir(), "agent.yaml"), "9.9.9", "abcdef123456")
+	svc.listener = stuckListener{release: release}
+	svc.loopExited = make(chan struct{})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		_ = svc.Shutdown(ctx)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Shutdown waited on a listener Close that never returns")
+	}
+}
