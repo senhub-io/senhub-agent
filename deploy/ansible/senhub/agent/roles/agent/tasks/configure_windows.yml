@@ -3,7 +3,7 @@
 # with `config check --json`, then copy it over the live files.
 
 - name: Current agent.yaml
-  ansible.windows.win_slurp:
+  ansible.builtin.slurp:
     src: "{{ senhub_agent_windows_config_dir }}\\agent.yaml"
   register: _senhub_agent_yaml
   no_log: "{{ senhub_agent_no_log }}"
@@ -44,6 +44,10 @@
     _senhub_agent_stale: []
   when: not (senhub_agent_purge_stale | bool)
 
+# Everything written to the scratch copy, and the check itself, also runs
+# under --check: the copy is thrown away, and a check run then reports
+# what the real run would change in the live files and what the agent
+# would refuse.
 - name: Build, check and apply the configuration
   block:
     - name: Scratch directory
@@ -52,11 +56,13 @@
         prefix: senhub-agent-stage.
       register: _senhub_agent_stage
       changed_when: false
+      check_mode: false
 
     - name: Copy of the live configuration
       ansible.windows.win_shell: >-
         Copy-Item -Path '{{ senhub_agent_windows_config_dir }}\*' -Destination '{{ _senhub_agent_stage.path }}' -Recurse -Force
       changed_when: false
+      check_mode: false
 
     - name: Probes fragment
       ansible.windows.win_template:
@@ -64,6 +70,7 @@
         dest: "{{ _senhub_agent_stage.path }}\\probes.d\\{{ senhub_agent_probes_file }}"
       when: senhub_agent_probes | length > 0
       changed_when: false
+      check_mode: false
       diff: false
       no_log: "{{ senhub_agent_no_log }}"
 
@@ -75,6 +82,7 @@
       loop_control:
         label: "{{ item.key }}"
       changed_when: false
+      check_mode: false
       diff: false
       no_log: "{{ senhub_agent_no_log }}"
 
@@ -84,6 +92,7 @@
         dest: "{{ _senhub_agent_stage.path }}\\agent.yaml"
       when: _senhub_agent_extra_settings | length > 0 and senhub_agent_merged_settings != _senhub_agent_yaml_current
       changed_when: false
+      check_mode: false
       diff: false
       no_log: "{{ senhub_agent_no_log }}"
 
@@ -93,6 +102,7 @@
         dest: "{{ _senhub_agent_stage.path }}\\license.jwt"
       when: senhub_agent_license | length > 0 or senhub_agent_license_src | length > 0
       changed_when: false
+      check_mode: false
       diff: false
       no_log: "{{ senhub_agent_no_log }}"
 
@@ -102,6 +112,7 @@
         state: absent
       loop: "{{ _senhub_agent_stale }}"
       changed_when: false
+      check_mode: false
 
     - name: Remove the packaged probes from the copy
       ansible.windows.win_file:
@@ -109,11 +120,13 @@
         state: absent
       when: senhub_agent_remove_default_probes | bool
       changed_when: false
+      check_mode: false
 
     - name: Check the configuration
       ansible.windows.win_command: '"{{ senhub_agent_windows_bin }}" config check --json "{{ _senhub_agent_stage.path }}\agent.yaml"'
       register: _senhub_agent_check
       changed_when: false
+      check_mode: false
       failed_when: false
 
     - name: Read the verdict
@@ -195,3 +208,4 @@
         state: absent
       when: _senhub_agent_stage.path is defined
       changed_when: false
+      check_mode: false
