@@ -7,6 +7,7 @@
       Select-Object -First 1 -ExpandProperty PSChildName
   register: _senhub_agent_product
   changed_when: false
+  check_mode: false
 
 - name: Uninstall the MSI
   ansible.windows.win_package:
