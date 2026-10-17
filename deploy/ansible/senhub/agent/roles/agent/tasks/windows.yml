@@ -1,6 +1,6 @@
 ---
-# Written against the documented MSI and release manifest; not yet run on a
-# Windows host.
+# Written against the documented MSI and release manifest. The
+# configuration path has run on a Windows host; the MSI install below not yet.
 - name: Manifest address
   ansible.builtin.set_fact:
     _senhub_agent_manifest_url: >-

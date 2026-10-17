@@ -9,7 +9,7 @@ writes its multi-file configuration and checks that configuration with
 | Debian, Ubuntu | Signed APT repository at `packages.senhub.io` |
 | RHEL, Rocky, AlmaLinux, Fedora | Signed YUM/DNF repository |
 | openSUSE, SLES | Signed Zypper repository (written, not yet run) |
-| Windows | MSI found through the release manifest, SHA-256 checked (written, not yet run) |
+| Windows | MSI found through the release manifest, SHA-256 checked (configuration run on a Windows host; the MSI install itself not yet) |
 
 The user guide page is `docs/user-guide/docs/ansible.md` of the agent's
 repository, published as "Deploying with Ansible".
