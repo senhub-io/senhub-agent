@@ -64,16 +64,22 @@ linters:
       #     path is what can fail, and it is checked; a failed Close on a
       #     drained body has nothing the caller can do.
       #   - os.Remove of a temporary file already superseded.
-      #   - fmt.Fprintf to stdout/stderr, where a failure means the
-      #     terminal is gone and the message is moot.
+      #   - fmt.Fprint / Fprintf / Fprintln to stdout/stderr, where a
+      #     failure means the terminal is gone and the message is moot.
+      #   - Close on a Windows registry key or a debug/pe file opened
+      #     read-only: the handle is released on process exit anyway, and
+      #     the values were already read (and their errors checked).
       exclude-functions:
         - (io.Closer).Close
         - (*database/sql.Rows).Close
         - (*os.File).Close
         - (net.Conn).Close
         - os.Remove
+        - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln
+        - (golang.org/x/sys/windows/registry.Key).Close
+        - (*debug/pe.File).Close
 
   exclusions:
     rules:

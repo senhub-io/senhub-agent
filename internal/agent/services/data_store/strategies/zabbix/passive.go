@@ -183,7 +183,9 @@ func (p *passiveListener) addr() string {
 
 func (p *passiveListener) stop() {
 	if p.ln != nil {
-		p.ln.Close()
+		if err := p.ln.Close(); err != nil {
+			p.logger.Warn().Err(err).Msg("Passive listener close failed")
+		}
 	}
 	p.wg.Wait()
 }
