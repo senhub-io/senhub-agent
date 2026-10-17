@@ -91,6 +91,7 @@ func TestProbeUpdateKeepsWorkingWhenARequiredSecretIsStored(t *testing.T) {
 	spec.Register(spec.Probe{Type: "pgtest", DisplayName: "PG test", Params: []spec.ParamSpec{
 		{Key: "host", Kind: spec.KindString, Required: true},
 		{Key: "password", Kind: spec.KindString, Required: true, Secret: true},
+		{Key: "interval", Kind: spec.KindInt},
 	}})
 	router, dir := newOutputsTestRouter(t)
 	base := "/api/" + testAdminKey
@@ -109,21 +110,21 @@ func TestProbeUpdateKeepsWorkingWhenARequiredSecretIsStored(t *testing.T) {
 	// The form re-sends everything but the stored password.
 	code, resp = doJSON(t, router, "PUT", base+"/config/probes/pg", map[string]interface{}{
 		"name": "pg", "type": "pgtest", "params": map[string]interface{}{
-			"host": "db2",
+			"host": "db1", "interval": 30,
 		},
 	})
 	if code != 200 {
 		t.Fatalf("a stored required secret must not block the edit: %d %v", code, resp)
 	}
 	raw, _ = os.ReadFile(filepath.Join(dir, "probes.d", "50-pg.yaml"))
-	if !strings.Contains(string(raw), "db2") || !strings.Contains(string(raw), "${secret:pg.password}") {
+	if !strings.Contains(string(raw), "interval: 30") || !strings.Contains(string(raw), "${secret:pg.password}") {
 		t.Errorf("the edit must land and the stored password stay referenced:\n%s", raw)
 	}
 	// Removing it explicitly is a different thing: the schema says the
 	// probe cannot run without it, so that must be refused.
 	code, _ = doJSON(t, router, "PUT", base+"/config/probes/pg", map[string]interface{}{
 		"name": "pg", "type": "pgtest", "params": map[string]interface{}{
-			"host": "db2", "password": nil,
+			"host": "db1", "password": nil,
 		},
 	})
 	if code != 400 {
@@ -139,6 +140,7 @@ func TestProbeUpdateGivesTheProbeCheckerTheStoredValues(t *testing.T) {
 	spec.Register(spec.Probe{Type: "pgcheck", DisplayName: "PG check", Params: []spec.ParamSpec{
 		{Key: "host", Kind: spec.KindString, Required: true},
 		{Key: "password", Kind: spec.KindString, Required: true, Secret: true},
+		{Key: "interval", Kind: spec.KindInt},
 	}})
 	var seen map[string]interface{}
 	ProbeChecker = func(_ string, params map[string]interface{}) ([]ProbeIssue, error) {
@@ -158,7 +160,7 @@ func TestProbeUpdateGivesTheProbeCheckerTheStoredValues(t *testing.T) {
 		t.Fatalf("create: %d %v", code, resp)
 	}
 	code, resp := doJSON(t, router, "PUT", base+"/config/probes/pgc", map[string]interface{}{
-		"name": "pgc", "type": "pgcheck", "params": map[string]interface{}{"host": "db2"},
+		"name": "pgc", "type": "pgcheck", "params": map[string]interface{}{"host": "db1", "interval": 30},
 	})
 	if code != 200 {
 		t.Fatalf("the probe's validator must see the stored password: %d %v", code, resp)

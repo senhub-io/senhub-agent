@@ -264,21 +264,38 @@ func isEmptyValue(v interface{}) bool {
 	return false
 }
 
+// credentialsStayWithDestination refuses a request that moves the
+// destination of something the file holds credentials for without
+// carrying those credentials itself. A credential stored for one address is
+// never sent to another on the strength of a form that merely left it
+// blank.
+func credentialsStayWithDestination(params []spec.ParamSpec, secretPaths []string, stored, incoming map[string]interface{}) error {
+	if stored == nil {
+		return nil
+	}
+	moved, changed := changedDestination(spec.DestinationPaths(params), stored, incoming)
+	if !changed {
+		return nil
+	}
+	if missing := storedSecretsNotResent(secretPaths, stored, incoming); len(missing) > 0 {
+		return fmt.Errorf("%s differs from the stored configuration, so the stored credentials (%s) are not used for it; send them with the request", moved, strings.Join(missing, ", "))
+	}
+	return nil
+}
+
 // withStoredCredentials returns the parameters to test with: the request
 // completed with the secrets the file holds, unless the request moves the
-// destination. A credential stored for one address is never sent to
-// another on the strength of a form that merely left it blank, so a moved
-// destination takes the credentials from the request or fails.
+// destination, in which case the credentials come from the request or the
+// call fails.
 func withStoredCredentials(params []spec.ParamSpec, secretPaths []string, stored, incoming map[string]interface{}) (map[string]interface{}, error) {
 	if stored == nil {
 		return incoming, nil
 	}
-	moved, changed := changedDestination(spec.DestinationPaths(params), stored, incoming)
-	if !changed {
-		return configuration.KeepStoredValues(stored, incoming, secretPaths), nil
+	if err := credentialsStayWithDestination(params, secretPaths, stored, incoming); err != nil {
+		return nil, err
 	}
-	if missing := storedSecretsNotResent(secretPaths, stored, incoming); len(missing) > 0 {
-		return nil, fmt.Errorf("%s differs from the stored configuration, so the stored credentials (%s) are not used for this test; send them with the request", moved, strings.Join(missing, ", "))
+	if _, changed := changedDestination(spec.DestinationPaths(params), stored, incoming); changed {
+		return incoming, nil
 	}
-	return incoming, nil
+	return configuration.KeepStoredValues(stored, incoming, secretPaths), nil
 }
