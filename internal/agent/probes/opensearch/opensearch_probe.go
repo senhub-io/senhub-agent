@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/subcollect"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -37,6 +38,7 @@ type opensearchProbe struct {
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
 	entitySrc    *opensearchEntitySource
+	failures     subcollect.Tracker
 }
 
 type osConfig struct {
@@ -149,7 +151,7 @@ func (p *opensearchProbe) Collect() ([]data_store.DataPoint, error) {
 
 	health, err := p.fetchClusterHealth()
 	if err != nil {
-		p.moduleLogger.Warn().Err(err).Msg("opensearch cluster health fetch failed")
+		p.failures.Failed(p.moduleLogger, subcollect.Warn, "cluster_health", err, "opensearch cluster health fetch failed")
 		if p.entitySrc != nil {
 			p.entitySrc.setReachable(false, "")
 		}
@@ -162,6 +164,8 @@ func (p *opensearchProbe) Collect() ([]data_store.DataPoint, error) {
 		points = append(points, newCheckResultPoint(err, baseTags, now))
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
+
+	p.failures.Succeeded(p.moduleLogger, "cluster_health", "opensearch cluster health fetch recovered")
 
 	// Cluster is reachable. Lazily pin the cluster_uuid on the first successful
 	// cycle (no-op on subsequent cycles once pinned). The id is not in the
@@ -184,7 +188,7 @@ func (p *opensearchProbe) Collect() ([]data_store.DataPoint, error) {
 
 	nodeStats, err := p.fetchNodeStats()
 	if err != nil {
-		p.moduleLogger.Warn().Err(err).Msg("opensearch node stats fetch failed")
+		p.failures.Failed(p.moduleLogger, subcollect.Warn, "node_stats", err, "opensearch node stats fetch failed")
 		// Cluster is reachable even though node stats failed; mark up without version.
 		if p.entitySrc != nil {
 			p.entitySrc.setReachable(true, "")
@@ -192,6 +196,8 @@ func (p *opensearchProbe) Collect() ([]data_store.DataPoint, error) {
 		points = append(points, newCheckResultPoint(err, baseTags, now))
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
+
+	p.failures.Succeeded(p.moduleLogger, "node_stats", "opensearch node stats fetch recovered")
 
 	// Extract the version from the first node in the response (all nodes in a
 	// single-node or /_nodes/_local/stats response share the same version).
