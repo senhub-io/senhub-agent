@@ -354,15 +354,23 @@ func (p *TomcatProbe) collectThreadPool(ctx context.Context, now time.Time) []da
 		if err != nil {
 			continue
 		}
-		busy, _ := p.client.readInt64(ctx, mbean, "currentThreadsBusy")
-		max, _ := p.client.readInt64(ctx, mbean, "maxThreads")
+		busy, busyErr := p.client.readInt64(ctx, mbean, "currentThreadsBusy")
+		max, maxErr := p.client.readInt64(ctx, mbean, "maxThreads")
 
 		threadTags := []tags.Tag{connTag, {Key: "metric_type", Value: "threads"}}
 		points = append(points,
 			data_store.DataPoint{Name: "tomcat.threads.current", Value: float64(current), Timestamp: now, Tags: threadTags},
-			data_store.DataPoint{Name: "tomcat.threads.busy", Value: float64(busy), Timestamp: now, Tags: threadTags},
-			data_store.DataPoint{Name: "tomcat.threads.max", Value: float64(max), Timestamp: now, Tags: threadTags},
 		)
+		if busyErr != nil {
+			p.moduleLogger.Debug().Err(busyErr).Str("connector", connector).Msg("tomcat: skipping threads.busy, read failed")
+		} else {
+			points = append(points, data_store.DataPoint{Name: "tomcat.threads.busy", Value: float64(busy), Timestamp: now, Tags: threadTags})
+		}
+		if maxErr != nil {
+			p.moduleLogger.Debug().Err(maxErr).Str("connector", connector).Msg("tomcat: skipping threads.max, read failed")
+		} else {
+			points = append(points, data_store.DataPoint{Name: "tomcat.threads.max", Value: float64(max), Timestamp: now, Tags: threadTags})
+		}
 	}
 	return points
 }
