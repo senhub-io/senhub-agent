@@ -8,7 +8,7 @@ import (
 )
 
 func TestGuessField(t *testing.T) {
-	spec.Register(spec.Probe{Type: "hint_probe", DisplayName: "x", Params: []spec.ParamSpec{
+	registerProbeSpecOnce(spec.Probe{Type: "hint_probe", DisplayName: "x", Params: []spec.ParamSpec{
 		{Key: "host", Kind: spec.KindString},
 		{Key: "port", Kind: spec.KindInt},
 		{Key: "username", Kind: spec.KindString},
