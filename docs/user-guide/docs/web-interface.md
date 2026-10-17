@@ -61,6 +61,45 @@ pollers are unaffected either way. If the key is added while the agent runs, the
 
 The header of every page shows the host name, the agent's state, its version and its uptime, so you can see that the agent runs without leaving the page you are on. The menu has five entries: Overview, Probes, Outputs, Settings and Docs. Docs opens this documentation on [agent.senhub.io](https://agent.senhub.io/docs); the API reference embedded in the agent remains available at `/web/{admin-key}/docs`.
 
+## Locking the console
+
+The administration key can change anything the console can. Where the
+configuration is managed elsewhere (Ansible, a deployment pipeline, a
+fleet manager), you can take that away from the console while keeping it
+for reading. Two settings of the `http` output do it, in
+`strategies.d/00-http.yaml`:
+
+```yaml
+http:
+  console:
+    read_only: false    # true: the console and its API change nothing
+    allow_exec: true    # false: no write may make the agent run a program
+```
+
+Both defaults are the behaviour of earlier versions.
+
+| Setting | Effect |
+|---|---|
+| `read_only: true` | Every route that changes the agent answers `403` with the code `console_read_only`: probe create, update and delete, output create, update and delete, the settings (port, bind address, licence), the governance block, log levels and the cache clear. Reading stays open, and so does checking a configuration against its schema. The pages hide their Save, Add, Enable and Delete controls and show a note saying why. |
+| `allow_exec: false` | Writes work as usual except those that make the agent run a program: a probe of type `exec`, and a program path such as `smartctl_path` of `smart`, `ipmitool_path` of `ipmi`, `chronyc_path`, `varnishstat_path` or `nvidia_smi_path` that differs from its default. A path the file already sets stays in place: you can edit the rest of that probe, not the path. The connectivity and metric tests of such a probe are refused too, because they start it. A refused write answers `403` and says which setting. |
+
+A read-only console also refuses to start a probe the caller describes,
+since that is how a program path would otherwise be reached.
+
+The `console` block can only be set in the file. The console and its API
+refuse to change it: a request that rewrites the `http` output with a
+different block answers `403` (`console_policy_file_only`), and one that
+leaves it out keeps what the file holds. Removing the block from the file
+restores the defaults at the next reload. A block that cannot be read, a
+misspelt key or a value that is not `true` or `false`, leaves the console
+read-only until it is corrected, and `senhub-agent config check` reports it
+as an error.
+
+`senhub-agent config check` prints the effective mode (`Console mode:
+full`, `no-exec` or `read-only`), and `senhub-agent doctor` repeats it as
+`config.console`. The running agent also reports it in `console` of
+`/api/{key}/info/system`.
+
 ## Overview
 
 The Overview is the landing page.
