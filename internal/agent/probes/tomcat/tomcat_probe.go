@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/httpclient"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -83,11 +84,11 @@ func NewTomcatProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		cfg.InstanceName = v
 	}
 
-	transport := &http.Transport{}
-	httpClient := &http.Client{
-		Timeout:   cfg.Timeout,
-		Transport: transport,
+	httpClient, err := httpclient.NewClient(httpclient.Options{Timeout: cfg.Timeout, DisableProxy: true})
+	if err != nil {
+		return nil, fmt.Errorf("building HTTP client: %w", err)
 	}
+	transport := httpClient.Transport
 
 	// Wrap transport with BasicAuth if credentials are configured.
 	if cfg.Username != "" {
