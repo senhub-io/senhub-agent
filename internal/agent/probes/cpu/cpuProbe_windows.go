@@ -29,60 +29,54 @@ var instanceFilters = struct {
 	Exclude: []string{}, // List of instances to exclude
 }
 
-// MetricDefinition defines a performance counter with its path and instance
-type MetricDefinition struct {
-	path     string
-	instance string
-}
-
 // Performance counters definition
-var counterPaths = map[string]MetricDefinition{
+var counterPaths = map[string]pdh.CounterDef{
 	"processor_time": {
-		path:     "\\Processor\\% Processor Time",
-		instance: "*",
+		Path:     "\\Processor\\% Processor Time",
+		Instance: "*",
 	},
 	"user_time": {
-		path:     "\\Processor\\% User Time",
-		instance: "*",
+		Path:     "\\Processor\\% User Time",
+		Instance: "*",
 	},
 	"privileged_time": {
-		path:     "\\Processor\\% Privileged Time",
-		instance: "*",
+		Path:     "\\Processor\\% Privileged Time",
+		Instance: "*",
 	},
 	"interrupt_time": {
-		path:     "\\Processor\\% Interrupt Time",
-		instance: "*",
+		Path:     "\\Processor\\% Interrupt Time",
+		Instance: "*",
 	},
 	"dpc_time": {
-		path:     "\\Processor\\% DPC Time",
-		instance: "*",
+		Path:     "\\Processor\\% DPC Time",
+		Instance: "*",
 	},
 	"dpc_rate": {
-		path:     "\\Processor\\DPC Rate",
-		instance: "*",
+		Path:     "\\Processor\\DPC Rate",
+		Instance: "*",
 	},
 	"dpc_queued": {
-		path:     "\\Processor\\DPCs Queued/sec",
-		instance: "*",
+		Path:     "\\Processor\\DPCs Queued/sec",
+		Instance: "*",
 	},
 	"interrupt_sec": {
-		path:     "\\Processor\\Interrupts/sec",
-		instance: "*",
+		Path:     "\\Processor\\Interrupts/sec",
+		Instance: "*",
 	},
 	"processor_queue_length": {
-		path:     "\\System\\Processor Queue Length",
-		instance: "",
+		Path:     "\\System\\Processor Queue Length",
+		Instance: "",
 	},
 	// Context switches and idle time were reported on Linux and not
 	// here, so a Windows host carried two items that could never
 	// receive a value while the native agent showed both.
 	"context_switches": {
-		path:     "\\System\\Context Switches/sec",
-		instance: "",
+		Path:     "\\System\\Context Switches/sec",
+		Instance: "",
 	},
 	"idle_time": {
-		path:     "\\Processor\\% Idle Time",
-		instance: "*",
+		Path:     "\\Processor\\% Idle Time",
+		Instance: "*",
 	},
 }
 
@@ -115,7 +109,7 @@ type pathInfo struct {
 
 type windowsCollector struct {
 	query          *pdh.Query
-	paths          map[string]pathInfo
+	paths          map[string]pdh.CounterDef
 	mu             sync.Mutex
 	initialized    bool
 	logger         *logger.ModuleLogger
@@ -138,7 +132,7 @@ func newCPUCollector(config map[string]interface{}, baseLogger *logger.Logger) (
 
 	collector := &windowsCollector{
 		query:          query,
-		paths:          make(map[string]pathInfo),
+		paths:          make(map[string]pdh.CounterDef),
 		logger:         moduleLogger,
 		perCoreDetails: perCoreDetails,
 	}
@@ -207,10 +201,10 @@ func (w *windowsCollector) initializeCounters() error {
 	w.logger.Debug().Msg("Initializing CPU probe with counters")
 
 	for metricName, def := range counterPaths {
-		if def.instance == "*" {
-			parts := strings.Split(def.path, "\\")
+		if def.Instance == "*" {
+			parts := strings.Split(def.Path, "\\")
 			if len(parts) < 3 {
-				return fmt.Errorf("invalid counter path format: %s", def.path)
+				return fmt.Errorf("invalid counter path format: %s", def.Path)
 			}
 			objectName := parts[1]
 
@@ -244,12 +238,12 @@ func (w *windowsCollector) initializeCounters() error {
 					continue
 				}
 
-				path := pdh.BuildCounterPath(def.path, instance)
+				path := pdh.BuildCounterPath(def.Path, instance)
 				// Create a unique key for each metric/instance combination
 				uniqueKey := fmt.Sprintf("%s|%s", metricName, instance)
-				w.paths[uniqueKey] = pathInfo{
-					path:     path,
-					instance: instance,
+				w.paths[uniqueKey] = pdh.CounterDef{
+					Path:     path,
+					Instance: instance,
 				}
 
 				w.logger.Debug().
@@ -263,10 +257,10 @@ func (w *windowsCollector) initializeCounters() error {
 				}
 			}
 		} else {
-			path := pdh.BuildCounterPath(def.path, def.instance)
-			w.paths[metricName] = pathInfo{
-				path:     path,
-				instance: def.instance,
+			path := pdh.BuildCounterPath(def.Path, def.Instance)
+			w.paths[metricName] = pdh.CounterDef{
+				Path:     path,
+				Instance: def.Instance,
 			}
 
 			w.logger.Debug().
@@ -294,18 +288,17 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 		for name, pathInfo := range w.paths {
 			w.logger.Debug().
 				Str("metric", name).
-				Str("path", pathInfo.path).
-				Str("instance", pathInfo.instance).
+				Str("path", pathInfo.Path).
+				Str("instance", pathInfo.Instance).
 				Msg("Registered path")
 		}
 	}
 
 	if !w.initialized {
 		w.logger.Debug().Msg("Initializing first collection")
-		if err := w.query.Collect(); err != nil && !errors.Is(err, pdh.ErrNoData) {
-			return nil, fmt.Errorf("failed initial sample collection: %w", err)
+		if err := pdh.PrimeSamples(w.query); err != nil {
+			return nil, err
 		}
-		time.Sleep(1 * time.Second)
 		w.initialized = true
 		w.logger.Debug().Msg("First collection initialized")
 	}
@@ -328,12 +321,12 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 	for name, pathInfo := range w.paths {
 		w.logger.Debug().
 			Str("metric", name).
-			Str("path", pathInfo.path).
+			Str("path", pathInfo.Path).
 			Msg("Processing metric")
 
 		metricName := strings.Split(name, "|")[0]
 
-		value, err := w.query.GetCounterValue(pathInfo.path)
+		value, err := w.query.GetCounterValue(pathInfo.Path)
 		if err != nil {
 			w.logger.Debug().
 				Str("metric", name).
@@ -343,7 +336,7 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 		}
 
 		// Normalize metric names and values
-		normalizedName, normalizedValue := w.normalizeMetric(metricName, pathInfo.instance, value)
+		normalizedName, normalizedValue := w.normalizeMetric(metricName, pathInfo.Instance, value)
 		if normalizedName == "" {
 			// Skip this metric if it shouldn't be reported
 			continue
@@ -358,20 +351,20 @@ func (w *windowsCollector) Collect(timestamp time.Time) ([]data_store.DataPoint,
 			normalizedName == "cpu_context_switches"
 
 		// Skip per-core instances of system metrics (keep only _Total)
-		if isSystemMetric && pathInfo.instance != "" && pathInfo.instance != "_Total" {
+		if isSystemMetric && pathInfo.Instance != "" && pathInfo.Instance != "_Total" {
 			w.logger.Debug().
 				Str("metric", normalizedName).
-				Str("instance", pathInfo.instance).
+				Str("instance", pathInfo.Instance).
 				Msg("Skipping per-core instance of system metric")
 			continue
 		}
 
-		if pathInfo.instance != "" && pathInfo.instance != "_Total" && !isSystemMetric {
+		if pathInfo.Instance != "" && pathInfo.Instance != "_Total" && !isSystemMetric {
 			// True per-core metrics: use the core number
-			w.logger.Debug().Str("instance", pathInfo.instance).Msg("Adding per-core tag")
+			w.logger.Debug().Str("instance", pathInfo.Instance).Msg("Adding per-core tag")
 			metricTags = append(metricTags, tags.Tag{
 				Key:     "core",
-				Value:   pathInfo.instance,
+				Value:   pathInfo.Instance,
 				Private: false,
 			})
 		} else {
