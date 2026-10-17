@@ -1,0 +1,34 @@
+err=<nil>
+secrets=[agent.key http.admin_key veeam-prod.password]
+===== agent.yaml =====
+# SenHub Agent — globals (migrated to multi-file layout on <TS>)
+# Probes live in probes.d/ ; storage strategies in strategies.d/.
+# Original monolithic file kept as agent.yaml.pre-multi-file.<TS>.
+
+agent:
+  key: ${secret:agent.key}
+  license: jwt-inline
+config_version: 3
+===== probes.d/00-host.yaml =====
+# Probes migrated from monolithic config on <TS>.
+# Add new probes by creating additional files in this directory
+# (e.g. 10-mydb.yaml). Files load alphabetically.
+
+- name: veeam-prod
+  params:
+    endpoint: https://vbr:9419
+    password: ${secret:veeam-prod.password}
+    tags:
+      - x
+      - true
+  type: veeam
+===== strategies.d/10-http.yaml =====
+# Strategy 'http' migrated from monolithic config on <TS>.
+# This file MUST have exactly one top-level key — the strategy name.
+
+http:
+  admin_key: ${secret:http.admin_key}
+  endpoints:
+    - prtg
+    - web
+  port: 8080

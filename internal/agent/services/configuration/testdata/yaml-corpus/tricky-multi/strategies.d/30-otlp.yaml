@@ -1,0 +1,6 @@
+otlp:
+  endpoint: collector:4317
+  insecure: yes
+  headers:
+    x: 1
+    x: 2

@@ -1,0 +1,6 @@
+http:
+  port: 8080
+  endpoints: [prtg, web]
+  tls:
+    enabled: on
+    clients: {a: yes}

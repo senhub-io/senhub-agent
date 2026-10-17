@@ -1,0 +1,15 @@
+- name: web
+  type: demo
+  enabled: no
+  params:
+    verify: yes
+    paths: [/a, /b]
+    opts:
+      retries: 3
+      backoff: 1.5
+      since: 2024-05-06
+- name: other
+  type: demo
+  params:
+    target: "${env:SENHUB_YAML_CORPUS_UNSET:-fallback}"
+    dollar: "$$literal"

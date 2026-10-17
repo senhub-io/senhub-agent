@@ -1,0 +1,5 @@
+- name: dup
+  type: demo
+  params:
+    a: 1
+    a: 2

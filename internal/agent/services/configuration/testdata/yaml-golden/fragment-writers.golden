@@ -1,0 +1,339 @@
+created <DIR>/probes.d/50-rich.yaml
+reload err=<nil>
+configuration.LocalConfigurationData{
+  ConfigVersion: int(3)
+  Agent: configuration.LocalAgentConfig{
+    Key: string("k")
+    License: string("")
+    GlobalTags: nil(map[string]string)
+  }
+  Storage: []configuration.StorageConfig[
+    configuration.StorageConfig{
+      Name: string("http")
+      Params: map[string]interface {}{
+        string("bind")
+        =>string("0.0.0.0")
+        string("endpoints")
+        =>[]interface {}[
+          string("prtg")
+          string("web")
+        ]
+        string("long")
+        =>string("segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment ")
+        string("multi")
+        =>string("a\nb\n")
+        string("port")
+        =>int(9090)
+        string("ratio")
+        =>float64(0.5)
+        string("tls")
+        =>map[string]interface {}{
+          string("cipher_suites")
+          =>[]interface {}[
+            string("A")
+            string("B")
+          ]
+          string("enabled")
+          =>bool(true)
+          string("min")
+          =>string("1.2")
+        }
+        string("word")
+        =>string("yes")
+      }
+    }
+  ]
+  Probes: []configuration.ProbeConfig[
+    configuration.ProbeConfig{
+      Name: string("rich")
+      Type: string("demo")
+      Params: map[string]interface {}{
+        string("added")
+        =>[]interface {}[
+          map[string]interface {}{
+            string("a")
+            =>int(1)
+          }
+        ]
+        string("dollar")
+        =>string("price $5")
+        string("flag")
+        =>bool(true)
+        string("host")
+        =>string("db.example.com")
+        string("long")
+        =>string("word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word ")
+        string("longword")
+        =>string("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+        string("multi")
+        =>string("line one\nline two\n")
+        string("multi2")
+        =>string("no trailing newline\nsecond")
+        string("nested")
+        =>map[string]interface {}{
+          string("deep")
+          =>map[string]interface {}{
+            string("deeper")
+            =>map[string]interface {}{
+              string("deepest")
+              =>[]interface {}[
+                []interface {}[
+                  int(1)
+                  int(2)
+                ]
+                []interface {}[
+                  int(3)
+                ]
+              ]
+            }
+          }
+          string("list")
+          =>[]interface {}[
+            string("a")
+            string("b")
+            map[string]interface {}{
+              string("k")
+              =>string("v")
+              string("n")
+              =>[]interface {}[
+                int(1)
+                int(2)
+                int(3)
+              ]
+            }
+          ]
+          string("none")
+          =>[]interface {}[
+          ]
+        }
+        string("port")
+        =>int(5433)
+        string("ratio")
+        =>float64(1.5)
+        string("ref")
+        =>string("default")
+        string("whole")
+        =>int(2)
+        string("words")
+        =>[]interface {}[
+          string("yes")
+          string("no")
+          string("on")
+          string("off")
+          string("y")
+          string("n")
+          string("true")
+          string("null")
+          string("~")
+          string("1e3")
+          string("0x10")
+          string("010")
+          string("2024-01-02")
+          string("")
+          string(" lead")
+          string("trail ")
+          string("a: b")
+          string("# c")
+          string("- d")
+          string("@at")
+          string("`tick")
+          string("%pct")
+          string("!bang")
+          string("&amp")
+          string("*star")
+          string("|pipe")
+          string(">gt")
+          string("'sq")
+          string("\"dq")
+          string("tab\there")
+          string("uni é 日本")
+          string("{br}")
+          string("[sq]")
+          string("x,y")
+        ]
+        string("yesstr")
+        =>string("yes")
+      }
+      CustomTags: map[string]string{
+        string("empty")
+        =>string("")
+        string("env")
+        =>string("prod")
+        string("num")
+        =>string("5")
+        string("yes")
+        =>string("no")
+      }
+      Governance: map[string]interface {}{
+        string("criticality")
+        =>string("high")
+        string("owner")
+        =>map[string]interface {}{
+          string("contacts")
+          =>[]interface {}[
+            string("a@x")
+            string("b@x")
+          ]
+          string("team")
+          =>string("sre")
+        }
+      }
+      Enabled: &bool(true)
+      LogStrategies: []string[
+        string("otlp")
+        string("event")
+      ]
+    }
+    configuration.ProbeConfig{
+      Name: string("second")
+      Type: string("demo")
+      Params: map[string]interface {}{
+        string("only")
+        =>string("one")
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+  ]
+  AutoUpdate: nil(*configuration.AutoUpdateConfig)
+  Cache: nil(*configuration.CacheConfig)
+  Entities: nil(*configuration.EntitiesConfig)
+  Governance: nil(map[string]interface {})
+}
+===== agent.yaml =====
+config_version: 3
+agent:
+  key: k
+===== probes.d/50-rich.yaml =====
+# Managed by the SenHub web console. Edit it from the console, or remove this line to maintain it by hand.
+
+- name: rich
+  type: demo
+  params:
+    added:
+    - a: 1
+    dollar: price $5
+    flag: true
+    host: db.example.com
+    long: 'word word word word word word word word word word word word word word word
+      word word word word word word word word word word word word word word word word
+      word word word word word word word word word word word word word word word word
+      word word word word word word word word word word word word word '
+    longword: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    multi: |
+      line one
+      line two
+    multi2: |-
+      no trailing newline
+      second
+    nested:
+      deep:
+        deeper:
+          deepest:
+          - - 1
+            - 2
+          - - 3
+      list:
+      - a
+      - b
+      - k: v
+        "n":
+        - 1
+        - 2
+        - 3
+      none: []
+    port: 5433
+    ratio: 1.5
+    ref: ${env:SOME_VAR:-default}
+    whole: 2
+    words:
+    - "yes"
+    - "no"
+    - "on"
+    - "off"
+    - "y"
+    - "n"
+    - "true"
+    - "null"
+    - "~"
+    - "1e3"
+    - "0x10"
+    - "010"
+    - "2024-01-02"
+    - ""
+    - ' lead'
+    - 'trail '
+    - 'a: b'
+    - '# c'
+    - '- d'
+    - '@at'
+    - '`tick'
+    - '%pct'
+    - '!bang'
+    - '&amp'
+    - '*star'
+    - '|pipe'
+    - '>gt'
+    - '''sq'
+    - '"dq'
+    - "tab\there"
+    - uni é 日本
+    - '{br}'
+    - '[sq]'
+    - x,y
+    yesstr: "yes"
+  custom_tags:
+    empty: ""
+    env: prod
+    num: "5"
+    "yes": "no"
+  governance:
+    criticality: high
+    owner:
+      contacts:
+      - a@x
+      - b@x
+      team: sre
+  enabled: true
+  log_strategies:
+  - otlp
+  - event
+===== probes.d/50-second.yaml =====
+# Managed by the SenHub web console. Edit it from the console, or remove this line to maintain it by hand.
+
+- name: second
+  type: demo
+  params:
+    only: one
+===== strategies.d/50-http.yaml =====
+# Managed by the SenHub web console. Edit it from the console, or remove this line to maintain it by hand.
+
+http:
+  bind: 0.0.0.0
+  endpoints:
+  - prtg
+  - web
+  long: 'segment segment segment segment segment segment segment segment segment segment
+    segment segment segment segment segment segment segment segment segment segment
+    segment segment segment segment segment segment segment segment segment segment
+    segment segment segment segment segment segment segment segment segment segment '
+  multi: |
+    a
+    b
+  port: 9090
+  ratio: 0.5
+  tls:
+    cipher_suites:
+    - A
+    - B
+    enabled: true
+    min: "1.2"
+  word: "yes"
+===== strategies.d/50-otlp.yaml.disabled =====
+# Managed by the SenHub web console. Edit it from the console, or remove this line to maintain it by hand.
+
+otlp:
+  endpoint: c:4317
+  insecure: true
