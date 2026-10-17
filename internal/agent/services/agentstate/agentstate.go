@@ -108,6 +108,10 @@ type probeCycle struct {
 
 var probeCycles = map[string]probeCycle{}
 
+// probeStartedAt is when each running probe first appeared in the active
+// set, so a remote health report can say since when a probe has run.
+var probeStartedAt = map[string]time.Time{}
+
 // RecordProbeCycle notes that the probe handed points datapoints to the
 // outputs just now. Called by ProbePoller for each delivery.
 func RecordProbeCycle(probeID string, points int) {
@@ -178,6 +182,17 @@ func SetActiveProbes(probeIDs []string) {
 		newSet[id] = struct{}{}
 	}
 	activeProbeIDs = newSet
+	now := time.Now()
+	for id := range newSet {
+		if _, known := probeStartedAt[id]; !known {
+			probeStartedAt[id] = now
+		}
+	}
+	for id := range probeStartedAt {
+		if _, alive := newSet[id]; !alive {
+			delete(probeStartedAt, id)
+		}
+	}
 	// Prune health entries for probes no longer active.
 	for id := range probeHealth {
 		if _, alive := newSet[id]; !alive {
@@ -246,6 +261,9 @@ type ProbeRunState struct {
 	// and LastPoints how many; zero until it has.
 	LastCycle  time.Time
 	LastPoints int
+	// StartedAt is when the probe joined the running set; zero when it
+	// is not running.
+	StartedAt time.Time
 }
 
 // GetProbeRunState reports the live state of a probe by its ID (from
@@ -259,7 +277,7 @@ func GetProbeRunState(probeID string) ProbeRunState {
 		}
 		return ProbeRunState{}
 	}
-	state := ProbeRunState{Running: true, LastCycle: probeCycles[probeID].at, LastPoints: probeCycles[probeID].points}
+	state := ProbeRunState{Running: true, LastCycle: probeCycles[probeID].at, LastPoints: probeCycles[probeID].points, StartedAt: probeStartedAt[probeID]}
 	switch probeHealth[probeID] {
 	case probeHealthOK:
 		state.Health = "ok"
