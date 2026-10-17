@@ -55,7 +55,9 @@ it used to finish; none of the migrated probes is in that case.
 
 When the deadline expires, the error the probe returns wraps
 `context.DeadlineExceeded`, which `collectErrorReason` already counts as
-`timeout`.
+`timeout`. A cycle cancelled because the probe is being stopped is not
+counted as a collection error and does not change the probe's health:
+it says nothing about the target.
 
 ## Previews
 
