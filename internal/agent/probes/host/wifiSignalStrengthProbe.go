@@ -35,14 +35,15 @@ func (m *wifiSignalStrengthProbe) checkWifiWindows() bool {
 
 // parseNetshConnected decides connectivity from the BSSID line rather than
 // the localised State line: netsh prints the access point MAC only while
-// associated, and the "BSSID" label is not translated by Windows.
+// associated, and the "BSSID" label is not translated by Windows (Windows
+// 11 spells it "AP BSSID").
 func parseNetshConnected(output string) bool {
 	for _, line := range strings.Split(output, "\n") {
 		key, value, ok := strings.Cut(line, " : ")
 		if !ok {
 			continue
 		}
-		if strings.EqualFold(strings.TrimSpace(key), "bssid") && strings.TrimSpace(value) != "" {
+		if strings.HasSuffix(strings.ToLower(strings.TrimSpace(key)), "bssid") && strings.TrimSpace(value) != "" {
 			return true
 		}
 	}

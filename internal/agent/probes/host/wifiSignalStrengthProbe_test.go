@@ -120,4 +120,8 @@ func TestParseNetshConnected(t *testing.T) {
 			t.Errorf("state %q without BSSID should be disconnected", st)
 		}
 	}
+	win11 := "    Name                   : Wi-Fi\n    State                  : connecté\n    AP BSSID               : aa:bb:cc:dd:ee:ff\n"
+	if !parseNetshConnected(win11) {
+		t.Error("Windows 11 \"AP BSSID\" line should read as connected")
+	}
 }
