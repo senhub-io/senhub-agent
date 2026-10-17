@@ -43,6 +43,12 @@ type Agent interface {
 	Shutdown(context.Context) error
 }
 
+// bootGuard is the part of the update rollback the agent drives at start.
+type bootGuard interface {
+	RolledBack() bool
+	ConfirmWhenHealthy(ctx context.Context)
+}
+
 type agent struct {
 	statusChan         *statuschan.Service
 	supervisor         *lifecycle.Supervisor
@@ -54,6 +60,9 @@ type agent struct {
 	entityDetector     *entitydetect.Service
 	updater            auto_update.AutoUpdate
 	removeLeftovers    func()
+	// beginBoot counts this start against a pending update and may roll the
+	// previous binary back. Nil when update rollback is not wired (tests).
+	beginBoot func() bootGuard
 	// exitFn is called by handleStartError with cliexit.Failure. It defaults to
 	// os.Exit; tests inject a no-op to capture the call without aborting.
 	exitFn func(int)
@@ -185,6 +194,7 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		sensors:            sensors,
 		updater:            updater,
 		removeLeftovers:    func() { auto_update.RemoveUpdateLeftovers(logger) },
+		beginBoot:          func() bootGuard { return auto_update.BeginBoot(logger) },
 		exitFn:             os.Exit,
 	}
 }
@@ -227,10 +237,28 @@ func (a agent) cleanUpPreviousUpdate() {
 }
 
 func (a agent) Start(ctx context.Context) error {
+	var guard bootGuard
+	if a.beginBoot != nil {
+		guard = a.beginBoot()
+	}
+	if guard != nil && guard.RolledBack() {
+		// The previous binary is back in place; exit non-zero so the service
+		// manager starts it rather than this one.
+		if a.exitFn != nil {
+			a.exitFn(cliexit.Failure)
+		} else {
+			os.Exit(cliexit.Failure)
+		}
+		return nil
+	}
+
 	a.cleanUpPreviousUpdate()
 
 	if errors := a.supervisor.Start(ctx, a.services()...); len(errors) > 0 {
 		a.handleStartError()
+	}
+	if guard != nil {
+		guard.ConfirmWhenHealthy(ctx)
 	}
 
 	// Passive version check (non-blocking, log only). The auto-updater

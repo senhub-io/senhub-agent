@@ -144,7 +144,7 @@ func TestDoUpdate_RejectsTamperedArchive(t *testing.T) {
 	defer srv.Close()
 
 	au := newSigningTestUpdater(t, srv)
-	err := au.doUpdate(srv.URL + "/dl/agent.zip")
+	err := au.doUpdate(srv.URL+"/dl/agent.zip", "")
 	if err == nil {
 		t.Fatal("tampered archive applied")
 	}
@@ -173,7 +173,7 @@ func TestDoUpdate_RejectsMissingSignature(t *testing.T) {
 	defer srv.Close()
 
 	au := newSigningTestUpdater(t, srv)
-	err := au.doUpdate(srv.URL + "/dl/agent.zip")
+	err := au.doUpdate(srv.URL+"/dl/agent.zip", "")
 	if err == nil {
 		t.Fatal("unsigned archive applied")
 	}
