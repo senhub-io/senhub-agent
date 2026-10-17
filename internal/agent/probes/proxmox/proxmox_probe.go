@@ -39,6 +39,8 @@ type ProxmoxProbe struct {
 	// resourcesDegraded is true while /cluster/resources is failing and the
 	// per-node lists are used instead; it only exists to log each transition once.
 	resourcesDegraded atomic.Bool
+
+	denied deniedLog
 }
 
 type probeConfig struct {
@@ -281,6 +283,8 @@ func (p *ProxmoxProbe) collectNode(n pveNode, guests []pveGuest, guestsOK bool, 
 		}
 	}
 
+	points = append(points, p.collectDisks(n.Node, now)...)
+
 	// Storage.
 	storages, err := p.fetchStorage(n.Node)
 	if err != nil {
@@ -380,7 +384,7 @@ func (p *ProxmoxProbe) apiGet(path string, out interface{}) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("GET %s: unexpected status %d", path, resp.StatusCode)
+		return &apiStatusError{Path: path, Status: resp.StatusCode}
 	}
 
 	var envelope struct {
@@ -390,6 +394,17 @@ func (p *ProxmoxProbe) apiGet(path string, out interface{}) error {
 		return fmt.Errorf("decoding %s response: %w", path, err)
 	}
 	return json.Unmarshal(envelope.Data, out)
+}
+
+// apiStatusError reports a non-200 answer so callers can tell a missing
+// permission (403) from a failing server.
+type apiStatusError struct {
+	Path   string
+	Status int
+}
+
+func (e *apiStatusError) Error() string {
+	return fmt.Sprintf("GET %s: unexpected status %d", e.Path, e.Status)
 }
 
 // fetchClusterName queries GET /cluster/status and returns the cluster name

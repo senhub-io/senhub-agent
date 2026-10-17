@@ -94,6 +94,13 @@ series' tags.
 | `proxmox.vm.status` | `proxmox.vm.status` | Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Status | # | 1 when the VM or container is running, 0 otherwise |
 | `proxmox.storage.used` | `proxmox.storage.used` | Proxmox Storage {proxmox.storage} Used | B | Bytes used on the Proxmox storage pool |
 | `proxmox.storage.limit` | `proxmox.storage.total` | Proxmox Storage {proxmox.storage} Total | B | Total capacity of the Proxmox storage pool |
+| `proxmox.disk.health` | `proxmox.disk.health` | Proxmox Disk {proxmox.disk} Health | # | 1 when the SMART verdict of the physical disk is PASSED or OK, 0 for any other verdict; absent when the disk reports no SMART data. The raw verdict is the proxmox.health attribute |
+| `proxmox.disk.wearout` | `proxmox.disk.wearout` | Proxmox Disk {proxmox.disk} Wearout | # | Fraction of the SSD life already used (0 new, 1 worn out); absent when PVE reports N/A |
+| `proxmox.zfs.pool.health` | `proxmox.zfs.pool.health` | Proxmox ZFS Pool {proxmox.zfs.pool} Health | # | 1 when the ZFS pool state is ONLINE, 0 for DEGRADED, FAULTED or any other state. The raw state is the proxmox.health attribute |
+| `proxmox.zfs.pool.size` | `proxmox.zfs.pool.size` | Proxmox ZFS Pool {proxmox.zfs.pool} Size | B | Total size of the ZFS pool |
+| `proxmox.zfs.pool.used` | `proxmox.zfs.pool.used` | Proxmox ZFS Pool {proxmox.zfs.pool} Used | B | Allocated bytes in the ZFS pool |
+| `proxmox.zfs.pool.free` | `proxmox.zfs.pool.free` | Proxmox ZFS Pool {proxmox.zfs.pool} Free | B | Free bytes in the ZFS pool |
+| `proxmox.zfs.pool.fragmentation` | `proxmox.zfs.pool.fragmentation` | Proxmox ZFS Pool {proxmox.zfs.pool} Fragmentation | # | Fragmentation of the ZFS pool free space as a fraction (0 to 1) |
 | `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

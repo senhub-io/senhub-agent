@@ -2,7 +2,7 @@ probe_name: "proxmox"
 friendly_name: "Proxmox VE"
 version: "1.0.0"
 host_level: false
-multi_instance_labels: ["proxmox.node", "proxmox.vmid", "proxmox.vm.name", "proxmox.storage"]
+multi_instance_labels: ["proxmox.node", "proxmox.vmid", "proxmox.vm.name", "proxmox.storage", "proxmox.disk", "proxmox.zfs.pool"]
 
 # Proxmox VE cluster monitoring via the REST API (FREE tier).
 # Covers nodes, QEMU virtual machines, LXC containers, and storage pools.
@@ -237,6 +237,114 @@ metrics:
       proxmox.storage: proxmox.storage
       proxmox.node: proxmox.node
 
+  # ── Disk and ZFS health (needs Sys.Audit on /nodes/{node})  ──
+
+  - name: "proxmox.disk.health"
+    channel: "disk_{proxmox.disk}_health"
+    display_name: "Proxmox Disk {proxmox.disk} Health"
+    unit: "#"
+    category: "health"
+    description: "1 when the SMART verdict of the physical disk is PASSED or OK, 0 for any other verdict; absent when the disk reports no SMART data. The raw verdict is the proxmox.health attribute"
+    otel:
+      name: proxmox.disk.health
+      unit: "{status}"
+      type: gauge
+    tag_to_attribute:
+      proxmox.node: proxmox.node
+      proxmox.disk: proxmox.disk
+      proxmox.disk.type: proxmox.disk.type
+      proxmox.disk.model: proxmox.disk.model
+      proxmox.disk.serial: proxmox.disk.serial
+      proxmox.health: proxmox.health
+
+  - name: "proxmox.disk.wearout"
+    channel: "disk_{proxmox.disk}_wearout"
+    display_name: "Proxmox Disk {proxmox.disk} Wearout"
+    unit: "#"
+    category: "health"
+    description: "Fraction of the SSD life already used (0 new, 1 worn out); absent when PVE reports N/A"
+    otel:
+      name: proxmox.disk.wearout
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      proxmox.node: proxmox.node
+      proxmox.disk: proxmox.disk
+      proxmox.disk.type: proxmox.disk.type
+      proxmox.disk.model: proxmox.disk.model
+      proxmox.disk.serial: proxmox.disk.serial
+
+  - name: "proxmox.zfs.pool.health"
+    channel: "zfs_{proxmox.zfs.pool}_health"
+    display_name: "Proxmox ZFS Pool {proxmox.zfs.pool} Health"
+    unit: "#"
+    category: "health"
+    description: "1 when the ZFS pool state is ONLINE, 0 for DEGRADED, FAULTED or any other state. The raw state is the proxmox.health attribute"
+    otel:
+      name: proxmox.zfs.pool.health
+      unit: "{status}"
+      type: gauge
+    tag_to_attribute:
+      proxmox.node: proxmox.node
+      proxmox.zfs.pool: proxmox.zfs.pool
+      proxmox.health: proxmox.health
+
+  - name: "proxmox.zfs.pool.size"
+    channel: "zfs_{proxmox.zfs.pool}_size"
+    display_name: "Proxmox ZFS Pool {proxmox.zfs.pool} Size"
+    unit: "B"
+    category: "storage"
+    description: "Total size of the ZFS pool"
+    otel:
+      name: proxmox.zfs.pool.size
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      proxmox.node: proxmox.node
+      proxmox.zfs.pool: proxmox.zfs.pool
+
+  - name: "proxmox.zfs.pool.used"
+    channel: "zfs_{proxmox.zfs.pool}_used"
+    display_name: "Proxmox ZFS Pool {proxmox.zfs.pool} Used"
+    unit: "B"
+    category: "storage"
+    description: "Allocated bytes in the ZFS pool"
+    otel:
+      name: proxmox.zfs.pool.used
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      proxmox.node: proxmox.node
+      proxmox.zfs.pool: proxmox.zfs.pool
+
+  - name: "proxmox.zfs.pool.free"
+    channel: "zfs_{proxmox.zfs.pool}_free"
+    display_name: "Proxmox ZFS Pool {proxmox.zfs.pool} Free"
+    unit: "B"
+    category: "storage"
+    description: "Free bytes in the ZFS pool"
+    otel:
+      name: proxmox.zfs.pool.free
+      unit: "By"
+      type: gauge
+    tag_to_attribute:
+      proxmox.node: proxmox.node
+      proxmox.zfs.pool: proxmox.zfs.pool
+
+  - name: "proxmox.zfs.pool.fragmentation"
+    channel: "zfs_{proxmox.zfs.pool}_frag"
+    display_name: "Proxmox ZFS Pool {proxmox.zfs.pool} Fragmentation"
+    unit: "#"
+    category: "storage"
+    description: "Fragmentation of the ZFS pool free space as a fraction (0 to 1)"
+    otel:
+      name: proxmox.zfs.pool.fragmentation
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      proxmox.node: proxmox.node
+      proxmox.zfs.pool: proxmox.zfs.pool
+
   - name: "senhub.probe.check.result"
     channel: "check_result"
     display_name: "Check Result"
@@ -264,6 +372,24 @@ tag_metadata:
   proxmox.storage:
     type: resource
     label: "Storage Pool"
+  proxmox.disk:
+    type: resource
+    label: "Disk"
+  proxmox.disk.type:
+    type: category
+    label: "Disk Type"
+  proxmox.disk.model:
+    type: category
+    label: "Disk Model"
+  proxmox.disk.serial:
+    type: category
+    label: "Disk Serial"
+  proxmox.zfs.pool:
+    type: resource
+    label: "ZFS Pool"
+  proxmox.health:
+    type: category
+    label: "Reported State"
   metric_type:
     type: category
     label: "Metric Type"
