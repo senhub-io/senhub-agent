@@ -14,12 +14,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/subcollect"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -64,6 +67,7 @@ type NvidiaProbe struct {
 	config       probeConfig
 	moduleLogger *logger.ModuleLogger
 	runSmi       runSmiFunc
+	smiRead      subcollect.Tracker
 }
 
 type probeConfig struct {
@@ -144,8 +148,12 @@ func (p *NvidiaProbe) Collect() ([]data_store.DataPoint, error) {
 
 	output, smiErr := p.runSmi(p.config.NvidiaSmiPath)
 	if smiErr != nil {
-		p.moduleLogger.Warn().Err(smiErr).Str("path", p.config.NvidiaSmiPath).
-			Msg("nvidia-smi failed; emitting up=0")
+		// No nvidia-smi on the host is the normal state of a GPU-less machine.
+		level := subcollect.Warn
+		if errors.Is(smiErr, exec.ErrNotFound) || errors.Is(smiErr, fs.ErrNotExist) {
+			level = subcollect.Debug
+		}
+		p.smiRead.Failed(p.moduleLogger, level, "nvidia-smi", smiErr, "nvidia-smi failed; emitting up=0")
 		upTags := append(hostTags, tags.Tag{Key: "metric_type", Value: "availability"})
 		point := data_store.DataPoint{Name: "senhub.nvidia.up", Value: 0, Timestamp: now, Tags: upTags}
 		return p.BaseProbe.EnrichDataPointsWithProbeName([]data_store.DataPoint{point}, p.GetName()), nil
@@ -153,12 +161,13 @@ func (p *NvidiaProbe) Collect() ([]data_store.DataPoint, error) {
 
 	gpus, parseErr := parseSmiOutput(output)
 	if parseErr != nil {
-		p.moduleLogger.Warn().Err(parseErr).Msg("nvidia-smi output parse failed; emitting up=0")
+		p.smiRead.Failed(p.moduleLogger, subcollect.Warn, "nvidia-smi", parseErr, "nvidia-smi output parse failed; emitting up=0")
 		upTags := append(hostTags, tags.Tag{Key: "metric_type", Value: "availability"})
 		point := data_store.DataPoint{Name: "senhub.nvidia.up", Value: 0, Timestamp: now, Tags: upTags}
 		return p.BaseProbe.EnrichDataPointsWithProbeName([]data_store.DataPoint{point}, p.GetName()), nil
 	}
 
+	p.smiRead.Succeeded(p.moduleLogger, "nvidia-smi", "nvidia-smi readable again")
 	gpus = filterGPUs(gpus, p.config.GPUs)
 
 	var points []data_store.DataPoint
