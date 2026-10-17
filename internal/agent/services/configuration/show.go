@@ -78,31 +78,43 @@ var envProbeRefPattern = regexp.MustCompile(`\$\{env:SENHUB_PROBE_[^}]+\}`)
 // On error the path that broke is included in the message so the
 // operator can edit the offending file without trial-and-error.
 func LoadForShow(configPath string, mode ShowMode, log *logger.ModuleLogger) (LocalConfigurationData, error) {
-	raw, err := loadMerged(configPath, log)
+	load := func() (LocalConfigurationData, error) { return loadMerged(configPath, log) }
+	switch mode {
+	case ShowRaw:
+		return load()
+	case ShowResolved:
+		resolved, err := load()
+		if err != nil {
+			return LocalConfigurationData{}, err
+		}
+		if err := Substitute(&resolved); err != nil {
+			return LocalConfigurationData{}, fmt.Errorf("substituting variables: %w", err)
+		}
+		return resolved, nil
+	default:
+		return redactedCopy(load)
+	}
+}
+
+// redactedCopy loads the same tree twice, resolves the second copy and
+// masks it against the first: the raw copy is what tells a value that came
+// from a ${file:} or ${secret:} reference from one written inline. Loading
+// twice is cheap I/O and avoids a deep-copy routine over a shape full of
+// nested map[string]interface{} payloads.
+func redactedCopy(load func() (LocalConfigurationData, error)) (LocalConfigurationData, error) {
+	raw, err := load()
 	if err != nil {
 		return LocalConfigurationData{}, err
 	}
-	if mode == ShowRaw {
-		return raw, nil
-	}
-
-	// Re-load to keep `raw` pristine for the redact mode; cheap I/O,
-	// avoids a deep-copy routine over the LocalConfigurationData
-	// shape (which has nested map[string]interface{} payloads).
-	resolved, err := loadMerged(configPath, log)
+	resolved, err := load()
 	if err != nil {
 		return LocalConfigurationData{}, err
 	}
 	if err := Substitute(&resolved); err != nil {
 		return LocalConfigurationData{}, fmt.Errorf("substituting variables: %w", err)
 	}
-
-	if mode == ShowResolved {
-		return resolved, nil
-	}
-	// ShowRedact: walk raw + resolved in lockstep, masking every
-	// string that was either file-backed or sits under a secret-
-	// named key.
+	// Walk raw + resolved in lockstep, masking every string that was
+	// either file-backed or sits under a secret-named key.
 	redactInPlace(reflect.ValueOf(&raw).Elem(), reflect.ValueOf(&resolved).Elem(), "")
 	return resolved, nil
 }

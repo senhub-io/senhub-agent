@@ -535,6 +535,43 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			})
 	}
 
+	// OpAMP client state, only while the client is configured on: an agent
+	// that does not report to an OpAMP server carries no such series, and
+	// one that does carries them from start, the error reasons at zero.
+	if op := agentstate.GetOpAMPState(); op.Enabled {
+		connected := 0.0
+		if op.Connected {
+			connected = 1
+		}
+		records = append(records,
+			otelmapper.OtelRecord{
+				Name:        "senhub.agent.opamp.connected",
+				Unit:        "{connection}",
+				Type:        "gauge",
+				Attributes:  map[string]string{},
+				Value:       connected,
+				Description: "1 while the OpAMP client holds a working connection to its server, 0 otherwise. Absent when OpAMP is disabled.",
+			},
+			otelmapper.OtelRecord{
+				Name:        "senhub.agent.opamp.messages.sent",
+				Unit:        "{message}",
+				Type:        "counter",
+				Attributes:  map[string]string{},
+				Value:       float64(op.MessagesSent),
+				Description: "Cumulative count of status reports (description, health, effective configuration) handed to the OpAMP client; protocol heartbeats are not counted.",
+			})
+		for reason, n := range op.Errors {
+			records = append(records, otelmapper.OtelRecord{
+				Name:        "senhub.agent.opamp.errors",
+				Unit:        "{error}",
+				Type:        "counter",
+				Attributes:  map[string]string{"reason": reason},
+				Value:       float64(n),
+				Description: "Cumulative count of OpAMP client errors, by reason (connect, server, report, effective_config).",
+			})
+		}
+	}
+
 	// Checkpoint self-metrics. These are emitted regardless of whether
 	// persistence is enabled — the size+age gauges read 0 when disabled
 	// (distinguishable from "never saved" only by also checking the

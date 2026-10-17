@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/lifecycle"
+	"senhub-agent.go/internal/agent/probes"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/entitydetect"
 	"senhub-agent.go/internal/agent/services/instanceid"
@@ -22,6 +23,7 @@ import (
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/services/opamp"
 	"senhub-agent.go/internal/agent/services/sensor"
 	"senhub-agent.go/internal/agent/services/statuschan"
 
@@ -52,6 +54,7 @@ type agent struct {
 	store              data_store.DataStore
 	sensors            sensor.Sensor
 	entityDetector     *entitydetect.Service
+	opamp              *opamp.Service
 	updater            auto_update.AutoUpdate
 	removeLeftovers    func()
 	// exitFn is called by handleStartError with cliexit.Failure. It defaults to
@@ -174,7 +177,21 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		logger.Info().Msg("Auto-update disabled")
 	}
 
+	// Built whatever the configuration says: the service follows the opamp
+	// block on every reload, so turning it on needs no restart.
+	opampService := opamp.New(opamp.Options{
+		Logger:    logger,
+		Config:    localConfiguration,
+		Version:   agentCliArgs.Version,
+		StartTime: time.Now(),
+		Edition: opamp.Edition(func(probeType string) bool {
+			_, ok := probes.LookupProbeConstructor(probeType)
+			return ok
+		}),
+	})
+
 	return agent{
+		opamp:              opampService,
 		statusChan:         statuschan.New(logger, localConfiguration.GetConfigPath(), agentCliArgs.Version, agentCliArgs.CommitHash),
 		supervisor:         lifecycle.NewSupervisor(logger),
 		entityDetector:     entityDetector,
@@ -204,6 +221,9 @@ func (a agent) services() []Service {
 	}
 	if a.entityDetector != nil {
 		servicesToStart = append(servicesToStart, a.entityDetector)
+	}
+	if a.opamp != nil {
+		servicesToStart = append(servicesToStart, a.opamp)
 	}
 	if a.updater != nil {
 		a.logger.Info().Msg("Adding auto-updater to services")

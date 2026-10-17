@@ -52,6 +52,8 @@ require (
 require (
 	github.com/Microsoft/go-winio v0.6.2
 	github.com/billgraziano/dpapi v0.5.0
+	github.com/cenkalti/backoff/v4 v4.3.0
+	github.com/open-telemetry/opamp-go v0.25.0
 	github.com/sijms/go-ora/v2 v2.9.0
 	github.com/toise-dev/toise/pkg/emit v0.15.0
 	go.opentelemetry.io/collector/pdata v1.59.0
@@ -125,9 +127,12 @@ require (
 
 require (
 	filippo.io/hpke v0.4.0 // indirect
+	github.com/elastic/proxy-connect-dialer-go v0.1.1 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
+	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/stretchr/testify v1.12.0 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	go.opentelemetry.io/collector/featuregate v1.59.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
@@ -143,7 +148,7 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/google/uuid v1.6.0 // indirect
+	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect

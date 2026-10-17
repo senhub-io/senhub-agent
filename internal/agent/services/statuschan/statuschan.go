@@ -196,6 +196,9 @@ func Snapshot(svc *status.StatusService) status.SystemStatus {
 	if w := agentstate.GetConfigWatchDisabled(); w != nil {
 		st.ConfigWatch = &status.ConfigWatch{Reason: w.Reason, Detail: w.Detail}
 	}
+	if op := agentstate.GetOpAMPState(); op.Enabled {
+		st.OpAMP = &status.OpAMPStatus{Enabled: true, Connected: op.Connected}
+	}
 	return st
 }
 

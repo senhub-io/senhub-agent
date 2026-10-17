@@ -206,3 +206,17 @@ func TestShutdownIsBoundedWhenCloseHangs(t *testing.T) {
 		t.Fatal("Shutdown waited on a listener Close that never returns")
 	}
 }
+
+func TestSnapshotCarriesTheOpAMPStateOnlyWhileEnabled(t *testing.T) {
+	agentstate.ResetOpAMPForTest()
+	t.Cleanup(agentstate.ResetOpAMPForTest)
+	svc := status.NewStatusService(logger.NewLogger(&cliArgs.ParsedArgs{}), "1", "c")
+	if st := Snapshot(svc); st.OpAMP != nil {
+		t.Fatalf("OpAMP disabled, snapshot carries %+v", st.OpAMP)
+	}
+	agentstate.SetOpAMPEnabled(true)
+	agentstate.SetOpAMPConnected(true)
+	if st := Snapshot(svc); st.OpAMP == nil || !st.OpAMP.Enabled || !st.OpAMP.Connected {
+		t.Fatalf("OpAMP connected, snapshot carries %+v", st.OpAMP)
+	}
+}

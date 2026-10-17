@@ -44,6 +44,14 @@ type SystemStatus struct {
 	// configuration watch, in which case an edit needs a restart to
 	// apply. Same reason as above: the daemon knows, the CLI does not.
 	ConfigWatch *ConfigWatch `json:"config_watch,omitempty"`
+	// OpAMP is the OpAMP client's state; absent while it is disabled.
+	OpAMP *OpAMPStatus `json:"opamp,omitempty"`
+}
+
+// OpAMPStatus says whether the OpAMP client is on and connected.
+type OpAMPStatus struct {
+	Enabled   bool `json:"enabled"`
+	Connected bool `json:"connected"`
 }
 
 // ConfigWatch says why the running agent is not watching its

@@ -14,15 +14,15 @@ This page corresponds to Annex 1 of the [SenHub Agent license agreement](agreeme
 
 | Licence | Components |
 |---|---|
-| Apache-2.0 | 58 |
-| MIT | 39 |
+| Apache-2.0 | 60 |
+| MIT | 41 |
 | BSD-3-Clause | 28 |
-| BSD-2-Clause | 7 |
+| BSD-2-Clause | 8 |
 | MPL-2.0 | 3 |
 | ISC | 1 |
 | Zlib | 1 |
 
-Total: 137 components.
+Total: 142 components.
 
 ## Detail
 
@@ -39,12 +39,14 @@ Total: 137 components.
 | `github.com/alexflint/go-scalar` | v1.2.0 | BSD-2-Clause |
 | `github.com/avast/retry-go/v4` | v4.7.0 | MIT |
 | `github.com/billgraziano/dpapi` | v0.5.0 | MIT |
+| `github.com/cenkalti/backoff/v4` | v4.3.0 | MIT |
 | `github.com/cenkalti/backoff/v5` | v5.0.3 | MIT |
 | `github.com/cespare/xxhash/v2` | v2.3.0 | MIT |
 | `github.com/coreos/go-systemd/v22` | v22.7.0 | Apache-2.0 |
 | `github.com/davecgh/go-spew` | v1.1.2-0.20180830191138-d8f796af33cc | ISC |
 | `github.com/digitalocean/go-smbios` | v0.0.0-20180907143718-390a4f403a8e | Apache-2.0 |
 | `github.com/eapache/go-resiliency` | v1.7.0 | MIT |
+| `github.com/elastic/proxy-connect-dialer-go` | v0.1.1 | Apache-2.0 |
 | `github.com/emicklei/go-restful/v3` | v3.13.0 | MIT |
 | `github.com/fsnotify/fsnotify` | v1.10.1 | BSD-2-Clause |
 | `github.com/fxamacker/cbor/v2` | v2.9.0 | MIT |
@@ -65,6 +67,7 @@ Total: 137 components.
 | `github.com/google/gnostic-models` | v0.7.0 | Apache-2.0 |
 | `github.com/google/uuid` | v1.6.0 | BSD-3-Clause |
 | `github.com/gorilla/mux` | v1.8.1 | BSD-3-Clause |
+| `github.com/gorilla/websocket` | v1.5.4-0.20250319132907-e064f32e3674 | BSD-2-Clause |
 | `github.com/gosnmp/gosnmp` | v1.43.2 | BSD-3-Clause |
 | `github.com/grpc-ecosystem/grpc-gateway/v2` | v2.29.0 | BSD-3-Clause |
 | `github.com/hashicorp/go-uuid` | v1.0.3 | MPL-2.0 |
@@ -92,6 +95,7 @@ Total: 137 components.
 | `github.com/montanaflynn/stats` | v0.7.1 | MIT |
 | `github.com/munnerz/goautoneg` | v0.0.0-20191010083416-a7dc8b61c822 | BSD-3-Clause |
 | `github.com/nxadm/tail` | v1.4.11 | MIT |
+| `github.com/open-telemetry/opamp-go` | v0.25.0 | Apache-2.0 |
 | `github.com/pierrec/lz4/v4` | v4.1.27 | BSD-3-Clause |
 | `github.com/pkg/errors` | v0.9.1 | BSD-2-Clause |
 | `github.com/prometheus-community/pro-bing` | v0.9.0 | MIT |
@@ -104,6 +108,7 @@ Total: 137 components.
 | `github.com/sijms/go-ora/v2` | v2.9.0 | MIT |
 | `github.com/sleepinggenius2/gosmi` | v0.4.4 | MIT |
 | `github.com/spf13/pflag` | v1.0.9 | BSD-3-Clause |
+| `github.com/stretchr/testify` | v1.12.0 | MIT |
 | `github.com/tklauser/go-sysconf` | v0.3.12 | BSD-3-Clause |
 | `github.com/tklauser/numcpus` | v0.6.1 | Apache-2.0 |
 | `github.com/toise-dev/toise/pkg/emit` | v0.15.0 | Apache-2.0 |

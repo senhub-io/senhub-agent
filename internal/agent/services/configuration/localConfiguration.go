@@ -41,6 +41,9 @@ type LocalConfigurationData struct {
 	// location and lifecycle of the host this agent runs on. It is kept
 	// raw: the governance package owns the shape and the closed sets.
 	Governance map[string]interface{} `yaml:"governance,omitempty"`
+	// OpAMP reports this agent to an OpAMP server. Absent or disabled, no
+	// client runs.
+	OpAMP *OpAMPConfig `yaml:"opamp,omitempty"`
 }
 
 // EntitiesConfig is the operator's control over entity detection.
@@ -300,6 +303,17 @@ func (lc *LocalConfiguration) GetEntitiesConfig() *EntitiesConfig {
 		return nil
 	}
 	return d.Entities
+}
+
+// GetOpAMPConfig returns a copy of the opamp block as loaded (references
+// substituted), or nil when the configuration has none.
+func (lc *LocalConfiguration) GetOpAMPConfig() *OpAMPConfig {
+	d := lc.snapshot()
+	if d == nil || d.OpAMP == nil {
+		return nil
+	}
+	c := *d.OpAMP
+	return &c
 }
 
 // GetGovernance returns the agent-level governance block as loaded
