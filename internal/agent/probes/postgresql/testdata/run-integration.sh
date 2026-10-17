@@ -43,7 +43,7 @@ if [ "$with_replica" = 1 ]; then
   docker network create "$network" >/dev/null
   network_args=(--network "$network")
 fi
-docker run -d --rm --name "$name" "${network_args[@]}" -p 127.0.0.1::5432 \
+docker run -d --rm --name "$name" ${network_args[@]+"${network_args[@]}"} -p 127.0.0.1::5432 \
   -e POSTGRES_PASSWORD="$admin_password" "$image" \
   -c wal_level=replica -c max_wal_senders=5 -c hot_standby=on >/dev/null
 
