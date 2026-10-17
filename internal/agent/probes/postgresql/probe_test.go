@@ -608,3 +608,32 @@ func TestCollectBackends_ScanFailureIsLogged(t *testing.T) {
 		t.Errorf("expected a row scan warning, got %q", buf.String())
 	}
 }
+
+func TestCollectLocks_QueryFailureIsLogged(t *testing.T) {
+	db, err := sql.Open("pgx", "postgres://u:p@127.0.0.1:1/postgres")
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("db.Close: %v", err)
+	}
+	var buf bytes.Buffer
+	base := zerolog.New(&buf)
+	p := &pgProbe{
+		db:           db,
+		moduleLogger: logger.NewModuleLogger(&base, "probe.postgresql"),
+		entitySrc:    newPgEntitySource(config{Host: "pg.local", Port: 5432}, nil),
+	}
+
+	var points []data_store.DataPoint
+	p.collectLocks(context.Background(), time.Now(), "pg", &points)
+
+	if len(points) != 0 {
+		t.Errorf("expected no points, got %d", len(points))
+	}
+	for _, q := range []string{"locks_waiting", "long_running_xact"} {
+		if !strings.Contains(buf.String(), q) {
+			t.Errorf("expected a warning for %s, got %q", q, buf.String())
+		}
+	}
+}
