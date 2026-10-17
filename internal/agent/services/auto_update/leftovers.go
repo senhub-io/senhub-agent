@@ -24,8 +24,9 @@ func RemoveUpdateLeftovers(base *logger.Logger) {
 }
 
 // removeUpdateLeftovers deletes the files a binary replacement leaves next
-// to the executable: the previous binary set aside as ".<name>.old" and a
-// download that never completed, ".<name>.new". On Windows the running
+// to the executable: the previous binary set aside as ".<name>.old", a binary
+// set aside by a rollback as ".<name>.failed", and a download that never
+// completed, ".<name>.new". On Windows the running
 // executable cannot be deleted, so the replacement only hides the old file;
 // it is removable once the process that ran it has exited, which is by the
 // time the next one starts. Left alone it keeps the install folder from
@@ -33,7 +34,7 @@ func RemoveUpdateLeftovers(base *logger.Logger) {
 func removeUpdateLeftovers(target string) []string {
 	dir, name := filepath.Split(target)
 	var removed []string
-	for _, leftover := range []string{"." + name + ".old", "." + name + ".new"} {
+	for _, leftover := range []string{"." + name + ".old", "." + name + ".new", "." + name + ".failed"} {
 		path := filepath.Join(dir, leftover)
 		err := os.Remove(path)
 		switch {
