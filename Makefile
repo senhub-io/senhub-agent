@@ -419,9 +419,8 @@ docs-params: ## Regenerate the parameter tables of the probe pages from their sc
 	@echo "Done. Review the diff before committing."
 	@echo "Commercial probe pages are generated from senhub-agent-enterprise; see the comment above this target."
 
-# Database probes (mysql, postgresql) moved to senhub-agent-enterprise
-# with the OSS split; their integration tier runs there. See the
-# senhub-agent-enterprise Makefile (`make test-database`).
+test-mysql: ## Run the mysql probe integration suite against throwaway MySQL and MariaDB containers (needs docker; MYSQL_IMAGES selects the images)
+	@bash internal/agent/probes/mysql/testdata/run-integration.sh
 
 # Boot smoke tests — build the agent binary, exec it against shipped
 # example configs to catch bring-up regressions (linker errors, config
@@ -554,4 +553,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build helm-lint build-windows verify-windows-version build-linux build-darwin package package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics test-oracle test-zabbix-import help package-version test-release-manifest
+.PHONY: all build helm-lint build-windows verify-windows-version build-linux build-darwin package package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics test-oracle test-mysql test-zabbix-import help package-version test-release-manifest
