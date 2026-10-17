@@ -18,10 +18,7 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	// collect.errors is emitted only once an error has occurred (per-label,
 	// emitted-when-touched), so keep the global counter clean for this
 	// always-on-core-metrics count.
-	agentstate.ResetCollectErrorsForTest()
-	t.Cleanup(agentstate.ResetCollectErrorsForTest)
-	agentstate.ResetOTLPExportErrorsBySignalForTest()
-	t.Cleanup(agentstate.ResetOTLPExportErrorsBySignalForTest)
+	resetTouchedCountersForTest(t)
 
 	recs := BuildAgentRecords(snap)
 	// 33 records when neither build info nor http_requests is set and no
@@ -394,5 +391,29 @@ func TestOTLPReceiverCoverageDoesNotClaimTheSendersServiceName(t *testing.T) {
 	}
 	if !seen {
 		t.Fatal("no coverage counter built")
+	}
+}
+
+// resetTouchedCountersForTest clears every emitted-when-touched counter
+// so a test counting records does not depend on which tests ran first.
+func resetTouchedCountersForTest(t *testing.T) {
+	t.Helper()
+	resets := []func(){
+		agentstate.ResetCollectErrorsForTest,
+		agentstate.ResetOTLPExportErrorsBySignalForTest,
+		agentstate.ResetOTLPCountersForTest,
+		agentstate.ResetExportSendFailedForTest,
+		agentstate.ResetExportRejectedForTest,
+		agentstate.ResetHTTPCacheDroppedForTest,
+		agentstate.ResetLicenseInvalidForTest,
+		agentstate.ResetPushBufferDroppedForTest,
+		agentstate.ResetStrategyFailuresForTest,
+		agentstate.ResetUpdateRejectedForTest,
+		agentstate.ResetOTLPReceiverCountersForTest,
+		agentstate.ResetOTLPReceiverCoverageForTest,
+	}
+	for _, reset := range resets {
+		reset()
+		t.Cleanup(reset)
 	}
 }
