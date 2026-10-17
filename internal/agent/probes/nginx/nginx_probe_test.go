@@ -1,11 +1,17 @@
 package nginx
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 
+	"github.com/rs/zerolog"
+
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -148,4 +154,56 @@ func TestNewNginxProbe_Defaults(t *testing.T) {
 	if np.cfg.Interval != defaultInterval {
 		t.Errorf("default interval = %v, want %v", np.cfg.Interval, defaultInterval)
 	}
+}
+
+func TestDownTargetWarnsOncePerOutage(t *testing.T) {
+	var down atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if down.Load() {
+			http.Error(w, "down", http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte(sampleStubStatus))
+	}))
+	defer srv.Close()
+	probe, err := NewNginxProbe(map[string]interface{}{"endpoint": srv.URL}, newTestLogger())
+	if err != nil {
+		t.Fatalf("NewNginxProbe: %v", err)
+	}
+	p := probe.(*NginxProbe)
+
+	var buf bytes.Buffer
+	base := zerolog.New(&buf).Level(zerolog.DebugLevel)
+	p.moduleLogger = logger.NewModuleLogger(&base, "probe.test")
+
+	down.Store(true)
+	for i := 0; i < 10; i++ {
+		points, err := p.Collect()
+		if err != nil {
+			t.Fatalf("Collect must not return an error for a down target, got: %v", err)
+		}
+		if got := upValue(points, "senhub.nginx.up"); got != 0 {
+			t.Fatalf("%s = %v while the target is down, want 0", "senhub.nginx.up", got)
+		}
+	}
+	down.Store(false)
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	if got := strings.Count(buf.String(), `"level":"warn"`); got != 1 {
+		t.Errorf("%d warnings over 10 failed cycles, want 1\n%s", got, buf.String())
+	}
+	if got := strings.Count(buf.String(), `"level":"info"`); got != 1 {
+		t.Errorf("%d recovery lines, want 1\n%s", got, buf.String())
+	}
+}
+
+func upValue(points []data_store.DataPoint, name string) float64 {
+	for _, dp := range points {
+		if dp.Name == name {
+			return dp.Value
+		}
+	}
+	return -1
 }
