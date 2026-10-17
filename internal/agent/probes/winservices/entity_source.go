@@ -1,6 +1,7 @@
 package winservices
 
 import (
+	"senhub-agent.go/internal/agent/probes/hostservice"
 	"sync"
 
 	"senhub-agent.go/internal/agent/services/entity"
@@ -23,8 +24,6 @@ const (
 	serviceName               = "winservices"
 	legacyServiceInstanceID   = "winservices://localhost"
 	relRunsOn                 = "runs_on"
-
-	hostServiceManagerWindows = "windows_scm"
 )
 
 func buildServiceInstanceID(hostID string) string {
@@ -55,15 +54,15 @@ func windowsServiceStateString(state int) string {
 func startModeForStartType(startType int) (string, bool) {
 	switch startType {
 	case startBoot:
-		return "boot_start", true
+		return hostservice.StartModeBoot, true
 	case startSystem:
-		return "system_start", true
+		return hostservice.StartModeSystem, true
 	case startAutomatic, startAutomaticDelayed:
-		return "auto_start", true
+		return hostservice.StartModeAuto, true
 	case startManual:
-		return "demand_start", true
+		return hostservice.StartModeDemand, true
 	case startDisabled:
-		return "disabled", true
+		return hostservice.StartModeOff, true
 	default:
 		return "", false
 	}
@@ -72,21 +71,21 @@ func startModeForStartType(startType int) (string, bool) {
 func buildHostServiceEntity(hostID, hostName string, s serviceState) (entity.Entity, entity.Relation) {
 	id := map[string]any{
 		"host.id":           hostID,
-		"host.service.name": s.name,
+		hostservice.KeyName: s.name,
 	}
 
 	attrs := map[string]any{
-		"host.service.manager": hostServiceManagerWindows,
+		hostservice.KeyManager: hostservice.ManagerWindowsSCM,
 	}
 	if hostName != "" {
 		attrs["host.name"] = hostName
 	}
 	if startMode, ok := startModeForStartType(s.startType); ok {
-		attrs["host.service.start_mode"] = startMode
-		attrs["host.service.start_delayed"] = s.startDelayed
+		attrs[hostservice.KeyStartMode] = startMode
+		attrs[hostservice.KeyStartDelayed] = s.startDelayed
 	}
 	if s.triggerStart != nil {
-		attrs["host.service.trigger_start"] = *s.triggerStart
+		attrs[hostservice.KeyTriggerStart] = *s.triggerStart
 	}
 
 	return entity.Entity{

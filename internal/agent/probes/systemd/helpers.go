@@ -183,7 +183,7 @@ func baseTagsForUnit(u dbus.UnitStatus, hostID, hostName string) []tags.Tag {
 	if hostID != "" {
 		t = append(t,
 			tags.Tag{Key: "host.id", Value: hostID},
-			tags.Tag{Key: "host.service.name", Value: u.Name},
+			tags.Tag{Key: hostservice.KeyName, Value: u.Name},
 		)
 	}
 	if hostName != "" {
