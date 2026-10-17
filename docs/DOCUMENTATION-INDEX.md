@@ -2,16 +2,16 @@
 
 > **📌 Documentation Reorganized!** 
 > 
-> For better navigation, documentation has been reorganized into the **[docs/](./docs/)** directory with dedicated sections for different user types. This page remains as a comprehensive index of all documentation.
+> For better navigation, documentation has been reorganized into the **[docs/](./)** directory with dedicated sections for different user types. This page remains as a comprehensive index of all documentation.
 > 
-> **🚀 Start here: [docs/README.md](./docs/README.md)** for organized documentation by user role.
+> **🚀 Start here: [docs/README.md](./README.md)** for organized documentation by user role.
 
 Welcome to the comprehensive documentation for SenHub Agent. This index will help you find the right documentation for your needs.
 
 ## 🚀 Getting Started
 
 ### For New Users
-3. **[Probe Configuration](user-guide/PROBE-CONFIGURATION.md)** - Configure monitoring probes
+3. **[Probe Configuration](./user-guide/docs/configuration.md)** - Configure monitoring probes
 
 ### For Production Deployment
 1. **[HTTPS Configuration](admin-guide/HTTPS-CONFIGURATION.md)** - TLS/SSL setup and security
@@ -29,7 +29,7 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 ### Configuration References
 | Document | Description | Use Case |
 |----------|-------------|----------|
-| **[PROBE-CONFIGURATION.md](user-guide/PROBE-CONFIGURATION.md)** | Probe configuration guide | Custom monitoring |
+| **[PROBE-CONFIGURATION.md](./user-guide/docs/configuration.md)** | Probe configuration guide | Custom monitoring |
 | **[HTTP-STRATEGY.md](admin-guide/HTTP-STRATEGY.md)** | HTTP strategy configuration | API integration |
 | **[deploying/index.md](user-guide/docs/deploying/index.md)** | Deploying at scale: Ansible, Intune/GPO/SCCM, cloud-init, Docker Compose, Helm, Podman | Fleet rollout |
 | **[nagios.md](user-guide/docs/nagios.md)** | Nagios output: probe summary, shipped checks, custom `nagios.yaml`, Nagios command | Nagios integration |
@@ -70,8 +70,8 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 | **LogicalDisk** | [README](probes/system/logicaldisk/README.md) | Disk and filesystem monitoring (space, IOPS, latency) |
 | | [Metrics](probes/system/logicaldisk/METRICS.md) | Complete disk metrics reference |
 | **Network Probes** | | Network connectivity and quality monitoring |
-| **Gateway Ping** | [README](probes/network/README.md) | Default gateway connectivity (latency, packet loss) |
-| | [Metrics](probes/network/METRICS.md) | Complete gateway metrics reference |
+| **Gateway Ping** | [README](./probes/ping_gateway/README.md) | Default gateway connectivity (latency, packet loss) |
+| | [Metrics](./probes/ping_gateway/METRICS.md) | Complete gateway metrics reference |
 | **WiFi Signal** | [README](probes/wifi_signal_strength/README.md) | WiFi signal strength and quality monitoring |
 | | [Metrics](probes/wifi_signal_strength/METRICS.md) | Complete WiFi metrics reference |
 | **WebApp Probes** | | Web application monitoring |
@@ -96,7 +96,7 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 ## 🎯 Quick Navigation by Use Case
 
 ### "I want to get started quickly"
-2. **[PROBE-CONFIGURATION.md](user-guide/PROBE-CONFIGURATION.md)** (probe setup)
+2. **[PROBE-CONFIGURATION.md](./user-guide/docs/configuration.md)** (probe setup)
 
 ### "I need to deploy in production"
 2. **[HTTPS-CONFIGURATION.md](admin-guide/HTTPS-CONFIGURATION.md)** (security setup)
@@ -123,8 +123,8 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 4. **[LogicalDisk Probe](probes/system/logicaldisk/README.md)** (disk space and IOPS)
 
 ### "I want to monitor network connectivity"
-1. **[Gateway Ping](probes/network/README.md)** (local network latency and packet loss)
-2. **[WiFi Signal](probes/network/wifi/README.md)** (wireless signal strength and quality)
+1. **[Gateway Ping](./probes/ping_gateway/README.md)** (local network latency and packet loss)
+2. **[WiFi Signal](./probes/wifi_signal_strength/README.md)** (wireless signal strength and quality)
 3. **[WebApp Ping](probes/ping_webapp/README.md)** (internet connectivity)
 
 ### "I want to monitor web applications"
@@ -141,13 +141,13 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 3. **[DEBUG-MODE.md](probes/citrix/DEBUG-MODE.md)** (debugging guide)
 
 ### "I want to customize monitoring"
-1. **[PROBE-CONFIGURATION.md](user-guide/PROBE-CONFIGURATION.md)** (probe setup)
+1. **[PROBE-CONFIGURATION.md](./user-guide/docs/configuration.md)** (probe setup)
 2. **[Developer Guide](developer-guide/README.md)** (development guide for custom probes)
 
 ## 🔍 Documentation by Topic
 
 ### Installation & Setup
-- **[Probe Configuration](user-guide/PROBE-CONFIGURATION.md)** - Configure monitoring probes
+- **[Probe Configuration](./user-guide/docs/configuration.md)** - Configure monitoring probes
 
 ### Security & HTTPS
 - **[HTTPS Configuration](admin-guide/HTTPS-CONFIGURATION.md)** - Complete TLS setup guide
@@ -160,9 +160,9 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
   - **[Memory](probes/system/memory/)** - RAM and swap monitoring
   - **[Network](probes/system/network/)** - Network interface bandwidth and errors
   - **[LogicalDisk](probes/system/logicaldisk/)** - Disk space and I/O performance
-- **[Network Probes](probes/network/)** - Network connectivity and quality
-  - **[Gateway Ping](probes/network/)** - Default gateway latency and packet loss
-  - **[WiFi Signal](probes/network/wifi/)** - WiFi signal strength and quality
+- **[Network Probes](./probes/ping_gateway/README.md)** - Network connectivity and quality
+  - **[Gateway Ping](./probes/ping_gateway/README.md)** - Default gateway latency and packet loss
+  - **[WiFi Signal](./probes/wifi_signal_strength/)** - WiFi signal strength and quality
 - **WebApp Probes** - Web application monitoring
   - **[WebApp Ping](probes/ping_webapp/README.md)** - HTTP/HTTPS availability
   - **[WebApp Load](probes/load_webapp/README.md)** - Performance and response time
@@ -171,7 +171,7 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
   - **[Event](probes/event/README.md)** - Custom HTTP event endpoint
 - **[Citrix CVAD](probes/citrix/)** - Citrix Virtual Apps and Desktops monitoring
 - **[Redfish Hardware](probes/redfish/)** - Server hardware monitoring via Redfish
-- **[All Probes](user-guide/PROBE-CONFIGURATION.md)** - Complete probe configuration guide
+- **[All Probes](./user-guide/docs/configuration.md)** - Complete probe configuration guide
 
 ### Integration & APIs
 - **[Universal Configuration](admin-guide/UNIVERSAL-CONFIGURATION.md)** - Probe configuration validation API

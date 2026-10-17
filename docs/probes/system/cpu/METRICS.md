@@ -684,6 +684,4 @@ Thresholds:
 ## Related Documentation
 
 - [CPU Probe README](./README.md) - Configuration and quick start
-- [System Monitoring Guide](../../guides/system-monitoring.md) - Comprehensive system monitoring
-- [Performance Tuning](../../guides/performance-tuning.md) - Optimize agent performance
-- [Troubleshooting Guide](../../troubleshooting/) - Common issues and solutions
+- [Troubleshooting Guide](../../../troubleshooting/TROUBLESHOOTING.md) - Common issues and solutions

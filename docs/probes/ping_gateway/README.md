@@ -573,8 +573,8 @@ For issues or questions:
 
 4. **Review documentation:**
    - [Complete Metrics Reference](./METRICS.md)
-   - [Network Troubleshooting Guide](../../troubleshooting/network.md)
-   - [Agent Configuration Guide](../../../configuration/)
+   - [Network Troubleshooting Guide](../../troubleshooting/TROUBLESHOOTING.md)
+   - [Agent Configuration Guide](../../user-guide/docs/configuration.md)
 
 5. **Report issues:**
    - Include platform (OS, version)
