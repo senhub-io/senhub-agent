@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sync"
 	"time"
 
 	collectortracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
@@ -200,10 +199,7 @@ type spansRelay struct {
 	enricher  *relayEnricher
 	logger    *logger.ModuleLogger
 
-	mu         sync.Mutex
-	subscribed <-chan []*tracepb.ResourceSpans
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
+	worker subscriptionWorker[[]*tracepb.ResourceSpans]
 }
 
 func newSpansRelay(cfg Config, enricher *relayEnricher, moduleLogger *logger.ModuleLogger) (*spansRelay, error) {
@@ -228,17 +224,9 @@ func newSpansRelay(cfg Config, enricher *relayEnricher, moduleLogger *logger.Mod
 // batches plus batches whose targets name this strategy, extending the
 // endpoints:/strategy routing that governs metrics and logs to traces.
 func (r *spansRelay) start() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.subscribed != nil {
-		return
-	}
-	ch := agentstate.SubscribeSpansFor(strategyName, r.cfg.Traces.BufferSize)
-	r.subscribed = ch
-	ctx, cancel := context.WithCancel(context.Background())
-	r.cancel = cancel
-	r.wg.Add(1)
-	go r.drain(ctx, ch)
+	r.worker.start(func() <-chan []*tracepb.ResourceSpans {
+		return agentstate.SubscribeSpansFor(strategyName, r.cfg.Traces.BufferSize)
+	}, r.drain)
 }
 
 // drain accumulates ResourceSpans and flushes when the accumulated span
@@ -247,8 +235,6 @@ func (r *spansRelay) start() {
 // agent's own spans. Runs until the context is cancelled OR the channel
 // closes, with a final best-effort flush on exit.
 func (r *spansRelay) drain(ctx context.Context, ch <-chan []*tracepb.ResourceSpans) {
-	defer r.wg.Done()
-
 	timeout := r.cfg.Traces.BatchTimeout
 	if timeout <= 0 {
 		timeout = DefaultTracesBatchTimeout
@@ -351,33 +337,8 @@ func (r *spansRelay) export(rs []*tracepb.ResourceSpans, spans int) {
 // stop cancels the drain goroutine, unsubscribes, waits for the final
 // flush (bounded), and closes the forwarder. Idempotent.
 func (r *spansRelay) stop(ctx context.Context) {
-	r.mu.Lock()
-	ch := r.subscribed
-	cancel := r.cancel
-	r.subscribed = nil
-	r.cancel = nil
-	r.mu.Unlock()
-
-	if cancel == nil {
+	if !r.worker.stop(ctx, agentstate.UnsubscribeSpans) {
 		return
-	}
-
-	cancel()
-	if ch != nil {
-		agentstate.UnsubscribeSpans(ch)
-	}
-
-	done := make(chan struct{})
-	go func() {
-		r.wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-ctx.Done():
-		// Best-effort; the goroutine exits on its own after the cancel.
-	case <-time.After(5 * time.Second):
 	}
 
 	if err := r.forwarder.close(); err != nil {

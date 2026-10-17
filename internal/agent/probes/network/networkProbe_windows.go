@@ -3,7 +3,6 @@
 package network
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -20,57 +19,45 @@ import (
 	"senhub-agent.go/internal/agent/windows/pdh"
 )
 
-// MetricDefinition defines a performance counter with its path and instance
-type MetricDefinition struct {
-	path     string
-	instance string
-}
-
-// pathInfo represents path information for performance counters
-type pathInfo struct {
-	path     string
-	instance string
-}
-
-var networkCounterPaths = map[string]MetricDefinition{
+var networkCounterPaths = map[string]pdh.CounterDef{
 	// The negotiated speed of the link, which the Unix collector reads
 	// from sysfs. Windows publishes it as a counter, in bits per second
 	// already, so no conversion is needed.
 	"interface_speed": {
-		path:     "\\Network Interface\\Current Bandwidth",
-		instance: "*",
+		Path:     "\\Network Interface\\Current Bandwidth",
+		Instance: "*",
 	},
 	"bytes_sent": {
-		path:     "\\Network Interface\\Bytes Sent/sec",
-		instance: "*",
+		Path:     "\\Network Interface\\Bytes Sent/sec",
+		Instance: "*",
 	},
 	"bytes_received": {
-		path:     "\\Network Interface\\Bytes Received/sec",
-		instance: "*",
+		Path:     "\\Network Interface\\Bytes Received/sec",
+		Instance: "*",
 	},
 	"packets_sent": {
-		path:     "\\Network Interface\\Packets Sent/sec",
-		instance: "*",
+		Path:     "\\Network Interface\\Packets Sent/sec",
+		Instance: "*",
 	},
 	"packets_received": {
-		path:     "\\Network Interface\\Packets Received/sec",
-		instance: "*",
+		Path:     "\\Network Interface\\Packets Received/sec",
+		Instance: "*",
 	},
 	"errors_sent": {
-		path:     "\\Network Interface\\Packets Outbound Errors",
-		instance: "*",
+		Path:     "\\Network Interface\\Packets Outbound Errors",
+		Instance: "*",
 	},
 	"errors_received": {
-		path:     "\\Network Interface\\Packets Received Errors",
-		instance: "*",
+		Path:     "\\Network Interface\\Packets Received Errors",
+		Instance: "*",
 	},
 	"discards_sent": {
-		path:     "\\Network Interface\\Packets Outbound Discarded",
-		instance: "*",
+		Path:     "\\Network Interface\\Packets Outbound Discarded",
+		Instance: "*",
 	},
 	"discards_received": {
-		path:     "\\Network Interface\\Packets Received Discarded",
-		instance: "*",
+		Path:     "\\Network Interface\\Packets Received Discarded",
+		Instance: "*",
 	},
 }
 
@@ -92,7 +79,7 @@ type interfaceInfo struct {
 
 type windowsNetworkCollector struct {
 	query               *pdh.Query
-	paths               map[string]pathInfo
+	paths               map[string]pdh.CounterDef
 	interfaces          map[string]interfaceInfo // key = PDH name
 	mu                  sync.Mutex
 	initialized         bool
@@ -314,7 +301,7 @@ func newNetworkCollector(config map[string]interface{}, baseLogger *logger.Logge
 
 	collector := &windowsNetworkCollector{
 		query:               query,
-		paths:               make(map[string]pathInfo),
+		paths:               make(map[string]pdh.CounterDef),
 		interfaces:          interfaces,
 		logger:              moduleLogger,
 		includeAddressLabel: addressLabel,
@@ -340,12 +327,12 @@ func (w *windowsNetworkCollector) initializeCounters() error {
 	w.logger.Debug().Msg("Initializing Network probe counters")
 
 	for metricName, def := range networkCounterPaths {
-		if def.instance == "*" {
+		if def.Instance == "*" {
 			for pdhName, interfaceInfo := range w.interfaces {
-				path := pdh.BuildCounterPath(def.path, pdhName)
-				w.paths[fmt.Sprintf("%s|%s", metricName, pdhName)] = pathInfo{
-					path:     path,
-					instance: pdhName,
+				path := pdh.BuildCounterPath(def.Path, pdhName)
+				w.paths[fmt.Sprintf("%s|%s", metricName, pdhName)] = pdh.CounterDef{
+					Path:     path,
+					Instance: pdhName,
 				}
 
 				if err := w.query.AddCounter(path); err != nil {
@@ -374,10 +361,9 @@ func (w *windowsNetworkCollector) Collect(timestamp time.Time) ([]data_store.Dat
 		// PDH_NO_DATA until a second sample exists, so a NO_DATA here is
 		// expected, not a failure (#590). Any other error is real. After the
 		// one-second wait the next Collect below has a delta to read.
-		if err := w.query.Collect(); err != nil && !errors.Is(err, pdh.ErrNoData) {
-			return nil, fmt.Errorf("failed initial sample collection: %w", err)
+		if err := pdh.PrimeSamples(w.query); err != nil {
+			return nil, err
 		}
-		time.Sleep(1 * time.Second)
 		w.initialized = true
 	}
 
@@ -393,13 +379,13 @@ func (w *windowsNetworkCollector) Collect(timestamp time.Time) ([]data_store.Dat
 	dataPoints := make([]data_store.DataPoint, 0, len(w.paths))
 
 	for name, pathInfo := range w.paths {
-		value, err := w.query.GetCounterValue(pathInfo.path)
+		value, err := w.query.GetCounterValue(pathInfo.Path)
 		if err != nil {
 			w.logger.Debug().Str("metric", name).Err(err).Msg("Error getting counter value")
 			continue
 		}
 
-		interfaceInfo := w.interfaces[pathInfo.instance]
+		interfaceInfo := w.interfaces[pathInfo.Instance]
 
 		metricTags := append([]tags.Tag{}, baseTags...)
 		metricTags = append(metricTags, []tags.Tag{
@@ -410,7 +396,7 @@ func (w *windowsNetworkCollector) Collect(timestamp time.Time) ([]data_store.Dat
 			},
 			{
 				Key:     "interface",
-				Value:   pathInfo.instance, // Use PDH instance name (e.g., "Network_3")
+				Value:   pathInfo.Instance, // Use PDH instance name (e.g., "Network_3")
 				Private: false,
 			},
 		}...)

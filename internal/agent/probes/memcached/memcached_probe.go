@@ -321,9 +321,5 @@ func parseFloat(stats map[string]string, key string) (float64, bool) {
 	if !ok {
 		return 0, false
 	}
-	v, err := strconv.ParseFloat(raw, 64)
-	if err != nil {
-		return 0, false
-	}
-	return v, true
+	return types.ParseFloat(raw)
 }
