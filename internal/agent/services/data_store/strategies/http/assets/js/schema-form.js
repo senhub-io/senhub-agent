@@ -31,6 +31,9 @@
     }
     function clone(v) { return v === undefined ? undefined : JSON.parse(JSON.stringify(v)); }
     function isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }
+    // Mirrors the server: a stored credential is kept only for the address
+    // it was saved with, so editing one of these fields asks for it again.
+    const DESTINATION_KEY = /^(hosts?|hostnames?|urls?|uris?|endpoints?|address(es)?|addr|servers?|targets?|dsn|brokers|nodes|socket(_path)?|connection_string|.*_(url|uri|host|hosts|endpoint|address|addr|server|servers))$/i;
     function isStored(v) {
         return typeof v === 'string' && (v === '***' || v === '[REDACTED]' || v.startsWith('${secret:'));
     }
@@ -297,6 +300,8 @@
         // ---------- rendering ----------
 
         render() {
+            this._secretHints = [];
+            this._moved = {};
             if (this.starter) {
                 this.starter.querySelectorAll(':scope > [data-sf="' + this.uid + '"]').forEach(n => n.remove());
                 for (const p of this._visible()) {
@@ -401,6 +406,11 @@
                 // to drop the stored value rather than keep it.
                 st.querySelector('button').onclick = () => { self.set(path, ''); self._removed[path] = true; self._changed(true, path); self.focus(path); };
                 wrap.appendChild(st);
+                const hint = el('div', 'hint');
+                hint.hidden = true;
+                hint.textContent = 'The address changed: this credential is kept only for the address it was saved with. Replace it and enter it again, or the change is refused.';
+                wrap.appendChild(hint);
+                (this._secretHints = this._secretHints || []).push(hint);
                 return this._finish(wrap, p, true);
             }
             if (p.kind === 'bool') {
@@ -475,7 +485,15 @@
             else inp.placeholder = p.example ? 'e.g. ' + p.example : (p.default !== undefined ? 'Default: ' + fmtScalar(p.default) : '');
             if (v !== undefined && v !== null) inp.value = String(v);
             inp.autocomplete = p.secret ? 'new-password' : 'off';
+            const initialValue = v === undefined || v === null ? '' : String(v);
+            const isDestination = !p.secret && DESTINATION_KEY.test(p.key);
             inp.oninput = (e) => {
+                if (isDestination) {
+                    self._moved = self._moved || {};
+                    self._moved[path] = e.target.value.trim() !== initialValue.trim();
+                    const moved = Object.values(self._moved).some(Boolean);
+                    (self._secretHints || []).forEach(h => { h.hidden = !moved; });
+                }
                 let val = e.target.value;
                 if (val !== '' && (p.kind === 'int' || p.kind === 'float') && inp.type === 'number') {
                     const n = Number(val);

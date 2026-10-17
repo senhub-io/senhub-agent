@@ -302,6 +302,12 @@ func (h *HTTPSyncStrategy) handleOutputUpdate(w http.ResponseWriter, r *http.Req
 	if !pinConsolePolicy(w, name, req.Params, stored) {
 		return
 	}
+	if ospec, has := outputspec.For(name); has {
+		if err := credentialsStayWithDestination(ospec.Params, ospec.SecretPaths(), stored, req.Params); err != nil {
+			writeJSONError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	spec, ok := h.checkOutputWrite(w, req, stored)
 	if !ok {
 		return

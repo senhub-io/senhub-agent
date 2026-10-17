@@ -515,3 +515,96 @@ func TestReadOnlyConsoleRefusesTestsThatConnect(t *testing.T) {
 		t.Errorf("outputs/validate dials nothing and stays open: %d %v", code, resp)
 	}
 }
+
+// Saving an output must not re-aim a stored credential either: the
+// collector a repoint names never sees it, now or on a later test.
+func TestOutputSaveKeepsStoredCredentialsWithTheirDestination(t *testing.T) {
+	router, dir := consoleRouter(t, nil)
+	base := "/api/" + testAdminKey
+	stored, other := newCredentialSink(t), newCredentialSink(t)
+	if code, resp := doJSON(t, router, "POST", base+"/config/outputs", otlpTestBody(stored.endpoint(),
+		map[string]interface{}{"Authorization": "Bearer stored-token"})); code != 201 {
+		t.Fatalf("create: %d %v", code, resp)
+	}
+	file := filepath.Join(dir, "strategies.d", "50-otlp.yaml")
+	before, _ := os.ReadFile(file)
+
+	save := func(endpoint string, headers map[string]interface{}) (int, map[string]interface{}) {
+		body := otlpTestBody(endpoint, headers)
+		delete(body, "type")
+		return doJSON(t, router, "PUT", base+"/config/outputs/otlp", body)
+	}
+
+	code, resp := save(other.endpoint(), nil)
+	if code != 400 || !strings.Contains(fmt.Sprint(resp["error"]), "send them with the request") {
+		t.Fatalf("repoint without credentials: %d %v, want 400 saying so", code, resp)
+	}
+	if after, _ := os.ReadFile(file); string(after) != string(before) {
+		t.Errorf("a refused save changed the file:\n%s", after)
+	}
+	// What the file still holds is tested against its own collector only.
+	if code, _ := doJSON(t, router, "POST", base+"/config/outputs/test", otlpTestBody(stored.endpoint(), nil)); code != 200 {
+		t.Errorf("test of the unchanged output: %d", code)
+	}
+	if got := other.received(); len(got) != 0 {
+		t.Errorf("the repoint target received %v", got)
+	}
+
+	// The same address, credentials left out: kept, as before.
+	if code, resp := save(stored.endpoint(), nil); code != 200 {
+		t.Fatalf("same address: %d %v", code, resp)
+	}
+	if after, _ := os.ReadFile(file); !strings.Contains(string(after), "${secret:strategies.otlp.headers") {
+		t.Errorf("the stored credential reference was lost:\n%s", after)
+	}
+
+	// A repoint that brings its own credentials goes through.
+	if code, resp := save(other.endpoint(), map[string]interface{}{"Authorization": "Bearer typed-token"}); code != 200 {
+		t.Fatalf("repoint with credentials: %d %v", code, resp)
+	}
+	if code, _ := doJSON(t, router, "POST", base+"/config/outputs/test", otlpTestBody(other.endpoint(), nil)); code != 200 {
+		t.Errorf("test after the repoint: %d", code)
+	}
+	for _, a := range other.received() {
+		if a == "Bearer stored-token" {
+			t.Error("the old credential reached the new collector")
+		}
+	}
+}
+
+func TestProbeSaveKeepsTheStoredPasswordWithItsTarget(t *testing.T) {
+	if _, has := spec.For("pwprobe"); !has {
+		spec.Register(spec.Probe{Type: "pwprobe", DisplayName: "PW", Params: []spec.ParamSpec{
+			{Key: "host", Kind: spec.KindString, Required: true},
+			{Key: "password", Kind: spec.KindString, Secret: true},
+		}})
+	}
+	router, dir := consoleRouter(t, nil)
+	base := "/api/" + testAdminKey
+	if code, resp := doJSON(t, router, "POST", base+"/config/probes", map[string]interface{}{
+		"name": "pw2", "type": "pwprobe", "params": map[string]interface{}{"host": "db1", "password": "s3cret"},
+	}); code != 201 {
+		t.Fatalf("create: %d %v", code, resp)
+	}
+	file := filepath.Join(dir, "probes.d", "50-pw2.yaml")
+	put := func(params map[string]interface{}) (int, map[string]interface{}) {
+		return doJSON(t, router, "PUT", base+"/config/probes/pw2", map[string]interface{}{"type": "pwprobe", "params": params})
+	}
+	before, _ := os.ReadFile(file)
+	code, resp := put(map[string]interface{}{"host": "evil.example"})
+	if code != 400 || !strings.Contains(fmt.Sprint(resp["error"]), "send them with the request") {
+		t.Fatalf("repoint without password: %d %v, want 400 saying so", code, resp)
+	}
+	if after, _ := os.ReadFile(file); string(after) != string(before) {
+		t.Errorf("a refused save changed the file:\n%s", after)
+	}
+	if code, resp := put(map[string]interface{}{"host": "db1"}); code != 200 {
+		t.Errorf("same target, password left out: %d %v", code, resp)
+	}
+	if after, _ := os.ReadFile(file); !strings.Contains(string(after), "${secret:pw2.password}") {
+		t.Errorf("the stored password reference was lost:\n%s", after)
+	}
+	if code, resp := put(map[string]interface{}{"host": "db2", "password": "typed"}); code != 200 {
+		t.Errorf("repoint with a password: %d %v", code, resp)
+	}
+}

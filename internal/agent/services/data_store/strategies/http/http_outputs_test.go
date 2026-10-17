@@ -160,7 +160,7 @@ func TestOutputsAPI_CatalogListWriteAndState(t *testing.T) {
 		t.Errorf("the listing must not carry the token, got %v", hdrs)
 	}
 
-	code, resp = doJSON(t, router, "PUT", base+"/config/outputs/otlp", map[string]interface{}{"enabled": false, "params": map[string]interface{}{"endpoint": "collector:4318", "protocol": "http"}})
+	code, resp = doJSON(t, router, "PUT", base+"/config/outputs/otlp", map[string]interface{}{"enabled": false, "params": map[string]interface{}{"endpoint": "collector:4317", "protocol": "http"}})
 	if code != 200 || !strings.HasSuffix(resp["path"].(string), ".disabled") {
 		t.Fatalf("disable: %d %v", code, resp)
 	}

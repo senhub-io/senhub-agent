@@ -87,11 +87,14 @@ Both defaults are the behaviour of earlier versions.
 A read-only console also refuses to start a probe the caller describes,
 since that is how a program path would otherwise be reached.
 
-In every mode, a connection test never sends a stored credential to another
-destination. If the test changes the address of an output or a probe (endpoint,
-server, URL, host, port and the like) from what the file holds, the stored
-secrets are not used: send the credentials with the request, otherwise the
-output test answers `400` and the probe test reports the error.
+In every mode, a stored credential stays with the address it was saved
+with. When a connection test, or a save of an existing probe or output,
+changes the address (endpoint, server, URL, host and the like) from what the
+file holds, the stored secrets are not reused: the request must carry the
+credentials itself, otherwise the output test and both saves answer `400`
+saying so, and the probe test reports the error. The forms show a hint next
+to the stored credential as soon as an address field is edited. With the
+address unchanged, stored secrets are kept as before.
 
 The `console` block can only be set in the file. The console and its API
 refuse to change it: a request that rewrites the `http` output with a
