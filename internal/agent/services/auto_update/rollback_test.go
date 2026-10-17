@@ -588,3 +588,11 @@ func TestBootClearsANotPerformedRecordOnceTheOperatorRestored(t *testing.T) {
 		})
 	}
 }
+
+func TestCanonicalVersionIgnoresTypedPrefix(t *testing.T) {
+	for _, in := range []string{"0.6.3", "v0.6.3", " v0.6.3 "} {
+		if got := canonicalVersion(in); got != "0.6.3" {
+			t.Errorf("canonicalVersion(%q) = %q, want 0.6.3", in, got)
+		}
+	}
+}

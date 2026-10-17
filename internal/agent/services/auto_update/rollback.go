@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/logger"
@@ -129,8 +130,8 @@ func (e rollbackEnv) failedPath() string {
 
 func (e rollbackEnv) recordSwap(from, to string) error {
 	return e.writePendingMarker(pendingUpdate{
-		FromVersion:  from,
-		ToVersion:    to,
+		FromVersion:  canonicalVersion(from),
+		ToVersion:    canonicalVersion(to),
 		SwappedAt:    e.now(),
 		BootAttempts: 0,
 	})
@@ -160,7 +161,7 @@ func (e rollbackEnv) boot() bootAction {
 		return bootNone
 	}
 
-	if marker.ToVersion != e.version {
+	if canonicalVersion(marker.ToVersion) != canonicalVersion(e.version) {
 		e.log.Info().Str("path", path).Str("to_version", marker.ToVersion).Str("running_version", e.version).Msg("removing stale pending update marker")
 		if rmErr := e.fs.Remove(path); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
 			e.log.Warn().Err(rmErr).Str("path", path).Msg("failed to remove stale pending update marker")
@@ -285,7 +286,7 @@ func (e rollbackEnv) confirm() error {
 		}
 		return nil
 	}
-	if marker.ToVersion != e.version {
+	if canonicalVersion(marker.ToVersion) != canonicalVersion(e.version) {
 		return nil
 	}
 
@@ -377,4 +378,12 @@ func (e rollbackEnv) removePath(path string) {
 	if err := e.fs.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		e.log.Warn().Err(err).Str("path", path).Msg("failed to remove file")
 	}
+}
+
+// canonicalVersion drops the "v" an operator may type ("update v0.6.3"):
+// tags and the running version carry none, and a marker that differs from
+// the running version only by it would be discarded as stale, leaving that
+// update without a rollback.
+func canonicalVersion(v string) string {
+	return strings.TrimPrefix(strings.TrimSpace(v), "v")
 }
