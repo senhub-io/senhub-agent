@@ -2,6 +2,7 @@ package periodic_scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -842,7 +843,7 @@ func TestExecuteContextIsCancelledByShutdown(t *testing.T) {
 	}
 	select {
 	case err := <-returned:
-		if err != context.Canceled {
+		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("call ended with %v, want context.Canceled", err)
 		}
 	default:
