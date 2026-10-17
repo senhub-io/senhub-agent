@@ -1010,7 +1010,7 @@ configuration.LocalConfigurationData{
 ERROR: parsing <DIR>/agent.yaml: yaml: unmarshal errors:
   line 7: cannot unmarshal !!str `no` into bool
 ##### testdata/yaml-corpus/err-syntax.yaml
-ERROR: parsing <DIR>/agent.yaml: yaml: line 3: did not find expected ',' or ']'
+ERROR: parsing <DIR>/agent.yaml: yaml: line 2: did not find expected ',' or ']'
 ##### testdata/yaml-corpus/err-type-mismatch.yaml
 ERROR: parsing <DIR>/agent.yaml: yaml: unmarshal errors:
   line 5: cannot unmarshal !!str `many` into int

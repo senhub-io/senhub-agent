@@ -302,7 +302,7 @@ go mod verify
 ### Current Dependencies
 - `github.com/gorilla/mux` - HTTP routing
 - `github.com/rs/zerolog` - Structured logging
-- `gopkg.in/yaml.v2` - YAML configuration parsing
+- `gopkg.in/yaml.v3` - YAML configuration parsing
 
 See `go.mod` for complete list.
 

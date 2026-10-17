@@ -6,9 +6,8 @@ import (
 	"regexp"
 	"strings"
 
-	"gopkg.in/yaml.v2"
-
 	"senhub-agent.go/internal/agent/services/configuration/secret"
+	"senhub-agent.go/internal/yamlcompat"
 )
 
 // The console never sees a stored secret: the listing shows a reference
@@ -108,7 +107,7 @@ func ReadProbeFragment(configPath, name string) (ProbeConfig, bool, error) {
 		return ProbeConfig{}, false, fmt.Errorf("reading %s: %w", path, err)
 	}
 	var list []ProbeConfig
-	if err := yaml.Unmarshal(raw, &list); err != nil {
+	if err := yamlcompat.Unmarshal(raw, &list); err != nil {
 		return ProbeConfig{}, false, fmt.Errorf("parsing %s: %w", path, err)
 	}
 	for _, p := range list {

@@ -213,14 +213,11 @@ agent:
   type: demo
   params:
     added:
-    - a: 1
+      - a: 1
     dollar: price $5
     flag: true
     host: db.example.com
-    long: 'word word word word word word word word word word word word word word word
-      word word word word word word word word word word word word word word word word
-      word word word word word word word word word word word word word word word word
-      word word word word word word word word word word word word word '
+    long: 'word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word '
     longword: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
     multi: |
       line one
@@ -232,57 +229,57 @@ agent:
       deep:
         deeper:
           deepest:
-          - - 1
-            - 2
-          - - 3
+            - - 1
+              - 2
+            - - 3
       list:
-      - a
-      - b
-      - k: v
-        "n":
-        - 1
-        - 2
-        - 3
+        - a
+        - b
+        - k: v
+          "n":
+            - 1
+            - 2
+            - 3
       none: []
     port: 5433
     ratio: 1.5
     ref: ${env:SOME_VAR:-default}
     whole: 2
     words:
-    - "yes"
-    - "no"
-    - "on"
-    - "off"
-    - "y"
-    - "n"
-    - "true"
-    - "null"
-    - "~"
-    - "1e3"
-    - "0x10"
-    - "010"
-    - "2024-01-02"
-    - ""
-    - ' lead'
-    - 'trail '
-    - 'a: b'
-    - '# c'
-    - '- d'
-    - '@at'
-    - '`tick'
-    - '%pct'
-    - '!bang'
-    - '&amp'
-    - '*star'
-    - '|pipe'
-    - '>gt'
-    - '''sq'
-    - '"dq'
-    - "tab\there"
-    - uni é 日本
-    - '{br}'
-    - '[sq]'
-    - x,y
+      - "yes"
+      - "no"
+      - "on"
+      - "off"
+      - "y"
+      - "n"
+      - "true"
+      - "null"
+      - "~"
+      - "1e3"
+      - "0x10"
+      - "010"
+      - "2024-01-02"
+      - ""
+      - ' lead'
+      - 'trail '
+      - 'a: b'
+      - '# c'
+      - '- d'
+      - '@at'
+      - '`tick'
+      - '%pct'
+      - '!bang'
+      - '&amp'
+      - '*star'
+      - '|pipe'
+      - '>gt'
+      - '''sq'
+      - '"dq'
+      - "tab\there"
+      - uni é 日本
+      - '{br}'
+      - '[sq]'
+      - x,y
     yesstr: "yes"
   custom_tags:
     empty: ""
@@ -293,13 +290,13 @@ agent:
     criticality: high
     owner:
       contacts:
-      - a@x
-      - b@x
+        - a@x
+        - b@x
       team: sre
   enabled: true
   log_strategies:
-  - otlp
-  - event
+    - otlp
+    - event
 ===== probes.d/50-second.yaml =====
 # Managed by the SenHub web console. Edit it from the console, or remove this line to maintain it by hand.
 
@@ -313,12 +310,9 @@ agent:
 http:
   bind: 0.0.0.0
   endpoints:
-  - prtg
-  - web
-  long: 'segment segment segment segment segment segment segment segment segment segment
-    segment segment segment segment segment segment segment segment segment segment
-    segment segment segment segment segment segment segment segment segment segment
-    segment segment segment segment segment segment segment segment segment segment '
+    - prtg
+    - web
+  long: 'segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment segment '
   multi: |
     a
     b
@@ -326,8 +320,8 @@ http:
   ratio: 0.5
   tls:
     cipher_suites:
-    - A
-    - B
+      - A
+      - B
     enabled: true
     min: "1.2"
   word: "yes"
