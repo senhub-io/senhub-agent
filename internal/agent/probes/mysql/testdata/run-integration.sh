@@ -89,7 +89,7 @@ for image in $images; do
   echo "creating $mon_user with the documented grants"
   docker exec -i "$name" "$client" -h127.0.0.1 -uroot -p"$root_password" <<SQL
 CREATE USER '$mon_user'@'%' IDENTIFIED BY '$mon_password';
-GRANT PROCESS, REPLICATION CLIENT, SELECT ON *.* TO '$mon_user'@'%';
+GRANT PROCESS, REPLICATION CLIENT, REPLICATION SLAVE, SELECT ON *.* TO '$mon_user'@'%';
 SQL
 
   hostport="$(docker port "$name" 3306/tcp | head -1)"
@@ -105,10 +105,6 @@ SQL
   # the replica joins only afterwards.
   if [ "$replicate" = 1 ]; then
     echo "starting $replica_name as a GTID replica of $name"
-    # SHOW REPLICAS, which the probe uses to count downstream replicas,
-    # requires REPLICATION SLAVE on top of the documented grants.
-    docker exec -i "$name" mysql -h127.0.0.1 -uroot -p"$root_password" \
-      -e "GRANT REPLICATION SLAVE ON *.* TO '$mon_user'@'%'"
     docker exec -i "$name" mysql -h127.0.0.1 -uroot -p"$root_password" <<SQL
 CREATE USER '$repl_user'@'%' IDENTIFIED BY '$repl_password';
 GRANT REPLICATION SLAVE ON *.* TO '$repl_user'@'%';
