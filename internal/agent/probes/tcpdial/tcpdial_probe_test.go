@@ -1,6 +1,7 @@
 package tcpdial
 
 import (
+	"context"
 	"net"
 	"sync/atomic"
 	"testing"
@@ -99,7 +100,7 @@ func TestCollect_RealListener(t *testing.T) {
 func TestSeam(t *testing.T) {
 	p := newTestProbe(t, "a:1", "b:2")
 	var calls atomic.Int32
-	p.dial = func(target string) dialResult {
+	p.dial = func(_ context.Context, target string) dialResult {
 		calls.Add(1)
 		return dialResult{target: target, up: true, duration: 3 * time.Millisecond}
 	}
