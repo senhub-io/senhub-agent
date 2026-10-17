@@ -295,11 +295,7 @@ func parseSmiOutput(output []byte) ([]nvidiaGPU, error) {
 // parseFloat parses a trimmed numeric string from nvidia-smi. Returns 0 on any
 // parse error (nvidia-smi guarantees numeric output for these fields).
 func parseFloat(s string) float64 {
-	s = strings.TrimSpace(s)
-	v, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return 0
-	}
+	v, _ := types.ParseFloat(strings.TrimSpace(s))
 	return v
 }
 
