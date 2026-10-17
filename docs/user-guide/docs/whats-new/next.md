@@ -20,7 +20,6 @@
 
 ## Features
 
-- **Lock the console from the file.** The `console` block of the `http` output takes `read_only: true`, which makes the console and its API refuse every change (probes, outputs, settings, licence, governance, log levels, cache clear) while reading stays open, and `allow_exec: false`, which refuses any write that would make the agent run a program (the `exec` probe and program paths such as `smartctl_path`). For fleets managed by Ansible or another tool. Neither setting can be changed through the console or its API, and `config check` and `doctor` report the effective mode. Defaults are unchanged. See [Web console](../web-interface.md#locking-the-console).
 - **Kubernetes nodes as their own entity.** The `kubernetes` probe publishes each node as `k8s.node` (its role in the cluster: kubelet version, runtime, schedulable, Ready and pressure conditions), joined by `same_as` to the host it runs on, which keeps the machine facts.
 - **Select all / Clear in the URL builder.** Each tag filter of the console's sensor URL builder starts with "Select all" and "Clear".
 - **Kubernetes Grafana dashboards.** `kubernetes-workloads.json` (node, pod and container resources from `kubelet_stats`) and `kubernetes-logs.json` (pod logs and their volume) in `docs/grafana/`.
