@@ -158,6 +158,46 @@ func (s *Service) startLocked(ctx context.Context) error {
 		return nil
 	}
 
+	hostFn := s.hostIdentityFn(cfg)
+	agentFn := func() entity.AgentIdentity {
+		return entity.AgentIdentity{
+			InstanceID:     cfg.AgentInstanceID,
+			ServiceName:    cfg.AgentService,
+			ServiceVersion: cfg.AgentVersion,
+		}
+	}
+
+	// Probe entity sources stamp the From endpoint of their `monitors`
+	// edge with this, so it must be set before the detector polls them.
+	agentstate.SetAgentInstanceID(cfg.AgentInstanceID)
+
+	hostIDFn := func() string {
+		hi, err := common.GetHostIdentity()
+		if err != nil {
+			return ""
+		}
+		return hi.ID
+	}
+	s.registerHostSources(cfg, hostIDFn)
+
+	det := entity.NewDetector(hostFn, agentFn, cfg.Interval)
+	s.wireDetectorCallbacks(det)
+
+	runCtx, cancel := context.WithCancel(ctx)
+	s.cancel = cancel
+	go det.Run(runCtx)
+
+	s.logger.Info().
+		Dur("interval", cfg.Interval).
+		Bool("depends_on", cfg.DependsOnEnabled).
+		Bool("neighbors", cfg.NeighborsEnabled).
+		Bool("neighbors_resolves_to", cfg.NeighborsResolvesTo).
+		Bool("aggregation", cfg.AggregationEnabled).
+		Msg("entity detection started")
+	return nil
+}
+
+func (s *Service) hostIdentityFn(cfg Config) func() (entity.HostIdentity, error) {
 	var warnDegenerate sync.Once
 
 	// warnIgnoredHostID names a SENHUB_HOST_ID the agent could not use, once.
@@ -218,25 +258,10 @@ func (s *Service) startLocked(ctx context.Context) error {
 			Governance:            cfg.Governance.Attributes(),
 		}, nil
 	}
-	agentFn := func() entity.AgentIdentity {
-		return entity.AgentIdentity{
-			InstanceID:     cfg.AgentInstanceID,
-			ServiceName:    cfg.AgentService,
-			ServiceVersion: cfg.AgentVersion,
-		}
-	}
+	return hostFn
+}
 
-	// Probe entity sources stamp the From endpoint of their `monitors`
-	// edge with this, so it must be set before the detector polls them.
-	agentstate.SetAgentInstanceID(cfg.AgentInstanceID)
-
-	hostIDFn := func() string {
-		hi, err := common.GetHostIdentity()
-		if err != nil {
-			return ""
-		}
-		return hi.ID
-	}
+func (s *Service) registerHostSources(cfg Config, hostIDFn func() string) {
 	s.unregisters = append(s.unregisters,
 		entity.RegisterSource(hostnet.New(hostIDFn)),
 		entity.RegisterSource(hostsvc.New(hostIDFn)),
@@ -263,8 +288,9 @@ func (s *Service) startLocked(ctx context.Context) error {
 		})
 		s.unregisters = append(s.unregisters, entity.RegisterSource(dep))
 	}
+}
 
-	det := entity.NewDetector(hostFn, agentFn, cfg.Interval)
+func (s *Service) wireDetectorCallbacks(det *entity.Detector) {
 	det.OnOrphanRelations(func(orphans []entity.Relation) {
 		for _, r := range orphans {
 			s.logger.Warn().
@@ -326,19 +352,6 @@ func (s *Service) startLocked(ctx context.Context) error {
 				Msg("entity has no relation; dropped before emission (anti-orphan guard)")
 		}
 	})
-
-	runCtx, cancel := context.WithCancel(ctx)
-	s.cancel = cancel
-	go det.Run(runCtx)
-
-	s.logger.Info().
-		Dur("interval", cfg.Interval).
-		Bool("depends_on", cfg.DependsOnEnabled).
-		Bool("neighbors", cfg.NeighborsEnabled).
-		Bool("neighbors_resolves_to", cfg.NeighborsResolvesTo).
-		Bool("aggregation", cfg.AggregationEnabled).
-		Msg("entity detection started")
-	return nil
 }
 
 // Shutdown stops the detector and releases the host sources, so a
