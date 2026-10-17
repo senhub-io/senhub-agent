@@ -35,8 +35,8 @@ cleanup() {
   if [ "${MYSQL_KEEP:-0}" = 1 ]; then
     echo "containers $name $replica_name left running"
   else
-    [ -z "$replica_name" ] || docker rm -f "$replica_name" >/dev/null 2>&1 || true
-    docker rm -f "$name" >/dev/null 2>&1 || true
+    [ -z "$replica_name" ] || docker rm -f -v "$replica_name" >/dev/null 2>&1 || true
+    docker rm -f -v "$name" >/dev/null 2>&1 || true
     [ -z "$network" ] || docker network rm "$network" >/dev/null 2>&1 || true
   fi
 }

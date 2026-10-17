@@ -31,7 +31,7 @@ cleanup() {
   if [ "${POSTGRESQL_KEEP:-0}" = 1 ]; then
     echo "containers $name $replica_name left running on network $network"
   else
-    docker rm -f "$replica_name" "$name" >/dev/null 2>&1 || true
+    docker rm -f -v "$replica_name" "$name" >/dev/null 2>&1 || true
     docker network rm "$network" >/dev/null 2>&1 || true
   fi
 }
