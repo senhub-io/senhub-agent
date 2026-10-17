@@ -210,15 +210,24 @@ func (p *CouchDBProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
+func (p *CouchDBProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
 // Collect queries /_node/_local/_stats (and GET / for the server UUID on
 // first successful contact) and emits metrics.
 // If the endpoint is unreachable, senhub.couchdb.up=0 is emitted and
 // nil is returned — a failing remote is a measurement, not a collection error.
-func (p *CouchDBProbe) Collect() ([]data_store.DataPoint, error) {
+func (p *CouchDBProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 
-	stats, err := p.fetchStats()
+	stats, err := p.fetchStats(ctx)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("couchdb collection interrupted: %w", ctxErr)
+		}
 		p.moduleLogger.Warn().Err(err).Str("endpoint", p.cfg.Endpoint).Msg("CouchDB unreachable")
 		p.entitySrc.setReachable(false)
 
@@ -237,9 +246,12 @@ func (p *CouchDBProbe) Collect() ([]data_store.DataPoint, error) {
 
 	// Fetch server UUID + version from GET / and pin the stable id on the
 	// first successful contact. pinServerUUID is a no-op once pinned.
-	if root, err := p.fetchRoot(); err == nil {
+	if root, err := p.fetchRoot(ctx); err == nil {
 		p.entitySrc.pinServerUUID(root.UUID)
 		p.entitySrc.updateVersion(root.Version)
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("couchdb collection interrupted: %w", ctxErr)
 	}
 
 	p.entitySrc.setReachable(true)
@@ -254,9 +266,9 @@ func (p *CouchDBProbe) Collect() ([]data_store.DataPoint, error) {
 }
 
 // fetchStats performs the authenticated GET to /_node/_local/_stats.
-func (p *CouchDBProbe) fetchStats() (*statsResponse, error) {
+func (p *CouchDBProbe) fetchStats(ctx context.Context) (*statsResponse, error) {
 	url := p.cfg.Endpoint + "/_node/_local/_stats"
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("building request for %s: %w", url, err)
 	}
@@ -290,8 +302,8 @@ func (p *CouchDBProbe) fetchStats() (*statsResponse, error) {
 // fetchRoot performs GET / to retrieve the server UUID and version.
 // The UUID is a permanent per-node identifier assigned at first startup and
 // never changes across restarts — the canonical stable db.instance.id source.
-func (p *CouchDBProbe) fetchRoot() (*rootResponse, error) {
-	req, err := http.NewRequest(http.MethodGet, p.cfg.Endpoint+"/", nil)
+func (p *CouchDBProbe) fetchRoot(ctx context.Context) (*rootResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.cfg.Endpoint+"/", nil)
 	if err != nil {
 		return nil, fmt.Errorf("building root request for %s: %w", p.cfg.Endpoint, err)
 	}
