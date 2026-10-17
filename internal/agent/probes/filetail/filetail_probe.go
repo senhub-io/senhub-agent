@@ -430,7 +430,7 @@ func (p *FileTailProbe) startTail(file string) error {
 	}
 	size := fi.Size()
 	opened := fi
-	handle, err := tail.OpenFile(file)
+	handle, err := tail.OpenFile(file) //nolint:staticcheck // no replacement in nxadm/tail v1.4.11; os.Open lacks the Windows delete-sharing that rotation relies on
 	if err != nil {
 		p.mu.Unlock()
 		if os.IsNotExist(err) {
@@ -929,7 +929,7 @@ read:
 			lastOffset = 0
 			if !drainsRotatedFile {
 				// No drain handle to renew.
-			} else if h, err := tail.OpenFile(file); err == nil {
+			} else if h, err := tail.OpenFile(file); err == nil { //nolint:staticcheck // no replacement in nxadm/tail v1.4.11; os.Open lacks the Windows delete-sharing that rotation relies on
 				closeQuietly(ts.handle)
 				ts.handle = h
 			} else {
