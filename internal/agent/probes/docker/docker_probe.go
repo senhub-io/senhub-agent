@@ -500,6 +500,17 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 
 	s := res.stats
 
+	points = append(points, cpuDatapoints(s, baseTags, ts)...)
+	points = append(points, memoryDatapoints(s, baseTags, ts)...)
+	points = append(points, pidsDatapoints(s, baseTags, ts)...)
+	points = append(points, networkDatapoints(s, baseTags, ts)...)
+	points = append(points, blkioDatapoints(s, baseTags, ts)...)
+
+	return points
+}
+
+func cpuDatapoints(s *containerStats, baseTags []tags.Tag, ts time.Time) []data_store.DataPoint {
+	var points []data_store.DataPoint
 	// CPU metrics.
 	cpuTags := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "cpu"})
 	cpuOnline := s.CPUStats.OnlineCPUs
@@ -557,7 +568,11 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 		data_store.DataPoint{Name: "container.cpu.throttling_data.periods", Value: float64(s.CPUStats.ThrottlingData.ThrottlingPeriods), Timestamp: ts, Tags: cpuTags},
 		data_store.DataPoint{Name: "container.cpu.throttling_data.throttled_time", Value: float64(s.CPUStats.ThrottlingData.ThrottledTime), Timestamp: ts, Tags: cpuTags},
 	)
+	return points
+}
 
+func memoryDatapoints(s *containerStats, baseTags []tags.Tag, ts time.Time) []data_store.DataPoint {
+	var points []data_store.DataPoint
 	// Memory metrics — cgroups v1/v2 detection via presence of "rss" key.
 	memTags := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "memory"})
 	usage := s.MemoryStats.Usage
@@ -642,14 +657,22 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 			points = append(points, data_store.DataPoint{Name: kv.metricName, Value: float64(val), Timestamp: ts, Tags: memTags})
 		}
 	}
+	return points
+}
 
+func pidsDatapoints(s *containerStats, baseTags []tags.Tag, ts time.Time) []data_store.DataPoint {
+	var points []data_store.DataPoint
 	// PIDs metrics.
 	pidsTags := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "pids"})
 	points = append(points,
 		data_store.DataPoint{Name: "container.pids.count", Value: float64(s.PidsStats.Current), Timestamp: ts, Tags: pidsTags},
 		data_store.DataPoint{Name: "senhub.docker.pids.limit", Value: float64(s.PidsStats.Limit), Timestamp: ts, Tags: pidsTags},
 	)
+	return points
+}
 
+func networkDatapoints(s *containerStats, baseTags []tags.Tag, ts time.Time) []data_store.DataPoint {
+	var points []data_store.DataPoint
 	// Network metrics — absent for --network=host containers (nil map).
 	if len(s.Networks) > 0 {
 		var txBytes, rxBytes, txPkts, rxPkts, txErrors, rxErrors, txDropped, rxDropped uint64
@@ -675,7 +698,11 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 			data_store.DataPoint{Name: "senhub.docker.network.rx_dropped", Value: float64(rxDropped), Timestamp: ts, Tags: netTags},
 		)
 	}
+	return points
+}
 
+func blkioDatapoints(s *containerStats, baseTags []tags.Tag, ts time.Time) []data_store.DataPoint {
+	var points []data_store.DataPoint
 	// Block I/O metrics — op="Total" is the canonical sum on cgroupsv1; fall
 	// back to summing Read+Write when Total is absent (cgroupsv2 path).
 	blkTotal, blkRead, blkWrite := blkioSplit(s.BlkioStats.IOServiceBytesRecursive)
@@ -706,7 +733,6 @@ func (p *dockerProbe) buildDatapoints(res statsResult, ts time.Time) []data_stor
 			data_store.DataPoint{Name: "senhub.docker.blkio.sectors.total", Value: float64(secTotal), Timestamp: ts, Tags: blkioTags},
 		)
 	}
-
 	return points
 }
 
