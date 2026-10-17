@@ -299,7 +299,28 @@ func checkConfiguration(d doctorDeps, cfg doctorConfig, st statusResult) []docto
 		out = append(out, *c)
 	}
 	out = append(out, httpPortCheck(d, cfg, st))
+	out = append(out, opampCheck(cfg, st))
 	return out
+}
+
+// opampCheck says whether the agent reports to an OpAMP server. The
+// connection state lives in the running agent; only its status channel
+// carries it.
+func opampCheck(cfg doctorConfig, st statusResult) doctorCheck {
+	const id = "config.opamp"
+	switch {
+	case cfg.err != nil:
+		return skipCheck(sectionConfiguration, id, "the configuration cannot be loaded")
+	case cfg.data.OpAMP == nil || !cfg.data.OpAMP.Enabled:
+		return okCheck(sectionConfiguration, id, "OpAMP is disabled")
+	case !daemonAnswered(st) || st.system.OpAMP == nil:
+		return skipCheck(sectionConfiguration, id, "OpAMP is enabled; the running agent did not report its connection state")
+	case st.system.OpAMP.Connected:
+		return okCheck(sectionConfiguration, id, "OpAMP is enabled and connected")
+	default:
+		return warnCheck(sectionConfiguration, id, "OpAMP is enabled but not connected",
+			"check opamp.endpoint, opamp.token and the network path to the server; the agent log names the failure")
+	}
 }
 
 func configCheckChecks(d doctorDeps, cfg doctorConfig) []doctorCheck {

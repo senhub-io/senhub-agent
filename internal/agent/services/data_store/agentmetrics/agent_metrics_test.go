@@ -396,3 +396,51 @@ func TestOTLPReceiverCoverageDoesNotClaimTheSendersServiceName(t *testing.T) {
 		t.Fatal("no coverage counter built")
 	}
 }
+
+func TestBuildAgentRecords_OpAMPSeriesOnlyWhileEnabled(t *testing.T) {
+	agentstate.ResetOpAMPForTest()
+	t.Cleanup(agentstate.ResetOpAMPForTest)
+	snap := AgentMetricsSnapshot{StartTime: time.Now()}
+
+	for _, r := range BuildAgentRecords(snap) {
+		if strings.HasPrefix(r.Name, "senhub.agent.opamp.") {
+			t.Fatalf("%s emitted while OpAMP is disabled", r.Name)
+		}
+	}
+
+	agentstate.SetOpAMPEnabled(true)
+	got := map[string]float64{}
+	for _, r := range BuildAgentRecords(snap) {
+		if strings.HasPrefix(r.Name, "senhub.agent.opamp.") {
+			got[r.Name+"|"+r.Attributes["reason"]] = r.Value
+		}
+	}
+	want := map[string]float64{
+		"senhub.agent.opamp.connected|":              0,
+		"senhub.agent.opamp.messages.sent|":          0,
+		"senhub.agent.opamp.errors|connect":          0,
+		"senhub.agent.opamp.errors|server":           0,
+		"senhub.agent.opamp.errors|report":           0,
+		"senhub.agent.opamp.errors|effective_config": 0,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("seeded series = %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if g, ok := got[k]; !ok || g != v {
+			t.Errorf("%s = %v (present %v), want %v", k, g, ok, v)
+		}
+	}
+
+	agentstate.SetOpAMPConnected(true)
+	agentstate.IncrementOpAMPMessagesSent()
+	agentstate.IncrementOpAMPErrors(agentstate.OpAMPErrorConnect)
+	for _, r := range BuildAgentRecords(snap) {
+		switch {
+		case r.Name == "senhub.agent.opamp.connected" && r.Value != 1,
+			r.Name == "senhub.agent.opamp.messages.sent" && r.Value != 1,
+			r.Name == "senhub.agent.opamp.errors" && r.Attributes["reason"] == "connect" && r.Value != 1:
+			t.Errorf("%s%v = %v after one event", r.Name, r.Attributes, r.Value)
+		}
+	}
+}
