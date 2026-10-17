@@ -20,6 +20,7 @@
 
 ## Features
 
+- **The console no longer keeps the administration key in its address.** Opening `/web/{admin-key}/` sets a session cookie and redirects to `/web/_/...`; scripts can send `Authorization: Bearer <admin key>` to `/api/_/...`. The key in the path keeps working, and PRTG, Nagios and Prometheus URLs are unchanged. See [Web interface](../web-interface.md).
 - **Kubernetes nodes as their own entity.** The `kubernetes` probe publishes each node as `k8s.node` (its role in the cluster: kubelet version, runtime, schedulable, Ready and pressure conditions), joined by `same_as` to the host it runs on, which keeps the machine facts.
 - **Select all / Clear in the URL builder.** Each tag filter of the console's sensor URL builder starts with "Select all" and "Clear".
 - **Kubernetes Grafana dashboards.** `kubernetes-workloads.json` (node, pod and container resources from `kubelet_stats`) and `kubernetes-logs.json` (pod logs and their volume) in `docs/grafana/`.
