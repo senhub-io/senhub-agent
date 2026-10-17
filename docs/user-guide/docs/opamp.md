@@ -81,7 +81,7 @@ opamp:
 | `enabled` | `false` | Turns the client on. |
 | `endpoint` | — | Server URL. `wss://` or `ws://` with `transport: websocket`, `https://` or `http://` with `transport: http`. Required when enabled. |
 | `token` | — | Bearer token sent as `Authorization: Bearer <token>`. Required when enabled. |
-| `transport` | `websocket` | `websocket` keeps one connection open; `http` polls the server. |
+| `transport` | `websocket` | `websocket` keeps one connection open; `http` polls the server. Prefer `websocket`: over `http` the agent cannot tell the server it is stopping, so the server sees it offline only after three missed heartbeats (90 s by default). |
 | `tls.ca_file` | — | PEM file of the CA the server certificate is verified against, instead of the system store. |
 | `tls.insecure_skip_verify` | `false` | Skips the verification of the server certificate. Also allows a plaintext `ws://` or `http://` endpoint on a remote host. |
 | `heartbeat_interval` | `30s` | How often the agent tells the server it is alive when nothing changed. With `transport: http` it is also the polling interval. At least `1s`. |

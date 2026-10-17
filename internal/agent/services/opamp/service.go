@@ -677,6 +677,18 @@ func (sess *session) onConnect(_ context.Context) {
 	}
 }
 
+// firstFailureMessage names the likely cause of a first failed connection.
+// opamp-go does not surface the HTTP status of a refused WebSocket upgrade,
+// only "bad handshake", which is also what a server answering 401 or 403 to
+// the token or the tenant's agreement produces; calling that "unreachable"
+// sent operators looking for a network fault.
+func firstFailureMessage(err string) string {
+	if strings.Contains(err, "bad handshake") {
+		return "OpAMP server refused the connection (a rejected token or agreement looks like this) or is not an OpAMP endpoint; retrying with backoff"
+	}
+	return "OpAMP server unreachable; retrying with backoff"
+}
+
 func (sess *session) onConnectFailed(_ context.Context, err error) {
 	agentstate.SetOpAMPConnected(false)
 	agentstate.IncrementOpAMPErrors(agentstate.OpAMPErrorConnect)
@@ -695,7 +707,7 @@ func (sess *session) onConnectFailed(_ context.Context, err error) {
 	case connNever:
 		if !sess.firstFailureLogged {
 			sess.firstFailureLogged = true
-			msg = "OpAMP server unreachable; retrying with backoff"
+			msg = firstFailureMessage(redacted)
 			warn = true
 		}
 	}
