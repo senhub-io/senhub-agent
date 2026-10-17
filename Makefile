@@ -351,9 +351,19 @@ watch: clean
 # ========================================
 
 # Test the application (original)
-test: test-entrypoint test-release-manifest
+test: test-entrypoint test-release-manifest test-set-version
 	@echo "Testing..."
 	@go test ./... -v
+
+check-version-pins: ## Fail when a pinned version disagrees with the VERSION file
+	@scripts/check-version-consistency.sh
+
+set-version: ## Rewrite VERSION and every pinned version: make set-version V=0.6.4
+	@test -n "$(V)" || { echo "usage: make set-version V=X.Y.Z" >&2; exit 2; }
+	@scripts/check-version-consistency.sh --set "$(V)"
+
+test-set-version: ## Check that set-version rewrites every pin, on a temporary copy of the tree
+	@scripts/test-set-version.sh
 
 test-entrypoint: ## Check the container entrypoint's identity resolution (no daemon needed)
 	@echo "Testing the container entrypoint..."
@@ -554,4 +564,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build helm-lint build-windows verify-windows-version build-linux build-darwin package package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics test-oracle test-zabbix-import help package-version test-release-manifest
+.PHONY: all build helm-lint build-windows verify-windows-version build-linux build-darwin package package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics test-oracle test-zabbix-import help package-version test-release-manifest check-version-pins set-version test-set-version
