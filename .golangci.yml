@@ -90,6 +90,23 @@ linters:
         linters:
           - errcheck
 
+      # SA4023 on a call to a per-GOOS stub. The non-supported platforms
+      # build a stub that always returns an error, so staticcheck (which
+      # sees one GOOS at a time) concludes `err != nil` is always true.
+      # The check is real on the platform where the function does work.
+      - path: app/secret_cmd\.go
+        text: "SA4023"
+        linters:
+          - staticcheck
+      - path: internal/agent/probes/(linuxlogs/linuxlogs_probe|windowseventlog/windowseventlog_probe)\.go
+        text: "SA4023"
+        linters:
+          - staticcheck
+      - path: internal/agent/services/auto_update/AutoUpdate\.go
+        text: "SA4023"
+        linters:
+          - staticcheck
+
       # periodic_scheduler tolerates a nil context on purpose — strategy
       # recreation and config-change restarts used to pass one, and the
       # scheduler treats it as context.Background() rather than leaving a
