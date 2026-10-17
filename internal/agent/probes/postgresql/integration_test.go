@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
@@ -406,5 +407,113 @@ func TestIntegration_UnreachableIsTargetDown(t *testing.T) {
 	}
 	if chk := itOne(t, points, dbcommon.CheckResultMetric); chk.Value != float64(dbcommon.CheckTargetDown) {
 		t.Errorf("%s = %v against unreachable target, want %v", dbcommon.CheckResultMetric, chk.Value, float64(dbcommon.CheckTargetDown))
+	}
+}
+
+func itReplicaTarget(t *testing.T) itTarget {
+	t.Helper()
+	tg := itTargetFromEnv(t)
+	v := os.Getenv("POSTGRESQL_REPLICA_TEST_PORT")
+	if v == "" {
+		t.Skip("no streaming replica to test against: set POSTGRESQL_REPLICA_TEST_PORT")
+	}
+	port, err := strconv.Atoi(v)
+	if err != nil {
+		t.Fatalf("POSTGRESQL_REPLICA_TEST_PORT %q is not a number", v)
+	}
+	tg.port = port
+	return tg
+}
+
+func itCollectUntil(t *testing.T, op *pgProbe, what string, ok func([]data_store.DataPoint) bool) []data_store.DataPoint {
+	t.Helper()
+	deadline := time.Now().Add(45 * time.Second)
+	for {
+		points := itCollect(t, op)
+		if ok(points) {
+			return points
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(time.Second)
+	}
+}
+
+func TestIntegration_Replication_PrimaryWithReplica(t *testing.T) {
+	itReplicaTarget(t)
+	tg := itTargetFromEnv(t)
+	op := itStart(t, tg)
+
+	points := itCollectUntil(t, op, "the primary to report a connected replica", func(pts []data_store.DataPoint) bool {
+		got := itNamed(pts, "senhub.db.replication.replicas.connected")
+		return len(got) == 1 && got[0].Value >= 1
+	})
+
+	if n := itOne(t, points, "senhub.db.replication.replicas.connected").Value; n != 1 {
+		t.Errorf("senhub.db.replication.replicas.connected = %v, want 1", n)
+	}
+	role := itOne(t, points, "senhub.db.replication.role")
+	if itTag(role, "role") != "primary" {
+		t.Errorf("senhub.db.replication.role tag role = %q, want primary", itTag(role, "role"))
+	}
+	if role.Value != dbcommon.RolePrimary.RoleValue() {
+		t.Errorf("senhub.db.replication.role = %v, want %v", role.Value, dbcommon.RolePrimary.RoleValue())
+	}
+	if health := itOne(t, points, "senhub.db.replication.health"); health.Value != 1 {
+		t.Errorf("senhub.db.replication.health = %v, want 1", health.Value)
+	}
+	if got := len(itNamed(points, "postgresql.wal.lag")); got != 0 {
+		t.Errorf("primary emitted %d postgresql.wal.lag series, want 0", got)
+	}
+
+	obs, ok := op.entitySrc.Observe()
+	if !ok {
+		t.Fatalf("Observe() ok=false after collect")
+	}
+	if v, _ := obs.Entities[0].Attributes["replication.role"].(string); v != "primary" {
+		t.Errorf("entity attribute replication.role = %q, want primary", v)
+	}
+}
+
+func TestIntegration_Replication_Replica(t *testing.T) {
+	tg := itReplicaTarget(t)
+	op := itStart(t, tg)
+
+	points := itCollectUntil(t, op, "the replica to report a replay lag", func(pts []data_store.DataPoint) bool {
+		return len(itNamed(pts, "postgresql.wal.lag")) > 0
+	})
+
+	role := itOne(t, points, "senhub.db.replication.role")
+	if itTag(role, "role") != "replica" {
+		t.Errorf("senhub.db.replication.role tag role = %q, want replica", itTag(role, "role"))
+	}
+	if role.Value != dbcommon.RoleReplica.RoleValue() {
+		t.Errorf("senhub.db.replication.role = %v, want %v", role.Value, dbcommon.RoleReplica.RoleValue())
+	}
+
+	lag := itOne(t, points, "postgresql.wal.lag")
+	if itTag(lag, "operation") != "replay" {
+		t.Errorf("postgresql.wal.lag tag operation = %q, want replay", itTag(lag, "operation"))
+	}
+	if lag.Value < 0 {
+		t.Errorf("postgresql.wal.lag = %v, want >= 0", lag.Value)
+	}
+	if io := itOne(t, points, "senhub.db.postgresql.replica.io.running"); io.Value != 1 {
+		t.Errorf("senhub.db.postgresql.replica.io.running = %v, want 1 (WAL receiver streaming)", io.Value)
+	}
+	if health := itOne(t, points, "senhub.db.replication.health"); health.Value != 1 {
+		t.Errorf("senhub.db.replication.health = %v, want 1", health.Value)
+	}
+	if got := len(itNamed(points, "senhub.db.replication.replicas.connected")); got != 0 {
+		t.Errorf("replica emitted %d replicas.connected series, want 0", got)
+	}
+
+	obs, ok := op.entitySrc.Observe()
+	if !ok {
+		t.Fatalf("Observe() ok=false after collect")
+	}
+	if v, _ := obs.Entities[0].Attributes["replication.role"].(string); v != "replica" {
+		t.Errorf("entity attribute replication.role = %q, want replica", v)
 	}
 }
