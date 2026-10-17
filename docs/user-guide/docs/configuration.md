@@ -699,6 +699,19 @@ auto_update:
 
 Even with `enabled: false`, the agent checks for new versions at startup and logs a message if an update is available. Use `sudo /usr/local/bin/senhub-agent update --list` to see available versions and `sudo /usr/local/bin/senhub-agent update <version>` to install manually.
 
+## OpAMP
+
+The `opamp:` block reports the agent (identity, health, redacted
+configuration) to an OpAMP server. It is off by default; see
+[OpAMP](opamp.md) for the keys and what is sent.
+
+```yaml
+opamp:
+  enabled: false
+  endpoint: wss://opamp.example.com/v1/opamp
+  token: ${secret:opamp.token}
+```
+
 ## Validating Configuration
 
 Use the built-in configuration checker before deploying changes:
