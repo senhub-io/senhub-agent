@@ -1,6 +1,7 @@
 package zookeeper
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strings"
@@ -19,8 +20,8 @@ func testLogger() *logger.Logger {
 // The server side drains any incoming bytes (the "mntr\n" command) before
 // writing the response, because net.Pipe is synchronous: a write blocks
 // until the peer reads.
-func stubDial(payload string) func(string, string, time.Duration) (net.Conn, error) {
-	return func(network, address string, timeout time.Duration) (net.Conn, error) {
+func stubDial(payload string) func(context.Context, string, string, time.Duration) (net.Conn, error) {
+	return func(_ context.Context, network, address string, timeout time.Duration) (net.Conn, error) {
 		server, client := net.Pipe()
 		go func() {
 			defer server.Close()
@@ -35,7 +36,7 @@ func stubDial(payload string) func(string, string, time.Duration) (net.Conn, err
 }
 
 // errDial always returns an error (simulates unreachable node).
-func errDial(_ string, _ string, _ time.Duration) (net.Conn, error) {
+func errDial(_ context.Context, _ string, _ string, _ time.Duration) (net.Conn, error) {
 	return nil, fmt.Errorf("connection refused")
 }
 
