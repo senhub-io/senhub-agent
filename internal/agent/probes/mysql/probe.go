@@ -146,7 +146,13 @@ type mysqlProbe struct {
 	// uuidFetched guards the one-time @@server_uuid fetch; once pinned
 	// the entity source holds the id and this flag prevents re-querying.
 	uuidFetched bool
+	// uuidFailures counts consecutive failed @@server_uuid reads; past
+	// maxUUIDFailures the host:port fallback is pinned, as before, so a
+	// server that never answers it still reaches the graph.
+	uuidFailures int
 }
+
+const maxUUIDFailures = 3
 
 // NewMysqlProbe constructs the probe. Configuration errors surface here.
 func NewMysqlProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
@@ -375,11 +381,13 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	// when the uuid has been fetched before. A server that has no
 	// @@server_uuid (MariaDB) pins the host:port degraded fallback; any
 	// other failure leaves the identity unpinned and is retried next cycle,
-	// so a transient error cannot fix a degraded identity for good.
+	// so a transient error cannot fix a degraded identity for good; a read
+	// that keeps failing falls back like MariaDB after maxUUIDFailures.
 	if !p.uuidFetched && !p.entitySrc.isIDPinned() {
 		uuid, err := p.queryServerUUID(ctx)
 		switch {
 		case err == nil:
+			p.uuidFailures = 0
 			p.entitySrc.pinServerUUID(uuid)
 			p.uuidFetched = true
 			commonTags = p.commonTags(instance)
@@ -389,7 +397,15 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 			p.uuidFetched = true
 			commonTags = p.commonTags(instance)
 		default:
-			p.moduleLogger.Warn().Err(err).Str("instance", instance).Msg("mysql: @@server_uuid read failed, entity identity not pinned yet")
+			p.uuidFailures++
+			if p.uuidFailures < maxUUIDFailures {
+				p.moduleLogger.Warn().Err(err).Str("instance", instance).Int("attempt", p.uuidFailures).Msg("mysql: @@server_uuid read failed, entity identity not pinned yet")
+				break
+			}
+			p.moduleLogger.Warn().Err(err).Str("instance", instance).Int("attempts", p.uuidFailures).Msg("mysql: @@server_uuid unreadable, using host:port identity")
+			p.entitySrc.pinServerUUID("")
+			p.uuidFetched = true
+			commonTags = p.commonTags(instance)
 		}
 	}
 
