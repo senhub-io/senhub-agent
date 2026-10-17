@@ -1,0 +1,16 @@
+config_version: 2
+agent:
+  key: k
+probes:
+  - name: p
+    type: demo
+    params:
+      a: 1
+      b: 2
+      a: 3
+      nested:
+        x: 1
+        x: 2
+    custom_tags:
+      t: one
+      t: two

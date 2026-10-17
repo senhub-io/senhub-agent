@@ -1,0 +1,1742 @@
+##### examples/example-config-enterprise-license.yaml
+err=<nil> already=false probes=true strategies=1
+===== agent.yaml =====
+# SenHub Agent — globals (migrated to multi-file layout on <TS>)
+# Probes live in probes.d/ ; storage strategies in strategies.d/.
+# Original monolithic file kept as agent.yaml.pre-multi-file.<TS>.
+
+agent:
+  generated: false
+  key: test-agent-enterprise-12345
+  license: |
+    {
+      "tier": "enterprise",
+      "authorized_probes": ["*"],
+      "expires_at": "2026-12-31T23:59:59Z",
+      "issued_at": "2025-01-01T00:00:00Z",
+      "subject": "customer-enterprise-megacorp"
+    }
+  mode: offline
+auto_update:
+  enabled: true
+  url: https://eu-west-1.intake.senhub.io
+cache:
+  retention_minutes: 10
+config_version: 2
+===== agent.yaml.pre-multi-file.<TS> =====
+# SenHub Agent Configuration - ENTERPRISE LICENSE
+# Configuration Version: 2
+# Enterprise license with ALL probes authorized (wildcard)
+
+config_version: 2
+
+# Agent configuration
+agent:
+  key: "test-agent-enterprise-12345"
+  mode: offline
+  generated: false
+  license: |
+    {
+      "tier": "enterprise",
+      "authorized_probes": ["*"],
+      "expires_at": "2026-12-31T23:59:59Z",
+      "issued_at": "2025-01-01T00:00:00Z",
+      "subject": "customer-enterprise-megacorp"
+    }
+
+# Auto-update configuration
+auto_update:
+  enabled: true
+  url: "https://eu-west-1.intake.senhub.io"
+
+# Cache configuration
+cache:
+  retention_minutes: 10
+
+# Storage configuration
+storage:
+  - name: http
+    params:
+      port: 8080
+      bind_address: "0.0.0.0"  # Listen on all interfaces
+      endpoints: ["prtg", "web", "nagios", "senhub"]
+
+# Probes configuration - ALL PROBES AUTHORIZED
+probes:
+  # System monitoring
+  - name: cpu
+    type: cpu
+    params:
+      interval: 30
+
+  - name: memory
+    type: memory
+    params:
+      interval: 30
+
+  - name: logicaldisk
+    type: logicaldisk
+    params:
+      interval: 60
+
+  - name: network
+    type: network
+    params:
+      interval: 60
+
+  # Hardware monitoring
+  - name: datacenter-redfish
+    type: redfish
+    params:
+      endpoint: "https://idrac.example.com"
+      username: "admin"
+      password: "password123"
+      interval: 300
+
+  # Virtualization monitoring
+  - name: citrix-production
+    type: citrix
+    params:
+      interval: 120
+      timeout: 30
+      director:
+        url: "https://citrix-director.company.com"
+        verify_ssl: true
+        auth:
+          username: "DOMAIN\\admin"
+          password: "password"
+
+  # Load balancer monitoring
+  - name: netscaler-adc
+    type: netscaler
+    params:
+      base_url: "https://netscaler.company.com"
+      username: "nsroot"
+      password: "password123"
+      # api_key: "your-api-key"  # Alternative to password
+      insecure_skip_verify: false
+      timeout: 30
+      interval: 60
+
+  # Network monitoring
+  - name: ping-gateway
+    type: ping_gateway
+    params: {}
+
+  - name: website-monitoring
+    type: ping_webapp
+    params:
+      url: "https://www.example.com"
+      interval: 60
+
+  - name: website-load-test
+    type: load_webapp
+    params:
+      url: "https://www.example.com"
+      timeout: 30
+
+  # Event collection
+  - name: syslog-collector
+    type: syslog
+    params:
+      port: 514
+      protocol: "udp"
+
+  - name: custom-events
+    type: event
+    params:
+      port: 5656
+      protocol: "tcp"
+
+  # WiFi monitoring (if available)
+  - name: wifi-monitor
+    type: wifi_signal_strength
+    params:
+      interval: 60
+===== probes.d/00-host.yaml =====
+# Probes migrated from monolithic config on <TS>.
+# Add new probes by creating additional files in this directory
+# (e.g. 10-mydb.yaml). Files load alphabetically.
+
+- name: cpu
+  params:
+    interval: 30
+  type: cpu
+- name: memory
+  params:
+    interval: 30
+  type: memory
+- name: logicaldisk
+  params:
+    interval: 60
+  type: logicaldisk
+- name: network
+  params:
+    interval: 60
+  type: network
+- name: datacenter-redfish
+  params:
+    endpoint: https://idrac.example.com
+    interval: 300
+    password: password123
+    username: admin
+  type: redfish
+- name: citrix-production
+  params:
+    director:
+      auth:
+        password: password
+        username: DOMAIN\admin
+      url: https://citrix-director.company.com
+      verify_ssl: true
+    interval: 120
+    timeout: 30
+  type: citrix
+- name: netscaler-adc
+  params:
+    base_url: https://netscaler.company.com
+    insecure_skip_verify: false
+    interval: 60
+    password: password123
+    timeout: 30
+    username: nsroot
+  type: netscaler
+- name: ping-gateway
+  params: {}
+  type: ping_gateway
+- name: website-monitoring
+  params:
+    interval: 60
+    url: https://www.example.com
+  type: ping_webapp
+- name: website-load-test
+  params:
+    timeout: 30
+    url: https://www.example.com
+  type: load_webapp
+- name: syslog-collector
+  params:
+    port: 514
+    protocol: udp
+  type: syslog
+- name: custom-events
+  params:
+    port: 5656
+    protocol: tcp
+  type: event
+- name: wifi-monitor
+  params:
+    interval: 60
+  type: wifi_signal_strength
+===== strategies.d/10-http.yaml =====
+# Strategy 'http' migrated from monolithic config on <TS>.
+# This file MUST have exactly one top-level key — the strategy name.
+
+http:
+  bind_address: 0.0.0.0
+  endpoints:
+  - prtg
+  - web
+  - nagios
+  - senhub
+  port: 8080
+##### examples/example-config-free-tier.yaml
+err=<nil> already=false probes=true strategies=1
+===== agent.yaml =====
+# SenHub Agent — globals (migrated to multi-file layout on <TS>)
+# Probes live in probes.d/ ; storage strategies in strategies.d/.
+# Original monolithic file kept as agent.yaml.pre-multi-file.<TS>.
+
+agent:
+  generated: false
+  key: 00000000-0000-4000-8000-000000000000
+  mode: offline
+auto_update:
+  enabled: false
+  url: https://eu-west-1.intake.senhub.io
+cache:
+  retention_minutes: 5
+config_version: 2
+===== agent.yaml.pre-multi-file.<TS> =====
+# SenHub Agent Configuration - FREE TIER
+# Configuration Version: 2
+# No license = free tier only (cpu, memory, logicaldisk, network)
+
+config_version: 2
+
+# Agent configuration
+agent:
+  key: "00000000-0000-4000-8000-000000000000"
+  mode: offline
+  generated: false
+  # license: ""  # No license = free tier
+
+# Auto-update configuration
+auto_update:
+  enabled: false
+  url: "https://eu-west-1.intake.senhub.io"
+
+# Cache configuration
+cache:
+  retention_minutes: 5
+
+# Storage configuration
+storage:
+  - name: http
+    params:
+      port: 8080
+      bind_address: "127.0.0.1"
+      endpoints: ["prtg", "web", "nagios"]
+
+# Probes configuration
+probes:
+  # ===== FREE TIER PROBES (no license required) =====
+
+  - name: cpu
+    type: cpu
+    params:
+      interval: 30
+
+  - name: memory
+    type: memory
+    params:
+      interval: 30
+
+  - name: logicaldisk
+    type: logicaldisk
+    params:
+      interval: 60
+
+  - name: network
+    type: network
+    params:
+      interval: 60
+
+  # ===== PAID PROBES (will be blocked without license) =====
+
+  # This probe will be BLOCKED without a license
+  # - name: redfish-server
+  #   type: redfish
+  #   params:
+  #     endpoint: "https://idrac.example.com"
+  #     username: "admin"
+  #     password: "password"
+  #     interval: 300
+===== probes.d/00-host.yaml =====
+# Probes migrated from monolithic config on <TS>.
+# Add new probes by creating additional files in this directory
+# (e.g. 10-mydb.yaml). Files load alphabetically.
+
+- name: cpu
+  params:
+    interval: 30
+  type: cpu
+- name: memory
+  params:
+    interval: 30
+  type: memory
+- name: logicaldisk
+  params:
+    interval: 60
+  type: logicaldisk
+- name: network
+  params:
+    interval: 60
+  type: network
+===== strategies.d/10-http.yaml =====
+# Strategy 'http' migrated from monolithic config on <TS>.
+# This file MUST have exactly one top-level key — the strategy name.
+
+http:
+  bind_address: 127.0.0.1
+  endpoints:
+  - prtg
+  - web
+  - nagios
+  port: 8080
+##### examples/example-config-grace-period.yaml
+err=<nil> already=false probes=true strategies=1
+===== agent.yaml =====
+# SenHub Agent — globals (migrated to multi-file layout on <TS>)
+# Probes live in probes.d/ ; storage strategies in strategies.d/.
+# Original monolithic file kept as agent.yaml.pre-multi-file.<TS>.
+
+agent:
+  generated: false
+  key: test-agent-grace-12345
+  license: |
+    {
+      "tier": "pro",
+      "authorized_probes": ["redfish", "citrix", "netscaler"],
+      "expires_at": "2025-11-04T10:00:00Z",
+      "issued_at": "2024-11-04T00:00:00Z",
+      "subject": "customer-grace-test"
+    }
+  mode: offline
+auto_update:
+  enabled: false
+  url: https://eu-west-1.intake.senhub.io
+cache:
+  retention_minutes: 5
+config_version: 2
+===== agent.yaml.pre-multi-file.<TS> =====
+# SenHub Agent Configuration - EXPIRED LICENSE (Grace Period)
+# Configuration Version: 2
+# License expired 3 days ago but still in 7-day grace period
+
+config_version: 2
+
+# Agent configuration
+agent:
+  key: "test-agent-grace-12345"
+  mode: offline
+  generated: false
+  license: |
+    {
+      "tier": "pro",
+      "authorized_probes": ["redfish", "citrix", "netscaler"],
+      "expires_at": "2025-11-04T10:00:00Z",
+      "issued_at": "2024-11-04T00:00:00Z",
+      "subject": "customer-grace-test"
+    }
+
+# Note: This license expired 3 days ago
+# Grace period: 7 days from expiration
+# Status: ACTIVE (grace period active until 2025-11-11T10:00:00Z)
+# After grace period: Only free tier probes will work
+
+# Auto-update configuration
+auto_update:
+  enabled: false
+  url: "https://eu-west-1.intake.senhub.io"
+
+# Cache configuration
+cache:
+  retention_minutes: 5
+
+# Storage configuration
+storage:
+  - name: http
+    params:
+      port: 8080
+      bind_address: "127.0.0.1"
+      endpoints: ["prtg", "web"]
+
+# Probes configuration
+probes:
+  - name: cpu
+    type: cpu
+    params:
+      interval: 30
+
+  - name: memory
+    type: memory
+    params:
+      interval: 30
+
+  # These probes will work DURING grace period
+  # After grace period ends, they will be blocked
+  - name: datacenter-redfish
+    type: redfish
+    params:
+      endpoint: "https://idrac.example.com"
+      username: "admin"
+      password: "password123"
+      interval: 300
+
+  - name: citrix-production
+    type: citrix
+    params:
+      interval: 120
+      timeout: 30
+      director:
+        url: "https://citrix-director.company.com"
+        verify_ssl: true
+        auth:
+          username: "DOMAIN\\admin"
+          password: "password"
+
+  - name: netscaler-adc
+    type: netscaler
+    params:
+      base_url: "https://netscaler.company.com"
+      username: "nsroot"
+      password: "password123"
+      interval: 60
+===== probes.d/00-host.yaml =====
+# Probes migrated from monolithic config on <TS>.
+# Add new probes by creating additional files in this directory
+# (e.g. 10-mydb.yaml). Files load alphabetically.
+
+- name: cpu
+  params:
+    interval: 30
+  type: cpu
+- name: memory
+  params:
+    interval: 30
+  type: memory
+- name: datacenter-redfish
+  params:
+    endpoint: https://idrac.example.com
+    interval: 300
+    password: password123
+    username: admin
+  type: redfish
+- name: citrix-production
+  params:
+    director:
+      auth:
+        password: password
+        username: DOMAIN\admin
+      url: https://citrix-director.company.com
+      verify_ssl: true
+    interval: 120
+    timeout: 30
+  type: citrix
+- name: netscaler-adc
+  params:
+    base_url: https://netscaler.company.com
+    interval: 60
+    password: password123
+    username: nsroot
+  type: netscaler
+===== strategies.d/10-http.yaml =====
+# Strategy 'http' migrated from monolithic config on <TS>.
+# This file MUST have exactly one top-level key — the strategy name.
+
+http:
+  bind_address: 127.0.0.1
+  endpoints:
+  - prtg
+  - web
+  port: 8080
+##### examples/example-config-pro-license.yaml
+err=<nil> already=false probes=true strategies=1
+===== agent.yaml =====
+# SenHub Agent — globals (migrated to multi-file layout on <TS>)
+# Probes live in probes.d/ ; storage strategies in strategies.d/.
+# Original monolithic file kept as agent.yaml.pre-multi-file.<TS>.
+
+agent:
+  generated: false
+  key: test-agent-pro-12345
+  license: |
+    {
+      "tier": "pro",
+      "authorized_probes": ["redfish", "citrix", "netscaler", "ping_webapp"],
+      "expires_at": "2025-12-31T23:59:59Z",
+      "issued_at": "2025-01-01T00:00:00Z",
+      "subject": "customer-acme-corp"
+    }
+  mode: offline
+auto_update:
+  enabled: false
+  url: https://eu-west-1.intake.senhub.io
+cache:
+  retention_minutes: 5
+config_version: 2
+===== agent.yaml.pre-multi-file.<TS> =====
+# SenHub Agent Configuration - PRO LICENSE
+# Configuration Version: 2
+# Pro license with specific probes authorized
+
+config_version: 2
+
+# Agent configuration
+agent:
+  key: "test-agent-pro-12345"
+  mode: offline
+  generated: false
+  license: |
+    {
+      "tier": "pro",
+      "authorized_probes": ["redfish", "citrix", "netscaler", "ping_webapp"],
+      "expires_at": "2025-12-31T23:59:59Z",
+      "issued_at": "2025-01-01T00:00:00Z",
+      "subject": "customer-acme-corp"
+    }
+
+# Auto-update configuration
+auto_update:
+  enabled: false
+  url: "https://eu-west-1.intake.senhub.io"
+
+# Cache configuration
+cache:
+  retention_minutes: 5
+
+# Storage configuration
+storage:
+  - name: http
+    params:
+      port: 8080
+      bind_address: "127.0.0.1"
+      endpoints: ["prtg", "web", "nagios"]
+
+# Probes configuration
+probes:
+  # ===== FREE TIER PROBES (always work) =====
+
+  - name: cpu
+    type: cpu
+    params:
+      interval: 30
+
+  - name: memory
+    type: memory
+    params:
+      interval: 30
+
+  - name: logicaldisk
+    type: logicaldisk
+    params:
+      interval: 60
+
+  - name: network
+    type: network
+    params:
+      interval: 60
+
+  # ===== LICENSED PROBES (authorized by Pro license) =====
+
+  - name: datacenter-redfish
+    type: redfish
+    params:
+      endpoint: "https://idrac.example.com"
+      username: "admin"
+      password: "password123"
+      interval: 300
+      verify_ssl: true
+      collections:
+        - system
+        - thermal
+        - power
+
+  - name: citrix-production
+    type: citrix
+    params:
+      interval: 120
+      timeout: 30
+      director:
+        url: "https://citrix-director.company.com"
+        verify_ssl: true
+        auth:
+          username: "DOMAIN\\admin"
+          password: "password"
+      # license_server:
+      #   url: "https://citrix-license:8083"
+      #   auth:
+      #     username: "DOMAIN\\admin"
+      #     password: "password"
+
+  - name: netscaler-adc
+    type: netscaler
+    params:
+      base_url: "https://netscaler.company.com"
+      username: "nsroot"
+      password: "password123"
+      insecure_skip_verify: false
+      timeout: 30
+      interval: 60
+
+  - name: website-monitoring
+    type: ping_webapp
+    params:
+      url: "https://www.example.com"
+      interval: 60
+
+  # ===== NOT AUTHORIZED (will be blocked) =====
+
+  # This probe is NOT in the license authorized_probes list
+  # - name: syslog-collector
+  #   type: syslog
+  #   params:
+  #     port: 514
+  #     protocol: "udp"
+===== probes.d/00-host.yaml =====
+# Probes migrated from monolithic config on <TS>.
+# Add new probes by creating additional files in this directory
+# (e.g. 10-mydb.yaml). Files load alphabetically.
+
+- name: cpu
+  params:
+    interval: 30
+  type: cpu
+- name: memory
+  params:
+    interval: 30
+  type: memory
+- name: logicaldisk
+  params:
+    interval: 60
+  type: logicaldisk
+- name: network
+  params:
+    interval: 60
+  type: network
+- name: datacenter-redfish
+  params:
+    collections:
+    - system
+    - thermal
+    - power
+    endpoint: https://idrac.example.com
+    interval: 300
+    password: password123
+    username: admin
+    verify_ssl: true
+  type: redfish
+- name: citrix-production
+  params:
+    director:
+      auth:
+        password: password
+        username: DOMAIN\admin
+      url: https://citrix-director.company.com
+      verify_ssl: true
+    interval: 120
+    timeout: 30
+  type: citrix
+- name: netscaler-adc
+  params:
+    base_url: https://netscaler.company.com
+    insecure_skip_verify: false
+    interval: 60
+    password: password123
+    timeout: 30
+    username: nsroot
+  type: netscaler
+- name: website-monitoring
+  params:
+    interval: 60
+    url: https://www.example.com
+  type: ping_webapp
+===== strategies.d/10-http.yaml =====
+# Strategy 'http' migrated from monolithic config on <TS>.
+# This file MUST have exactly one top-level key — the strategy name.
+
+http:
+  bind_address: 127.0.0.1
+  endpoints:
+  - prtg
+  - web
+  - nagios
+  port: 8080
+##### docs/probes/citrix/configuration-examples.yaml
+err=post-write data drifted from pre-write snapshot — backup restored already=false probes=true strategies=1
+===== agent.yaml =====
+# SenHub Agent Configuration with Citrix Probe
+# Complete example for monitoring Citrix Virtual Apps and Desktops
+#
+# Since 0.2.x the default install layout is multi-file:
+#   agent.yaml + probes.d/*.yaml + strategies.d/*.yaml
+# The single-file form below (agent + storage + probes in one document)
+# still loads and is fully supported for existing installs.
+#
+# NOTE: Per-component config format (recommended since 0.1.87).
+# Each component (director, delivery_controller, license_server) has its own
+# auth block. Auth method is auto-detected: NTLM for Director, Basic for DDC/License.
+
+config_version: 3
+
+agent:
+  key: "your-agent-key-here"
+
+# Data storage strategies
+storage:
+  - name: http
+    params:
+      port: 8080
+      bind_address: "0.0.0.0"
+      endpoints: ["prtg", "senhub", "web", "nagios"]
+      cache:
+        retention_minutes: 45
+
+# Monitoring probes configuration
+probes:
+  # Citrix Virtual Apps and Desktops monitoring
+  - name: citrix
+    type: citrix
+    params:
+      interval: 120           # Collection interval (2 minutes recommended)
+      timeout: 30             # Request timeout (seconds)
+
+      # Debug mode: extract identifiers for CVAD vs OData mapping analysis
+      debug_identifiers: false
+
+      # Retry configuration for reliability
+      retry:
+        max_attempts: 3
+        backoff_factor: 2.0
+
+      # Director/OData API (REQUIRED)
+      director:
+        url: "https://citrix-director.company.com"
+        verify_ssl: true
+        auth:
+          username: "DOMAIN\\svc-monitoring"
+          password: ${secret:citrix.director_password}   # auto-sealed on install
+
+  # System monitoring probes (recommended for complete coverage)
+  - name: cpu
+    type: cpu
+    params:
+      interval: 30
+
+  - name: memory
+    type: memory
+    params:
+      interval: 30
+
+  - name: network
+    type: network
+    params:
+      interval: 60
+
+  - name: logicaldisk
+    type: logicaldisk
+    params:
+      interval: 30
+
+# =============================================================================
+# ADDITIONAL EXAMPLES (commented — copy one into a fresh single-file config,
+# or split across probes.d/ + strategies.d/ for the multi-file layout)
+# =============================================================================
+
+# ----- Development environment -----
+#
+# config_version: 3
+#
+# agent:
+#   key: "dev-agent-key"
+#
+# storage:
+#   - name: http
+#     params:
+#       port: 8080
+#       endpoints: ["prtg", "web"]
+#
+# probes:
+#   - name: citrix
+#     type: citrix
+#     params:
+#       interval: 300           # 5 minutes for development
+#       timeout: 60
+#
+#       director:
+#         url: "https://citrix-dev.company.com"
+#         verify_ssl: false
+#         auth:
+#           username: "admin"
+#           password: ${secret:citrix.director_password}   # auto-sealed on install
+#
+#       retry:
+#         max_attempts: 5
+#         backoff_factor: 1.5
+
+# ----- High-availability configuration with multiple controllers and per-component auth -----
+#
+# config_version: 3
+#
+# agent:
+#   key: "ha-citrix-agent"
+#
+# storage:
+#   - name: http
+#     params:
+#       port: 8080
+#       endpoints: ["prtg", "senhub", "nagios"]
+#
+# probes:
+#   # Primary Citrix site
+#   - name: citrix
+#     type: citrix
+#     params:
+#       interval: 120
+#       timeout: 30
+#
+#       director:
+#         url: "https://citrix-site1.company.com"
+#         verify_ssl: true
+#         auth:
+#           username: "DOMAIN\\svc-monitoring"
+#           password: ${secret:citrix.director_password}   # auto-sealed on install
+#
+#       delivery_controller:
+#         url: "https://citrix-ddc1-site1.company.com"
+#         fallback_urls:
+#           - "https://citrix-ddc2-site1.company.com"
+#         verify_ssl: true
+#         site_filter: "SITE1"
+#         auth:
+#           username: "DOMAIN\\svc-ddc"
+#           password: ${secret:citrix.ddc_password}   # auto-sealed on install
+#
+#       license_server:
+#         url: "https://citrix-license1.company.com:8083"
+#         verify_ssl: true
+#         auth:
+#           username: "DOMAIN\\svc-lic"
+#           password: ${secret:citrix.license_password}   # auto-sealed on install
+#
+#       retry:
+#         max_attempts: 3
+#         backoff_factor: 2.0
+#
+#   # Secondary Citrix site (different credentials)
+#   - name: citrix-site2
+#     type: citrix
+#     params:
+#       interval: 120
+#       timeout: 30
+#
+#       director:
+#         url: "https://citrix-site2.company.com"
+#         verify_ssl: true
+#         auth:
+#           username: "DOMAIN\\svc-monitoring-s2"
+#           password: ${secret:citrix-site2.director_password}   # auto-sealed on install
+#
+#       delivery_controller:
+#         url: "https://citrix-ddc1-site2.company.com"
+#         fallback_urls:
+#           - "https://citrix-ddc2-site2.company.com"
+#         verify_ssl: true
+#         site_filter: "SITE2"
+#         auth:
+#           username: "DOMAIN\\svc-ddc-s2"
+#           password: ${secret:citrix-site2.ddc_password}   # auto-sealed on install
+#
+#       retry:
+#         max_attempts: 3
+#         backoff_factor: 2.0
+
+# ----- Security-hardened configuration -----
+#
+# config_version: 3
+#
+# agent:
+#   key: "${env:SENHUB_AGENT_KEY}"
+#
+# storage:
+#   - name: http
+#     params:
+#       port: 8443
+#       bind_address: "127.0.0.1"
+#       endpoints: ["prtg"]
+#       tls:
+#         enabled: true
+#         cert_file: "/etc/senhub-agent/tls/cert.pem"
+#         key_file: "/etc/senhub-agent/tls/key.pem"
+#         min_tls_version: "1.3"
+#
+# probes:
+#   - name: citrix
+#     type: citrix
+#     params:
+#       interval: 120
+#       timeout: 15
+#
+#       director:
+#         url: "https://citrix-director.secure.company.com"
+#         verify_ssl: true
+#         auth:
+#           username: "${env:CITRIX_USERNAME}"
+#           password: ${secret:citrix.director_password}   # auto-sealed on install
+#
+#       retry:
+#         max_attempts: 2
+#         backoff_factor: 3.0
+
+# ----- Multi-site monitoring without DDC filtering -----
+#
+# config_version: 3
+#
+# agent:
+#   key: "citrix-global-monitoring"
+#
+# storage:
+#   - name: http
+#     params:
+#       port: 8080
+#       endpoints: ["prtg", "senhub"]
+#
+# probes:
+#   - name: citrix
+#     type: citrix
+#     params:
+#       interval: 120
+#       timeout: 30
+#
+#       # Director only - no delivery_controller = no site filtering
+#       director:
+#         url: "https://citrix-director-global.company.com"
+#         verify_ssl: true
+#         auth:
+#           username: "DOMAIN\\svc-monitoring-global"
+#           password: ${secret:citrix.director_password}   # auto-sealed on install
+
+# ===== LEGACY FORMAT (deprecated, still supported) =====
+# The flat format below is supported for backward compatibility.
+# A deprecation warning is logged at startup. Migrate to per-component blocks above.
+#
+# config_version: 3
+#
+# agent:
+#   key: "legacy-agent"
+#
+# probes:
+#   - name: citrix
+#     type: citrix
+#     params:
+#       director_url: "https://citrix-director.company.com"   # or base_url
+#       interval: 120
+#       auth:                                                  # global auth
+#         username: "DOMAIN\\svc-monitoring"
+#         password: ${secret:citrix.director_password}   # auto-sealed on install
+#       tls:
+#         verify_ssl: true
+#       delivery_controller:
+#         url: "https://ddc.company.com"
+#         site_filter: "PROD"
+#       license_server: "https://citrix-license:8083"          # string or {url: ...}
+#       timeout: 30
+##### docs/probes/netscaler/configuration-examples.yaml
+err=post-write data drifted from pre-write snapshot — backup restored already=false probes=true strategies=0
+===== agent.yaml =====
+# NetScaler ADC Probe - Configuration Examples
+#
+# Since 0.2.x the default install layout is multi-file:
+#   agent.yaml + probes.d/*.yaml + strategies.d/*.yaml
+# The single-file form below (config_version + probes in one document) still
+# loads and is fully supported. Only EXAMPLE 1 is live; the remaining examples
+# are commented so this file loads as one document — copy the probe block you
+# need into a fresh config or a probes.d/ fragment.
+
+config_version: 3
+
+# ==============================================================================
+# EXAMPLE 1: Minimal Configuration (Quick Start)
+# ==============================================================================
+# Simplest possible configuration for testing
+
+probes:
+  - name: netscaler-test
+    type: netscaler
+    params:
+      base_url: "https://netscaler.company.com"
+      username: "monitoring-user"
+      password: ${secret:netscaler-test.password}   # auto-sealed on install
+      interval: 60
+
+# ==============================================================================
+# EXAMPLE 2: Production Configuration (Recommended)
+# ==============================================================================
+# Best practices for production environments
+#
+# probes:
+#   - name: netscaler-prod
+#     type: netscaler
+#     params:
+#       # NetScaler Management IP/hostname
+#       base_url: "https://netscaler.company.com"
+#
+#       # NITRO API credentials (read-only user recommended)
+#       username: "monitoring-user"
+#       password: ${secret:netscaler-prod.password}   # auto-sealed on install
+#
+#       # SSL certificate verification (always enable in production)
+#       insecure_skip_verify: false
+#
+#       # API request timeout (increase for large deployments with 100+ vServers)
+#       timeout: 30
+#
+#       # Metric collection interval (60s = good balance)
+#       interval: 60
+#
+#     # Custom tags for business context
+#     custom_tags:
+#       - key: "environment"
+#         value: "production"
+#       - key: "datacenter"
+#         value: "dc-paris-01"
+#       - key: "team"
+#         value: "infrastructure"
+#       - key: "business_unit"
+#         value: "ecommerce"
+
+# ==============================================================================
+# EXAMPLE 3: High Availability (HA) Cluster Monitoring
+# ==============================================================================
+# Monitor a NetScaler HA pair with automatic failover
+#
+# probes:
+#   - name: netscaler-ha-paris
+#     type: netscaler
+#     params:
+#       # Primary node (agent connects here first)
+#       base_url: "https://10.0.208.7"
+#
+#       # Secondary node (agent fails over here if primary is down or demoted)
+#       secondary_url: "https://10.0.208.6"
+#
+#       username: "monitoring-user"
+#       password: ${secret:netscaler-ha-paris.password}   # auto-sealed on install
+#       insecure_skip_verify: true   # Required when using IPs instead of hostnames
+#       timeout: 30
+#       interval: 60
+#     custom_tags:
+#       - key: "ha_cluster"
+#         value: "paris-cluster-01"
+#
+# Agent will automatically:
+# - Connect to base_url (primary) at startup
+# - Fail over to secondary_url after 3 consecutive collection errors
+# - Proactively switch if connected node becomes Secondary (detected via /config/hanode)
+# - Collect metrics for BOTH nodes (primary + secondary) with node-specific tags
+# - Tag metrics with ha_node_id, ha_node_ip, is_local_node, data_source
+
+# ==============================================================================
+# EXAMPLE 4: Multi-Datacenter Monitoring
+# ==============================================================================
+# Monitor NetScaler instances across multiple datacenters
+#
+# probes:
+#   # Paris Datacenter
+#   - name: netscaler-paris
+#     type: netscaler
+#     params:
+#       base_url: "https://netscaler-paris.company.com"
+#       username: "monitoring-user"
+#       password: ${secret:netscaler-paris.password}   # auto-sealed on install
+#       interval: 60
+#     custom_tags:
+#       - key: "datacenter"
+#         value: "dc-paris-01"
+#       - key: "region"
+#         value: "emea"
+#       - key: "environment"
+#         value: "production"
+#
+#   # London Datacenter
+#   - name: netscaler-london
+#     type: netscaler
+#     params:
+#       base_url: "https://netscaler-london.company.com"
+#       username: "monitoring-user"
+#       password: ${secret:netscaler-london.password}   # auto-sealed on install
+#       interval: 60
+#     custom_tags:
+#       - key: "datacenter"
+#         value: "dc-london-01"
+#       - key: "region"
+#         value: "emea"
+#       - key: "environment"
+#         value: "production"
+#
+#   # New York Datacenter
+#   - name: netscaler-newyork
+#     type: netscaler
+#     params:
+#       base_url: "https://netscaler-ny.company.com"
+#       username: "monitoring-user"
+#       password: ${secret:netscaler-newyork.password}   # auto-sealed on install
+#       interval: 60
+#     custom_tags:
+#       - key: "datacenter"
+#         value: "dc-newyork-01"
+#       - key: "region"
+#         value: "americas"
+#       - key: "environment"
+#         value: "production"
+
+# ==============================================================================
+# EXAMPLE 5: Development/Staging Environment
+# ==============================================================================
+# Monitoring for non-production environments with relaxed settings
+#
+# probes:
+#   - name: netscaler-dev
+#     type: netscaler
+#     params:
+#       base_url: "https://netscaler-dev.company.local"
+#       username: "nsroot"  # Default user (only for dev!)
+#       password: ${secret:netscaler-dev.password}   # auto-sealed on install
+#
+#       # Allow self-signed certificates in dev (NOT for production!)
+#       insecure_skip_verify: true
+#
+#       # Longer interval for dev (save resources)
+#       interval: 300  # 5 minutes
+#
+#       timeout: 30
+#     custom_tags:
+#       - key: "environment"
+#         value: "development"
+#       - key: "tier"
+#         value: "non-production"
+
+# ==============================================================================
+# EXAMPLE 6: Large Deployment (100+ Virtual Servers)
+# ==============================================================================
+# Tuned for large NetScaler deployments with many resources
+#
+# probes:
+#   - name: netscaler-enterprise
+#     type: netscaler
+#     params:
+#       base_url: "https://netscaler-enterprise.company.com"
+#       username: "monitoring-user"
+#       password: ${secret:netscaler-enterprise.password}   # auto-sealed on install
+#       insecure_skip_verify: false
+#
+#       # Increase timeout for large deployments (more API calls)
+#       timeout: 60
+#
+#       # Slightly longer interval to reduce load on NetScaler
+#       interval: 90
+#     custom_tags:
+#       - key: "deployment_size"
+#         value: "large"
+#       - key: "vserver_count"
+#         value: "150+"
+#       - key: "environment"
+#         value: "production"
+
+# ==============================================================================
+# EXAMPLE 7: SSL Certificate Monitoring Focus
+# ==============================================================================
+# Configuration optimized for SSL certificate expiration alerting
+#
+# probes:
+#   - name: netscaler-ssl-monitoring
+#     type: netscaler
+#     params:
+#       base_url: "https://netscaler.company.com"
+#       username: "monitoring-user"
+#       password: ${secret:netscaler-ssl-monitoring.password}   # auto-sealed on install
+#       interval: 3600  # Check every hour (certificates change infrequently)
+#       timeout: 30
+#     custom_tags:
+#       - key: "monitoring_focus"
+#         value: "ssl-certificates"
+#       - key: "alert_priority"
+#         value: "critical"
+#
+# Recommended PRTG alerting thresholds:
+# - days_to_expiration < 30: WARNING
+# - days_to_expiration < 15: HIGH
+# - days_to_expiration < 7: CRITICAL
+# - certificate.status = 0: EXPIRED (IMMEDIATE ACTION!)
+
+# ==============================================================================
+# EXAMPLE 8: Combined Monitoring (NetScaler + Citrix CVAD)
+# ==============================================================================
+# Monitor both NetScaler ADC and Citrix Virtual Apps & Desktops
+#
+# probes:
+#   # NetScaler ADC (Load Balancing, SSL, HA)
+#   - name: netscaler-adc
+#     type: netscaler
+#     params:
+#       base_url: "https://netscaler.company.com"
+#       username: "monitoring-user"
+#       password: ${secret:netscaler-adc.password}   # auto-sealed on install
+#       interval: 60
+#     custom_tags:
+#       - key: "component"
+#         value: "adc"
+#       - key: "environment"
+#         value: "production"
+#
+#   # Citrix CVAD (Virtual Apps & Desktops)
+#   - name: citrix-vda
+#     type: citrix
+#     params:
+#       base_url: "https://ddc.company.com"
+#       api_key: ${secret:citrix-vda.api_key}   # auto-sealed on install
+#       interval: 120
+#     custom_tags:
+#       - key: "component"
+#         value: "virtual-apps-desktops"
+#       - key: "environment"
+#         value: "production"
+
+# ==============================================================================
+# EXAMPLE 9: Complete Infrastructure Stack
+# ==============================================================================
+# Monitor entire infrastructure: Hardware (Redfish) + OS (System) + ADC (NetScaler)
+#
+# probes:
+#   # Hardware monitoring via Redfish
+#   - name: server-hardware
+#     type: redfish
+#     params:
+#       base_url: "https://ilo.server01.company.com"
+#       username: "admin"
+#       password: ${secret:server-hardware.password}   # auto-sealed on install
+#       interval: 300  # 5 minutes (hardware changes slowly)
+#     custom_tags:
+#       - key: "layer"
+#         value: "hardware"
+#       - key: "server"
+#         value: "server01"
+#
+#   # Operating System metrics
+#   - name: system-metrics
+#     type: cpu
+#     params:
+#       interval: 60
+#     custom_tags:
+#       - key: "layer"
+#         value: "os"
+#
+#   - name: memory-metrics
+#     type: memory
+#     params:
+#       interval: 60
+#
+#   - name: disk-metrics
+#     type: logicaldisk
+#     params:
+#       interval: 120
+#
+#   # Network ADC (NetScaler)
+#   - name: netscaler-adc
+#     type: netscaler
+#     params:
+#       base_url: "https://netscaler.company.com"
+#       username: "monitoring-user"
+#       password: ${secret:netscaler-adc.password}   # auto-sealed on install
+#       interval: 60
+#     custom_tags:
+#       - key: "layer"
+#         value: "network-adc"
+
+# ==============================================================================
+# NOTES
+# ==============================================================================
+
+# Authentication Best Practices:
+# ---------------------------------
+# 1. Create dedicated monitoring user with read-only permissions
+# 2. Use strong passwords (minimum 12 characters, mixed case, numbers, symbols)
+# 3. Rotate credentials regularly (quarterly recommended)
+# 4. Never use "nsroot" in production (default admin account)
+# 5. Enable SSL certificate verification (insecure_skip_verify: false)
+
+# Performance Tuning:
+# ---------------------------------
+# Collection Interval Guidelines:
+# - Critical Production: 60 seconds (default, recommended)
+# - Development/Test: 120-300 seconds (reduce load)
+# - High-Frequency (troubleshooting): 30 seconds (short-term only)
+# - SSL Certificates: 3600 seconds (hourly, certs don't change often)
+#
+# Timeout Guidelines:
+# - Small deployments (<50 vServers): 30 seconds (default)
+# - Medium deployments (50-100 vServers): 45 seconds
+# - Large deployments (>100 vServers): 60-90 seconds
+
+# High Availability:
+# ---------------------------------
+# - Connect to ONE node only (primary OR secondary)
+# - Agent automatically discovers and monitors BOTH nodes
+# - Metrics include ha_node_id and ha_node_ip tags
+# - is_local_node tag distinguishes connected node from remote node
+
+# Custom Tags Strategy:
+# ---------------------------------
+# Recommended tag keys:
+# - environment: production, staging, development
+# - datacenter: dc-paris-01, dc-london-01, etc.
+# - region: emea, americas, apac
+# - team: infrastructure, platform, devops
+# - business_unit: ecommerce, marketing, finance
+# - tier: critical, standard, non-production
+# - cost_center: for chargeback/showback
+#
+# Tags are attached to ALL metrics from the probe
+# Use for filtering, grouping, and attribution in monitoring tools
+
+# Security:
+# ---------------------------------
+# NEVER commit real passwords to version control!
+# Reference a stored secret or environment variable instead:
+#
+# Option 1: OS secret store (recommended) — inline plaintext is auto-sealed on install
+# password: ${secret:netscaler-prod.password}
+#
+# Option 2: Environment variables
+# password: "${env:NETSCALER_PASSWORD}"
+#
+# Option 3: File reference
+# password: "${file:/etc/senhub-agent/secrets/netscaler.pwd}"
+#
+# Option 4: SenHub Cloud (credentials managed server-side)
+# No local credentials storage required
+
+# Troubleshooting:
+# ---------------------------------
+# Test NetScaler connectivity:
+#   curl -k -X POST https://netscaler.company.com/nitro/v1/config/login \
+#     -H "Content-Type: application/json" \
+#     -d '{"login":{"username":"user","password":"pass"}}'
+#
+# Enable debug logging:
+#   ./agent run --verbose --debug-modules probe.netscaler
+#
+# Check collected metrics:
+#   curl http://localhost:8080/api/{agentkey}/debug/cache | grep netscaler
+##### testdata/yaml-corpus/coercions.yaml
+err=post-write data drifted from pre-write snapshot — backup restored already=false probes=true strategies=0
+===== agent.yaml =====
+config_version: 3
+agent:
+  key: 12345
+  global_tags:
+    hexa: 0x1F
+    sci: 1e3
+    nothing: null
+    tilde: ~
+    flt: 1.50
+    bool: true
+cache:
+  retention_minutes: 5.7
+auto_update:
+  enabled: y
+  include_beta: N
+  url: 2024-01-02
+probes:
+  - name: 42
+    type: demo
+    enabled: Y
+    custom_tags:
+      a: 0x1F
+      b: 1e3
+      c: null
+      d: ~
+      e: true
+      f: 2024-01-02
+      g: off
+    log_strategies: [otlp, 3]
+    params:
+      interval: "30"
+      list_of_lists: [[1, 2], [yes, no], []]
+      empty_map: {}
+      key_with_colon: "a:b"
+##### testdata/yaml-corpus/comments-only.yaml
+err=<nil> already=true probes=false strategies=0
+===== agent.yaml =====
+# nothing here, only a comment
+##### testdata/yaml-corpus/dup-keys-in-params.yaml
+err=post-write data drifted from pre-write snapshot — backup restored already=false probes=true strategies=0
+===== agent.yaml =====
+config_version: 2
+agent:
+  key: k
+probes:
+  - name: p
+    type: demo
+    params:
+      a: 1
+      b: 2
+      a: 3
+      nested:
+        x: 1
+        x: 2
+    custom_tags:
+      t: one
+      t: two
+##### testdata/yaml-corpus/dup-keys-in-struct.yaml
+err=post-write data drifted from pre-write snapshot — backup restored already=false probes=true strategies=0
+===== agent.yaml =====
+config_version: 2
+agent:
+  key: k
+  key: k2
+cache:
+  retention_minutes: 5
+  retention_minutes: 9
+probes:
+  - name: p
+    type: demo
+    name: q
+    params: {}
+##### testdata/yaml-corpus/dup-keys-toplevel.yaml
+err=post-write data drifted from pre-write snapshot — backup restored already=false probes=true strategies=0
+===== agent.yaml =====
+config_version: 2
+agent:
+  key: first
+agent:
+  key: second
+probes:
+  - name: p
+    type: demo
+    params: {}
+##### testdata/yaml-corpus/empty-sections.yaml
+err=<nil> already=false probes=true strategies=0
+===== agent.yaml =====
+# SenHub Agent — globals (migrated to multi-file layout on <TS>)
+# Probes live in probes.d/ ; storage strategies in strategies.d/.
+# Original monolithic file kept as agent.yaml.pre-multi-file.<TS>.
+
+agent:
+  key: k
+config_version: 3
+===== agent.yaml.pre-multi-file.<TS> =====
+config_version: 3
+agent:
+  key: k
+storage: []
+probes: []
+===== probes.d/00-host.yaml =====
+# Probes migrated from monolithic config on <TS>.
+# Add new probes by creating additional files in this directory
+# (e.g. 10-mydb.yaml). Files load alphabetically.
+
+[]
+##### testdata/yaml-corpus/empty.yaml
+err=<nil> already=true probes=false strategies=0
+===== agent.yaml =====
+
+<no trailing newline>
+##### testdata/yaml-corpus/err-quoted-bool-enabled.yaml
+err=failed to load current configuration: parsing <DIR>/agent.yaml: yaml: unmarshal errors:
+  line 7: cannot unmarshal !!str `no` into bool already=false probes=false strategies=0
+===== agent.yaml =====
+config_version: 2
+agent:
+  key: k
+probes:
+  - name: p
+    type: demo
+    enabled: "no"
+    params: {}
+##### testdata/yaml-corpus/err-syntax.yaml
+err=failed to load current configuration: parsing <DIR>/agent.yaml: yaml: line 3: did not find expected ',' or ']' already=false probes=false strategies=0
+===== agent.yaml =====
+config_version: 2
+agent:
+  key: [unterminated
+probes:
+##### testdata/yaml-corpus/err-type-mismatch.yaml
+err=failed to load current configuration: parsing <DIR>/agent.yaml: yaml: unmarshal errors:
+  line 5: cannot unmarshal !!str `many` into int already=false probes=false strategies=0
+===== agent.yaml =====
+config_version: 2
+agent:
+  key: k
+cache:
+  retention_minutes: many
+probes: []
+##### testdata/yaml-corpus/null-document.yaml
+err=<nil> already=true probes=false strategies=0
+===== agent.yaml =====
+~
+##### testdata/yaml-corpus/scalar-document.yaml
+err=failed to load current configuration: parsing <DIR>/agent.yaml: yaml: unmarshal errors:
+  line 1: cannot unmarshal !!str `just a ...` into struct { Probes []interface {} "yaml:\"probes\""; Storage []interface {} "yaml:\"storage\"" } already=false probes=false strategies=0
+===== agent.yaml =====
+just a string
+##### testdata/yaml-corpus/tricky-monolithic.yaml
+err=post-write data drifted from pre-write snapshot — backup restored already=false probes=true strategies=2
+===== agent.yaml =====
+config_version: 2
+
+agent:
+  key: "tricky-key"
+  global_tags:
+    env: prod
+    on-call: yes
+    tier: 3
+    flag: "no"
+
+auto_update:
+  enabled: yes
+  include_beta: off
+  url: "https://example.com/releases"
+
+cache:
+  retention_minutes: 5
+
+governance:
+  criticality: high
+  owner:
+    team: sre
+    contacts: [a@example.com, b@example.com]
+  labels:
+    - app: billing
+      since: 2024-01-02
+    - app: legacy
+      active: yes
+
+storage:
+  - name: http
+    params:
+      port: 8080
+      bind_address: "127.0.0.1"
+      endpoints: ["prtg", "web", "nagios"]
+      cache:
+        retention_minutes: 45
+      tls:
+        enabled: on
+        cipher_suites: [A, B]
+  - name: otlp
+    params:
+      endpoint: "127.0.0.1:4317"
+      protocol: grpc
+      insecure: yes
+      headers:
+        x-tenant: 42
+        x-flag: off
+
+probes:
+  - name: bools
+    type: demo
+    enabled: yes
+    custom_tags:
+      a: yes
+      b: 5
+      c: 1.5
+      d: "x"
+    log_strategies: [otlp, event]
+    params:
+      verify_ssl: yes
+      keep: no
+      on_key: on
+      off_key: off
+      y_key: y
+      n_key: n
+      Yes_key: Yes
+      NO_key: NO
+      quoted_yes: "yes"
+      single_on: 'on'
+      true_key: true
+      False_key: False
+      TRUE_key: TRUE
+      nested:
+        deep: yes
+        list: [yes, no, on, off, "yes"]
+      list_of_maps:
+        - enabled: yes
+        - enabled: no
+      flow: {a: yes, b: no}
+  - name: scalars
+    type: demo
+    params:
+      date: 2024-01-02
+      datetime: 2024-01-02T03:04:05Z
+      datetime_space: 2024-01-02 03:04:05
+      quoted_date: "2024-01-02"
+      octal: 0755
+      octal_new: 0o17
+      hex: 0x1F
+      binary: 0b101
+      underscored: 1_000
+      float: 1.5
+      sci: 1e3
+      sci2: 1.5e-3
+      inf: .inf
+      nan: .nan
+      neg: -7
+      plus: +7
+      tilde: ~
+      null_word: null
+      Null_word: Null
+      empty:
+      empty_string: ""
+      big: 18446744073709551615
+      toobig: 99999999999999999999
+      colon_str: "a: b"
+      hash_str: "x # y"
+      version: 1.10
+      sexagesimal: 1:30
+      time_like: 12:30:45
+      binary_tag: !!binary aGVsbG8=
+      str_tag: !!str 123
+      multi_literal: |
+        line one
+        line two
+      multi_folded: >
+        folded one
+        folded two
+      unicode: "é à ü 日本"
+      long: "aaaaaaaaaa bbbbbbbbbb cccccccccc dddddddddd eeeeeeeeee ffffffffff gggggggggg hhhhhhhhhh iiiiiiiiii jjjjjjjjjj kkkkkkkkkk"
+      numeric_keys:
+        1: one
+        two: 2
+      str_keys_only:
+        a: 1
+        b: [1, 2, {c: 3}]
+      int_key_map:
+        10: ten
+        20: twenty
+      bool_keyed:
+        yes: 1
+        no: 2
+  - name: anchors
+    type: demo
+    params: &base
+      interval: 30
+      mode: fast
+  - name: anchors-merge
+    type: demo
+    params:
+      <<: *base
+      mode: slow
+      extra: [1, 2]
+    governance:
+      criticality: low
+      owner:
+        team: ops
+        escalate: yes
+docs/LICENSE-SYSTEM.md#0 err=true already=false probes=true strategies=0 25aa4bf71406dcea288e8d196ed25280e5b58d1230092a446fe47b4b5af3ea3e
+docs/admin-guide/BACKPRESSURE.md#0 err=true already=false probes=false strategies=1 bb087c1b681b4a563ae1e59cb6ef261e92a21d444c76e5ece687010b1eda409c
+docs/admin-guide/CONFIG-VERSION-CHANGELOG.md#0 err=true already=false probes=true strategies=0 941ba6c6a06e4d623e284c2120ec25a229b8f6ba42f02c8fe5fbc8b7e3fd2246
+docs/admin-guide/CONFIG-VERSION-CHANGELOG.md#1 err=true already=false probes=true strategies=0 d98eb6cba4404110a70d51c75d13a00164dc9e2ba2b9ba3ef9c23501c45888f7
+docs/admin-guide/CONFIG-VERSION-CHANGELOG.md#2 err=true already=false probes=true strategies=0 679bc4c7fcec030d7fe9fc697f66370fa4cd43852d721a7b918978a067474bc4
+docs/admin-guide/CONFIG-VERSION-CHANGELOG.md#3 err=true already=false probes=true strategies=0 68653849df2d17596d671ee45dbd018f69ad92d2f90609446e618d76eab97c01
+docs/admin-guide/HTTP-BIND-ADDRESS.md#1 err=true already=false probes=false strategies=1 1cd9accd70ec4f9e3d77d5269a8ebe793af86e16a7ebbfebb0d1a4b94c08f19a
+docs/admin-guide/HTTP-BIND-ADDRESS.md#2 err=true already=false probes=false strategies=1 82024d1cbc7d47d83ce5dd0833bbe39fa721ad70d408e0539b7d45ff874e8e68
+docs/admin-guide/HTTP-BIND-ADDRESS.md#3 err=true already=false probes=false strategies=1 ae497746a9e2af8156bd57eb9597eea0678ded94c0479db723eccb23454fd63b
+docs/admin-guide/HTTP-BIND-ADDRESS.md#4 err=true already=false probes=false strategies=1 8054e8d5adc5d5bb57762901dd794387125a174afcbb2d2e1e9cba4648aa272f
+docs/admin-guide/HTTP-BIND-ADDRESS.md#5 err=true already=false probes=false strategies=1 c92e5841421338994e77c155bde1accb9cb27a58fa567c602c31d5d707152107
+docs/admin-guide/HTTP-BIND-ADDRESS.md#6 err=true already=false probes=false strategies=1 4161cb8b3fe2a2c8573b76402db3672ea80f01d3b5af388fc40f2d900d82189c
+docs/admin-guide/HTTP-STRATEGY.md#0 err=true already=false probes=false strategies=1 391c254a8a39172eaa96d9a3722c0005d84fcf6f458bdf0c2f48135c3a968d32
+docs/admin-guide/HTTPS-CONFIGURATION.md#0 err=true already=false probes=false strategies=1 185a109722930e1ff1cae2124b7ee6f33934ff8e0ec9b02908947d4d153270ca
+docs/admin-guide/HTTPS-CONFIGURATION.md#1 err=true already=false probes=false strategies=1 00f0f9a3f0532a66cd9f2192bee628ff8e6422253019dc5e9ecb18a437e8fe01
+docs/admin-guide/LEAST-PRIVILEGE.md#0 err=true already=false probes=true strategies=0 fb6d1da6b7029af7c05a1cee9a07423ea8abd05f6fdea39909b645da9266b573
+docs/developer-guide/architecture.md#0 err=true already=false probes=true strategies=0 385e3352404cbe6c72e8ac6133859a8e86e23dd200a16b0df3e821883655415a
+docs/developer-guide/database-probes/DESIGN.md#0 err=true already=false probes=true strategies=0 72524322dfeec2dce60a5099d551f039d602108f1998832463e2be77520574ba
+docs/developer-guide/development-workflow.md#0 err=true already=false probes=true strategies=0 385e3352404cbe6c72e8ac6133859a8e86e23dd200a16b0df3e821883655415a
+docs/developer-guide/engineering/TIME_SERIES_KEY_DESIGN.md#0 err=true already=false probes=true strategies=0 77aa9a2221af099451084fe76ee5ba1afe08ff7ab7eff589fcae2d9ff1654357
+docs/developer-guide/otlp/IMPLEMENTATION-PLAN.md#0 err=true already=false probes=false strategies=2 e9a9ad03f2062ed31409d6bfdaedda34caf14678ccaf79e6db8f3fb660ff8955
+docs/developer-guide/prometheus/IMPLEMENTATION-PLAN.md#0 err=true already=false probes=false strategies=1 384e8e75fbb666632fa063b7375dc9d96c7f63b0479bb0ac853047c66ef401b9
+docs/presentations/redfish-client-demo.md#0 err=true already=false probes=true strategies=0 df8fe07f1e2cce0057d3ee35fd299c5b1ad6855f58b5d6193acab64b112efd0b
+docs/presentations/redfish-client-demo.md#1 err=true already=false probes=true strategies=0 79d26940f5b49ebc2f96c4d74b7ccc4f9f033200e722c6772a341a064e4461e5
+docs/releases/0.1.70-beta.md#0 err=true already=false probes=true strategies=0 ad7b0dda79ae24dcbf90308d05bd52d73eb796031d0e46df3b6126b428339a58
+docs/releases/0.1.88-beta.md#3 err=true already=false probes=false strategies=1 6a993503e89219784d70b417ff5d26c5d3cf5236fc6017c77c89d64dc8a19491
+docs/releases/0.1.90-beta.md#0 err=true already=false probes=false strategies=1 c16ae2a39a1fd532228971fd37f7cff5d78c4076445239157d373860e2672d8b
+docs/testing/archive/2025-11/LICENSE-ENFORCEMENT-TEST-REPORT.md#0 err=true already=false probes=true strategies=0 4ca35260bbcaac81d48b29f8fb54b3b37496d80005631090dda31b0daa963474
+docs/user-guide/docs/configuration.md#0 err=false already=false probes=true strategies=1 a592011e1c96d8444e620c082da372c0538c78ed561033c1659ae02e2d71a1b0
+docs/user-guide/docs/configuration.md#2 err=true already=false probes=true strategies=0 a7e3ce694e188399ee09cf8e5bb996574e492672a160881392bc47960ebd4930
+docs/user-guide/docs/configuration.md#3 err=true already=false probes=true strategies=0 22b9f2a63293877012d2b46ab0e57496d6d85711dfd5084aaec8aa9d85d0afff
+docs/user-guide/docs/configuration.md#4 err=true already=false probes=true strategies=0 3e9434315c0ca3399abe97cccae3066b9770480186e192bed59cb6663544032c
+docs/user-guide/docs/configuration.md#5 err=true already=false probes=false strategies=1 6da9c3942fc43f64f153a1bb2322c0d6d897af5b4caa53de2bb88d8d152c8e3d
+docs/user-guide/docs/configuration.md#6 err=true already=false probes=false strategies=1 b4d4d2491973da28d5d4b4a171393cf7db4dbc9b6bb7c10d369862e724868306
+docs/user-guide/docs/configuration.md#7 err=true already=false probes=false strategies=2 ccf7d28fac3e4bd85e42587a0a5e27951aa0c3af158ba198cd594148dcf8bacf
+docs/user-guide/docs/configuration.md#9 err=true already=false probes=true strategies=0 816cf4ea48e24782a438a156da8a2a6df4d3274c088fcffc857b198606276cb2
+docs/user-guide/docs/configuration.md#10 err=false already=false probes=true strategies=1 fc6f978bc95bbba2f13395fe5bcaba7feec85c273d7a13b24b79a59dc7554faf
+docs/user-guide/docs/configuration.md#11 err=false already=false probes=true strategies=1 97c3ab471edc7e4fcbe2748269cd82b2a7b7f6c87f6675eaaa7ae5d2dbdb3ebe
+docs/user-guide/docs/configuration.md#12 err=true already=false probes=true strategies=0 f89c2b54f4f26ce256bb65fdc738e1dba75aacb2d931be035931dc0de6d2c202
+docs/user-guide/docs/configuration.md#17 err=true already=false probes=false strategies=0 4a77027032c6e1479d13442637c12ccaa4f142670a68ea76cdc8d8e60c866808
+docs/user-guide/docs/probes/azure_container_app_jobs.md#1 err=true already=false probes=false strategies=0 eb55d07a5ae1b90d5ef378796c4920d856cfac2043c101e6a9ed8e8ae7130f48
+docs/user-guide/docs/probes/azure_container_app_jobs.md#2 err=true already=false probes=false strategies=0 4ce65ead850a62b5ace54a60a502fca719655c96d1f2633a1b959e11e09d6c07
+docs/user-guide/docs/probes/azure_container_apps.md#2 err=true already=false probes=false strategies=0 4ce65ead850a62b5ace54a60a502fca719655c96d1f2633a1b959e11e09d6c07
+docs/user-guide/docs/secret-store.md#0 err=true already=false probes=true strategies=0 3920205ec05939b601fb3400e650feaa51fce72e6260f6d89341f957062a4245
+docs/user-guide/docs/secret-store.md#1 err=true already=false probes=true strategies=0 0f0f240220597984b7dccab8a279e7e89f3997c96e32c75aa9cfc67f8aabdf4c
+docs/user-guide/docs/secret-store.md#2 err=true already=false probes=true strategies=0 3920205ec05939b601fb3400e650feaa51fce72e6260f6d89341f957062a4245
+docs/user-guide/docs/whats-new/0.5.4.md#1 err=true already=false probes=true strategies=0 4e2f59264a6f06f1ce6a6cbc74721836be6c16448581145e5e73df93ebb1a367

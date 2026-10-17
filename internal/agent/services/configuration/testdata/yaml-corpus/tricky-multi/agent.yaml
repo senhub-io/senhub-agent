@@ -1,0 +1,11 @@
+config_version: 3
+agent:
+  key: "multi-key"
+  global_tags:
+    zone: eu
+governance:
+  owner:
+    team: sre
+  tags: [a, b]
+cache:
+  retention_minutes: 7
