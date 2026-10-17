@@ -31,7 +31,7 @@ type dialResult struct {
 	err      error
 }
 
-type dialFunc func(target string) dialResult
+type dialFunc func(ctx context.Context, target string) dialResult
 
 type TCPDialProbe struct {
 	*types.BaseProbe
@@ -134,9 +134,17 @@ func (p *TCPDialProbe) OnStart(quitChannel chan struct{}) error {
 
 func (p *TCPDialProbe) OnShutdown(ctx context.Context) error { return nil }
 
-// Collect dials every target (bounded parallelism). A refused or timed
-// out target is a measurement (up=0), never a collection error.
+// Collect dials every target without a cancellation signal; the poller
+// calls CollectContext.
 func (p *TCPDialProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext dials every target (bounded parallelism). A refused or
+// timed out target is a measurement (up=0), never a collection error. A
+// cycle whose context ends is not: its targets did not fail, so it
+// returns ctx.Err() and no datapoint.
+func (p *TCPDialProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 
 	infos := make([]targetInfo, len(p.config.Targets))
@@ -155,10 +163,13 @@ func (p *TCPDialProbe) Collect() ([]data_store.DataPoint, error) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			results[i] = p.dial(target)
+			results[i] = p.dial(ctx, target)
 		}(i, target)
 	}
 	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("tcp_dial collection interrupted: %w", err)
+	}
 
 	var points []data_store.DataPoint
 	for i, res := range results {
@@ -227,10 +238,11 @@ func (p *TCPDialProbe) buildDatapoints(res dialResult, ts time.Time, info target
 }
 
 // dialOnce is the production dialFunc: one measured TCP connect.
-func (p *TCPDialProbe) dialOnce(target string) dialResult {
+func (p *TCPDialProbe) dialOnce(ctx context.Context, target string) dialResult {
 	res := dialResult{target: target}
 	start := time.Now()
-	conn, err := net.DialTimeout("tcp", target, p.config.Timeout)
+	dialer := net.Dialer{Timeout: p.config.Timeout}
+	conn, err := dialer.DialContext(ctx, "tcp", target)
 	res.duration = time.Since(start)
 	if err != nil {
 		res.err = fmt.Errorf("dialing %s: %w", target, err)
