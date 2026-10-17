@@ -2,8 +2,6 @@ package kubeletstats
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -13,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/httpclient"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -281,28 +280,12 @@ func (p *KubeletStatsProbe) scrapeSummary() (*summary, string, error) {
 }
 
 func buildHTTPClient(caFile string, insecureSkipVerify bool) (*http.Client, error) {
-	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
-
-	if insecureSkipVerify {
-		tlsConfig.InsecureSkipVerify = true
-	} else {
-		caCert, err := os.ReadFile(caFile)
-		if err != nil {
-			return nil, fmt.Errorf("reading CA file: %w", err)
-		}
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(caCert) {
-			return nil, fmt.Errorf("parsing CA file %s", caFile)
-		}
-		tlsConfig.RootCAs = pool
-	}
-
-	transport := &http.Transport{
-		Proxy:           http.ProxyFromEnvironment,
-		TLSClientConfig: tlsConfig,
-	}
-
-	return &http.Client{Transport: transport, Timeout: 10 * time.Second}, nil
+	return httpclient.NewClient(httpclient.Options{
+		Timeout:            10 * time.Second,
+		InsecureSkipVerify: insecureSkipVerify,
+		CAFile:             caFile,
+		DisableHTTP2:       true,
+	})
 }
 
 func (p *KubeletStatsProbe) collectNode(n nodeStats, now time.Time) []data_store.DataPoint {
