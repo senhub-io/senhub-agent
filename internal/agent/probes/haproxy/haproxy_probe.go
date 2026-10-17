@@ -303,79 +303,30 @@ func (p *haproxyProbe) buildDatapoints(rows [][]string, ts time.Time) []data_sto
 		// Sessions — frontends and backends only.
 		if rowType == typeFrontend || rowType == typeBackend {
 			sessionTags := append(cloneTags(baseTags), tags.Tag{Key: "metric_type", Value: "sessions"})
-			points = append(points,
-				data_store.DataPoint{
-					Name:      "haproxy.sessions.count",
-					Value:     float64(parseInt(row[colScur])),
-					Timestamp: ts,
-					Tags:      sessionTags,
-				},
-				data_store.DataPoint{
-					Name:      "haproxy.sessions.total",
-					Value:     float64(parseInt(row[colStot])),
-					Timestamp: ts,
-					Tags:      sessionTags,
-				},
-			)
+			points = appendCell(points, "haproxy.sessions.count", row[colScur], ts, sessionTags)
+			points = appendCell(points, "haproxy.sessions.total", row[colStot], ts, sessionTags)
 		}
 
 		// Throughput — all row types.
 		throughputTags := append(cloneTags(baseTags), tags.Tag{Key: "metric_type", Value: "throughput"})
-		points = append(points,
-			data_store.DataPoint{
-				Name:      "haproxy.bytes.input",
-				Value:     float64(parseInt(row[colBin])),
-				Timestamp: ts,
-				Tags:      throughputTags,
-			},
-			data_store.DataPoint{
-				Name:      "haproxy.bytes.output",
-				Value:     float64(parseInt(row[colBout])),
-				Timestamp: ts,
-				Tags:      throughputTags,
-			},
-		)
+		points = appendCell(points, "haproxy.bytes.input", row[colBin], ts, throughputTags)
+		points = appendCell(points, "haproxy.bytes.output", row[colBout], ts, throughputTags)
 
-		// Errors — all row types.
+		// Errors. econ and eresp only have a value on backends and servers;
+		// HAProxy leaves them empty on a frontend, which is not a zero.
 		errorTags := append(cloneTags(baseTags), tags.Tag{Key: "metric_type", Value: "errors"})
-		points = append(points,
-			data_store.DataPoint{
-				Name:      "haproxy.connections.errors",
-				Value:     float64(parseInt(row[colEcon])),
-				Timestamp: ts,
-				Tags:      errorTags,
-			},
-			data_store.DataPoint{
-				Name:      "haproxy.responses.errors",
-				Value:     float64(parseInt(row[colEresp])),
-				Timestamp: ts,
-				Tags:      errorTags,
-			},
-		)
+		points = appendCell(points, "haproxy.connections.errors", row[colEcon], ts, errorTags)
+		points = appendCell(points, "haproxy.responses.errors", row[colEresp], ts, errorTags)
 
 		// Request errors — frontends only.
 		if rowType == typeFrontend {
-			points = append(points,
-				data_store.DataPoint{
-					Name:      "haproxy.requests.errors",
-					Value:     float64(parseInt(row[colEreq])),
-					Timestamp: ts,
-					Tags:      errorTags,
-				},
-			)
+			points = appendCell(points, "haproxy.requests.errors", row[colEreq], ts, errorTags)
 		}
 
 		// Request rate — frontends only; column may be absent in older HAProxy.
 		if rowType == typeFrontend && len(row) > colReqRate {
 			requestTags := append(cloneTags(baseTags), tags.Tag{Key: "metric_type", Value: "requests"})
-			points = append(points,
-				data_store.DataPoint{
-					Name:      "haproxy.requests.rate",
-					Value:     float64(parseFloat(row[colReqRate])),
-					Timestamp: ts,
-					Tags:      requestTags,
-				},
-			)
+			points = appendCell(points, "haproxy.requests.rate", row[colReqRate], ts, requestTags)
 		}
 	}
 
@@ -414,14 +365,16 @@ func parseInt(s string) int64 {
 	return v
 }
 
-// parseFloat parses a CSV cell as float64, returning 0 on empty/invalid.
-func parseFloat(s string) float64 {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0
+// appendCell adds a point for a CSV cell. The stats documentation lists, per
+// column, the row types that have a value; for the others the cell is empty.
+// An empty or non-numeric cell therefore means "not applicable" and yields no
+// point, rather than a 0 that reads as a measurement.
+func appendCell(points []data_store.DataPoint, name, cell string, ts time.Time, t []tags.Tag) []data_store.DataPoint {
+	v, err := strconv.ParseFloat(strings.TrimSpace(cell), 64)
+	if err != nil {
+		return points
 	}
-	v, _ := strconv.ParseFloat(s, 64)
-	return v
+	return append(points, data_store.DataPoint{Name: name, Value: v, Timestamp: ts, Tags: t})
 }
 
 // endpointHostPort extracts the hostname and port from the stats endpoint URL.

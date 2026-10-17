@@ -283,3 +283,55 @@ func metricOrMissing(points []data_store.DataPoint, name string) float64 {
 	}
 	return -1
 }
+
+// HAProxy documents econ and eresp as [..BS]: a frontend row has no value for
+// them and the CSV leaves the cell empty. Emitting 0 there reports "no
+// connection errors" for a measurement that does not exist.
+func TestBuildDatapoints_EmptyCellsAreNotZero(t *testing.T) {
+	row := func(name, svname, rowType string, cells map[int]string) []string {
+		r := make([]string, colType+1)
+		r[colPxname], r[colSvname], r[colType] = name, svname, rowType
+		for i, v := range cells {
+			r[i] = v
+		}
+		return r
+	}
+	rows := [][]string{
+		row("fe", "FRONTEND", "0", map[int]string{colScur: "12", colStot: "40", colBin: "5000", colBout: "1024", colEreq: "5", colReqRate: "3"}),
+		row("be", "BACKEND", "1", map[int]string{colScur: "3", colStot: "20", colBin: "2000", colBout: "512", colEcon: "2", colEresp: "1"}),
+	}
+	points := (&haproxyProbe{}).buildDatapoints(rows, time.Time{})
+
+	byProxy := func(proxy, name string) *float64 {
+		for _, p := range points {
+			if p.Name != name {
+				continue
+			}
+			for _, tg := range p.Tags {
+				if tg.Key == "proxy" && tg.Value == proxy {
+					v := p.Value
+					return &v
+				}
+			}
+		}
+		return nil
+	}
+
+	for _, name := range []string{"haproxy.connections.errors", "haproxy.responses.errors"} {
+		if v := byProxy("fe", name); v != nil {
+			t.Errorf("%s emitted as %v for a frontend whose cell is empty", name, *v)
+		}
+	}
+	if v := byProxy("be", "haproxy.connections.errors"); v == nil || *v != 2 {
+		t.Errorf("backend haproxy.connections.errors = %v, want 2", v)
+	}
+	if v := byProxy("be", "haproxy.responses.errors"); v == nil || *v != 1 {
+		t.Errorf("backend haproxy.responses.errors = %v, want 1", v)
+	}
+	if v := byProxy("fe", "haproxy.requests.errors"); v == nil || *v != 5 {
+		t.Errorf("frontend haproxy.requests.errors = %v, want 5", v)
+	}
+	if v := byProxy("fe", "haproxy.requests.rate"); v == nil || *v != 3 {
+		t.Errorf("frontend haproxy.requests.rate = %v, want 3", v)
+	}
+}
