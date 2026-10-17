@@ -875,3 +875,55 @@ func TestExecuteContextTakesPrecedenceOverExecute(t *testing.T) {
 		t.Fatalf("Execute ran %d times and ExecuteContext %d, want 0 and 1", plain, withCtx)
 	}
 }
+
+// The initial call runs inside Start, under the lifecycle lock. A
+// Shutdown queued behind it must still cancel it, not wait for it: a
+// first collection against a target that stopped answering would
+// otherwise hold the whole stop for its timeout.
+func TestShutdownCancelsTheInitialCall(t *testing.T) {
+	logger := zerolog.New(io.Discard)
+	entered := make(chan struct{})
+	returned := make(chan error, 1)
+
+	s := NewPeriodicScheduler(PeriodicSchedulerConfig{
+		ExecuteOnStart: true,
+		Interval:       time.Hour,
+		ExecuteContext: func(ctx context.Context) error {
+			close(entered)
+			<-ctx.Done()
+			returned <- ctx.Err()
+			return ctx.Err()
+		},
+	}, &logger)
+
+	startDone := make(chan error, 1)
+	go func() { startDone <- s.Start(context.Background()) }()
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the initial call never started")
+	}
+
+	stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	started := time.Now()
+	if err := s.Shutdown(stopCtx); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("Shutdown waited %v for an initial call blocked on its context", elapsed)
+	}
+	select {
+	case err := <-returned:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("initial call ended with %v, want context.Canceled", err)
+		}
+	default:
+		t.Fatal("the initial call was not released by Shutdown")
+	}
+	select {
+	case <-startDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start never returned after the shutdown")
+	}
+}
