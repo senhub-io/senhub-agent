@@ -82,7 +82,7 @@ Documentation for contributors and developers:
 - [Development Workflow](./developer-guide/development-workflow.md) - Git workflow and branching
 - [Build System](./developer-guide/build-system.md) - Compilation and testing
 - [Design Patterns](./developer-guide/design-patterns.md) - Code patterns and best practices
-- [Current Development](./developer-guide/current-development.md) - Active work and roadmap
+- [Current Development](./developer-guide/current-development.md) - Where the line stands
 - [Engineering](./developer-guide/engineering/) - Technical deep-dives
 
 ### 📦 [Releases](./releases/)

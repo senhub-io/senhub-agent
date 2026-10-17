@@ -52,7 +52,7 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 | **[Development Workflow](developer-guide/development-workflow.md)** | Git workflow and branching | Contributors |
 | **[Build System](developer-guide/build-system.md)** | Compilation and testing | Developers |
 | **[Design Patterns](developer-guide/design-patterns.md)** | Code patterns and best practices | Developers |
-| **[Current Development](developer-guide/current-development.md)** | Active work and roadmap | All |
+| **[Current Development](developer-guide/current-development.md)** | Where the line stands | All |
 | **[Entity Detection](developer-guide/engineering/ENTITY-DETECTION.md)** | OTel entity-event emitter & topology discovery (#185) | Developers |
 | **[Entity ↔ Telemetry Contract](developer-guide/engineering/ENTITY-TELEMETRY-CONTRACT.md)** | How an entity's identity reaches its metrics/logs/traces, and where the round trip is guaranteed | Developers |
 | **[CLAUDE.md](../CLAUDE.md)** | Quick reference (points to developer guide) | Developers |
@@ -190,7 +190,7 @@ Welcome to the comprehensive documentation for SenHub Agent. This index will hel
 - **[Build Instructions](developer-guide/build-system.md)** - Building from source
 - **[Code Style](developer-guide/architecture.md)** - Development standards
 - **[Design Patterns](developer-guide/design-patterns.md)** - Code patterns and best practices
-- **[Current Development](developer-guide/current-development.md)** - Active work and roadmap
+- **[Current Development](developer-guide/current-development.md)** - Where the line stands
 
 ## 📋 Quick Reference
 
