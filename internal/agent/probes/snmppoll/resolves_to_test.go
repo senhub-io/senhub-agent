@@ -55,7 +55,7 @@ func TestResolvesTo_OwnMACOnAccessPort(t *testing.T) {
 	if len(neighbors) != 1 {
 		t.Fatalf("neighbours = %+v, want only the host's own MAC", neighbors)
 	}
-	if neighbors[0].ID[idKeyNetworkDevice] != switchID || neighbors[0].ID[idKeyNeighborMAC] != ownMAC {
+	if neighbors[0].ID[idKeyNetworkDevice] != switchID || neighbors[0].ID["mac"] != ownMAC {
 		t.Fatalf("neighbour identity = %v", neighbors[0].ID)
 	}
 

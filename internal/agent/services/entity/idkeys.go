@@ -8,4 +8,7 @@ const (
 	// together with its owner (host.id or network.device.id).
 	KeyRouteDestination = "route.destination"
 	KeyRouteNextHop     = "next_hop.ip"
+
+	// KeyNeighborMAC identifies a network.neighbor within its owner.
+	KeyNeighborMAC = "mac"
 )
