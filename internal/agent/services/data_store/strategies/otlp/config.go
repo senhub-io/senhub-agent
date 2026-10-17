@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/governance"
 	"senhub-agent.go/internal/agent/services/instanceid"
 )
@@ -1347,7 +1348,7 @@ var entityIdentityKeys = []string{
 	"host.id",
 	"network.device.id",
 	"service.instance.id",
-	"vmid",
+	entity.KeyVMID,
 }
 
 // parseRedactAttributes parses the redact_attributes YAML list of
