@@ -1,6 +1,7 @@
 package host
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -103,5 +104,20 @@ func TestParseIw(t *testing.T) {
 	// iwconfig on the same link printed "Link Quality=48/70 Signal level=-62 dBm".
 	if q := qualityFromDBm(-62); q < 68.5 || q > 68.6 {
 		t.Errorf("qualityFromDBm(-62) = %v, want 48/70 = 68.57%%", q)
+	}
+}
+
+func TestParseNetshConnected(t *testing.T) {
+	connected := "    Name                   : Wi-Fi\n    State                  : %s\n    SSID                   : Office\n    BSSID                  : aa:bb:cc:dd:ee:ff\n    Signal                 : 80%%\n"
+	disconnected := "    Name                   : Wi-Fi\n    State                  : %s\n"
+	for _, st := range []string{"connected", "connecté", "verbunden", "conectado"} {
+		if !parseNetshConnected(fmt.Sprintf(connected, st)) {
+			t.Errorf("state %q with BSSID should be connected", st)
+		}
+	}
+	for _, st := range []string{"disconnected", "déconnecté", "getrennt", "desconectado"} {
+		if parseNetshConnected(fmt.Sprintf(disconnected, st)) {
+			t.Errorf("state %q without BSSID should be disconnected", st)
+		}
 	}
 }
