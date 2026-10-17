@@ -452,19 +452,17 @@ func (p *KubernetesProbe) collectNodes(ctx context.Context, now time.Time) ([]da
 				Tags:      baseTags,
 			})
 		}
-		if pods := n.Status.Capacity.Pods(); pods != nil {
-			cap, _ := pods.AsInt64()
+		if capacity, ok := podCount(n.Status.Capacity); ok {
 			points = append(points, data_store.DataPoint{
-				Name: "k8s.node.pods.capacity", Value: float64(cap), Timestamp: now, Tags: baseTags,
+				Name: "k8s.node.pods.capacity", Value: capacity, Timestamp: now, Tags: baseTags,
 			})
 		}
-		if pods := n.Status.Allocatable.Pods(); pods != nil {
-			alloc, _ := pods.AsInt64()
+		if alloc, ok := podCount(n.Status.Allocatable); ok {
 			// k8s.node.pods.allocatable, NOT .allocated: this is the ceiling
 			// the scheduler may fill, not what is running on the node. The
 			// former name said one thing and carried another (#756).
 			points = append(points, data_store.DataPoint{
-				Name: "k8s.node.pods.allocatable", Value: float64(alloc), Timestamp: now, Tags: baseTags,
+				Name: "k8s.node.pods.allocatable", Value: alloc, Timestamp: now, Tags: baseTags,
 			})
 		}
 
@@ -512,6 +510,21 @@ func (p *KubernetesProbe) collectPods(ctx context.Context, now time.Time) ([]dat
 		}
 	}
 	return points, nil
+}
+
+// podCount reads the pods quantity of a node resource list. ok is false when
+// the node does not report it or reports a fraction: ResourceList.Pods()
+// answers an empty quantity in both cases, which would publish a ceiling of 0.
+func podCount(rl corev1.ResourceList) (float64, bool) {
+	q, present := rl[corev1.ResourcePods]
+	if !present {
+		return 0, false
+	}
+	n, exact := q.AsInt64()
+	if !exact {
+		return 0, false
+	}
+	return float64(n), true
 }
 
 func (p *KubernetesProbe) buildPodPoints(pod *corev1.Pod, now time.Time) []data_store.DataPoint {
