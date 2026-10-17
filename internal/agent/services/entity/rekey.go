@@ -89,9 +89,36 @@ func identityPayload(typ string, id map[string]any) string {
 	return string(payload)
 }
 
-func (r *RekeyAnnouncer) markerPath(m *markerStore) string {
-	sum := sha256.Sum256([]byte(r.markerKey()))
+func (m *markerStore) path(key string) string {
+	sum := sha256.Sum256([]byte(key))
 	return filepath.Join(m.dir, "rekey-"+hex.EncodeToString(sum[:8])+".announced")
+}
+
+// markerPresent reports whether an earlier start already wrote the marker
+// for key. The second result is false while no marker store is active.
+func markerPresent(key string) (present, active bool) {
+	m := markers.Load()
+	if m == nil {
+		return false, false
+	}
+	_, err := os.Stat(m.path(key))
+	return err == nil, true
+}
+
+// markerWrite records that the re-key named by key was announced. The first
+// failure is handed to the store's warn callback; later ones are dropped.
+func markerWrite(key, content string) {
+	m := markers.Load()
+	if m == nil {
+		return
+	}
+	err := os.MkdirAll(m.dir, 0o755)
+	if err == nil {
+		err = os.WriteFile(m.path(key), []byte(content+"\n"), 0o644)
+	}
+	if err != nil && m.warn != nil {
+		m.warnOnce.Do(func() { m.warn(err) })
+	}
 }
 
 func (r *RekeyAnnouncer) checkMarker() {
@@ -100,28 +127,18 @@ func (r *RekeyAnnouncer) checkMarker() {
 	if r.checked {
 		return
 	}
-	m := markers.Load()
-	if m == nil {
+	present, active := markerPresent(r.markerKey())
+	if !active {
 		return
 	}
 	r.checked = true
-	if _, err := os.Stat(r.markerPath(m)); err == nil {
+	if present {
 		r.suppressed.Store(true)
 	}
 }
 
 func (r *RekeyAnnouncer) writeMarker() {
-	m := markers.Load()
-	if m == nil {
-		return
-	}
-	err := os.MkdirAll(m.dir, 0o755)
-	if err == nil {
-		err = os.WriteFile(r.markerPath(m), []byte(identityPayload(r.legacyType, r.legacyID)+" -> "+identityPayload(r.newType, r.newID)+"\n"), 0o644)
-	}
-	if err != nil && m.warn != nil {
-		m.warnOnce.Do(func() { m.warn(err) })
-	}
+	markerWrite(r.markerKey(), identityPayload(r.legacyType, r.legacyID)+" -> "+identityPayload(r.newType, r.newID))
 }
 
 // RekeyAnnounceCycles is how many observation cycles carry the announcement.
