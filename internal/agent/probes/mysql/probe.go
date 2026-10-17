@@ -878,15 +878,27 @@ func (p *mysqlProbe) registerTLS() (string, error) {
 }
 
 // replicaThreadState reads the two replica threads and the reported lag
-// out of SHOW REPLICA STATUS.
+// out of SHOW REPLICA STATUS. MySQL 8.0.22+ and 8.4 name the columns
+// Replica_* / Seconds_Behind_Source (and 8.4 no longer has SHOW SLAVE
+// STATUS); MariaDB and older MySQL still name them Slave_* /
+// Seconds_Behind_Master.
 func replicaThreadState(status map[string]string) (ioOK, sqlOK, lag float64) {
-	if strings.EqualFold(status["Slave_IO_Running"], "yes") {
+	if strings.EqualFold(statusColumn(status, "Replica_IO_Running", "Slave_IO_Running"), "yes") {
 		ioOK = 1
 	}
-	if strings.EqualFold(status["Slave_SQL_Running"], "yes") {
+	if strings.EqualFold(statusColumn(status, "Replica_SQL_Running", "Slave_SQL_Running"), "yes") {
 		sqlOK = 1
 	}
-	return ioOK, sqlOK, asFloat(status["Seconds_Behind_Master"])
+	return ioOK, sqlOK, asFloat(statusColumn(status, "Seconds_Behind_Source", "Seconds_Behind_Master"))
+}
+
+func statusColumn(status map[string]string, names ...string) string {
+	for _, n := range names {
+		if v, ok := status[n]; ok {
+			return v
+		}
+	}
+	return ""
 }
 
 // replicaHealth is the composite behind senhub.db.replication.health.
