@@ -977,7 +977,6 @@ read:
 			fp = ts.restartedAtStart(file)
 			persist()
 			lastFlush = time.Now()
-			dirty = false
 		}
 		lastOffset = line.SeekInfo.Offset
 		ts.offset.Store(lastOffset)
