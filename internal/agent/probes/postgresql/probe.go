@@ -308,13 +308,18 @@ func (p *pgProbe) collectBackends(ctx context.Context, now time.Time, instance s
 	for rows.Next() {
 		var state sql.NullString
 		var cnt float64
-		if err := rows.Scan(&state, &cnt); err == nil {
-			key := "unknown"
-			if state.Valid && state.String != "" {
-				key = state.String
-			}
-			counts[key] += cnt
+		if err := rows.Scan(&state, &cnt); err != nil {
+			p.moduleLogger.Warn().Err(err).Str("query", "backends").Msg("postgresql: row scan failed")
+			continue
 		}
+		key := "unknown"
+		if state.Valid && state.String != "" {
+			key = state.String
+		}
+		counts[key] += cnt
+	}
+	if err := rows.Err(); err != nil {
+		p.moduleLogger.Warn().Err(err).Str("query", "backends").Msg("postgresql: row iteration failed, backend counts may be partial")
 	}
 	_ = rows.Close()
 
@@ -331,7 +336,9 @@ func (p *pgProbe) collectBackends(ctx context.Context, now time.Time, instance s
 
 	// max_connections
 	var maxConn float64
-	if err := p.db.QueryRowContext(ctx, `SHOW max_connections`).Scan(&maxConn); err == nil {
+	if err := p.db.QueryRowContext(ctx, `SHOW max_connections`).Scan(&maxConn); err != nil {
+		p.moduleLogger.Warn().Err(err).Str("query", "max_connections").Msg("postgresql: query failed, connection limit and utilization skipped")
+	} else {
 		*points = append(*points, p.dp("postgresql.connection.max", maxConn, now, connTags))
 
 		// Connection utilization ratio

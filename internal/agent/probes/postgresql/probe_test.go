@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"database/sql/driver"
+	"errors"
+	"io"
 	"net/url"
 	"strings"
 	"testing"
@@ -553,5 +556,55 @@ func TestCollectReplication_RoleReadFailureEmitsNothing(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "replication role unknown") {
 		t.Errorf("expected a warning, got %q", buf.String())
+	}
+}
+
+type badRowsDriver struct{}
+
+func (badRowsDriver) Open(string) (driver.Conn, error) { return badRowsConn{}, nil }
+
+type badRowsConn struct{}
+
+func (badRowsConn) Prepare(string) (driver.Stmt, error) { return nil, errors.New("unsupported") }
+func (badRowsConn) Close() error                        { return nil }
+func (badRowsConn) Begin() (driver.Tx, error)           { return nil, errors.New("unsupported") }
+func (badRowsConn) QueryContext(context.Context, string, []driver.NamedValue) (driver.Rows, error) {
+	return &badRows{}, nil
+}
+
+type badRows struct{ done bool }
+
+func (r *badRows) Columns() []string { return []string{"state", "count"} }
+func (r *badRows) Close() error      { return nil }
+func (r *badRows) Next(dest []driver.Value) error {
+	if r.done {
+		return io.EOF
+	}
+	r.done = true
+	dest[0], dest[1] = "active", "not-a-number"
+	return nil
+}
+
+func TestCollectBackends_ScanFailureIsLogged(t *testing.T) {
+	sql.Register("pg-bad-rows", badRowsDriver{})
+	db, err := sql.Open("pg-bad-rows", "")
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	defer db.Close()
+
+	var buf bytes.Buffer
+	base := zerolog.New(&buf)
+	p := &pgProbe{
+		db:           db,
+		moduleLogger: logger.NewModuleLogger(&base, "probe.postgresql"),
+		entitySrc:    newPgEntitySource(config{Host: "pg.local", Port: 5432}, nil),
+	}
+
+	var points []data_store.DataPoint
+	p.collectBackends(context.Background(), time.Now(), "pg", &points)
+
+	if !strings.Contains(buf.String(), "row scan failed") {
+		t.Errorf("expected a row scan warning, got %q", buf.String())
 	}
 }
