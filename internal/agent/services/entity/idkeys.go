@@ -11,4 +11,7 @@ const (
 
 	// KeyNeighborMAC identifies a network.neighbor within its owner.
 	KeyNeighborMAC = "mac"
+
+	// KeyVMID identifies a compute.vm within its hypervisor host.
+	KeyVMID = "vmid"
 )

@@ -189,7 +189,7 @@ var TelemetryContract = map[string]TelemetryDeclaration{
 	},
 	TypeComputeVM: {
 		Status:     StatusOwnKey,
-		SubjectKey: "vmid",
+		SubjectKey: KeyVMID,
 		Carrier:    CarrierDatapoint,
 		Shipped:    true,
 	},
