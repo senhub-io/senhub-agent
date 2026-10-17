@@ -241,3 +241,32 @@ func TestExtractContextFromManagerMBean(t *testing.T) {
 		}
 	}
 }
+
+func TestCollect_ThreadPoolSkipsFailedReads(t *testing.T) {
+	key := "Catalina:type=ThreadPool,name=\"http-nio-8080\""
+	srv := newTestServer(map[string]interface{}{
+		"java.lang:type=Threading/ThreadCount": float64(50),
+		key + "/currentThreadCount":            float64(10),
+		key + "/maxThreads":                    float64(200),
+	})
+	defer srv.Close()
+
+	probe, _ := NewTomcatProbe(map[string]interface{}{"jolokia_url": srv.URL + "/jolokia"}, testBaseLogger())
+	p := probe.(*TomcatProbe)
+	p.SetName("tomcat-threads")
+
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	found := map[string]bool{}
+	for _, dp := range points {
+		found[dp.Name] = true
+	}
+	if found["tomcat.threads.busy"] {
+		t.Error("threads.busy must be absent when its read fails, not emitted as 0")
+	}
+	if !found["tomcat.threads.current"] || !found["tomcat.threads.max"] {
+		t.Error("threads.current and threads.max should still be emitted")
+	}
+}
