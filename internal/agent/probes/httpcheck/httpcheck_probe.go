@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/httpclient"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -108,25 +109,26 @@ func NewHTTPCheckProbe(config map[string]interface{}, baseLogger *logger.Logger)
 
 	entitySrc := newHTTPCheckEntitySource(hostID)
 
+	// Each cycle measures a full fresh handshake, and a check measures the
+	// target rather than its redirect chain.
+	httpClient, err := httpclient.NewClient(httpclient.Options{
+		Timeout:            cfg.Timeout,
+		InsecureSkipVerify: cfg.InsecureSkipVerify,
+		DisableProxy:       true,
+		DisableHTTP2:       true,
+		DisableKeepAlives:  true,
+		NoRedirect:         true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("building HTTP client: %w", err)
+	}
 	probe := &HTTPCheckProbe{
 		BaseProbe:    &types.BaseProbe{},
 		config:       cfg,
 		moduleLogger: moduleLogger,
 		contentRe:    contentRe,
 		entitySrc:    entitySrc,
-		client: &http.Client{
-			Timeout: cfg.Timeout,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: cfg.InsecureSkipVerify, // #nosec G402 - operator opt-in for self-signed labs
-				},
-				DisableKeepAlives: true, // each cycle measures a full fresh handshake
-			},
-			// Checks measure the target, not its redirect chain.
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-		},
+		client:       httpClient,
 	}
 	probe.SetProbeType(ProbeType)
 	probe.SetEntitySource(probe.entitySrc)

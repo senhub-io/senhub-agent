@@ -11,7 +11,6 @@ package ceph
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,6 +19,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/httpclient"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -72,14 +72,9 @@ func NewCephProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger) (
 
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.ceph")
 
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: !cfg.VerifyTLS, // #nosec G402 - operator opt-in for self-signed labs
-		},
-	}
-	client := &http.Client{
-		Timeout:   defaultTimeout,
-		Transport: transport,
+	client, err := httpclient.NewClient(httpclient.Options{Timeout: defaultTimeout, InsecureSkipVerify: !cfg.VerifyTLS, DisableProxy: true, DisableHTTP2: true})
+	if err != nil {
+		return nil, fmt.Errorf("building HTTP client: %w", err)
 	}
 
 	p := &CephProbe{
