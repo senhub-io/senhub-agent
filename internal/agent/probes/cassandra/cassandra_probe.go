@@ -12,11 +12,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"net/url"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/httpclient"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -81,6 +81,10 @@ func NewcassandraProbe(config map[string]interface{}, baseLogger *logger.Logger)
 	// probe still starts (entity reporting degrades, metrics still flow).
 	jolokiaHost, jolokiaPort := parseJolokiaHostPort(cfg.JolokiaURL)
 
+	httpClient, err := httpclient.NewClient(httpclient.Options{Timeout: cfg.Timeout})
+	if err != nil {
+		return nil, fmt.Errorf("building HTTP client: %w", err)
+	}
 	p := &cassandraProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
@@ -90,9 +94,7 @@ func NewcassandraProbe(config map[string]interface{}, baseLogger *logger.Logger)
 		entitySrc:    newEntitySource(cfg.InstanceName, jolokiaHost, jolokiaPort),
 		client: &jolokiaClient{
 			baseURL: cfg.JolokiaURL,
-			http: &http.Client{
-				Timeout: cfg.Timeout,
-			},
+			http:    httpClient,
 		},
 	}
 	p.SetProbeType(ProbeType)
