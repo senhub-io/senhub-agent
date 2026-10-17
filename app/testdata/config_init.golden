@@ -1,0 +1,139 @@
+===== fresh (exit 0) =====
+Configuration created at <dir>/a/agent.yaml
+  http: 127.0.0.1:18081
+  global_tags: 2
+  otlp endpoint: otlp.example.com:4317
+  zabbix server: zbx.example.com
+  probes: <dir>/a/probes.d
+===== again-same-args (exit 3) =====
+Configuration already present at <dir>/a/agent.yaml — leaving it unchanged.
+===== again-other-port (exit 3) =====
+Configuration already present at <dir>/a/agent.yaml — leaving it unchanged.
+Warning: --http-bind 127.0.0.2 was ignored; an existing configuration keeps its address. Change it with 'senhub-agent config set http.bind_address 127.0.0.2'.
+Warning: --http-port 1234 was ignored; the existing configuration keeps port 8080. Change it with 'senhub-agent config set http.port 1234'.
+===== again-new-fragments (exit 3) =====
+Configuration already present at <dir>/a/agent.yaml — leaving it unchanged.
+===== fresh-json (exit 0) =====
+{
+  "schema": "senhub.cli.config.init/v1",
+  "ok": true,
+  "status": "ok",
+  "exit_code": 0,
+  "config_path": "<dir>/b/agent.yaml",
+  "changed": true,
+  "created": true,
+  "written": [
+    "<dir>/b/agent.yaml"
+  ]
+}
+===== again-json (exit 3) =====
+{
+  "schema": "senhub.cli.config.init/v1",
+  "ok": true,
+  "status": "unchanged",
+  "exit_code": 3,
+  "config_path": "<dir>/b/agent.yaml",
+  "changed": false,
+  "created": false,
+  "written": []
+}
+===== ok-if-unchanged (exit 0) =====
+Configuration already present at <dir>/b/agent.yaml — leaving it unchanged.
+===== fresh-bare (exit 0) =====
+Configuration created at <dir>/f/agent.yaml
+  http: 127.0.0.1:8080
+  probes: <dir>/f/probes.d
+===== late-fragments (exit 0) =====
+{
+  "schema": "senhub.cli.config.init/v1",
+  "ok": true,
+  "status": "ok",
+  "exit_code": 0,
+  "config_path": "<dir>/f/agent.yaml",
+  "changed": true,
+  "created": false,
+  "written": [
+    "<dir>/f/strategies.d/10-otlp.yaml",
+    "<dir>/f/strategies.d/20-zabbix.yaml"
+  ]
+}
+===== busy-port (exit 2) =====
+
+===== bad-flag (exit 2) =====
+
+===== bad-flag-json (exit 2) =====
+{
+  "schema": "senhub.cli.config.init/v1",
+  "ok": false,
+  "status": "failure",
+  "exit_code": 2,
+  "error": "config init: unknown flag \"--nonsense\""
+}
+===== bad-protocol (exit 2) =====
+
+===== unreadable-license-file (exit 2) =====
+
+===== empty-path (exit 2) =====
+
+===== file a/agent.yaml =====
+config_version: 3
+agent:
+  key: 0f4c2a51-9b7e-4d3a-8c61-2e5f7a9b0d13
+  mode: offline
+  global_tags:
+    env: test
+    site: lab
+===== file a/strategies.d/00-http.yaml =====
+# the http output
+http:
+  port: 8080
+  bind_address: 127.0.0.1
+===== file a/strategies.d/10-otlp.yaml =====
+# SenHub Agent — OTLP export strategy (provisioned by 'config init').
+# Pushes metrics and logs to an OpenTelemetry collector (or an
+# OTLP-compatible backend: VictoriaMetrics, Grafana Alloy, ...).
+otlp:
+  endpoint: otlp.example.com:4317
+  protocol: http
+===== file a/strategies.d/20-zabbix.yaml =====
+# SenHub Agent — Zabbix output (provisioned by 'config init').
+# Registers this host by autoregistration and pushes its values as an
+# active agent. Prepare the server once with 'senhub-agent zabbix setup'.
+zabbix:
+  server: "zbx.example.com"
+  host_metadata: "meta"
+===== file b/agent.yaml =====
+config_version: 3
+agent:
+  key: 0f4c2a51-9b7e-4d3a-8c61-2e5f7a9b0d13
+  mode: offline
+  global_tags:
+    k: v
+===== file b/strategies.d/00-http.yaml =====
+# the http output
+http:
+  port: 8080
+  bind_address: 127.0.0.1
+===== file f/agent.yaml =====
+config_version: 3
+agent:
+  key: 0f4c2a51-9b7e-4d3a-8c61-2e5f7a9b0d13
+  mode: offline
+===== file f/strategies.d/00-http.yaml =====
+# the http output
+http:
+  port: 8080
+  bind_address: 127.0.0.1
+===== file f/strategies.d/10-otlp.yaml =====
+# SenHub Agent — OTLP export strategy (provisioned by 'config init').
+# Pushes metrics and logs to an OpenTelemetry collector (or an
+# OTLP-compatible backend: VictoriaMetrics, Grafana Alloy, ...).
+otlp:
+  endpoint: late.example.com:4317
+  protocol: grpc
+===== file f/strategies.d/20-zabbix.yaml =====
+# SenHub Agent — Zabbix output (provisioned by 'config init').
+# Registers this host by autoregistration and pushes its values as an
+# active agent. Prepare the server once with 'senhub-agent zabbix setup'.
+zabbix:
+  server: "zbx3.example.com"
