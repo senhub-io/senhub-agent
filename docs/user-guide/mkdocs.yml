@@ -115,6 +115,7 @@ nav:
   - Prometheus / VictoriaMetrics:
       - Overview: prometheus/index.md
       - Metrics reference: prometheus/metrics-reference.md
+  - Alert rules and dashboards: packs.md
   - CLI reference: cli.md
   - OTLP / OpenTelemetry: otlp.md
   - Probes:
