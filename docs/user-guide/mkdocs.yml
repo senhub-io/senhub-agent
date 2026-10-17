@@ -117,6 +117,7 @@ nav:
       - Metrics reference: prometheus/metrics-reference.md
   - CLI reference: cli.md
   - OTLP / OpenTelemetry: otlp.md
+  - Topology: topology.md
   - Probes:
       - Overview: probes/index.md
       - CPU: probes/cpu.md
