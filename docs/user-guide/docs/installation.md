@@ -115,6 +115,9 @@ The MSI (built with WiX 5.0.2) installs `senhub-agent.exe` into `%ProgramFiles%\
 
 On first install the MSI runs `senhub-agent config init`, which writes the default multi-file configuration under `%ProgramData%\SenHub\` (`agent.yaml` + `probes.d\` + `strategies.d\`) with no interactive step, and applies any license key, tags or OTLP endpoint you provide. Provisioning is idempotent: an upgrade never overwrites an existing configuration. A genuine uninstall removes `%ProgramData%\SenHub\` in full (see [Uninstallation](#uninstallation)), so a fresh install starts from the installer's inputs.
 
+!!! note "Data directory permissions"
+    `%ProgramData%\SenHub\` holds the administration key, the sealed secret store and the license. The installer, `config init` and every start of the agent restrict it to `SYSTEM` and `BUILTIN\Administrators` (full control, inherited by files and subfolders, inheritance from `%ProgramData%` disabled). Without this, the default `%ProgramData%` permissions would let any local user read the configuration. Existing installs are repaired the first time the upgraded agent starts, and the agent logs one `Restricted data directory ACL` line when it does. Only the standard `%ProgramData%\SenHub` folder is managed; a custom `--config-path` elsewhere keeps the permissions you give it. Non-administrator accounts can no longer read the files there; verify with `icacls "%ProgramData%\SenHub"`.
+
 !!! note "Signed installer"
     The MSI, the bundled `senhub-agent.exe` and the installer's PowerShell payload are code-signed with an HSM-backed **Certum** code-signing certificate. Windows shows the `SENSOR FACTORY SAS` publisher, and SmartScreen does not raise an unknown-publisher warning. You can confirm the signature with `Get-AuthenticodeSignature .\senhub-agent-<version>-amd64.msi | Format-List` — status `Valid` with the `SENSOR FACTORY SAS` publisher.
 
