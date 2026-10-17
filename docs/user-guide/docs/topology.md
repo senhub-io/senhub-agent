@@ -12,8 +12,10 @@ descriptions, sent by many agents, into one graph.
       it on (`SENHUB_ENTITIES`, default `true`).
     - Only the [OTLP output](otlp.md) carries entities. PRTG, Nagios,
       Prometheus and Zabbix receive measurements only.
-    - Entity events travel as OTLP log records, so the same OTLP output
-      must be configured. Without it nothing leaves the agent.
+    - Two switches are needed: `entities.enabled` in `agent.yaml` runs
+      detection, and `signals.entities.enabled` on the OTLP output sends
+      what was detected. With either one off, nothing reaches the graph;
+      the agent logs a warning when an OTLP output sends no entities.
 
 ## Turning it on
 
@@ -22,6 +24,15 @@ descriptions, sent by many agents, into one graph.
 entities:
   enabled: true
   interval: 5m
+```
+
+```yaml
+# strategies.d/40-otlp.yaml
+otlp:
+  # endpoint, headers…
+  signals:
+    entities:
+      enabled: true
 ```
 
 | Key | Default | Meaning |
@@ -34,8 +45,12 @@ entities:
 | `aggregation.enabled` | `false` | Links the members of an Ethernet aggregate to it |
 
 Each key is described in [Configuration](configuration.md#entities-section).
-An OTLP output that declares `signals.entities.enabled` still works when
-there is no `entities` block; a block that exists replaces it.
+Older configurations set the detection keys on the OTLP output itself
+(`signals.entities.depends_on_enabled`, `governance`…). They are still read
+when `agent.yaml` has no `entities` block; once the block exists, only
+`signals.entities.enabled` is read from the output, and the detection keys
+and governance must be in `agent.yaml` (governance as a top-level
+`governance:` block).
 
 ## What the agent reports
 
