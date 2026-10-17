@@ -101,6 +101,9 @@ series' tags.
 | `proxmox.zfs.pool.used` | `proxmox.zfs.pool.used` | Proxmox ZFS Pool {proxmox.zfs.pool} Used | B | Allocated bytes in the ZFS pool |
 | `proxmox.zfs.pool.free` | `proxmox.zfs.pool.free` | Proxmox ZFS Pool {proxmox.zfs.pool} Free | B | Free bytes in the ZFS pool |
 | `proxmox.zfs.pool.fragmentation` | `proxmox.zfs.pool.fragmentation` | Proxmox ZFS Pool {proxmox.zfs.pool} Fragmentation | # | Fragmentation of the ZFS pool free space as a fraction (0 to 1) |
+| `proxmox.vm.backup.age` | `proxmox.vm.backup.age` | Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Last Backup Age | s | Seconds since the last successful backup of the VM or container, from the newest of its vzdump task history and the backup archives listed on the node storages; absent when no backup is known |
+| `proxmox.vm.backup.last_status` | `proxmox.vm.backup.last_status` | Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Last Backup Status | # | 1 when the last finished vzdump task naming this guest succeeded (warnings included), 0 when it failed; absent when no such task is in the history (a scheduled job covering several guests names none) |
+| `proxmox.storage.active` | `proxmox.storage.active` | Proxmox Storage {proxmox.storage} Active | # | 1 when the storage is active and reachable from the node, 0 otherwise (an unreachable PBS or NFS storage reports 0) |
 | `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

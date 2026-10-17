@@ -345,6 +345,54 @@ metrics:
       proxmox.node: proxmox.node
       proxmox.zfs.pool: proxmox.zfs.pool
 
+  # ── Backups and storage availability ──
+
+  - name: "proxmox.vm.backup.age"
+    channel: "vm_{proxmox.vmid}_backup_age"
+    display_name: "Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Last Backup Age"
+    unit: "s"
+    category: "backup"
+    description: "Seconds since the last successful backup of the VM or container, from the newest of its vzdump task history and the backup archives listed on the node storages; absent when no backup is known"
+    otel:
+      name: proxmox.vm.backup.age
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      proxmox.vmid: proxmox.vmid
+      proxmox.vm.name: proxmox.vm.name
+      proxmox.vm.type: proxmox.vm.type
+      proxmox.node: proxmox.node
+
+  - name: "proxmox.vm.backup.last_status"
+    channel: "vm_{proxmox.vmid}_backup_status"
+    display_name: "Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Last Backup Status"
+    unit: "#"
+    category: "backup"
+    description: "1 when the last finished vzdump task naming this guest succeeded (warnings included), 0 when it failed; absent when no such task is in the history (a scheduled job covering several guests names none)"
+    otel:
+      name: proxmox.vm.backup.last_status
+      unit: "{status}"
+      type: gauge
+    tag_to_attribute:
+      proxmox.vmid: proxmox.vmid
+      proxmox.vm.name: proxmox.vm.name
+      proxmox.vm.type: proxmox.vm.type
+      proxmox.node: proxmox.node
+
+  - name: "proxmox.storage.active"
+    channel: "storage_{proxmox.storage}_active"
+    display_name: "Proxmox Storage {proxmox.storage} Active"
+    unit: "#"
+    category: "storage"
+    description: "1 when the storage is active and reachable from the node, 0 otherwise (an unreachable PBS or NFS storage reports 0)"
+    otel:
+      name: proxmox.storage.active
+      unit: "{status}"
+      type: gauge
+    tag_to_attribute:
+      proxmox.storage: proxmox.storage
+      proxmox.node: proxmox.node
+
   - name: "senhub.probe.check.result"
     channel: "check_result"
     display_name: "Check Result"

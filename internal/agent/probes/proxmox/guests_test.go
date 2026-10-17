@@ -46,10 +46,18 @@ func newPVE9Server(t *testing.T, resources http.HandlerFunc, extra func(mux *htt
 		writeJSON(t, w, []interface{}{})
 	})
 	mux.HandleFunc("/api2/json/cluster/resources", resources)
+	// Routes registered by a test take precedence over the defaults above.
+	over := http.NewServeMux()
 	if extra != nil {
-		extra(mux)
+		extra(over)
 	}
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if h, pattern := over.Handler(r); pattern != "" {
+			h.ServeHTTP(w, r)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	}))
 	t.Cleanup(srv.Close)
 	return srv
 }

@@ -260,9 +260,11 @@ func (p *ProxmoxProbe) collectNode(n pveNode, guests []pveGuest, guestsOK bool, 
 
 	// Guests (QEMU and LXC). The cluster-wide listing is the primary source:
 	// since PVE 9 the per-node qemu list no longer carries disk counters.
+	known := map[int]guestRef{}
 	if guestsOK {
 		for _, g := range guests {
 			if g.Node == n.Node {
+				known[g.VMID] = guestRef{Name: g.Name, Type: g.Type}
 				points = append(points, p.collectVMStatus(n.Node, g.pveVMListItem, g.Type, now)...)
 			}
 		}
@@ -272,6 +274,7 @@ func (p *ProxmoxProbe) collectNode(n pveNode, guests []pveGuest, guestsOK bool, 
 			p.moduleLogger.Warn().Err(err).Str("node", n.Node).Msg("failed to list VMs")
 		}
 		for _, vm := range vms {
+			known[vm.VMID] = guestRef{Name: vm.Name, Type: "qemu"}
 			points = append(points, p.collectVMStatus(n.Node, vm, "qemu", now)...)
 		}
 		ctrs, err := p.fetchContainers(n.Node)
@@ -279,6 +282,7 @@ func (p *ProxmoxProbe) collectNode(n pveNode, guests []pveGuest, guestsOK bool, 
 			p.moduleLogger.Warn().Err(err).Str("node", n.Node).Msg("failed to list LXC containers")
 		}
 		for _, ctr := range ctrs {
+			known[ctr.VMID] = guestRef{Name: ctr.Name, Type: "lxc"}
 			points = append(points, p.collectVMStatus(n.Node, ctr, "lxc", now)...)
 		}
 	}
@@ -290,6 +294,7 @@ func (p *ProxmoxProbe) collectNode(n pveNode, guests []pveGuest, guestsOK bool, 
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("node", n.Node).Msg("failed to list storage")
 	}
+	points = append(points, p.collectBackups(n.Node, known, storages, now)...)
 	for _, st := range storages {
 		stTags := []tags.Tag{
 			{Key: "proxmox.node", Value: n.Node},
@@ -300,6 +305,9 @@ func (p *ProxmoxProbe) collectNode(n pveNode, guests []pveGuest, guestsOK bool, 
 			data_store.DataPoint{Name: "proxmox.storage.used", Value: float64(st.Used), Timestamp: now, Tags: stTags},
 			data_store.DataPoint{Name: "proxmox.storage.total", Value: float64(st.Total), Timestamp: now, Tags: stTags},
 		)
+		if st.Active != nil {
+			points = append(points, data_store.DataPoint{Name: "proxmox.storage.active", Value: float64(*st.Active), Timestamp: now, Tags: stTags})
+		}
 	}
 
 	return points
@@ -477,6 +485,8 @@ type pveStorageItem struct {
 	Storage string `json:"storage"`
 	Used    int64  `json:"used"`
 	Total   int64  `json:"total"`
+	Content string `json:"content"`
+	Active  *int   `json:"active"`
 }
 
 func (p *ProxmoxProbe) fetchNodes() ([]pveNode, error) {
