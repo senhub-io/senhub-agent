@@ -164,7 +164,13 @@ func (p *ProxmoxProbe) checkResultPoint(err error, now time.Time, identityTags [
 	}
 }
 
-// Collect fetches one metrics cycle from the Proxmox API and returns
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
+func (p *ProxmoxProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext fetches one metrics cycle from the Proxmox API and returns
 // datapoints for all nodes (and their VMs/containers/storage) that match
 // the optional node filter. A failure on one node logs a warning and
 // continues so a single unreachable node does not blank all metrics.
@@ -173,7 +179,7 @@ func (p *ProxmoxProbe) checkResultPoint(err error, now time.Time, identityTags [
 // call, 1 after a successful node list. If the list fails the probe logs a
 // warning and returns the up=0 point non-fatally so the series stays visible
 // and distinguishable from an empty-but-healthy cluster.
-func (p *ProxmoxProbe) Collect() ([]data_store.DataPoint, error) {
+func (p *ProxmoxProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 
 	upTags := []tags.Tag{
@@ -181,8 +187,11 @@ func (p *ProxmoxProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 	upPoint := data_store.DataPoint{Name: "senhub.proxmox.up", Value: 0, Timestamp: now, Tags: upTags}
 
-	nodes, err := p.fetchNodes()
+	nodes, err := p.fetchNodes(ctx)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("proxmox collection interrupted: %w", ctxErr)
+		}
 		p.moduleLogger.Warn().Err(err).Msg("proxmox: listing nodes failed")
 		identityTags := p.entityIDTags()
 		upPoint.Tags = append(upPoint.Tags, identityTags...)
@@ -197,15 +206,21 @@ func (p *ProxmoxProbe) Collect() ([]data_store.DataPoint, error) {
 		if p.cfg.Node != "" && n.Node != p.cfg.Node {
 			continue
 		}
-		points = append(points, p.collectNode(n, now)...)
+		points = append(points, p.collectNode(ctx, n, now)...)
 	}
 
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("proxmox collection interrupted: %w", ctxErr)
+	}
 	// Refresh entity snapshot so the topology rail stays current.
 	// fetchClusterName is best-effort: a standalone install or a failing
 	// cluster/status call returns "" and the entity falls back to the
 	// agent machine-id. The cluster name is stable once set so a one-off
 	// failure here does not flip the identity.
-	clusterName, _ := p.fetchClusterName()
+	clusterName, _ := p.fetchClusterName(ctx)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("proxmox collection interrupted: %w", ctxErr)
+	}
 	p.entitySrc.refresh(clusterName)
 
 	identityTags := p.entityIDTags()
@@ -219,7 +234,7 @@ func (p *ProxmoxProbe) Collect() ([]data_store.DataPoint, error) {
 
 // collectNode gathers node-level, VM, LXC, and storage metrics.
 // Partial failures (e.g. storage unavailable) are logged but non-fatal.
-func (p *ProxmoxProbe) collectNode(n pveNode, now time.Time) []data_store.DataPoint {
+func (p *ProxmoxProbe) collectNode(ctx context.Context, n pveNode, now time.Time) []data_store.DataPoint {
 	var points []data_store.DataPoint
 
 	nodeTags := []tags.Tag{
@@ -237,7 +252,7 @@ func (p *ProxmoxProbe) collectNode(n pveNode, now time.Time) []data_store.DataPo
 	)
 
 	// Detailed node metrics (CPU/memory) via /nodes/{node}/status.
-	if ns, err := p.fetchNodeStatus(n.Node); err == nil {
+	if ns, err := p.fetchNodeStatus(ctx, n.Node); err == nil {
 		cpu := float64(ns.CPU) * 100
 		points = append(points,
 			data_store.DataPoint{Name: "proxmox.node.cpu.utilization", Value: cpu, Timestamp: now, Tags: nodeTags},
@@ -249,7 +264,7 @@ func (p *ProxmoxProbe) collectNode(n pveNode, now time.Time) []data_store.DataPo
 	}
 
 	// VMs (QEMU).
-	vms, err := p.fetchVMs(n.Node)
+	vms, err := p.fetchVMs(ctx, n.Node)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("node", n.Node).Msg("failed to list VMs")
 	}
@@ -258,7 +273,7 @@ func (p *ProxmoxProbe) collectNode(n pveNode, now time.Time) []data_store.DataPo
 	}
 
 	// LXC containers.
-	ctrs, err := p.fetchContainers(n.Node)
+	ctrs, err := p.fetchContainers(ctx, n.Node)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("node", n.Node).Msg("failed to list LXC containers")
 	}
@@ -267,7 +282,7 @@ func (p *ProxmoxProbe) collectNode(n pveNode, now time.Time) []data_store.DataPo
 	}
 
 	// Storage.
-	storages, err := p.fetchStorage(n.Node)
+	storages, err := p.fetchStorage(ctx, n.Node)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("node", n.Node).Msg("failed to list storage")
 	}
@@ -316,9 +331,9 @@ func (p *ProxmoxProbe) collectVMStatus(node string, vm pveVMStatus, vmType strin
 
 // --- API client helpers ---
 
-func (p *ProxmoxProbe) apiGet(path string, out interface{}) error {
+func (p *ProxmoxProbe) apiGet(ctx context.Context, path string, out interface{}) error {
 	url := p.cfg.Endpoint + apiBase + path
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("building request for %s: %w", path, err)
 	}
@@ -346,9 +361,9 @@ func (p *ProxmoxProbe) apiGet(path string, out interface{}) error {
 // fetchClusterName queries GET /cluster/status and returns the cluster name
 // from the entry whose type is "cluster". Returns ("", nil) on a standalone
 // install (no cluster entry) and ("", err) when the call itself fails.
-func (p *ProxmoxProbe) fetchClusterName() (string, error) {
+func (p *ProxmoxProbe) fetchClusterName(ctx context.Context) (string, error) {
 	var items []pveClusterStatusItem
-	if err := p.apiGet("/cluster/status", &items); err != nil {
+	if err := p.apiGet(ctx, "/cluster/status", &items); err != nil {
 		return "", err
 	}
 	for _, item := range items {
@@ -406,9 +421,9 @@ type pveStorageItem struct {
 	Total   int64  `json:"total"`
 }
 
-func (p *ProxmoxProbe) fetchNodes() ([]pveNode, error) {
+func (p *ProxmoxProbe) fetchNodes(ctx context.Context) ([]pveNode, error) {
 	var items []pveNodeListItem
-	if err := p.apiGet("/nodes", &items); err != nil {
+	if err := p.apiGet(ctx, "/nodes", &items); err != nil {
 		return nil, err
 	}
 	nodes := make([]pveNode, len(items))
@@ -418,26 +433,26 @@ func (p *ProxmoxProbe) fetchNodes() ([]pveNode, error) {
 	return nodes, nil
 }
 
-func (p *ProxmoxProbe) fetchNodeStatus(node string) (pveNodeStatusResp, error) {
+func (p *ProxmoxProbe) fetchNodeStatus(ctx context.Context, node string) (pveNodeStatusResp, error) {
 	var ns pveNodeStatusResp
-	err := p.apiGet(fmt.Sprintf("/nodes/%s/status", node), &ns)
+	err := p.apiGet(ctx, fmt.Sprintf("/nodes/%s/status", node), &ns)
 	return ns, err
 }
 
-func (p *ProxmoxProbe) fetchVMs(node string) ([]pveVMListItem, error) {
+func (p *ProxmoxProbe) fetchVMs(ctx context.Context, node string) ([]pveVMListItem, error) {
 	var items []pveVMListItem
-	err := p.apiGet(fmt.Sprintf("/nodes/%s/qemu", node), &items)
+	err := p.apiGet(ctx, fmt.Sprintf("/nodes/%s/qemu", node), &items)
 	return items, err
 }
 
-func (p *ProxmoxProbe) fetchContainers(node string) ([]pveVMListItem, error) {
+func (p *ProxmoxProbe) fetchContainers(ctx context.Context, node string) ([]pveVMListItem, error) {
 	var items []pveVMListItem
-	err := p.apiGet(fmt.Sprintf("/nodes/%s/lxc", node), &items)
+	err := p.apiGet(ctx, fmt.Sprintf("/nodes/%s/lxc", node), &items)
 	return items, err
 }
 
-func (p *ProxmoxProbe) fetchStorage(node string) ([]pveStorageItem, error) {
+func (p *ProxmoxProbe) fetchStorage(ctx context.Context, node string) ([]pveStorageItem, error) {
 	var items []pveStorageItem
-	err := p.apiGet(fmt.Sprintf("/nodes/%s/storage", node), &items)
+	err := p.apiGet(ctx, fmt.Sprintf("/nodes/%s/storage", node), &items)
 	return items, err
 }

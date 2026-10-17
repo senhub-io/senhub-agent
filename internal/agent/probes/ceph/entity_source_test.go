@@ -1,6 +1,7 @@
 package ceph
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -12,11 +13,11 @@ import (
 // is non-empty, or an error when fsid is "".
 func stubFetch(fsid string) fetchFsidFunc {
 	if fsid == "" {
-		return func() (string, error) {
+		return func(context.Context) (string, error) {
 			return "", errors.New("fsid unavailable")
 		}
 	}
-	return func() (string, error) { return fsid, nil }
+	return func(context.Context) (string, error) { return fsid, nil }
 }
 
 // stubHostID returns a hostIDFunc that always returns hid.
@@ -85,7 +86,7 @@ func TestCephEntitySource_TechIDPinned(t *testing.T) {
 		stubHostID("h-001"),
 	)
 
-	src.pinID()
+	src.pinID(context.Background())
 
 	obs, ok := src.Observe()
 	if !ok {
@@ -112,7 +113,7 @@ func TestCephEntitySource_FallbackHostID(t *testing.T) {
 		stubHostID(hid),
 	)
 
-	src.pinID()
+	src.pinID(context.Background())
 
 	obs, ok := src.Observe()
 	if !ok {
@@ -135,7 +136,7 @@ func TestCephEntitySource_FallbackLastResort(t *testing.T) {
 		stubHostID(""), // host id unavailable
 	)
 
-	src.pinID()
+	src.pinID(context.Background())
 
 	obs, ok := src.Observe()
 	if !ok {
@@ -155,15 +156,15 @@ func TestCephEntitySource_IDImmutable(t *testing.T) {
 	src := newCephEntitySource(
 		"",
 		"https://ceph.example.com:8443",
-		func() (string, error) {
+		func(context.Context) (string, error) {
 			callCount++
 			return fsid, nil
 		},
 		stubHostID("h-001"),
 	)
 
-	src.pinID()
-	src.pinID() // second call must be a no-op
+	src.pinID(context.Background())
+	src.pinID(context.Background()) // second call must be a no-op
 
 	obs1, _ := src.Observe()
 	obs2, _ := src.Observe()
@@ -191,7 +192,7 @@ func TestCephEntitySource_MonitorsEdge_Present(t *testing.T) {
 		stubHostID("h-001"),
 	)
 
-	src.pinID()
+	src.pinID(context.Background())
 
 	obs, ok := src.Observe()
 	if !ok {
@@ -238,7 +239,7 @@ func TestCephEntitySource_MonitorsEdge_Absent(t *testing.T) {
 		stubHostID("h-001"),
 	)
 
-	src.pinID()
+	src.pinID(context.Background())
 
 	obs, ok := src.Observe()
 	if !ok {
@@ -259,7 +260,7 @@ func TestCephEntitySource_LocalRunsOn(t *testing.T) {
 
 	runsOn := func(endpoint, fsid string) *entity.Relation {
 		src := newCephEntitySource("", endpoint, stubFetch(fsid), stubHostID("H"))
-		src.pinID()
+		src.pinID(context.Background())
 		obs, _ := src.Observe()
 		for i := range obs.Relations {
 			if obs.Relations[i].Type == "runs_on" {

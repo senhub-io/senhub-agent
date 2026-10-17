@@ -165,15 +165,24 @@ func (p *CephProbe) baseTags(metricType string, extra ...tags.Tag) []tags.Tag {
 	return append(base, extra...)
 }
 
-// Collect authenticates once per cycle, then fetches health/OSD/monitor/pool
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
+func (p *CephProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext authenticates once per cycle, then fetches health/OSD/monitor/pool
 // data. A connection or auth failure is not a collection error: the probe
 // emits senhub.ceph.up=0 so the outage is observable.
-func (p *CephProbe) Collect() ([]data_store.DataPoint, error) {
+func (p *CephProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 	instance := p.cfg.Endpoint
 
-	token, statusCode, err := p.authenticate()
+	token, statusCode, err := p.authenticate(ctx)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("ceph collection interrupted: %w", ctxErr)
+		}
 		p.moduleLogger.Warn().Err(err).Str("endpoint", instance).Msg("ceph auth failed")
 		baseTags := p.baseTags("overview")
 
@@ -202,7 +211,10 @@ func (p *CephProbe) Collect() ([]data_store.DataPoint, error) {
 	// Pin the entity id on the first successful collect (requires a live token
 	// so that GET /api/cluster can resolve the cluster fsid). Subsequent calls
 	// are no-ops once the id is pinned.
-	p.entitySrc.pinID()
+	p.entitySrc.pinID(ctx)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("ceph collection interrupted: %w", ctxErr)
+	}
 
 	baseTags := p.baseTags("overview")
 
@@ -215,33 +227,36 @@ func (p *CephProbe) Collect() ([]data_store.DataPoint, error) {
 	})
 
 	// Health
-	if hp, err := p.collectHealth(now, instance); err != nil {
+	if hp, err := p.collectHealth(ctx, now, instance); err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("ceph health fetch failed")
 	} else {
 		points = append(points, hp...)
 	}
 
 	// OSDs
-	if op, err := p.collectOSDs(now, instance); err != nil {
+	if op, err := p.collectOSDs(ctx, now, instance); err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("ceph osd fetch failed")
 	} else {
 		points = append(points, op...)
 	}
 
 	// Monitors
-	if mp, err := p.collectMonitors(now, instance); err != nil {
+	if mp, err := p.collectMonitors(ctx, now, instance); err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("ceph monitor fetch failed")
 	} else {
 		points = append(points, mp...)
 	}
 
 	// Pools (multi-instance)
-	if pp, err := p.collectPools(now, instance); err != nil {
+	if pp, err := p.collectPools(ctx, now, instance); err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("ceph pool fetch failed")
 	} else {
 		points = append(points, pp...)
 	}
 
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("ceph collection interrupted: %w", ctxErr)
+	}
 	points = append(points, data_store.DataPoint{
 		Name:      dbcommon.CheckResultMetric,
 		Value:     float64(dbcommon.CheckOK),
@@ -253,13 +268,13 @@ func (p *CephProbe) Collect() ([]data_store.DataPoint, error) {
 }
 
 // authenticate posts credentials to /api/auth and returns the bearer token.
-func (p *CephProbe) authenticate() (string, int, error) {
+func (p *CephProbe) authenticate(ctx context.Context) (string, int, error) {
 	body, _ := json.Marshal(map[string]string{
 		"username": p.cfg.Username,
 		"password": p.cfg.Password,
 	})
 
-	req, err := http.NewRequest(http.MethodPost, p.cfg.Endpoint+"/api/auth", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.cfg.Endpoint+"/api/auth", bytes.NewReader(body))
 	if err != nil {
 		return "", 0, fmt.Errorf("building auth request: %w", err)
 	}
@@ -289,8 +304,8 @@ func (p *CephProbe) authenticate() (string, int, error) {
 }
 
 // apiGet performs an authenticated GET request and returns the body bytes.
-func (p *CephProbe) apiGet(path string) ([]byte, error) {
-	req, err := http.NewRequest(http.MethodGet, p.cfg.Endpoint+path, nil)
+func (p *CephProbe) apiGet(ctx context.Context, path string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.cfg.Endpoint+path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("building request for %s: %w", path, err)
 	}
@@ -327,8 +342,8 @@ type healthFullResponse struct {
 	} `json:"df"`
 }
 
-func (p *CephProbe) collectHealth(now time.Time, instance string) ([]data_store.DataPoint, error) {
-	raw, err := p.apiGet("/api/health/full")
+func (p *CephProbe) collectHealth(ctx context.Context, now time.Time, instance string) ([]data_store.DataPoint, error) {
+	raw, err := p.apiGet(ctx, "/api/health/full")
 	if err != nil {
 		return nil, err
 	}
@@ -354,8 +369,8 @@ func (p *CephProbe) collectHealth(now time.Time, instance string) ([]data_store.
 
 // --- OSDs ---
 
-func (p *CephProbe) collectOSDs(now time.Time, instance string) ([]data_store.DataPoint, error) {
-	raw, err := p.apiGet("/api/osd")
+func (p *CephProbe) collectOSDs(ctx context.Context, now time.Time, instance string) ([]data_store.DataPoint, error) {
+	raw, err := p.apiGet(ctx, "/api/osd")
 	if err != nil {
 		return nil, err
 	}
@@ -402,8 +417,8 @@ type monitorResponse struct {
 	} `json:"mon_status"`
 }
 
-func (p *CephProbe) collectMonitors(now time.Time, instance string) ([]data_store.DataPoint, error) {
-	raw, err := p.apiGet("/api/monitor")
+func (p *CephProbe) collectMonitors(ctx context.Context, now time.Time, instance string) ([]data_store.DataPoint, error) {
+	raw, err := p.apiGet(ctx, "/api/monitor")
 	if err != nil {
 		return nil, err
 	}
@@ -440,9 +455,9 @@ type poolEntry struct {
 	} `json:"stats"`
 }
 
-func (p *CephProbe) collectPools(now time.Time, instance string) ([]data_store.DataPoint, error) {
+func (p *CephProbe) collectPools(ctx context.Context, now time.Time, instance string) ([]data_store.DataPoint, error) {
 	// Without stats=true the dashboard lists the pools with no statistics.
-	raw, err := p.apiGet("/api/pool?stats=true")
+	raw, err := p.apiGet(ctx, "/api/pool?stats=true")
 	if err != nil {
 		return nil, err
 	}
