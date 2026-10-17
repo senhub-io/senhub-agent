@@ -80,7 +80,7 @@ Both defaults are the behaviour of earlier versions.
 
 | Setting | Effect |
 |---|---|
-| `read_only: true` | Every route that changes the agent answers `403` with the code `console_read_only`: probe create, update and delete, output create, update and delete, the settings (port, bind address, licence), the governance block, log levels and the cache clear. Reading stays open, and so does checking a configuration against its schema and its parser. The pages hide their Save, Add, Enable and Delete controls and show a note saying why. |
+| `read_only: true` | Every route that changes the agent answers `403` with the code `console_read_only`: probe create, update and delete, output create, update and delete, the settings (port, bind address, licence), the governance block, log levels and the cache clear. Reading stays open, and so does checking a configuration against its schema and its parser. A test that connects (the output and probe Test buttons, connectivity validation) is refused as well: it would make the agent reach a destination the caller chose. The pages hide their Save, Add, Enable and Delete controls and show a note saying why. |
 | `allow_exec: false` | Writes work as usual except those that make the agent run a program: a probe of type `exec`, and a program path such as `smartctl_path` of `smart`, `ipmitool_path` of `ipmi`, `chronyc_path`, `varnishstat_path` or `nvidia_smi_path` that differs from its default. A path the file already sets stays in place: you can edit the rest of that probe, not the path. The connectivity and metric tests of such a probe are refused too, because they start it. A refused write answers `403` and says which setting. |
 
 

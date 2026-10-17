@@ -106,7 +106,7 @@
             if (o.type === 'http') {
                 acts = '<a class="btn sm" href="' + O.webBase + 'outputs/http#urls">Sensor URLs</a><a class="btn sm" href="' + editHref(o) + '">Edit</a>';
             } else {
-                acts = (dis ? '<button class="btn sm" data-write data-act="enable">Enable</button>' : '<button class="btn sm" data-act="test">Test</button>') +
+                acts = (dis ? '<button class="btn sm" data-write data-act="enable">Enable</button>' : '<button class="btn sm" data-write data-act="test">Test</button>') +
                     '<a class="btn sm" href="' + editHref(o) + '">Edit</a>' +
                     '<details class="menu" data-write><summary class="btn sm ghost" title="More">...</summary><div class="items">' +
                     (dis ? '<button data-act="enable">Enable</button>' : '<button data-act="disable">Disable</button>') +

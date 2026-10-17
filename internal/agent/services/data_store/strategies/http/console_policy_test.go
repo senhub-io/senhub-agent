@@ -486,3 +486,32 @@ func TestChangedDestinationComparesResolvedValues(t *testing.T) {
 		t.Error("another address is a change")
 	}
 }
+
+// A read-only console connects nowhere on a caller's behalf, but still
+// checks a configuration against its schema and its parser.
+func TestReadOnlyConsoleRefusesTestsThatConnect(t *testing.T) {
+	router, _ := consoleRouter(t, map[string]interface{}{"read_only": true})
+	base := "/api/" + testAdminKey
+	sink := newCredentialSink(t)
+
+	code, resp := doJSON(t, router, "POST", base+"/config/outputs/test", otlpTestBody(sink.endpoint(), nil))
+	if code != 403 || resp["code"] != "console_read_only" {
+		t.Errorf("outputs/test: %d %v, want 403 console_read_only", code, resp)
+	}
+	if got := sink.received(); len(got) != 0 {
+		t.Errorf("a refused test still connected: %v", got)
+	}
+	if code, resp := doJSON(t, router, "POST", base+"/config/test", map[string]interface{}{
+		"probe": "ctl_plain", "config": map[string]interface{}{"host": "a"},
+	}); code != 403 {
+		t.Errorf("config/test of a plain probe: %d %v, want 403", code, resp)
+	}
+	if code, resp := doJSON(t, router, "POST", base+"/config/validate", map[string]interface{}{
+		"probe": "ctl_plain", "config": map[string]interface{}{"host": "a"}, "validation": "connectivity",
+	}); code != 403 {
+		t.Errorf("connectivity validation: %d %v, want 403", code, resp)
+	}
+	if code, resp := doJSON(t, router, "POST", base+"/config/outputs/validate", otlpTestBody(sink.endpoint(), nil)); code != 200 || resp["valid"] != true {
+		t.Errorf("outputs/validate dials nothing and stays open: %d %v", code, resp)
+	}
+}
