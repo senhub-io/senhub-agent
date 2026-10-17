@@ -111,11 +111,14 @@ The schema version is in `config_version:` at the top of `agent.yaml`. Current v
 
 Non-breaking additions (new optional fields, new probe types, new strategy params) do NOT require a bump.
 
-## yaml.v2 vs yaml.v3
+## YAML library
 
-- **`loader.go` uses yaml.v2** to stay consistent with `localConfiguration_manager.go::fixYAMLTypes` (which exists because yaml.v2 returns `map[interface{}]interface{}` for nested maps).
-- **`show.go` (output) uses yaml.v3** for deterministic struct marshaling (yaml.v3 emits struct fields in declaration order; yaml.v2 doesn't).
-- **Don't mix versions in a single struct without thinking.** When you add a new field that's a nested map, run the integration tests with `make test` to confirm the conversion path still works.
+- Everything is yaml.v3. **Configuration the operator writes is read through `internal/yamlcompat`** (`yamlcompat.Unmarshal`), not through `yaml.Unmarshal`: it keeps the semantics the loader had under yaml.v2, which existing installs rely on. Three of them matter. A duplicate key keeps the last value instead of failing. A plain `yes`/`no`/`on`/`off`/`y`/`n` is a boolean inside `params:` (a free-form `interface{}` value), as it always was, and a plain date stays a string there. A quoted string given to a typed `bool` field is refused.
+- `yamlcompat.Marshal` writes with a two-space indent. Files the agent writes through it (managed fragments, `config migrate`) indent a list under its key, which yaml.v2 did not; the loader reads both the same.
+- Embedded, shipped YAML (definitions, lookups, the Nagios defaults) is read with plain yaml.v3: it is ours, and `TestEmbeddedYAMLDecodesToTheSameValues` pins what it decodes to.
+- `testdata/yaml-golden` pins what the loader reads (every example, packaging and documentation configuration) and what the agent writes. A change of YAML behaviour shows up there first; `UPDATE_YAML_GOLDEN=1` rewrites the files and the diff is the review.
+- `show.go` and the node-level editors (`config_init`, `config_seal`, `config_set`, governance, admin key, migrator) work on `yaml.Node` trees to keep comments and order.
+- When you add a field that is a nested map, run `make test` to confirm the conversion path (`normalizeYAMLTypes`) still covers it.
 
 ## Watcher
 

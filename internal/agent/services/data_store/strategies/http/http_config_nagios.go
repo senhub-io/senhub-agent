@@ -2,8 +2,10 @@
 package http
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"os"
@@ -12,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 
 	"senhub-agent.go/internal/agent/services/data_store/transformers"
 )
@@ -170,6 +172,17 @@ func (cm *ConfigurationManager) warnUndeclaredNagiosChannels(path string, config
 	}
 }
 
+// decodeNagiosStrict refuses unknown fields and duplicate keys. An empty
+// document is not an error: it leaves config as it was.
+func decodeNagiosStrict(data []byte, config *NagiosConfig) error {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(config); err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	return nil
+}
+
 // loadEmbeddedNagiosConfig parses and validates the curated Nagios
 // configuration embedded in the transformers package.
 func (cm *ConfigurationManager) loadEmbeddedNagiosConfig() (*NagiosConfig, error) {
@@ -179,7 +192,7 @@ func (cm *ConfigurationManager) loadEmbeddedNagiosConfig() (*NagiosConfig, error
 	}
 
 	var config NagiosConfig
-	if err := yaml.UnmarshalStrict(data, &config); err != nil {
+	if err := decodeNagiosStrict(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse embedded Nagios YAML: %w", err)
 	}
 
@@ -198,7 +211,7 @@ func (cm *ConfigurationManager) loadNagiosConfigFromFile(configPath string) (*Na
 	}
 
 	var config NagiosConfig
-	if err := yaml.UnmarshalStrict(data, &config); err != nil {
+	if err := decodeNagiosStrict(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse Nagios YAML: %w", err)
 	}
 

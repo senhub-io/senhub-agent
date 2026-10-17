@@ -383,14 +383,14 @@ func (lc *LocalConfiguration) createDefaultCacheConfig() *CacheConfig {
 	}
 }
 
-// fixYAMLTypes converts map[interface{}]interface{} to map[string]interface{}
-// This is needed because yaml.v2 unmarshals into map[interface{}]interface{}
-// but Go JSON expects map[string]interface{}
+// fixYAMLTypes converts map[interface{}]interface{} to map[string]interface{}.
+// A nested map holding a non-string key stays a map[interface{}]interface{},
+// and Go JSON expects map[string]interface{}.
 func (lc *LocalConfiguration) fixYAMLTypes(config LocalConfigurationData) LocalConfigurationData {
 	return normalizeYAMLTypes(config)
 }
 
-// normalizeYAMLTypes rewrites every map yaml.v2 keyed by interface{} into
+// normalizeYAMLTypes rewrites every map keyed by interface{} into
 // the string-keyed map the rest of the agent (and encoding/json) expects:
 // strategy params, probe params and the probe governance block, which
 // nests maps the same way. It runs in the loader so every reader of a

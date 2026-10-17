@@ -1,0 +1,149 @@
+config_version: 2
+
+agent:
+  key: "tricky-key"
+  global_tags:
+    env: prod
+    on-call: yes
+    tier: 3
+    flag: "no"
+
+auto_update:
+  enabled: yes
+  include_beta: off
+  url: "https://example.com/releases"
+
+cache:
+  retention_minutes: 5
+
+governance:
+  criticality: high
+  owner:
+    team: sre
+    contacts: [a@example.com, b@example.com]
+  labels:
+    - app: billing
+      since: 2024-01-02
+    - app: legacy
+      active: yes
+
+storage:
+  - name: http
+    params:
+      port: 8080
+      bind_address: "127.0.0.1"
+      endpoints: ["prtg", "web", "nagios"]
+      cache:
+        retention_minutes: 45
+      tls:
+        enabled: on
+        cipher_suites: [A, B]
+  - name: otlp
+    params:
+      endpoint: "127.0.0.1:4317"
+      protocol: grpc
+      insecure: yes
+      headers:
+        x-tenant: 42
+        x-flag: off
+
+probes:
+  - name: bools
+    type: demo
+    enabled: yes
+    custom_tags:
+      a: yes
+      b: 5
+      c: 1.5
+      d: "x"
+    log_strategies: [otlp, event]
+    params:
+      verify_ssl: yes
+      keep: no
+      on_key: on
+      off_key: off
+      y_key: y
+      n_key: n
+      Yes_key: Yes
+      NO_key: NO
+      quoted_yes: "yes"
+      single_on: 'on'
+      true_key: true
+      False_key: False
+      TRUE_key: TRUE
+      nested:
+        deep: yes
+        list: [yes, no, on, off, "yes"]
+      list_of_maps:
+        - enabled: yes
+        - enabled: no
+      flow: {a: yes, b: no}
+  - name: scalars
+    type: demo
+    params:
+      date: 2024-01-02
+      datetime: 2024-01-02T03:04:05Z
+      datetime_space: 2024-01-02 03:04:05
+      quoted_date: "2024-01-02"
+      octal: 0755
+      octal_new: 0o17
+      hex: 0x1F
+      binary: 0b101
+      underscored: 1_000
+      float: 1.5
+      sci: 1e3
+      sci2: 1.5e-3
+      inf: .inf
+      nan: .nan
+      neg: -7
+      plus: +7
+      tilde: ~
+      null_word: null
+      Null_word: Null
+      empty:
+      empty_string: ""
+      big: 18446744073709551615
+      toobig: 99999999999999999999
+      colon_str: "a: b"
+      hash_str: "x # y"
+      version: 1.10
+      sexagesimal: 1:30
+      time_like: 12:30:45
+      binary_tag: !!binary aGVsbG8=
+      str_tag: !!str 123
+      multi_literal: |
+        line one
+        line two
+      multi_folded: >
+        folded one
+        folded two
+      unicode: "é à ü 日本"
+      long: "aaaaaaaaaa bbbbbbbbbb cccccccccc dddddddddd eeeeeeeeee ffffffffff gggggggggg hhhhhhhhhh iiiiiiiiii jjjjjjjjjj kkkkkkkkkk"
+      numeric_keys:
+        1: one
+        two: 2
+      str_keys_only:
+        a: 1
+        b: [1, 2, {c: 3}]
+      int_key_map:
+        10: ten
+        20: twenty
+      bool_keyed:
+        yes: 1
+        no: 2
+  - name: anchors
+    type: demo
+    params: &base
+      interval: 30
+      mode: fast
+  - name: anchors-merge
+    type: demo
+    params:
+      <<: *base
+      mode: slow
+      extra: [1, 2]
+    governance:
+      criticality: low
+      owner:
+        team: ops
+        escalate: yes

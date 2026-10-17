@@ -1,0 +1,8 @@
+config_version: 2
+agent:
+  key: k
+probes:
+  - name: p
+    type: demo
+    enabled: "no"
+    params: {}

@@ -30,10 +30,9 @@ import (
 	"strings"
 	"sync"
 
-	"gopkg.in/yaml.v2"
-
 	"senhub-agent.go/internal/agent/services/configuration/secret"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/yamlcompat"
 )
 
 // LoadFromDisk reads agent.yaml (path configPath) plus the optional
@@ -71,7 +70,7 @@ func LoadFromDisk(configPath string, log *logger.ModuleLogger) (LocalConfigurati
 	}
 
 	var data LocalConfigurationData
-	if err := yaml.Unmarshal(raw, &data); err != nil {
+	if err := yamlcompat.Unmarshal(raw, &data); err != nil {
 		return LocalConfigurationData{}, newParseError(configPath, err)
 	}
 
@@ -153,7 +152,7 @@ func isLegacyMonolithic(raw []byte) (bool, error) {
 		Probes  []interface{} `yaml:"probes"`
 		Storage []interface{} `yaml:"storage"`
 	}
-	if err := yaml.Unmarshal(raw, &probe); err != nil {
+	if err := yamlcompat.Unmarshal(raw, &probe); err != nil {
 		return false, err
 	}
 	return probe.Probes != nil || probe.Storage != nil, nil
@@ -183,7 +182,7 @@ func loadProbesD(dir string) ([]ProbeConfig, error) {
 			return nil, fmt.Errorf("reading %s: %w", path, err)
 		}
 		var batch []ProbeConfig
-		if err := yaml.Unmarshal(raw, &batch); err != nil {
+		if err := yamlcompat.Unmarshal(raw, &batch); err != nil {
 			return nil, newParseError(path, err)
 		}
 		// fixYAMLTypes-style coercion is done after the merge by the
@@ -225,7 +224,7 @@ func loadStrategiesD(dir string, log *logger.ModuleLogger) ([]StorageConfig, err
 		// A single-strategy file is a one-entry YAML map:
 		// `prometheus:\n  bind_address: …`
 		var single map[string]StorageConfigParams
-		if err := yaml.Unmarshal(raw, &single); err != nil {
+		if err := yamlcompat.Unmarshal(raw, &single); err != nil {
 			return nil, newParseError(path, err)
 		}
 		if len(single) == 0 {

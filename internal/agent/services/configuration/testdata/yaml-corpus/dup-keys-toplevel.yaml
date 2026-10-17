@@ -1,0 +1,9 @@
+config_version: 2
+agent:
+  key: first
+agent:
+  key: second
+probes:
+  - name: p
+    type: demo
+    params: {}
