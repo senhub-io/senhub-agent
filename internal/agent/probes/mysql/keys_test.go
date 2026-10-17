@@ -293,6 +293,30 @@ func TestCollectUUIDReadFailureDoesNotPinIdentity(t *testing.T) {
 	}
 }
 
+func TestCollectPersistentUUIDFailurePinsFallback(t *testing.T) {
+	conn := &fakeMySQLConn{
+		uuidErr: errors.New("connection reset"),
+		status:  fakeStatusMap(),
+		vars:    fakeVarsMap(),
+	}
+	p := newProbeWithFakeDB(t, conn)
+
+	for i := 1; i < maxUUIDFailures; i++ {
+		if _, err := p.Collect(); err != nil {
+			t.Fatalf("Collect %d: %v", i, err)
+		}
+		if p.entitySrc.isIDPinned() {
+			t.Fatalf("identity pinned after %d failures, want unpinned before %d", i, maxUUIDFailures)
+		}
+	}
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if !p.entitySrc.isIDPinned() || !p.uuidFetched {
+		t.Fatalf("after %d failed reads the host:port identity must be pinned", maxUUIDFailures)
+	}
+}
+
 func TestCollectUnknownUUIDVariablePinsFallback(t *testing.T) {
 	conn := &fakeMySQLConn{
 		uuidErr: &gomysql.MySQLError{Number: 1193, Message: "Unknown system variable 'server_uuid'"},
