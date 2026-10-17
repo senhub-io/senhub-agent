@@ -235,10 +235,10 @@ probes:
 http:
   bind_address: 0.0.0.0
   endpoints:
-  - prtg
-  - web
-  - nagios
-  - senhub
+    - prtg
+    - web
+    - nagios
+    - senhub
   port: 8080
 ##### examples/example-config-free-tier.yaml
 err=<nil> already=false probes=true strategies=1
@@ -350,9 +350,9 @@ probes:
 http:
   bind_address: 127.0.0.1
   endpoints:
-  - prtg
-  - web
-  - nagios
+    - prtg
+    - web
+    - nagios
   port: 8080
 ##### examples/example-config-grace-period.yaml
 err=<nil> already=false probes=true strategies=1
@@ -508,8 +508,8 @@ probes:
 http:
   bind_address: 127.0.0.1
   endpoints:
-  - prtg
-  - web
+    - prtg
+    - web
   port: 8080
 ##### examples/example-config-pro-license.yaml
 err=<nil> already=false probes=true strategies=1
@@ -678,9 +678,9 @@ probes:
 - name: datacenter-redfish
   params:
     collections:
-    - system
-    - thermal
-    - power
+      - system
+      - thermal
+      - power
     endpoint: https://idrac.example.com
     interval: 300
     password: password123
@@ -719,9 +719,9 @@ probes:
 http:
   bind_address: 127.0.0.1
   endpoints:
-  - prtg
-  - web
-  - nagios
+    - prtg
+    - web
+    - nagios
   port: 8080
 ##### docs/probes/citrix/configuration-examples.yaml
 err=post-write data drifted from pre-write snapshot — backup restored already=false probes=true strategies=1
@@ -1516,7 +1516,7 @@ probes:
     enabled: "no"
     params: {}
 ##### testdata/yaml-corpus/err-syntax.yaml
-err=failed to load current configuration: parsing <DIR>/agent.yaml: yaml: line 3: did not find expected ',' or ']' already=false probes=false strategies=0
+err=failed to load current configuration: parsing <DIR>/agent.yaml: yaml: line 2: did not find expected ',' or ']' already=false probes=false strategies=0
 ===== agent.yaml =====
 config_version: 2
 agent:
@@ -1721,7 +1721,7 @@ docs/releases/0.1.70-beta.md#0 err=true already=false probes=true strategies=0 a
 docs/releases/0.1.88-beta.md#3 err=true already=false probes=false strategies=1 6a993503e89219784d70b417ff5d26c5d3cf5236fc6017c77c89d64dc8a19491
 docs/releases/0.1.90-beta.md#0 err=true already=false probes=false strategies=1 c16ae2a39a1fd532228971fd37f7cff5d78c4076445239157d373860e2672d8b
 docs/testing/archive/2025-11/LICENSE-ENFORCEMENT-TEST-REPORT.md#0 err=true already=false probes=true strategies=0 4ca35260bbcaac81d48b29f8fb54b3b37496d80005631090dda31b0daa963474
-docs/user-guide/docs/configuration.md#0 err=false already=false probes=true strategies=1 a592011e1c96d8444e620c082da372c0538c78ed561033c1659ae02e2d71a1b0
+docs/user-guide/docs/configuration.md#0 err=false already=false probes=true strategies=1 a21ef40bb8fa7f3bffddc8e717f80060a243479b7208c86963f0e5bc6eb4b5cc
 docs/user-guide/docs/configuration.md#2 err=true already=false probes=true strategies=0 a7e3ce694e188399ee09cf8e5bb996574e492672a160881392bc47960ebd4930
 docs/user-guide/docs/configuration.md#3 err=true already=false probes=true strategies=0 22b9f2a63293877012d2b46ab0e57496d6d85711dfd5084aaec8aa9d85d0afff
 docs/user-guide/docs/configuration.md#4 err=true already=false probes=true strategies=0 3e9434315c0ca3399abe97cccae3066b9770480186e192bed59cb6663544032c
@@ -1729,8 +1729,8 @@ docs/user-guide/docs/configuration.md#5 err=true already=false probes=false stra
 docs/user-guide/docs/configuration.md#6 err=true already=false probes=false strategies=1 b4d4d2491973da28d5d4b4a171393cf7db4dbc9b6bb7c10d369862e724868306
 docs/user-guide/docs/configuration.md#7 err=true already=false probes=false strategies=2 ccf7d28fac3e4bd85e42587a0a5e27951aa0c3af158ba198cd594148dcf8bacf
 docs/user-guide/docs/configuration.md#9 err=true already=false probes=true strategies=0 816cf4ea48e24782a438a156da8a2a6df4d3274c088fcffc857b198606276cb2
-docs/user-guide/docs/configuration.md#10 err=false already=false probes=true strategies=1 fc6f978bc95bbba2f13395fe5bcaba7feec85c273d7a13b24b79a59dc7554faf
-docs/user-guide/docs/configuration.md#11 err=false already=false probes=true strategies=1 97c3ab471edc7e4fcbe2748269cd82b2a7b7f6c87f6675eaaa7ae5d2dbdb3ebe
+docs/user-guide/docs/configuration.md#10 err=false already=false probes=true strategies=1 ec423a6eca243e68a637ab93ed1b3d15feeb20fc955e666e987c618b184319d9
+docs/user-guide/docs/configuration.md#11 err=false already=false probes=true strategies=1 28bf76d388325c94e86c885b27d3a91fa017da36825364c04dcf62fedfaf13ca
 docs/user-guide/docs/configuration.md#12 err=true already=false probes=true strategies=0 f89c2b54f4f26ce256bb65fdc738e1dba75aacb2d931be035931dc0de6d2c202
 docs/user-guide/docs/configuration.md#17 err=true already=false probes=false strategies=0 4a77027032c6e1479d13442637c12ccaa4f142670a68ea76cdc8d8e60c866808
 docs/user-guide/docs/probes/azure_container_app_jobs.md#1 err=true already=false probes=false strategies=0 eb55d07a5ae1b90d5ef378796c4920d856cfac2043c101e6a9ed8e8ae7130f48

@@ -7,9 +7,8 @@ import (
 	"runtime"
 	"strings"
 
-	"gopkg.in/yaml.v2"
-
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/yamlcompat"
 )
 
 const (
@@ -209,7 +208,7 @@ func probeTypesConfigured(probesDir string) (map[string]bool, error) {
 		}
 
 		var probes []ProbeConfig
-		if err := yaml.Unmarshal(raw, &probes); err != nil {
+		if err := yamlcompat.Unmarshal(raw, &probes); err != nil {
 			return nil, fmt.Errorf("parse %s: %w", name, err)
 		}
 		for _, p := range probes {
