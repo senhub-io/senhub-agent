@@ -35,6 +35,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -371,13 +372,25 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 
 	// Lazy one-time fetch of the server UUID for the db entity identity.
 	// Skipped when the operator has set instance_name (already pinned) or
-	// when the uuid has been fetched before. On failure, pinServerUUID("")
-	// falls through to the host:port degraded fallback.
+	// when the uuid has been fetched before. A server that has no
+	// @@server_uuid (MariaDB) pins the host:port degraded fallback; any
+	// other failure leaves the identity unpinned and is retried next cycle,
+	// so a transient error cannot fix a degraded identity for good.
 	if !p.uuidFetched && !p.entitySrc.isIDPinned() {
-		uuid := p.queryServerUUID(ctx)
-		p.entitySrc.pinServerUUID(uuid)
-		p.uuidFetched = true
-		commonTags = p.commonTags(instance)
+		uuid, err := p.queryServerUUID(ctx)
+		switch {
+		case err == nil:
+			p.entitySrc.pinServerUUID(uuid)
+			p.uuidFetched = true
+			commonTags = p.commonTags(instance)
+		case isUnknownSystemVariable(err):
+			p.moduleLogger.Debug().Err(err).Str("instance", instance).Msg("mysql: server has no @@server_uuid, using host:port identity")
+			p.entitySrc.pinServerUUID("")
+			p.uuidFetched = true
+			commonTags = p.commonTags(instance)
+		default:
+			p.moduleLogger.Warn().Err(err).Str("instance", instance).Msg("mysql: @@server_uuid read failed, entity identity not pinned yet")
+		}
 	}
 
 	// SHOW GLOBAL STATUS
@@ -808,11 +821,20 @@ func (p *mysqlProbe) topNTables(ts []tableSize) []tableSize {
 }
 
 // queryServerUUID fetches @@server_uuid, the MySQL-persisted stable server
-// identity. Returns "" on error (caller falls back to host:port).
-func (p *mysqlProbe) queryServerUUID(ctx context.Context) string {
-	var v string
-	_ = p.db.QueryRowContext(ctx, serverUUIDQuery).Scan(&v)
-	return v
+// identity. A NULL value reads as "" without error.
+func (p *mysqlProbe) queryServerUUID(ctx context.Context) (string, error) {
+	var v sql.NullString
+	if err := p.db.QueryRowContext(ctx, serverUUIDQuery).Scan(&v); err != nil {
+		return "", fmt.Errorf("querying @@server_uuid: %w", err)
+	}
+	return v.String, nil
+}
+
+// isUnknownSystemVariable reports ER_UNKNOWN_SYSTEM_VARIABLE (1193), which
+// is how a server without @@server_uuid answers.
+func isUnknownSystemVariable(err error) bool {
+	var me *gomysql.MySQLError
+	return errors.As(err, &me) && me.Number == 1193
 }
 
 // buildDSN returns the DSN for the go-sql-driver/mysql driver.

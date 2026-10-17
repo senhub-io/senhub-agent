@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -11,6 +12,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"testing"
+
+	gomysql "github.com/go-sql-driver/mysql"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -21,6 +24,7 @@ type fakeMySQLConn struct {
 	status  map[string]string
 	vars    map[string]string
 	uuid    string
+	uuidErr error
 }
 
 func (c *fakeMySQLConn) Ping(ctx context.Context) error            { return c.pingErr }
@@ -35,6 +39,9 @@ func (c *fakeMySQLConn) QueryContext(ctx context.Context, query string, _ []driv
 	case variablesQuery:
 		return newKVRows(c.vars), nil
 	case serverUUIDQuery:
+		if c.uuidErr != nil {
+			return nil, c.uuidErr
+		}
 		return newSingleStringRows(c.uuid), nil
 	case replicaStatusQuery, replicaStatusFallback, replicaCountQuery, replicaCountFallback:
 		return &fakeRows{cols: []string{}}, nil
@@ -247,5 +254,49 @@ func TestCollectFailedConnectionUsesFallbackIDAndClassifies(t *testing.T) {
 		if got := tagValue(dp, "db.instance.id"); got != "" {
 			t.Errorf("%s: db.instance.id = %q before any entity, want none", dp.Name, got)
 		}
+	}
+}
+
+func TestCollectUUIDReadFailureDoesNotPinIdentity(t *testing.T) {
+	conn := &fakeMySQLConn{
+		uuidErr: errors.New("connection reset"),
+		status:  fakeStatusMap(),
+		vars:    fakeVarsMap(),
+	}
+	p := newProbeWithFakeDB(t, conn)
+
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if p.entitySrc.isIDPinned() {
+		t.Fatal("a failed @@server_uuid read must not pin an identity")
+	}
+	if p.uuidFetched {
+		t.Fatal("a failed read must be retried on the next cycle")
+	}
+
+	conn.uuidErr = nil
+	conn.uuid = "uuid-123"
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if got := p.entitySrc.instanceID(); got != "mysql:uuid-123" {
+		t.Errorf("identity after recovery = %q, want mysql:uuid-123", got)
+	}
+}
+
+func TestCollectUnknownUUIDVariablePinsFallback(t *testing.T) {
+	conn := &fakeMySQLConn{
+		uuidErr: &gomysql.MySQLError{Number: 1193, Message: "Unknown system variable 'server_uuid'"},
+		status:  fakeStatusMap(),
+		vars:    fakeVarsMap(),
+	}
+	p := newProbeWithFakeDB(t, conn)
+
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if !p.entitySrc.isIDPinned() || !p.uuidFetched {
+		t.Fatal("a server without @@server_uuid must pin the host:port identity")
 	}
 }
