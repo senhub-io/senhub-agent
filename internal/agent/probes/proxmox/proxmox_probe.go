@@ -2,13 +2,13 @@ package proxmox
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/httpclient"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -56,14 +56,9 @@ func NewProxmoxProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 		return nil, err
 	}
 
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: !cfg.VerifyTLS, // #nosec G402 - operator opt-in for self-signed PVE installs
-		},
-	}
-	client := &http.Client{
-		Timeout:   cfg.Timeout,
-		Transport: transport,
+	client, err := httpclient.NewClient(httpclient.Options{Timeout: cfg.Timeout, InsecureSkipVerify: !cfg.VerifyTLS, DisableProxy: true, DisableHTTP2: true})
+	if err != nil {
+		return nil, fmt.Errorf("building HTTP client: %w", err)
 	}
 
 	p := &ProxmoxProbe{
