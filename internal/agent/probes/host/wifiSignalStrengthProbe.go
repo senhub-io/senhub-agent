@@ -30,23 +30,20 @@ func (m *wifiSignalStrengthProbe) checkWifiWindows() bool {
 		return false
 	}
 
-	outputStr := string(output)
+	return parseNetshConnected(string(output))
+}
 
-	// On cherche des patterns simples qui marchent même avec des problèmes d'encodage
-	// Ceci est un test
-	lines := strings.Split(outputStr, "\n")
-	for _, line := range lines {
-		line = strings.ToLower(line)
-
-		// On cherche les indicateurs d'état (état ou state)
-		if strings.Contains(line, "tat") || strings.Contains(line, "state") {
-			// Si on trouve "connect" sans "non" ou "dis" avant, c'est connecté
-			if strings.Contains(line, "connect") {
-				if strings.Contains(line, "non") || strings.Contains(line, "dis") {
-					return false
-				}
-				return true
-			}
+// parseNetshConnected decides connectivity from the BSSID line rather than
+// the localised State line: netsh prints the access point MAC only while
+// associated, and the "BSSID" label is not translated by Windows.
+func parseNetshConnected(output string) bool {
+	for _, line := range strings.Split(output, "\n") {
+		key, value, ok := strings.Cut(line, " : ")
+		if !ok {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(key), "bssid") && strings.TrimSpace(value) != "" {
+			return true
 		}
 	}
 	return false
