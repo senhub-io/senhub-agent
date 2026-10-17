@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/probes/dbcommon"
@@ -298,5 +299,88 @@ func TestIntegration_UnreachableIsTargetDown(t *testing.T) {
 	}
 	if check := itOne(t, points, dbcommon.CheckResultMetric); check.Value != float64(dbcommon.CheckTargetDown) {
 		t.Errorf("senhub.probe.check.result = %v, want %v", check.Value, float64(dbcommon.CheckTargetDown))
+	}
+}
+
+func itReplicaTarget(t *testing.T) itTarget {
+	t.Helper()
+	tg := itTargetFromEnv(t)
+	v := os.Getenv("MYSQL_REPLICA_TEST_PORT")
+	if v == "" {
+		t.Skip("no replica to test against: set MYSQL_REPLICA_TEST_PORT")
+	}
+	port, err := strconv.Atoi(v)
+	if err != nil {
+		t.Fatalf("MYSQL_REPLICA_TEST_PORT %q is not a number", v)
+	}
+	tg.port = port
+	return tg
+}
+
+func itCollectUntil(t *testing.T, p *mysqlProbe, what string, ok func([]data_store.DataPoint) bool) []data_store.DataPoint {
+	t.Helper()
+	deadline := time.Now().Add(60 * time.Second)
+	for {
+		points := itCollect(t, p)
+		if ok(points) {
+			return points
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(time.Second)
+	}
+}
+
+func TestIntegration_Replication_SourceWithReplica(t *testing.T) {
+	itReplicaTarget(t)
+	tg := itTargetFromEnv(t)
+	p := itStart(t, tg)
+
+	points := itCollectUntil(t, p, "the source to report a connected replica", func(pts []data_store.DataPoint) bool {
+		got := itNamed(pts, "senhub.db.replication.replicas.connected")
+		return len(got) == 1 && got[0].Value >= 1
+	})
+
+	if n := itOne(t, points, "senhub.db.replication.replicas.connected").Value; n != 1 {
+		t.Errorf("senhub.db.replication.replicas.connected = %v, want 1", n)
+	}
+	role := itOne(t, points, "senhub.db.replication.role")
+	if itTag(role, "role") != "primary" {
+		t.Errorf("senhub.db.replication.role tag role = %q, want primary", itTag(role, "role"))
+	}
+	if role.Value != dbcommon.RolePrimary.RoleValue() {
+		t.Errorf("senhub.db.replication.role = %v, want %v", role.Value, dbcommon.RolePrimary.RoleValue())
+	}
+	if health := itOne(t, points, "senhub.db.replication.health"); health.Value != 1 {
+		t.Errorf("senhub.db.replication.health = %v, want 1", health.Value)
+	}
+}
+
+func TestIntegration_Replication_Replica(t *testing.T) {
+	tg := itReplicaTarget(t)
+	p := itStart(t, tg)
+
+	points := itCollectUntil(t, p, "the replica threads to run", func(pts []data_store.DataPoint) bool {
+		io := itNamed(pts, "senhub.db.mysql.replica.io_thread.running")
+		sqlT := itNamed(pts, "senhub.db.mysql.replica.sql_thread.running")
+		return len(io) == 1 && io[0].Value == 1 && len(sqlT) == 1 && sqlT[0].Value == 1
+	})
+
+	role := itOne(t, points, "senhub.db.replication.role")
+	if itTag(role, "role") != "replica" {
+		t.Errorf("senhub.db.replication.role tag role = %q, want replica", itTag(role, "role"))
+	}
+	if role.Value != dbcommon.RoleReplica.RoleValue() {
+		t.Errorf("senhub.db.replication.role = %v, want %v", role.Value, dbcommon.RoleReplica.RoleValue())
+	}
+	if lag := itOne(t, points, "mysql.replica.time_behind_source"); lag.Value < 0 {
+		t.Errorf("mysql.replica.time_behind_source = %v, want >= 0", lag.Value)
+	}
+	if health := itOne(t, points, "senhub.db.replication.health"); health.Value != 1 {
+		t.Errorf("senhub.db.replication.health = %v, want 1", health.Value)
+	}
+	if got := len(itNamed(points, "senhub.db.replication.replicas.connected")); got != 0 {
+		t.Errorf("replica emitted %d replicas.connected series, want 0", got)
 	}
 }
