@@ -41,7 +41,6 @@ const (
 	idKeyHost                  = "host.id"
 	idKeyInterfaceName         = "network.interface.name"
 	idKeyNetworkAddress        = "network.address"
-	idKeyNeighborMAC           = "mac"
 	attrRouteMetric            = "metric"
 	// oper_state is a Toise state-key (closed set, underscore spelling): a change
 	// fires entity.state_changed. The old dotted "oper.state" was silently
@@ -1091,7 +1090,7 @@ func (s *snmpEntitySource) appendResolvesNeighbors(obs entity.Observation, res s
 
 	for _, mac := range macs {
 		entries := groups[mac]
-		id := map[string]any{idKeyNetworkDevice: res.deviceID, idKeyNeighborMAC: mac}
+		id := map[string]any{idKeyNetworkDevice: res.deviceID, entity.KeyNeighborMAC: mac}
 		obs.Entities = append(obs.Entities, entity.Entity{
 			Type:  entityTypeNetworkNeighbor,
 			ID:    id,

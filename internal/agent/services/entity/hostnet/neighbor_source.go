@@ -11,7 +11,6 @@ import (
 const (
 	entityTypeNetworkNeighbor            = "network.neighbor"
 	entityTypeNetworkInterface           = "network.interface"
-	idKeyNeighborMAC                     = "mac"
 	idKeyInterfaceName                   = "network.interface.name"
 	idKeyNetworkDevice                   = "network.device.id"
 	attrNetworkNeighborAddresses         = "network.neighbor.addresses"
@@ -131,7 +130,7 @@ func buildNeighborObservation(hostID string, neighbors []hostNeighbor, macIndex 
 			basis = "arp"
 		}
 
-		id := map[string]any{idKeyHost: hostID, idKeyNeighborMAC: mac}
+		id := map[string]any{idKeyHost: hostID, entity.KeyNeighborMAC: mac}
 		attrs := map[string]any{
 			attrNetworkNeighborAddresses:         addrs,
 			attrNetworkNeighborObservedInterface: ifaces[0],
