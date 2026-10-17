@@ -1,21 +1,16 @@
-// Package tomcat implements the free Apache Tomcat monitoring probe via Jolokia REST.
-//
-// Jolokia (https://jolokia.org/) exposes JMX MBeans over HTTP/JSON.
-// The probe reads GlobalRequestProcessor, ThreadPool, Memory, GarbageCollector
-// and Threading MBeans. All metric names follow OTel semantic conventions where
-// available (jvm.memory.*, jvm.gc.*, jvm.threads.*) and extend under tomcat.*
-// for Tomcat-specific metrics where no OTel standard exists.
 package tomcat
 
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -144,6 +139,38 @@ func parseTomcatVersion(serverInfo string) string {
 	return s
 }
 
+// baseTags returns the telemetry identity keys for this probe's
+// service.instance entity. The value comes directly from the entity source's
+// immutable instance ID so telemetry and entity IDs cannot diverge.
+func (p *TomcatProbe) baseTags() []tags.Tag {
+	if id := p.entitySrc.InstanceID(); id != "" {
+		return []tags.Tag{{Key: "service.instance.id", Value: id}}
+	}
+	return nil
+}
+
+// classifyJolokiaError chooses a check result for an initial Jolokia read
+// failure. When the HTTP client received a non-200 status, classify the status;
+// otherwise classify the Go error returned by the client.
+func classifyJolokiaError(err error) dbcommon.CheckResult {
+	var httpErr *jolokiaHTTPError
+	if errors.As(err, &httpErr) {
+		return dbcommon.ClassifyHTTPStatus(httpErr.statusCode)
+	}
+	return dbcommon.ClassifyError(err)
+}
+
+// withBaseTags prepends base identity tags to every datapoint so no series is
+// emitted without its entity identity keys.
+func withBaseTags(points []data_store.DataPoint, base []tags.Tag) []data_store.DataPoint {
+	out := make([]data_store.DataPoint, 0, len(points))
+	for _, dp := range points {
+		dp.Tags = append(append([]tags.Tag{}, base...), dp.Tags...)
+		out = append(out, dp)
+	}
+	return out
+}
+
 // jolokiaHostPort parses a Jolokia URL and returns the host and port as
 // int64 (the entity ID contract requires int64 for numeric fields).
 // Defaults to "localhost" / 8080 when the URL cannot be parsed or the
@@ -213,6 +240,7 @@ func (p *TomcatProbe) Collect() ([]data_store.DataPoint, error) {
 	defer cancel()
 
 	now := time.Now()
+	baseTags := p.baseTags()
 	var points []data_store.DataPoint
 	up := float64(1)
 
@@ -223,12 +251,20 @@ func (p *TomcatProbe) Collect() ([]data_store.DataPoint, error) {
 		p.moduleLogger.Warn().Err(err).Str("url", p.cfg.JolokiaURL).Msg("tomcat probe: Jolokia unreachable")
 		up = 0
 		p.entitySrc.SetUp(false, nil)
+		checkResult := classifyJolokiaError(err)
 		points = append(points, data_store.DataPoint{
 			Name:      "senhub.tomcat.up",
 			Value:     up,
 			Timestamp: now,
 			Tags:      []tags.Tag{{Key: "metric_type", Value: "availability"}},
 		})
+		points = append(points, data_store.DataPoint{
+			Name:      dbcommon.CheckResultMetric,
+			Value:     float64(checkResult),
+			Timestamp: now,
+			Tags:      []tags.Tag{{Key: "metric_type", Value: "status"}},
+		})
+		points = withBaseTags(points, baseTags)
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 
@@ -247,6 +283,12 @@ func (p *TomcatProbe) Collect() ([]data_store.DataPoint, error) {
 		Value:     up,
 		Timestamp: now,
 		Tags:      []tags.Tag{{Key: "metric_type", Value: "availability"}},
+	})
+	points = append(points, data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(dbcommon.CheckOK),
+		Timestamp: now,
+		Tags:      []tags.Tag{{Key: "metric_type", Value: "status"}},
 	})
 
 	// GlobalRequestProcessor metrics (per connector).
@@ -267,6 +309,7 @@ func (p *TomcatProbe) Collect() ([]data_store.DataPoint, error) {
 	// JVM Threading totals.
 	points = append(points, p.collectThreading(ctx, now)...)
 
+	points = withBaseTags(points, baseTags)
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 

@@ -75,6 +75,15 @@ func (s *clickhouseEntitySource) isPinned() bool {
 	return s.pinnedID != ""
 }
 
+// currentID returns the id that should currently appear on datapoints.
+// It is the pinned id when known, otherwise the fallback id used by
+// pinTechID when no stable tech id is available.
+func (s *clickhouseEntitySource) currentID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.pinnedID
+}
+
 // pinTechID pins the tech-reported stable id ("clickhouse:<uuid>") on the
 // first successful serverUUID fetch. Subsequent calls are no-ops once the id
 // is pinned. Returns the pinned id (the caller may use it immediately).

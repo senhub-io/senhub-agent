@@ -223,6 +223,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// warning these probes raised on every push (#724).
 	"filetail":         {"log.file.path"},
 	"linux_logs":       {},
+	"kubernetes_logs":  {},
 	"windows_eventlog": {},
 	"snmp_trap":        {},
 
@@ -272,7 +273,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 	"http_check":  {"target", "metric_type"},
 	"icmp_check":  {"target", "metric_type"},
 	"tcp_dial":    {"target", "metric_type"},
-	"snmp_poll":   {"instance", "if_index", "metric_type"},
+	"snmp_poll":   {"instance", "if_index", "metric_type", "reason", "source"}, // reason: discovery failures; source: discovery seeds
 	// haproxy: one series per (proxy, component) pair; metric_type
 	// separates sessions / throughput / error / request families.
 	"haproxy": {"proxy", "component", "metric_type"},
@@ -418,6 +419,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 
 	// Kubernetes — one series per resource instance; the discriminant
 	// tag identifies the node, pod, container, or deployment.
+	"kubelet_stats": {"k8s.node.name", "k8s.namespace.name", "k8s.pod.name", "k8s.container.name", "direction", "reason"},
 	"kubernetes": {
 		"k8s.node.name",       // per-node metrics (k8s.node.*)
 		"k8s.pod.name",        // per-pod metrics (k8s.pod.*)

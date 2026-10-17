@@ -11,6 +11,8 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
+func boolPtr(b bool) *bool { return &b }
+
 func newTestProbe(t *testing.T, config map[string]interface{}) *WinServicesProbe {
 	t.Helper()
 	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
@@ -49,6 +51,9 @@ func TestParseConfig_Defaults(t *testing.T) {
 	if len(cfg.Services) != 0 {
 		t.Errorf("Services = %v, want empty", cfg.Services)
 	}
+	if cfg.Detail != serviceDetailState {
+		t.Errorf("Detail = %q, want %q", cfg.Detail, serviceDetailState)
+	}
 }
 
 func TestParseConfig_ServicesAndInterval(t *testing.T) {
@@ -83,12 +88,45 @@ func TestParseConfig_BadInterval(t *testing.T) {
 	}
 }
 
+func TestParseConfig_Detail(t *testing.T) {
+	cfg, err := parseConfig(map[string]interface{}{"detail": "full"})
+	if err != nil {
+		t.Fatalf("parseConfig with detail=full: %v", err)
+	}
+	if cfg.Detail != serviceDetailFull {
+		t.Errorf("Detail = %q, want %q", cfg.Detail, serviceDetailFull)
+	}
+
+	if _, err := parseConfig(map[string]interface{}{"detail": "verbose"}); err == nil {
+		t.Error("expected error for invalid detail")
+	}
+}
+
+func TestSelectAutomaticServices(t *testing.T) {
+	states := []serviceState{
+		{name: "auto", state: stateStopped, startType: startAutomatic},
+		{name: "delayed", state: stateStopped, startType: startAutomaticDelayed},
+		{name: "manual", state: stateStopped, startType: startManual},
+		{name: "disabled", state: stateStopped, startType: startDisabled},
+		{name: "boot", state: stateStopped, startType: startBoot},
+		{name: "system", state: stateStopped, startType: startSystem},
+		{name: "unknown", state: stateStopped, startType: -1},
+	}
+	got := selectAutomaticServices(states)
+	if len(got) != 2 {
+		t.Fatalf("selectAutomaticServices: got %d services; want 2", len(got))
+	}
+	if got[0].name != "auto" || got[1].name != "delayed" {
+		t.Errorf("selectAutomaticServices = %v; want auto and delayed", got)
+	}
+}
+
 func TestCollect_EmitsUpAndPerServiceMetrics(t *testing.T) {
-	p := newTestProbe(t, map[string]interface{}{})
+	p := newTestProbe(t, map[string]interface{}{"detail": "full"})
 	p.collect = func(_ []string) ([]serviceState, error) {
 		return []serviceState{
 			{name: "Spooler", state: stateRunning, startType: startAutomatic},
-			{name: "wuauserv", state: stateStopped, startType: -1},
+			{name: "wuauserv", state: stateStopped, startType: startAutomatic},
 		}, nil
 	}
 
@@ -128,6 +166,70 @@ func TestCollect_EmitsUpAndPerServiceMetrics(t *testing.T) {
 	stoppedStatus, _ := findPoint(points, "windows.service.status", "wuauserv")
 	if stoppedStatus.Value != float64(stateStopped) {
 		t.Errorf("wuauserv status = %v, want %d", stoppedStatus.Value, stateStopped)
+	}
+}
+
+func TestCollect_DefaultSelectionAndDetailState(t *testing.T) {
+	p := newTestProbe(t, map[string]interface{}{})
+	p.collect = func(_ []string) ([]serviceState, error) {
+		return []serviceState{
+			{name: "automatic", state: stateRunning, startType: startAutomatic},
+			{name: "delayed", state: stateStopped, startType: startAutomaticDelayed},
+			{name: "manual", state: stateRunning, startType: startManual},
+			{name: "disabled", state: stateStopped, startType: startDisabled},
+			{name: "unknown", state: stateRunning, startType: -1},
+		}, nil
+	}
+
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	if _, ok := findPoint(points, "senhub.winservices.up", ""); !ok {
+		t.Error("missing senhub.winservices.up")
+	}
+	if _, ok := findPoint(points, "host.service.running", "automatic"); !ok {
+		t.Error("missing state for automatic service")
+	}
+	if _, ok := findPoint(points, "host.service.running", "delayed"); !ok {
+		t.Error("missing state for delayed automatic service")
+	}
+	if _, ok := findPoint(points, "host.service.running", "manual"); ok {
+		t.Error("default selection must not emit a manual service")
+	}
+	if _, ok := findPoint(points, "windows.service.state", "disabled"); ok {
+		t.Error("default selection must not emit a disabled service")
+	}
+	if _, ok := findPoint(points, "windows.service.state", "unknown"); ok {
+		t.Error("default selection must not emit a service with unknown start type")
+	}
+	if _, ok := findPoint(points, "windows.service.status", "automatic"); ok {
+		t.Error("detail=state must not emit windows.service.status")
+	}
+	if _, ok := findPoint(points, "windows.service.start_type", "automatic"); ok {
+		t.Error("detail=state must not emit windows.service.start_type")
+	}
+}
+
+func TestCollect_ExplicitSelectionIncludesManual(t *testing.T) {
+	p := newTestProbe(t, map[string]interface{}{"services": []interface{}{"manual"}})
+	p.collect = func(_ []string) ([]serviceState, error) {
+		return []serviceState{
+			{name: "manual", state: stateRunning, startType: startManual},
+		}, nil
+	}
+
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	if _, ok := findPoint(points, "host.service.running", "manual"); !ok {
+		t.Error("explicit service list must keep a manual service")
+	}
+	if _, ok := findPoint(points, "windows.service.status", "manual"); ok {
+		t.Error("detail=state must not emit windows.service.status")
 	}
 }
 
@@ -180,10 +282,10 @@ func TestCollect_EnrichesProbeName(t *testing.T) {
 
 func TestEntitySource_EmitsNothingWithoutAHostID(t *testing.T) {
 	s := newEntitySource()
+	s.setServices("", "host-name", []serviceState{
+		{name: "Spooler", state: stateRunning, startType: startAutomatic},
+	})
 	obs, ok := s.Observe()
-	// Nothing at all without a host id. The identity is built from it since
-	// #742, and the previous behaviour — emitting a constant id with no
-	// relation — is exactly what collapsed every Windows host onto one node.
 	if ok {
 		t.Errorf("Observe returned an entity with no host id: %+v", obs)
 	}
@@ -197,18 +299,14 @@ func TestEntitySource_RunsOnRelation(t *testing.T) {
 	if !ok {
 		t.Fatal("Observe ok = false, want true")
 	}
-	// runs_on plus the one-off same_as that retires the collapsed identity.
 	var r entity.Relation
 	for _, rel := range obs.Relations {
-		if rel.Type == relRunsOn {
+		if rel.Type == relRunsOn && rel.FromType == entityTypeServiceInstance {
 			r = rel
 		}
 	}
 	if r.Type != relRunsOn {
-		t.Fatalf("no runs_on among %d relations", len(obs.Relations))
-	}
-	if r.Type != relRunsOn {
-		t.Errorf("Relation.Type = %q, want %q", r.Type, relRunsOn)
+		t.Fatalf("no service.instance runs_on among %d relations", len(obs.Relations))
 	}
 	if r.FromType != entityTypeServiceInstance {
 		t.Errorf("FromType = %q, want %q", r.FromType, entityTypeServiceInstance)
@@ -219,8 +317,6 @@ func TestEntitySource_RunsOnRelation(t *testing.T) {
 	if r.ToID[idKeyHost] != "test-host-uuid" {
 		t.Errorf("ToID[host.id] = %v, want %q", r.ToID[idKeyHost], "test-host-uuid")
 	}
-	// FromID must match the service.instance entity's ID exactly, and that id
-	// must carry the host — a constant here is what #742 fixed.
 	want := "winservices@test-host-uuid"
 	if r.FromID[idKeyServiceInstanceID] != want {
 		t.Errorf("FromID[service.instance.id] = %v, want %q", r.FromID[idKeyServiceInstanceID], want)
@@ -230,9 +326,6 @@ func TestEntitySource_RunsOnRelation(t *testing.T) {
 	}
 }
 
-// Two hosts must not share one node. That is the whole defect: the id carried
-// no host component, so every Windows machine in a fleet collapsed onto a
-// single service.instance which then fanned out to all of them.
 func TestEntitySource_IdentityIsUniquePerHost(t *testing.T) {
 	idFor := func(host string) any {
 		s := newEntitySource()
@@ -248,8 +341,6 @@ func TestEntitySource_IdentityIsUniquePerHost(t *testing.T) {
 	}
 }
 
-// The retired identity is announced explicitly rather than left to expire, so
-// the consumer reads a decision instead of a producer going silent.
 func TestEntitySource_AnnouncesTheRetiredIdentity(t *testing.T) {
 	s := newEntitySource()
 	s.setHostID("host-a")
@@ -274,9 +365,110 @@ func TestEntitySource_AnnouncesTheRetiredIdentity(t *testing.T) {
 	}
 }
 
-// A selected service the SCM does not report is named once: a list typed
-// as "Spooler, W32Time" on one line reached the probe as one service of
-// that name, and nothing said it matched nothing.
+func TestEntitySource_EmitsHostServicePerSelectedService(t *testing.T) {
+	s := newEntitySource()
+	s.setServices("host-a", "host-name", []serviceState{
+		{name: "Spooler", state: stateRunning, startType: startAutomaticDelayed, startDelayed: true, triggerStart: boolPtr(true)},
+		{name: "wuauserv", state: stateStopped, startType: startManual, startDelayed: false, triggerStart: boolPtr(false)},
+	})
+
+	obs, ok := s.Observe()
+	if !ok {
+		t.Fatal("Observe ok=false")
+	}
+
+	var serviceInstanceCount, hostServiceCount int
+	for _, e := range obs.Entities {
+		switch e.Type {
+		case entityTypeServiceInstance:
+			serviceInstanceCount++
+		case entity.TypeHostService:
+			hostServiceCount++
+		}
+	}
+	if serviceInstanceCount != 1 {
+		t.Fatalf("service.instance entities = %d, want 1", serviceInstanceCount)
+	}
+	if hostServiceCount != 2 {
+		t.Fatalf("host.service entities = %d, want 2", hostServiceCount)
+	}
+
+	var spooler, wuau *entity.Entity
+	for i := range obs.Entities {
+		if obs.Entities[i].Type != entity.TypeHostService {
+			continue
+		}
+		switch obs.Entities[i].ID["host.service.name"] {
+		case "Spooler":
+			spooler = &obs.Entities[i]
+		case "wuauserv":
+			wuau = &obs.Entities[i]
+		}
+	}
+	if spooler == nil || wuau == nil {
+		t.Fatalf("missing host.service entities: %+v", obs.Entities)
+	}
+
+	if got := spooler.Attributes["host.service.start_mode"]; got != "auto_start" {
+		t.Errorf("Spooler start_mode = %v, want auto_start", got)
+	}
+	if got := spooler.Attributes["host.service.start_delayed"]; got != true {
+		t.Errorf("Spooler start_delayed = %v, want true", got)
+	}
+	if got := spooler.Attributes["host.service.trigger_start"]; got != true {
+		t.Errorf("Spooler trigger_start = %v, want true", got)
+	}
+	if _, ok := spooler.Attributes["host.service.running"]; ok {
+		t.Errorf("Spooler: the running state is a series, not an entity attribute")
+	}
+
+	if got := wuau.Attributes["host.service.start_mode"]; got != "demand_start" {
+		t.Errorf("wuauserv start_mode = %v, want demand_start", got)
+	}
+	if got := wuau.Attributes["host.service.start_delayed"]; got != false {
+		t.Errorf("wuauserv start_delayed = %v, want false", got)
+	}
+	if got := wuau.Attributes["host.service.trigger_start"]; got != false {
+		t.Errorf("wuauserv trigger_start = %v, want false", got)
+	}
+	if _, ok := wuau.Attributes["host.service.running"]; ok {
+		t.Errorf("wuauserv: the running state is a series, not an entity attribute")
+	}
+
+	var hostServiceRuns int
+	for _, rel := range obs.Relations {
+		if rel.Type == relRunsOn && rel.FromType == entity.TypeHostService {
+			hostServiceRuns++
+			if rel.ToType != entityTypeHost || rel.ToID[idKeyHost] != "host-a" {
+				t.Errorf("host.service runs_on must target host-a: %+v", rel)
+			}
+		}
+	}
+	if hostServiceRuns != 2 {
+		t.Errorf("host.service runs_on relations = %d, want 2", hostServiceRuns)
+	}
+
+	foundProbeAlias := false
+	for _, rel := range obs.Relations {
+		if rel.Type == entity.RelSameAs {
+			foundProbeAlias = true
+		}
+	}
+	if !foundProbeAlias {
+		t.Error("missing probe-level same_as relation")
+	}
+}
+
+func TestEntitySource_NoHostServiceWithoutHostID(t *testing.T) {
+	s := newEntitySource()
+	s.setServices("", "host-name", []serviceState{
+		{name: "Spooler", state: stateRunning, startType: startAutomatic},
+	})
+	if obs, ok := s.Observe(); ok {
+		t.Errorf("Observe returned entities without host id: %+v", obs)
+	}
+}
+
 func TestCollect_ReportsASelectedServiceItCannotFind(t *testing.T) {
 	p := newTestProbe(t, map[string]interface{}{"services": []interface{}{"spooler", "Spooler, W32Time"}})
 	p.collect = func(_ []string) ([]serviceState, error) {
@@ -298,11 +490,11 @@ func TestCollect_ReportsASelectedServiceItCannotFind(t *testing.T) {
 	}
 }
 
-// The Zabbix trigger for an automatic service that is not running needs
-// the start type next to the state. A service whose configuration cannot
-// be read reports the state alone, never a guessed start type.
 func TestCollect_EmitsTheStartTypeWhenItIsKnown(t *testing.T) {
-	p := newTestProbe(t, map[string]interface{}{})
+	p := newTestProbe(t, map[string]interface{}{
+		"services": []interface{}{"Spooler", "locked"},
+		"detail":   "full",
+	})
 	p.collect = func(_ []string) ([]serviceState, error) {
 		return []serviceState{
 			{name: "Spooler", state: stateStopped, startType: startAutomaticDelayed},
@@ -322,5 +514,25 @@ func TestCollect_EmitsTheStartTypeWhenItIsKnown(t *testing.T) {
 	}
 	if _, ok := findPoint(points, "windows.service.state", "locked"); !ok {
 		t.Error("the state of that service must still be reported")
+	}
+}
+
+func TestStateSeriesSaysWhetherTheServiceIsTriggerStarted(t *testing.T) {
+	p := &WinServicesProbe{}
+	yes, no := true, false
+	for _, tc := range []struct {
+		trigger *bool
+		want    string
+	}{{&yes, "true"}, {&no, "false"}, {nil, ""}} {
+		pts := p.buildServiceDatapoints(serviceState{name: "sppsvc", state: stateStopped, startType: startAutomatic, triggerStart: tc.trigger}, time.Now(), "h", "h.example", serviceDetailState)
+		got := ""
+		for _, tg := range pts[0].Tags {
+			if tg.Key == "host.service.trigger_start" {
+				got = tg.Value
+			}
+		}
+		if got != tc.want {
+			t.Errorf("trigger %v: label = %q, want %q", tc.trigger, got, tc.want)
+		}
 	}
 }

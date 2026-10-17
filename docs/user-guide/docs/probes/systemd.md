@@ -25,12 +25,13 @@ All non-transient units are monitored by default; every parameter is optional.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:35a81450ce5ec571e785b556be8331759d0f090940e238a3a730b5e5fe4da2cf -->
+<!-- sha256:7eca761d811d8dd8093b45ed2cfd5d5f75e13ef2f085476b8c6ed5f164a14371 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `units` | No | - | Unit names or shell globs to watch; empty watches every unit of the included types. Example: `nginx.service, ssh*.service` |
+| `units` | No | - | Unit names or shell globs to watch; empty watches enabled units of the included types. Example: `nginx.service, ssh*.service` |
 | `include_types` | No | `[service socket timer mount]` | Unit type suffixes to include. Example: `service, timer` |
+| `detail` | No | `state` | Metrics detail: state emits only host.service.running per unit; full adds systemd.unit.active_state, load and sub state, and restarts |
 | `interval` | No | `30` | Seconds between collections |
 
 <!-- schema:params:end -->
@@ -50,6 +51,9 @@ series per cycle.
 
 ## Operational notes
 
+- When `units` is empty, only the units systemd is supposed to start by itself are watched: `UnitFileState` enabled or enabled-runtime, among the included types. Name a static, disabled or masked unit in `units` to watch it.
+- Each watched unit is a `host.service` entity on the topology graph (identity `host.id` + `host.service.name`, the full unit name, so `nginx.service` and `nginx.socket` are two entities), linked to its host by `runs_on`, with `host.service.manager` (`systemd`) and `host.service.start_mode`. Whether it runs is a measurement, not a graph fact: `host.service.running` gives it as 1 or 0, the same series for systemd and Windows, with the same `host.id` and `host.service.name`. Agents before 0.6.4 published units as `service.instance`; the first start retires those with the reason `rekeyed` and links each new entity to its old one.
+- `detail: state` (the default) emits `host.service.running` alone, one series per watched unit; `detail: full` adds `systemd.unit.active_state`, `load_state`, `sub_state` and the restart counter. The probe is installed on every host, so its default stays at one series per unit.
 - Without `units`, the probe watches every loaded unit of the included
   types, except the units systemd creates for each user login and removes
   at logout (`run-user-*.mount`, `user@*.service`,
@@ -73,9 +77,11 @@ series' tags.
 
 | Metric | Name | PRTG channel | Unit | Description |
 |---|---|---|---|---|
+| `host.service.running` | `host.service.running` | Service {systemd.unit} Running | # | 1 when the service runs, 0 when it does not (stopped, failed, starting, stopping or paused), the same series for systemd and Windows |
 | `systemd.unit.active_state` | `systemd.unit.active_state` | Systemd {systemd.unit} Active State | # | 1 when the unit active state is 'active', 0 otherwise |
 | `systemd.unit.sub_state` | `systemd.unit.sub_state` | Systemd {systemd.unit} Sub State | # | 1 when the unit sub state is 'running' or 'listening', 0 otherwise. The sub_state tag carries the raw sub state value. |
 | `systemd.unit.load_state` | `systemd.unit.load_state` | Systemd {systemd.unit} Load State | # | 1 when the unit load state is 'loaded', 0 otherwise (not-found, error, masked) |
 | `systemd.unit.restarts` | `systemd.unit.restarts` | Systemd {systemd.unit} Restarts | # | Cumulative restart count for service units (NRestarts D-Bus property). Only emitted for units of type 'service'. |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

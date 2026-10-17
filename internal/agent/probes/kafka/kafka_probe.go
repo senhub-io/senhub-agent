@@ -30,6 +30,7 @@ import (
 
 	"github.com/IBM/sarama"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -52,6 +53,29 @@ type kafkaProbe struct {
 	// seams for unit testing
 	newAdmin  adminFactory
 	newClient clientFactory
+}
+
+// baseTags returns the entity identity tags shared by every datapoint.
+func (p *kafkaProbe) baseTags() []tags.Tag {
+	id := p.entitySrc.instanceID()
+	if id == "" {
+		return nil
+	}
+	return []tags.Tag{{Key: "service.instance.id", Value: id}}
+}
+
+// dp constructs a datapoint with the probe's base tags.
+func (p *kafkaProbe) dp(name string, value float64, ts time.Time, extraTags ...tags.Tag) data_store.DataPoint {
+	base := p.baseTags()
+	all := make([]tags.Tag, 0, len(base)+len(extraTags))
+	all = append(all, base...)
+	all = append(all, extraTags...)
+	return data_store.DataPoint{Name: name, Value: value, Timestamp: ts, Tags: all}
+}
+
+// checkResultPoint emits the required check-result status metric.
+func (p *kafkaProbe) checkResultPoint(result dbcommon.CheckResult, now time.Time) data_store.DataPoint {
+	return p.dp(dbcommon.CheckResultMetric, float64(result), now, tags.Tag{Key: "metric_type", Value: "status"})
 }
 
 // NewKafkaProbe constructs the probe from its raw config map.
@@ -140,14 +164,14 @@ func (p *kafkaProbe) Collect() ([]data_store.DataPoint, error) {
 	if err != nil {
 		p.moduleLogger.Error().Err(err).Msg("kafka: failed to build sarama config")
 		p.entitySrc.notifyFailure()
-		return p.upPoint(0, now), nil
+		return p.failurePoints(0, now, err), nil
 	}
 
 	admin, err := p.newAdmin(p.cfg.Brokers, sarCfg)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Strs("brokers", p.cfg.Brokers).Msg("kafka: cannot connect (admin)")
 		p.entitySrc.notifyFailure()
-		return p.upPoint(0, now), nil
+		return p.failurePoints(0, now, err), nil
 	}
 	defer func() {
 		if cerr := admin.Close(); cerr != nil {
@@ -159,7 +183,7 @@ func (p *kafkaProbe) Collect() ([]data_store.DataPoint, error) {
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Strs("brokers", p.cfg.Brokers).Msg("kafka: cannot connect (client)")
 		p.entitySrc.notifyFailure()
-		return p.upPoint(0, now), nil
+		return p.failurePoints(0, now, err), nil
 	}
 	defer func() {
 		if cerr := client.Close(); cerr != nil {
@@ -173,15 +197,18 @@ func (p *kafkaProbe) Collect() ([]data_store.DataPoint, error) {
 	var points []data_store.DataPoint
 
 	// senhub.kafka.up
-	points = append(points, dp("senhub.kafka.up", 1, now,
+	points = append(points, p.dp("senhub.kafka.up", 1, now,
 		tags.Tag{Key: "metric_type", Value: "broker"},
 	))
 
 	// kafka.brokers
 	brokers := client.Brokers()
-	points = append(points, dp("kafka.brokers", float64(len(brokers)), now,
+	points = append(points, p.dp("kafka.brokers", float64(len(brokers)), now,
 		tags.Tag{Key: "metric_type", Value: "broker"},
 	))
+
+	// per-collection check result: 0 (ok)
+	points = append(points, p.checkResultPoint(dbcommon.CheckOK, now))
 
 	// Topic + partition metrics
 	topicMeta, err := admin.ListTopics()
@@ -219,7 +246,7 @@ func (p *kafkaProbe) collectTopicMetrics(
 		}
 
 		numPartitions := detail.NumPartitions
-		points = append(points, dp("kafka.topic.partitions", float64(numPartitions), now,
+		points = append(points, p.dp("kafka.topic.partitions", float64(numPartitions), now,
 			tags.Tag{Key: "metric_type", Value: "topic"},
 			tags.Tag{Key: "topic", Value: topic},
 		))
@@ -239,7 +266,7 @@ func (p *kafkaProbe) collectTopicMetrics(
 					Str("topic", topic).Int32("partition", partition).
 					Msg("kafka: GetOffset(newest) failed")
 			} else {
-				points = append(points, dp("kafka.partition.current_offset", float64(newestOffset), now,
+				points = append(points, p.dp("kafka.partition.current_offset", float64(newestOffset), now,
 					tags.Tag{Key: "metric_type", Value: "partition"},
 					tags.Tag{Key: "topic", Value: topic},
 					tags.Tag{Key: "partition", Value: partStr},
@@ -252,7 +279,7 @@ func (p *kafkaProbe) collectTopicMetrics(
 					Str("topic", topic).Int32("partition", partition).
 					Msg("kafka: GetOffset(oldest) failed")
 			} else {
-				points = append(points, dp("kafka.partition.oldest_offset", float64(oldestOffset), now,
+				points = append(points, p.dp("kafka.partition.oldest_offset", float64(oldestOffset), now,
 					tags.Tag{Key: "metric_type", Value: "partition"},
 					tags.Tag{Key: "topic", Value: topic},
 					tags.Tag{Key: "partition", Value: partStr},
@@ -262,7 +289,7 @@ func (p *kafkaProbe) collectTopicMetrics(
 			// Replicas from topic detail
 			replicas := detail.ReplicaAssignment[partition]
 			points = append(points,
-				dp("kafka.partition.replicas", float64(len(replicas)), now,
+				p.dp("kafka.partition.replicas", float64(len(replicas)), now,
 					tags.Tag{Key: "metric_type", Value: "partition"},
 					tags.Tag{Key: "topic", Value: topic},
 					tags.Tag{Key: "partition", Value: partStr},
@@ -277,7 +304,7 @@ func (p *kafkaProbe) collectTopicMetrics(
 					Msg("kafka: InSyncReplicas failed")
 			} else {
 				points = append(points,
-					dp("kafka.partition.replicas_in_sync", float64(len(isr)), now,
+					p.dp("kafka.partition.replicas_in_sync", float64(len(isr)), now,
 						tags.Tag{Key: "metric_type", Value: "partition"},
 						tags.Tag{Key: "topic", Value: topic},
 						tags.Tag{Key: "partition", Value: partStr},
@@ -317,7 +344,7 @@ func (p *kafkaProbe) collectGroupMetricsWithNames(
 			p.moduleLogger.Warn().Err(err).Str("group", group).Msg("kafka: DescribeConsumerGroups failed")
 		} else if len(groupDesc) > 0 {
 			members := len(groupDesc[0].Members)
-			points = append(points, dp("kafka.consumer_group.members", float64(members), now,
+			points = append(points, p.dp("kafka.consumer_group.members", float64(members), now,
 				tags.Tag{Key: "metric_type", Value: "consumer_group"},
 				tags.Tag{Key: "group", Value: group},
 			))
@@ -356,7 +383,7 @@ func (p *kafkaProbe) collectGroupMetricsWithNames(
 				partStr := strconv.Itoa(int(partition))
 				groupOffset := float64(block.Offset)
 
-				points = append(points, dp("kafka.consumer_group.offset", groupOffset, now,
+				points = append(points, p.dp("kafka.consumer_group.offset", groupOffset, now,
 					tags.Tag{Key: "metric_type", Value: "consumer_group"},
 					tags.Tag{Key: "group", Value: group},
 					tags.Tag{Key: "topic", Value: topic},
@@ -377,7 +404,7 @@ func (p *kafkaProbe) collectGroupMetricsWithNames(
 					lag = 0
 				}
 
-				points = append(points, dp("kafka.consumer_group.lag", lag, now,
+				points = append(points, p.dp("kafka.consumer_group.lag", lag, now,
 					tags.Tag{Key: "metric_type", Value: "consumer_group"},
 					tags.Tag{Key: "group", Value: group},
 					tags.Tag{Key: "topic", Value: topic},
@@ -388,7 +415,7 @@ func (p *kafkaProbe) collectGroupMetricsWithNames(
 			}
 
 			// Emit per-group/topic lag_sum
-			points = append(points, dp("kafka.consumer_group.lag_sum", lagSum[topic], now,
+			points = append(points, p.dp("kafka.consumer_group.lag_sum", lagSum[topic], now,
 				tags.Tag{Key: "metric_type", Value: "consumer_group"},
 				tags.Tag{Key: "group", Value: group},
 				tags.Tag{Key: "topic", Value: topic},
@@ -442,9 +469,13 @@ func (p *kafkaProbe) buildSaramaConfig() (*sarama.Config, error) {
 
 // upPoint returns the minimal point set emitted when the cluster is unreachable.
 func (p *kafkaProbe) upPoint(val float64, now time.Time) []data_store.DataPoint {
-	pts := []data_store.DataPoint{
-		dp("senhub.kafka.up", val, now, tags.Tag{Key: "metric_type", Value: "broker"}),
+	return []data_store.DataPoint{
+		p.dp("senhub.kafka.up", val, now, tags.Tag{Key: "metric_type", Value: "broker"}),
 	}
+}
+
+func (p *kafkaProbe) failurePoints(val float64, now time.Time, err error) []data_store.DataPoint {
+	pts := append(p.upPoint(val, now), p.checkResultPoint(dbcommon.ClassifyError(err), now))
 	return p.BaseProbe.EnrichDataPointsWithProbeName(pts, p.GetName())
 }
 
@@ -477,14 +508,4 @@ func (p *kafkaProbe) matchesGroup(group string) bool {
 		}
 	}
 	return false
-}
-
-// dp is a convenience constructor for a DataPoint.
-func dp(name string, value float64, ts time.Time, extraTags ...tags.Tag) data_store.DataPoint {
-	return data_store.DataPoint{
-		Name:      name,
-		Value:     value,
-		Timestamp: ts,
-		Tags:      extraTags,
-	}
 }

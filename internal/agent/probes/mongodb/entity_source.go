@@ -116,6 +116,17 @@ func (s *mongodbEntitySource) pinTechID(id string) {
 	}
 }
 
+// InstanceID returns the db.instance.id to use for telemetry tags: the pinned
+// id when resolved, otherwise the fallback host:port id.
+func (s *mongodbEntitySource) InstanceID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.pinned {
+		return s.pinnedID
+	}
+	return ""
+}
+
 // setReachable is called by Collect to report the current connectivity state.
 // When up is true and version is non-empty, it is stored as a descriptive attr.
 // When up is false the entity is suppressed from Observe until the next

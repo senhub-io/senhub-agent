@@ -213,5 +213,6 @@ series' tags.
 | `ntp.root.delay` | `ntp.root.delay` | NTP Root Delay ({server}) | ms | Round-trip delay from the reference server up to its own stratum-1 source |
 | `ntp.root.dispersion` | `ntp.root.dispersion` | NTP Root Dispersion ({server}) | ms | Maximum clock error the reference server itself accumulates relative to its stratum-1 source |
 | `ntp.leap_status` | `ntp.leap_status` | NTP Leap Status ({server}) | # | Leap indicator the reference server announces: 0=normal, 1=last minute has 61 seconds, 2=last minute has 59 seconds |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result ({server}) | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

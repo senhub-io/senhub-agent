@@ -1,25 +1,3 @@
-// Package ntp implements the free ntp probe: it measures the local clock's
-// error directly, by exchanging NTP packets with time servers the operator
-// names.
-//
-// It is deliberately independent of any local time daemon. chrony, ntpd,
-// systemd-timesyncd and the Windows Time service each report their own view of
-// synchronisation, in their own format, through their own tool — and a host
-// running none of them reports nothing at all. This probe asks the same
-// question on every platform: does this machine's clock agree with a reference,
-// and by how much.
-//
-// It answers a different question from the chrony probe rather than replacing
-// it. chrony reports what the daemon believes about the clock it steers; this
-// reports what an independent server observes. Running both is how a daemon
-// that is confidently synchronised to a wrong source becomes visible: the two
-// offsets disagree.
-//
-// Accuracy: good enough to see a clock that is wrong by more than a few tens of
-// milliseconds, which is the scale at which Kerberos, TLS validity, log
-// correlation and one-time passwords break. It is NOT a precision measurement —
-// the limit is documented on decode() and best() in client.go, and surfaced to
-// the reader as ntp.round_trip.delay next to every offset.
 package ntp
 
 import (
@@ -30,7 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -45,20 +25,9 @@ const (
 	maxSamples        = 16
 	maxParallelChecks = 8
 
-	// defaultInterval is deliberately far longer than a collection probe's.
-	// Clock error moves slowly, and a query is traffic sent to somebody else's
-	// server — a fleet polling a public pool every 30 s is abuse of it. Five
-	// minutes still catches a filtered UDP 123 or a stopped daemon well before
-	// anything downstream notices.
 	defaultInterval = 300 * time.Second
 )
 
-// Why the reason is its own one-hot series, as on the chrony probe: an operator
-// reported that "no time daemon here" and "the probe cannot reach the server"
-// produced the identical observable, a probe emitting nothing but up=0. Only
-// one of those is something to fix, and telling them apart needed the agent
-// log. A reason is a string, a string cannot be a metric value, and a dashboard
-// should be able to count hosts in a state without decoding a number.
 const (
 	reasonOK              = "ok"
 	reasonUnreachable     = "unreachable"
@@ -79,7 +48,6 @@ type checkConfig struct {
 	Interval time.Duration
 }
 
-// serverResult is the outcome of one cycle against one server.
 type serverResult struct {
 	server string
 	sample sample
@@ -94,6 +62,7 @@ type NTPProbe struct {
 	config       checkConfig
 	moduleLogger *logger.ModuleLogger
 	query        queryFunc
+	entitySrc    *ntpEntitySource
 }
 
 // NewNTPProbe constructs the probe. Config errors surface here.
@@ -105,22 +74,25 @@ func NewNTPProbe(config map[string]interface{}, baseLogger *logger.Logger) (type
 		return nil, err
 	}
 
+	var hostID string
+	if hi, err := common.GetHostIdentity(); err == nil {
+		hostID = hi.ID
+	}
+	entitySrc := newNTPEntitySource(hostID)
+
 	probe := &NTPProbe{
 		BaseProbe:    &types.BaseProbe{},
 		config:       cfg,
 		moduleLogger: moduleLogger,
 		query:        query,
+		entitySrc:    entitySrc,
 	}
 	probe.SetProbeType(ProbeType)
+	probe.SetEntitySource(probe.entitySrc)
 	return probe, nil
 }
 
 // parseConfig validates the probe block.
-//
-// servers has no default on purpose. A default would point every agent that
-// ever enables this probe at somebody else's infrastructure, and it would also
-// be the wrong measurement: the useful comparison is against the reference the
-// host is supposed to be following, which only the operator knows.
 func parseConfig(config map[string]interface{}) (checkConfig, error) {
 	cfg := checkConfig{
 		Timeout:  defaultTimeout,
@@ -209,6 +181,10 @@ func (p *NTPProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 	wg.Wait()
 
+	// Rebuild the entity snapshot from the configured targets. The targets do
+	// not change at runtime; rebuilding each cycle keeps Observe() consistent.
+	p.entitySrc.rebuild(p.config.Servers)
+
 	var points []data_store.DataPoint
 	for _, res := range results {
 		points = append(points, p.buildDatapoints(res, now)...)
@@ -227,8 +203,6 @@ func (p *NTPProbe) measure(server string) serverResult {
 		s, err := p.query(server, p.config.Timeout)
 		if err != nil {
 			lastErr = err
-			// A refusal applies to us, not to this packet. Retrying is the
-			// behaviour the server is asking us to stop.
 			if errors.Is(err, errRefused) {
 				break
 			}
@@ -259,10 +233,19 @@ func reasonOf(err error) string {
 }
 
 func (p *NTPProbe) buildDatapoints(res serverResult, ts time.Time) []data_store.DataPoint {
+	targetIdentityTags := p.entitySrc.identityTags(res.server)
+
 	baseTags := []tags.Tag{
 		{Key: "server", Value: res.server},
 		{Key: "metric_type", Value: "time_sync"},
 	}
+	baseTags = append(baseTags, targetIdentityTags...)
+
+	statusTags := []tags.Tag{
+		{Key: "server", Value: res.server},
+		{Key: "metric_type", Value: "status"},
+	}
+	statusTags = append(statusTags, targetIdentityTags...)
 
 	up := float64(1)
 	if res.err != nil {
@@ -275,6 +258,7 @@ func (p *NTPProbe) buildDatapoints(res serverResult, ts time.Time) []data_store.
 
 	points := []data_store.DataPoint{
 		{Name: "senhub.ntp.up", Value: up, Timestamp: ts, Tags: baseTags},
+		{Name: dbcommon.CheckResultMetric, Value: float64(dbcommon.ClassifyError(res.err)), Timestamp: ts, Tags: statusTags},
 	}
 
 	reason := reasonOf(res.err)

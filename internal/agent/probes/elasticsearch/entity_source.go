@@ -178,3 +178,11 @@ func hostPortFromEndpoint(endpoint string) (host string, port int64) {
 	}
 	return
 }
+
+// currentInstanceID returns the id the entity carries, or "" while no entity has been
+// emitted under it, so a series never names an entity that does not exist.
+func (s *elasticsearchEntitySource) currentInstanceID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.instanceID
+}

@@ -15,6 +15,7 @@ import (
 
 	"senhub-agent.go/internal/agent"
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/probes/cpu"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/cliexit"
 )
@@ -385,6 +386,10 @@ var knownTopLevelArgs = map[string]struct{}{
 }
 
 func Main() {
+	// The cpu probe may re-execute this binary to test a system call the
+	// systemd unit could kill it for; that child must do nothing else.
+	cpu.RunAdjtimexChild()
+
 	wireProbeTypeLookup()
 
 	// `--version` short-circuit: print version + exit, BEFORE any

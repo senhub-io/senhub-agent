@@ -3,6 +3,7 @@ package docker
 import (
 	"os"
 	"path/filepath"
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"testing"
 )
 
@@ -248,7 +249,7 @@ func TestCollectCgroupFallbackWithNoContainers(t *testing.T) {
 		t.Errorf("source[cgroup] = %v, want 1", got)
 	}
 	for _, pt := range points {
-		if pt.Name != "senhub.docker.source" {
+		if pt.Name != "senhub.docker.source" && pt.Name != dbcommon.CheckResultMetric {
 			t.Errorf("no containers, yet %q was published", pt.Name)
 		}
 	}

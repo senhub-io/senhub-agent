@@ -80,5 +80,6 @@ series' tags.
 |---|---|---|---|---|
 | `modbus.register.value` | `modbus.register.value` | Register {register.name} | 1 | Decoded value of the Modbus Holding Register |
 | `modbus.up` | `modbus.up` | Modbus Device Up | # | 1 when the Modbus TCP device answered all register reads in the last cycle |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

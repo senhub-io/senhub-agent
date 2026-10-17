@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"sync/atomic"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -46,6 +47,26 @@ type ProbePoller struct {
 	// governance-only change on reload reaches the next emission without
 	// restarting the probe.
 	governanceAttrs atomic.Pointer[map[string]any]
+}
+
+// probeCadenceSource wraps a probe entity source so it also reports the
+// probe's polling interval as its cadence. If the source already knows a
+// more specific cadence, the caller keeps that source unwrapped.
+type probeCadenceSource struct {
+	src      entity.Source
+	interval time.Duration
+}
+
+func (p probeCadenceSource) Observe() (entity.Observation, bool) {
+	return p.src.Observe()
+}
+
+func (p probeCadenceSource) Cadence() time.Duration {
+	return p.interval
+}
+
+func (p probeCadenceSource) Unwrap() entity.Source {
+	return p.src
 }
 
 // defaultStrategyRouter provides default routing for probes that don't
@@ -259,7 +280,26 @@ func (p *ProbePoller) registerEntitySource() {
 	if _, isNoOp := src.(types.NoOpEntitySource); isNoOp {
 		return
 	}
-	p.unregisterEntitySource = entity.RegisterSource(entity.WithAttributesFunc(src, p.GovernanceAttributes))
+	registered := src
+	if !implementsCadenceSource(registered) {
+		registered = probeCadenceSource{src: registered, interval: p.Probe.GetInterval()}
+	}
+	p.unregisterEntitySource = entity.RegisterSource(entity.WithAttributesFunc(registered, p.GovernanceAttributes))
+}
+
+// implementsCadenceSource follows Unwrap until it finds a CadenceSource.
+func implementsCadenceSource(src entity.Source) bool {
+	for src != nil {
+		if _, ok := src.(entity.CadenceSource); ok {
+			return true
+		}
+		u, ok := src.(interface{ Unwrap() entity.Source })
+		if !ok {
+			return false
+		}
+		src = u.Unwrap()
+	}
+	return false
 }
 
 // ApplyGovernance sets the governance attributes the probe's entities carry

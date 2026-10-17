@@ -32,6 +32,20 @@ metrics:
     tag_to_attribute:
       instance: snmp.target
 
+  - name: "senhub.probe.check.result"
+    channel: "check_result"
+    display_name: "SNMP {instance} Check Result"
+    unit: "#"
+    category: "status"
+    description: "Why the last poll failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied"
+    lookup: "senhub.probe.check.result"
+    otel:
+      name: senhub.probe.check.result
+      unit: "{status}"
+      type: gauge
+    tag_to_attribute:
+      instance: snmp.target
+
   - name: "senhub.snmp.poll.duration"
     channel: "snmp_poll_duration"
     display_name: "SNMP {instance} Poll Duration"
@@ -44,6 +58,76 @@ metrics:
       type: gauge
     tag_to_attribute:
       instance: snmp.target
+
+  # Discovery crawl self-metrics (only with a discovery block).
+  - name: "snmp_poll_discovery_devices"
+    channel: "snmp_discovery_devices"
+    display_name: "SNMP {instance} Discovered Devices"
+    unit: "#"
+    category: "status"
+    description: "Devices that answered the last discovery crawl"
+    otel:
+      name: senhub.snmp.discovery.devices
+      unit: "{device}"
+      type: gauge
+    tag_to_attribute:
+      instance: snmp.target
+
+  - name: "snmp_poll_discovery_runs"
+    channel: "snmp_discovery_runs"
+    display_name: "SNMP {instance} Discovery Runs"
+    unit: "#"
+    category: "status"
+    description: "Discovery crawls run since the agent started"
+    otel:
+      name: senhub.snmp.discovery.runs
+      unit: "{run}"
+      type: counter
+    tag_to_attribute:
+      instance: snmp.target
+
+  - name: "snmp_poll_discovery_last_duration_seconds"
+    channel: "snmp_discovery_duration"
+    display_name: "SNMP {instance} Discovery Duration"
+    unit: "s"
+    category: "status"
+    description: "Wall-clock time of the last discovery crawl"
+    otel:
+      name: senhub.snmp.discovery.duration
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      instance: snmp.target
+
+  - name: "snmp_poll_discovery_failures"
+    channel: "snmp_discovery_failures_{reason}"
+    display_name: "SNMP {instance} Discovery Failures {reason}"
+    unit: "#"
+    category: "status"
+    multi_instance_labels: ["reason"]
+    description: "Devices the crawl could not use since the agent started, by reason: unreachable (no SNMP answer) or identity (no device id resolvable)"
+    otel:
+      name: senhub.snmp.discovery.failures
+      unit: "{device}"
+      type: counter
+    tag_to_attribute:
+      instance: snmp.target
+      reason: reason
+
+  - name: "snmp_poll_discovery_seeds"
+    channel: "snmp_discovery_seeds_{source}"
+    display_name: "SNMP {instance} Discovery Seeds {source}"
+    unit: "#"
+    category: "status"
+    multi_instance_labels: ["source"]
+    description: "Seeds the last discovery crawl started from, by source: configured (discovery.seeds) or host (the host's default gateways)"
+    otel:
+      name: senhub.snmp.discovery.seeds
+      unit: "{seed}"
+      type: gauge
+    tag_to_attribute:
+      instance: snmp.target
+      source: source
 
   # System group (MIB-II 1.3.6.1.2.1.1)
   - name: "snmp.sys.uptime"

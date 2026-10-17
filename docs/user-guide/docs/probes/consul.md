@@ -74,5 +74,6 @@ series' tags.
 | `consul.dns.queries` | `consul.dns.queries` | Consul DNS Queries | # | Total DNS domain queries handled by this Consul agent |
 | `consul.health.checks` | `consul.health.checks` | Consul Health Checks ({state}) | # | Number of Consul health checks in this state (critical, warning, passing) |
 | `consul.leader` | `consul.leader` | Consul Leader | # | 1 when this Consul agent is the current Raft leader |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

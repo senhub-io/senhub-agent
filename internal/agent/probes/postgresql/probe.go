@@ -127,34 +127,43 @@ func (p *pgProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 	instance := p.cfg.Host + ":" + strconv.Itoa(p.cfg.Port)
 
-	baseTags := []tags.Tag{
-		{Key: "metric_type", Value: string(dbcommon.MetricTypeOverview)},
-		{Key: "instance", Value: instance},
-		{Key: "db.system.name", Value: "postgresql"},
-		{Key: "server.address", Value: p.cfg.Host},
-		{Key: "server.port", Value: strconv.Itoa(p.cfg.Port)},
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
+	defer cancel()
 
 	// Ping first — the connection is established here (not in OnStart) so a
 	// down-at-start target is a recoverable outage, not a fatal probe
 	// failure; emit up=0 and return while unreachable, the pool re-dials on
 	// demand once the server returns (#485).
-	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
-	defer cancel()
-
 	if p.db == nil {
+		err := fmt.Errorf("postgresql: no connection pool")
 		p.moduleLogger.Warn().Str("instance", instance).Msg("postgresql: no connection pool")
+		baseTags := p.baseTags(instance)
 		up := p.dp("senhub.db.up", 0, now, baseTags)
-		return p.BaseProbe.EnrichDataPointsWithProbeName([]data_store.DataPoint{up}, p.GetName()), nil
+		check := p.dp(dbcommon.CheckResultMetric, float64(dbcommon.ClassifyError(err)), now, p.checkResultTags(baseTags))
+		return p.BaseProbe.EnrichDataPointsWithProbeName([]data_store.DataPoint{up, check}, p.GetName()), nil
 	}
 	if err := p.db.PingContext(ctx); err != nil {
 		p.moduleLogger.Warn().Err(err).Str("instance", instance).Msg("postgresql: ping failed")
+		baseTags := p.baseTags(instance)
 		up := p.dp("senhub.db.up", 0, now, baseTags)
-		return p.BaseProbe.EnrichDataPointsWithProbeName([]data_store.DataPoint{up}, p.GetName()), nil
+		check := p.dp(dbcommon.CheckResultMetric, float64(dbcommon.ClassifyError(err)), now, p.checkResultTags(baseTags))
+		return p.BaseProbe.EnrichDataPointsWithProbeName([]data_store.DataPoint{up, check}, p.GetName()), nil
 	}
+
+	// Pin the stable tech id before emitting any metric so the first
+	// successful cycle already carries the definitive identity rather than
+	// the fallback. instance_name takes precedence (already pinned in
+	// newPgEntitySource); if not set, try pg_control_system().
+	if p.entitySrc.pinnedID() == "" {
+		sysID := p.fetchSystemIdentifier(ctx)
+		p.entitySrc.pinTechID(sysID)
+	}
+
+	baseTags := p.baseTags(instance)
 
 	var points []data_store.DataPoint
 	points = append(points, p.dp("senhub.db.up", 1, now, baseTags))
+	points = append(points, p.dp(dbcommon.CheckResultMetric, 0, now, p.checkResultTags(baseTags)))
 
 	// ── Overview ────────────────────────────────────────────────────────────
 	p.collectOverview(ctx, now, baseTags, instance, &points)
@@ -178,16 +187,9 @@ func (p *pgProbe) Collect() ([]data_store.DataPoint, error) {
 	p.collectReplication(ctx, now, instance, &points)
 
 	// ── Entity update ───────────────────────────────────────────────────────
-	// Pin the stable tech id on the first successful collect.  instance_name
-	// takes precedence (already pinned in newPgEntitySource); if not set, try
-	// the cluster-scoped system_identifier from pg_control_system(). The entity
-	// is not emitted until the id is pinned, so we never re-key Toise.
-	if p.entitySrc.pinnedID() == "" {
-		sysID := p.fetchSystemIdentifier(ctx)
-		p.entitySrc.pinTechID(sysID)
-	}
-	// pass "" so update() uses the already-pinned instanceID; a non-empty
-	// fallback is only passed when we deliberately fall back to host:port.
+	// instanceID is already pinned above. Pass "" so update() uses the
+	// already-pinned instanceID; a non-empty fallback is only passed when
+	// the probe deliberately falls back to host:port.
 	p.entitySrc.update("")
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
@@ -214,15 +216,37 @@ func (p *pgProbe) dp(name string, value float64, ts time.Time, baseTags []tags.T
 	return data_store.DataPoint{Name: name, Value: value, Timestamp: ts, Tags: baseTags}
 }
 
-// tagsFor copies baseTags and overrides metric_type.
-func (p *pgProbe) tagsFor(mt dbcommon.MetricType, instance string) []tags.Tag {
-	return []tags.Tag{
-		{Key: "metric_type", Value: string(mt)},
+// baseTags is the single place the probe constructs its base tag set.
+// Every emitted series carries these tags, including the identity key
+// db.instance.id with the same value the entity source uses.
+func (p *pgProbe) baseTags(instance string) []tags.Tag {
+	t := []tags.Tag{
+		{Key: "metric_type", Value: string(dbcommon.MetricTypeOverview)},
 		{Key: "instance", Value: instance},
 		{Key: "db.system.name", Value: "postgresql"},
 		{Key: "server.address", Value: p.cfg.Host},
 		{Key: "server.port", Value: strconv.Itoa(p.cfg.Port)},
 	}
+	if id := p.entitySrc.currentDBInstanceID(); id != "" {
+		t = append(t, tags.Tag{Key: "db.instance.id", Value: id})
+	}
+	return t
+}
+
+// tagsFor copies baseTags and overrides metric_type.
+func (p *pgProbe) tagsFor(mt dbcommon.MetricType, instance string) []tags.Tag {
+	t := p.baseTags(instance)
+	t[0] = tags.Tag{Key: "metric_type", Value: string(mt)}
+	return t
+}
+
+// checkResultTags copies baseTags and overrides metric_type to status for
+// the senhub.probe.check.result datapoint.
+func (p *pgProbe) checkResultTags(base []tags.Tag) []tags.Tag {
+	t := make([]tags.Tag, len(base))
+	copy(t, base)
+	t[0] = tags.Tag{Key: "metric_type", Value: "status"}
+	return t
 }
 
 // ── collectOverview ────────────────────────────────────────────────────────

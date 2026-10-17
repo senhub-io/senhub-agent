@@ -49,6 +49,12 @@ func newTomcatEntitySource(instanceName, hostID, addr string, port int64) *tomca
 	return src
 }
 
+// InstanceID returns the resolved service.instance.id used for entity emission
+// and for telemetry identity tags. It is immutable after construction.
+func (s *tomcatEntitySource) InstanceID() string {
+	return s.instanceID
+}
+
 // resolveInstanceID applies the precedence rule and is exported for tests.
 func resolveInstanceID(instanceName, hostID string) string {
 	if instanceName != "" {

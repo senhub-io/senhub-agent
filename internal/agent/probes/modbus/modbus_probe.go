@@ -1,8 +1,3 @@
-// Package modbus implements the free modbus probe: Modbus TCP register
-// polling for IT/OT convergence — PLCs, industrial sensors, smart-building
-// controllers. One metric per configured register (modbus.register.value),
-// discriminated by register.name and register.address so a single probe
-// instance covers a whole device.
 package modbus
 
 import (
@@ -15,6 +10,7 @@ import (
 
 	modbuslib "github.com/goburrow/modbus"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -87,6 +83,15 @@ func (p *ModbusProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
+// entityTags returns the service.instance identity tag to attach to every
+// datapoint. It is intentionally empty before the first successful connect.
+func (p *ModbusProbe) entityTags() []tags.Tag {
+	if id := p.entitySource.ServiceInstanceID(); id != "" {
+		return []tags.Tag{{Key: "service.instance.id", Value: id}}
+	}
+	return nil
+}
+
 // Collect reads all configured holding registers in one TCP session and
 // emits one datapoint per register. A connection or read failure sets
 // modbus.up=0 — the outage is always visible, never a collection error.
@@ -94,27 +99,51 @@ func (p *ModbusProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 	client := p.newClient(p.cfg)
 
-	upTags := []tags.Tag{
-		{Key: "host", Value: p.cfg.Host},
-		{Key: "modbus.unit_id", Value: strconv.Itoa(p.cfg.UnitID)},
-		{Key: "metric_type", Value: "status"},
-	}
-
 	if err := client.Connect(); err != nil {
 		p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Modbus connect failed")
-		dp := data_store.DataPoint{
-			Name: "modbus.up", Value: 0, Timestamp: now, Tags: upTags,
+		baseTags := p.entityTags()
+		upTags := append(baseTags,
+			tags.Tag{Key: "host", Value: p.cfg.Host},
+			tags.Tag{Key: "modbus.unit_id", Value: strconv.Itoa(p.cfg.UnitID)},
+			tags.Tag{Key: "metric_type", Value: "status"},
+		)
+		points := []data_store.DataPoint{
+			{
+				Name:      "modbus.up",
+				Value:     0,
+				Timestamp: now,
+				Tags:      upTags,
+			},
+			{
+				Name:      dbcommon.CheckResultMetric,
+				Value:     float64(dbcommon.ClassifyError(err)),
+				Timestamp: now,
+				Tags:      upTags,
+			},
 		}
-		return p.BaseProbe.EnrichDataPointsWithProbeName([]data_store.DataPoint{dp}, p.GetName()), nil
+		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
+
+	// Mark the target live before building series so the entity tag is
+	// available for this cycle's datapoints.
+	p.entitySource.markLive()
+
 	defer func() {
 		if err := client.Close(); err != nil {
 			p.moduleLogger.Warn().Err(err).Msg("error closing Modbus connection")
 		}
 	}()
 
+	baseTags := p.entityTags()
+	upTags := append(baseTags,
+		tags.Tag{Key: "host", Value: p.cfg.Host},
+		tags.Tag{Key: "modbus.unit_id", Value: strconv.Itoa(p.cfg.UnitID)},
+		tags.Tag{Key: "metric_type", Value: "status"},
+	)
+
 	var points []data_store.DataPoint
 	allOK := true
+	var collectErr error
 
 	for _, reg := range p.cfg.Registers {
 		val, err := readRegister(client, reg)
@@ -125,15 +154,18 @@ func (p *ModbusProbe) Collect() ([]data_store.DataPoint, error) {
 				Uint16("address", reg.Address).
 				Msg("Modbus register read failed")
 			allOK = false
+			if collectErr == nil {
+				collectErr = err
+			}
 			continue
 		}
 
-		regTags := []tags.Tag{
-			{Key: "register.name", Value: reg.Name},
-			{Key: "register.address", Value: strconv.Itoa(int(reg.Address))},
-			{Key: "modbus.unit_id", Value: strconv.Itoa(p.cfg.UnitID)},
-			{Key: "metric_type", Value: "sensor"},
-		}
+		regTags := append(baseTags,
+			tags.Tag{Key: "register.name", Value: reg.Name},
+			tags.Tag{Key: "register.address", Value: strconv.Itoa(int(reg.Address))},
+			tags.Tag{Key: "modbus.unit_id", Value: strconv.Itoa(p.cfg.UnitID)},
+			tags.Tag{Key: "metric_type", Value: "sensor"},
+		)
 		points = append(points, data_store.DataPoint{
 			Name:      "modbus.register.value",
 			Value:     val,
@@ -149,9 +181,12 @@ func (p *ModbusProbe) Collect() ([]data_store.DataPoint, error) {
 	points = append(points, data_store.DataPoint{
 		Name: "modbus.up", Value: up, Timestamp: now, Tags: upTags,
 	})
-
-	// Mark entity as live after a successful connection cycle.
-	p.entitySource.markLive()
+	points = append(points, data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(dbcommon.ClassifyError(collectErr)),
+		Timestamp: now,
+		Tags:      upTags,
+	})
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }

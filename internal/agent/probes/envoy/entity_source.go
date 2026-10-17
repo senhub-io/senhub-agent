@@ -263,3 +263,14 @@ func fetchEnvoyServerInfo(client *http.Client, endpoint string) (nodeID, version
 	}
 	return info.Node.ID, info.Version
 }
+
+// currentServiceInstanceID returns the id the entity carries, or "" while no entity has been
+// emitted under it, so a series never names an entity that does not exist.
+func (s *envoyEntitySource) currentServiceInstanceID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if !s.idPinned {
+		return ""
+	}
+	return s.pinnedID
+}

@@ -5,6 +5,9 @@ or rewrite them. File names start at 55/60 so they never replace the
 ones the entrypoint writes (00-host, 00-http, 10-otlp, 20-zabbix, 50-*)
 and load after them.
 */ -}}
+{{- $ds := eq (include "senhub-agent.kind" .) "DaemonSet" }}
+{{- $podLogs := and $ds .Values.podLogs.enabled }}
+{{- $kubelet := eq (include "senhub-agent.kubeletStats" .) "true" }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -12,7 +15,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "senhub-agent.labels" . | nindent 4 }}
-{{- if not (or .Values.config.agent .Values.kubernetesProbe.enabled .Values.config.probes .Values.config.strategies) }}
+{{- if not (or .Values.config.agent .Values.kubernetesProbe.enabled $podLogs $kubelet .Values.config.probes .Values.config.strategies) }}
 data: {}
 {{- else }}
 data:
@@ -33,6 +36,22 @@ data:
     {{- if .Values.kubernetesProbe.params }}
     {{- $_ := set $probe "params" .Values.kubernetesProbe.params }}
     {{- end }}
+    {{- toYaml (list $probe) | nindent 4 }}
+  {{- end }}
+  {{- if $podLogs }}
+  probes.d__56-kubernetes-logs.yaml: |
+    {{- $probe := dict "name" .Values.podLogs.name "type" "kubernetes_logs" }}
+    {{- $params := deepCopy (default dict .Values.podLogs.params) }}
+    {{- $_ := set $params "root" .Values.podLogs.podLogsPath }}
+    {{- $_ := set $probe "params" $params }}
+    {{- toYaml (list $probe) | nindent 4 }}
+  {{- end }}
+  {{- if $kubelet }}
+  probes.d__57-kubelet-stats.yaml: |
+    {{- $probe := dict "name" .Values.kubeletStats.name "type" "kubelet_stats" }}
+    {{- $params := deepCopy (default dict .Values.kubeletStats.params) }}
+    {{- $_ := set $params "insecure_skip_verify" .Values.kubeletStats.insecureSkipVerify }}
+    {{- $_ := set $probe "params" $params }}
     {{- toYaml (list $probe) | nindent 4 }}
   {{- end }}
   {{- range $key, $body := .Values.config.probes }}

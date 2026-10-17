@@ -85,5 +85,6 @@ series' tags.
 | `solr.cache.inserts` | `solr.cache.inserts` | Solr Cache Inserts | # | Cumulative query result cache inserts |
 | `solr.document.count` | `solr.document.count` | Solr {core} Document Count | # | Number of indexed documents in the core |
 | `solr.index.size` | `solr.index.size` | Solr {core} Index Size | B | On-disk index size in bytes for the core |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

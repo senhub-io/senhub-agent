@@ -21,9 +21,11 @@ const (
 	defaultTimeout          = 5 * time.Second
 	defaultRetries          = 2
 	defaultInterval         = 60 * time.Second
-	// defaultTopologyInterval — the entity rail sweeps topology far slower
-	// than metrics (Toise guidance ~5-15 min); see entity_source.go.
-	defaultTopologyInterval = 10 * time.Minute
+	// defaultTopologyInterval is the topology sweep cadence, and so the
+	// resolution at which a link going down is dated: at 10 min a cut port
+	// stayed linked on the map for most of an incident. Unchanged entities
+	// cost the consumer nothing more at this pace, its heartbeats compact.
+	defaultTopologyInterval = time.Minute
 
 	minPort = 1
 	maxPort = 65535
@@ -31,6 +33,11 @@ const (
 	// Discovery crawl bounds (defaults; overridable in the discovery: block).
 	defaultMaxDevices = 200
 	defaultMaxHops    = 4
+
+	// Route inventory bound: a device with a full Internet table must not be
+	// inventoried route by route. Connected, default, reject and blackhole
+	// routes are always kept; the rest are sorted deterministically and cut.
+	defaultMaxRoutes = 500
 
 	// metricUp is 1 when the last poll reached the device, 0 otherwise.
 	metricUp = "senhub.snmp.up"
@@ -77,6 +84,8 @@ type config struct {
 	// TopologyInterval is the (slow) cadence for the entity-rail topology
 	// sweep, independent of the metric Interval. Zero → defaultTopologyInterval.
 	TopologyInterval time.Duration
+	// MaxRoutes bounds the number of network.route entities emitted per device.
+	MaxRoutes int
 
 	// MIBs is the ordered list of built-in MIB selectors to poll
 	// (e.g. "mib-2", "if-mib").
@@ -102,12 +111,14 @@ type config struct {
 
 // discoveryConfig is the validated "discovery:" block.
 type discoveryConfig struct {
-	Seeds        []string         // entry device IPs
-	Profile      discoveryProfile // single credential profile for discovered devices
-	MaxDevices   int              // hard cap on discovered devices
-	MaxHops      int              // BFS depth bound
-	AllowedCIDRs []*net.IPNet     // neighbours are crawled only within these
-	Interval     time.Duration    // crawl cadence; 0 → topology interval
+	Seeds           []string         // entry device IPs
+	SeedFromHost    bool             // add the host's default gateways as seeds
+	Profile         discoveryProfile // single credential profile for discovered devices
+	MaxDevices      int              // hard cap on discovered devices
+	MaxHops         int              // BFS depth bound
+	AllowedCIDRs    []*net.IPNet     // neighbours are crawled only within these
+	AllowedFromHost bool             // use the host's own private networks as bounds
+	Interval        time.Duration    // crawl cadence; 0 → topology interval
 
 	// GovernanceRules assign operator metadata to discovered devices by matching
 	// their facts (CIDR / vendor / sysName). Empty when no rules are configured.
@@ -135,6 +146,7 @@ func parseConfig(raw map[string]interface{}) (*config, error) {
 		Timeout:   defaultTimeout,
 		Retries:   defaultRetries,
 		Interval:  defaultInterval,
+		MaxRoutes: defaultMaxRoutes,
 	}
 
 	if target, _ := raw["target"].(string); strings.TrimSpace(target) != "" {
@@ -176,6 +188,14 @@ func parseConfig(raw map[string]interface{}) (*config, error) {
 			errs = append(errs, "retries must be zero or greater")
 		} else {
 			cfg.Retries = v
+		}
+	}
+
+	if v, ok := types.IntParam(raw, "max_routes"); ok {
+		if v < 1 {
+			errs = append(errs, "max_routes must be at least 1")
+		} else {
+			cfg.MaxRoutes = v
 		}
 	}
 
@@ -354,9 +374,9 @@ func parseCustomMappings(v interface{}, haveMIBs bool) ([]customMapping, error) 
 }
 
 // parseDiscovery validates the optional "discovery:" block. Returns nil when
-// absent (single-target mode). Requires seeds (valid IPs), a v2c profile with a
-// community, and at least one allowed CIDR so the crawl cannot wander off the
-// managed network; max_devices / max_hops default to 200 / 4.
+// absent (single-target mode). Seeds and allowed_cidrs are optional: by
+// default the crawl starts from the host's default gateways and is bounded by
+// the host's own private connected networks.
 func parseDiscovery(v interface{}) (*discoveryConfig, error) {
 	if v == nil {
 		return nil, nil
@@ -366,16 +386,28 @@ func parseDiscovery(v interface{}) (*discoveryConfig, error) {
 		return nil, fmt.Errorf("'discovery' must be a mapping")
 	}
 
-	d := &discoveryConfig{MaxDevices: defaultMaxDevices, MaxHops: defaultMaxHops}
+	d := &discoveryConfig{
+		MaxDevices:   defaultMaxDevices,
+		MaxHops:      defaultMaxHops,
+		SeedFromHost: true,
+	}
+
+	if _, present := m["seed_from_host"]; present {
+		b, ok := types.BoolParam(m, "seed_from_host")
+		if !ok {
+			return nil, fmt.Errorf("discovery.seed_from_host must be true or false")
+		}
+		d.SeedFromHost = b
+	}
 
 	seeds, err := parseIPList(m["seeds"])
 	if err != nil {
 		return nil, fmt.Errorf("discovery.seeds: %w", err)
 	}
-	if len(seeds) == 0 {
-		return nil, fmt.Errorf("discovery.seeds is required (at least one entry device IP)")
-	}
 	d.Seeds = seeds
+	if len(seeds) == 0 && !d.SeedFromHost {
+		return nil, fmt.Errorf("discovery needs seeds or seed_from_host")
+	}
 
 	prof, ok := toStringMap(m["profile"])
 	if !ok {
@@ -400,10 +432,8 @@ func parseDiscovery(v interface{}) (*discoveryConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("discovery.allowed_cidrs: %w", err)
 	}
-	if len(cidrs) == 0 {
-		return nil, fmt.Errorf("discovery.allowed_cidrs is required (bounds the crawl to the managed network)")
-	}
 	d.AllowedCIDRs = cidrs
+	d.AllowedFromHost = len(cidrs) == 0
 
 	if n, ok := types.IntParam(m, "max_devices"); ok {
 		if n <= 0 {

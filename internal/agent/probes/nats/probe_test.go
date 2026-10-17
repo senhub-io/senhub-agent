@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -41,6 +43,24 @@ func pointMap(t *testing.T, p *NATSProbe) map[string]float64 {
 		m[dp.Name] = dp.Value
 	}
 	return m
+}
+
+func findPoint(pts []data_store.DataPoint, name string) (data_store.DataPoint, bool) {
+	for _, dp := range pts {
+		if dp.Name == name {
+			return dp, true
+		}
+	}
+	return data_store.DataPoint{}, false
+}
+
+func tagValue(tags []tags.Tag, key string) (string, bool) {
+	for _, tag := range tags {
+		if tag.Key == key {
+			return tag.Value, true
+		}
+	}
+	return "", false
 }
 
 // TestParseConfig_Defaults verifies the zero-config case resolves to sane defaults.
@@ -190,6 +210,115 @@ func TestCollect_JetStreamDisabled(t *testing.T) {
 	}
 	if _, ok := got["nats.jetstream.streams"]; ok {
 		t.Error("JetStream metrics should not appear when /jsz returns 503")
+	}
+}
+
+// TestCollect_EntityKeysAndCheckResult verifies identity tags and the
+// successful check_result metric.
+func TestCollect_EntityKeysAndCheckResult(t *testing.T) {
+	varz := varzResponse{
+		Connections: 1,
+		ServerID:    "S1",
+		Version:     "2.10.0",
+	}
+	routez := routezResponse{NumRoutes: 0}
+	jsz := jszResponse{}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/varz":
+			if err := json.NewEncoder(w).Encode(varz); err != nil {
+				t.Errorf("encode /varz: %v", err)
+			}
+		case "/routez":
+			if err := json.NewEncoder(w).Encode(routez); err != nil {
+				t.Errorf("encode /routez: %v", err)
+			}
+		case "/jsz":
+			if err := json.NewEncoder(w).Encode(jsz); err != nil {
+				t.Errorf("encode /jsz: %v", err)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	p := newTestProbe(t, srv)
+	p.entitySrc.getHostID = func() string { return "host-1" }
+
+	pts, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if len(pts) == 0 {
+		t.Fatal("Collect returned no points")
+	}
+
+	for _, dp := range pts {
+		v, ok := tagValue(dp.Tags, "service.instance.id")
+		if !ok {
+			t.Errorf("point %q missing service.instance.id tag", dp.Name)
+			continue
+		}
+		want := "nats:S1"
+		if v != want {
+			t.Errorf("point %q service.instance.id = %q, want %q", dp.Name, v, want)
+		}
+	}
+
+	check, ok := findPoint(pts, dbcommon.CheckResultMetric)
+	if !ok {
+		t.Fatalf("check result metric %q not found", dbcommon.CheckResultMetric)
+	}
+	if check.Value != 0 {
+		t.Errorf("check result = %v, want 0", check.Value)
+	}
+	if v, ok := tagValue(check.Tags, "metric_type"); !ok || v != "status" {
+		t.Errorf("check result metric_type = %q, want status", v)
+	}
+}
+
+// TestCollect_ConnectionFailureKeysAndCheckResult verifies identity tags are
+// born on the error path and the check result classifies the failed connection.
+func TestCollect_ConnectionFailureKeysAndCheckResult(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	srv.Close()
+
+	p := newTestProbe(t, srv)
+	p.entitySrc.getHostID = func() string { return "host-1" }
+
+	pts, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	up, ok := findPoint(pts, "senhub.nats.up")
+	if !ok {
+		t.Fatal("senhub.nats.up not found")
+	}
+	if up.Value != 0 {
+		t.Errorf("up = %v, want 0", up.Value)
+	}
+	if v, ok := tagValue(up.Tags, "service.instance.id"); ok {
+		t.Errorf("up service.instance.id = %q before any entity, want none", v)
+	}
+
+	check, ok := findPoint(pts, dbcommon.CheckResultMetric)
+	if !ok {
+		t.Fatalf("check result metric %q not found", dbcommon.CheckResultMetric)
+	}
+	want := float64(dbcommon.CheckTargetDown)
+	if check.Value != want {
+		t.Errorf("check result = %v, want %v", check.Value, want)
+	}
+	if v, ok := tagValue(check.Tags, "service.instance.id"); ok {
+		t.Errorf("check result identity = %q before any entity, want none", v)
+	}
+	mv, ok := tagValue(check.Tags, "metric_type")
+	if !ok || mv != "status" {
+		t.Errorf("check result metric_type = %q, present=%v; want status", mv, ok)
 	}
 }
 

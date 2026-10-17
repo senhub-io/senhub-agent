@@ -36,7 +36,13 @@ func startTestService(t *testing.T, dir string) *Service {
 	if err := svc.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = svc.Shutdown(context.Background()) })
+	t.Cleanup(func() {
+		// Bounded: on the Windows runner the pipe's accept loop has been seen
+		// not to exit on Close, and an unbounded wait hung the whole package.
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = svc.Shutdown(ctx)
+	})
 	return svc
 }
 
@@ -165,5 +171,38 @@ func TestClientInputIsNeverRead(t *testing.T) {
 	buf := make([]byte, 1)
 	if _, err := conn.Read(buf); err != nil {
 		t.Fatalf("the agent answers regardless of what was sent: %v", err)
+	}
+}
+
+// stuckListener stands for go-winio's pipe listener whose Close never
+// returns once a pending connect was aborted with an unexpected error.
+type stuckListener struct {
+	net.Listener
+	release chan struct{}
+}
+
+func (l stuckListener) Close() error {
+	<-l.release
+	return nil
+}
+
+func TestShutdownIsBoundedWhenCloseHangs(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	svc := New(logger.NewLogger(&cliArgs.ParsedArgs{}), filepath.Join(t.TempDir(), "agent.yaml"), "9.9.9", "abcdef123456")
+	svc.listener = stuckListener{release: release}
+	svc.loopExited = make(chan struct{})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		_ = svc.Shutdown(ctx)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Shutdown waited on a listener Close that never returns")
 	}
 }

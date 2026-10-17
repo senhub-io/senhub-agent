@@ -328,7 +328,9 @@ A rule applies to relayed spans whose resource attribute `key` equals
 
 Entity events (the infrastructure graph: hosts, interfaces, services and
 their relationships) ride the OTLP **log** signal, so this signal has no
-endpoint or batch knobs of its own — it reuses the log transport.
+endpoint or batch knobs of its own — it reuses the log transport. What the
+agent reports, what is off by default and how a consumer reads a deletion
+are on the [Topology](topology.md) page.
 
 When `entities.enabled` is off, the output logs one warning at start,
 `entity emission is off on this OTLP output`, so an empty topology can be
@@ -495,7 +497,7 @@ group series and logs into entities. Defaults:
 - `service.instance.id` = an RFC 4122 UUID (version 5) derived from the
   agent key: one per agent, stable for as long as the key is, as the
   OpenTelemetry semantic conventions recommend
-- `service.version` = the agent build version (when known)
+- `service.version` = the agent build version (when known), on logs and traces only. Metrics leave it out, and their scope carries no version: a backend such as VictoriaMetrics turns resource and scope attributes into labels of every series, so a version there would recreate every series at each upgrade. The version is on `senhub.agent.build.info`, one series.
 
 Any additional key/value pair under `resource:` is passed through
 verbatim — useful for `k8s.*`, `cloud.*`, `host.*`, or your own
@@ -559,6 +561,24 @@ The OTLP strategy ships logs from these probe sources:
 
 Probes still emit DataPoints to the existing PRTG/Nagios/event
 strategies; the logs path is **additive**.
+
+### The agent's own warnings
+
+On request, the agent also sends its own warnings and errors as log
+records, so an
+operator who reads only the logs backend sees, for example, a probe
+reporting a missing cloud permission. Records come from the producer
+`senhub-agent` (type `agent`) with severity WARN, ERROR or FATAL, the
+message as body (` error=...` appended when the event carries one), the
+agent module in `senhub.agent.module`, and the other fields of the event
+as attributes, secrets masked as in the agent's own log file. Messages
+of the log pipeline itself are never sent back into it.
+
+At most 20 records a second are sent, with bursts up to 100; the rest
+are dropped and counted in `senhub.agent.self_logs.dropped`
+(`senhub.agent.self_logs.published` counts the others). The environment
+variable `SENHUB_SELF_LOGS` turns it on: `warn` sends warnings and above, `error`
+errors and above. Unset (or `off`), nothing is sent.
 
 ### Logs survive an outage
 
@@ -837,6 +857,26 @@ Both knobs are gauges of last resort — they protect the agent's memory
 under runaway-cardinality conditions. Raise them only when you know
 what's generating the series, otherwise the agent will happily eat
 RAM tracking churning timeseries.
+
+### Series metering (Enterprise)
+
+A time-series backend such as VictoriaMetrics sizes and bills on active
+series: a metric name with one set of point attributes, which received a
+sample within the last hour. The Enterprise edition counts them on the
+agent, as it exports, so you know what a host, a container or a pod
+costs before you size the backend:
+
+| Metric | Type | Labels | Meaning |
+|---|---|---|---|
+| `senhub.agent.series.active` | gauge | `output`, `probe` | Series this output exported within the last hour |
+| `senhub.agent.series.created` | counter | `output`, `probe` | Series exported for the first time since the agent started; a steady climb is churn the backend stores as new series |
+| `senhub.agent.series.untracked` | counter | – | New series not counted because the agent reached its 500,000-series memory bound; above 0, the active counts are a floor |
+
+The agent's own metrics are counted under `probe="__agent__"`. Global
+tags ride on the resource and do not multiply the count. The figures
+describe the exports up to the previous push. Metering needs an
+Enterprise licence; without it the agent counts nothing and emits none
+of these metrics.
 
 ### What time a point carries
 

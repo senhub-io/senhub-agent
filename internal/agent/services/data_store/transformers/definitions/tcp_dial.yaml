@@ -33,3 +33,32 @@ metrics:
       value_scale: 0.001
     tag_to_attribute:
       target: tcpdial.target
+
+  - name: "senhub.probe.check.result"
+    channel: "check_result"
+    display_name: "Check Result"
+    unit: "#"
+    category: "availability"
+    description: "Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied"
+    lookup: "senhub.probe.check.result"
+    otel:
+      name: senhub.probe.check.result
+      unit: "{status}"
+      type: gauge
+    tag_to_attribute:
+      target: tcpdial.target
+
+
+  - name: "senhub.probe.check.target.unresolved"
+    channel: "check_target_unresolved"
+    display_name: "Check Target Unresolved"
+    unit: "#"
+    category: "availability"
+    description: "1 when a local target is not listening and the check failed with connection refused"
+    lookup: "senhub.probe.check.target.unresolved"
+    otel:
+      name: senhub.probe.check.target.unresolved
+      unit: "{status}"
+      type: gauge
+    tag_to_attribute:
+      target: tcpdial.target

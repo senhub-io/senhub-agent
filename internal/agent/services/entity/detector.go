@@ -77,8 +77,12 @@ type Detector struct {
 	now            func() time.Time
 	onOrphan       func([]Relation)
 	onOrphanEntity func([]Entity)
-	onConflict     func(AttributeConflict)
-	onMerge        func(Entity, int)
+	// onSlowCadence is told once per source and value about a cadence the
+	// consumer will refuse.
+	onSlowCadence func(cadence time.Duration)
+	warnedCadence map[uint64]time.Duration
+	onConflict    func(AttributeConflict)
+	onMerge       func(Entity, int)
 	// lastGood caches, per registered-source id, the most recent
 	// observation reported with ok=true, so a transient failure serves
 	// stale-but-real topology instead of an empty set (audit D3).
@@ -127,6 +131,14 @@ func (d *Detector) OnOrphanEntities(fn func([]Entity)) {
 	d.onOrphanEntity = fn
 }
 
+// OnCadenceBeyondCeiling registers a hook called when a source reads slower
+// than the consumer's longest accepted interval. The cadence is still
+// announced as it is; this only makes the misconfiguration visible here too.
+// Nil-safe.
+func (d *Detector) OnCadenceBeyondCeiling(fn func(cadence time.Duration)) {
+	d.onSlowCadence = fn
+}
+
 // Run emits the foundation once immediately, then on every interval tick,
 // until the context is cancelled. Blocks; run it in its own goroutine.
 func (d *Detector) Run(ctx context.Context) {
@@ -168,6 +180,26 @@ func (d *Detector) Run(ctx context.Context) {
 	}
 }
 
+// withSourceCadence stamps the source's actual read cadence onto a copy of
+// each entity it asserted. The source may cache and reuse the observation
+// slice, so the entities are never mutated in place.
+func withSourceCadence(o Observation, src Source) Observation {
+	cadence := time.Duration(0)
+	if cs, ok := sourceAs[CadenceSource](src); ok {
+		cadence = cs.Cadence()
+	}
+	if cadence <= 0 || len(o.Entities) == 0 {
+		return o
+	}
+	entities := make([]Entity, len(o.Entities))
+	copy(entities, o.Entities)
+	for i := range entities {
+		entities[i].Cadence = cadence
+	}
+	o.Entities = entities
+	return o
+}
+
 // reconcile observes the host + agent at instant ts and feeds the resulting
 // snapshot to the tracker, which emits state (heartbeat) + any deletes. A
 // failure to read host identity skips this cycle rather than emitting a host
@@ -204,6 +236,16 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 	for _, r := range regs {
 		live[r.id] = true
 		o, ok := r.src.Observe()
+		if dep, isD := sourceAs[DepartureSource](r.src); isD {
+			for _, e := range d.lastGood[r.id].obs.Entities {
+				if reason := dep.DepartureReason(e); reason != "" {
+					reasons[entityKey(e.Type, e.ID)] = reason
+				}
+			}
+		}
+		if u, isU := sourceAs[UnobservedSource](r.src); isU {
+			markUnmonitored(reasons, u.Unobserved())
+		}
 		switch {
 		case ok:
 			d.lastGood[r.id] = cachedObservation{obs: o, at: ts}
@@ -212,6 +254,19 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 				// Transient failure: keep the consumer's view of this
 				// slice of the graph until the TTL says it is real.
 				o = cached.obs
+				// A replayed fact keeps the time it was originally
+				// observed. An entity that already carries an older
+				// ObservedAt keeps that older time.
+				// Stamped on a copy: the cached slice is shared with the
+				// source, whose next good read must come back as fresh.
+				replayed := make([]Entity, len(o.Entities))
+				copy(replayed, o.Entities)
+				for i := range replayed {
+					if replayed[i].ObservedAt.IsZero() {
+						replayed[i].ObservedAt = cached.at
+					}
+				}
+				o.Entities = replayed
 			} else {
 				// Failing beyond the TTL (or never succeeded): the
 				// empty set flows through and absence-deletes fire. We
@@ -221,6 +276,8 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 				o = Observation{}
 			}
 		}
+		o = withSourceCadence(o, r.src)
+		d.reportSlowCadence(r.id, r.src)
 		obs = obs.merge(o)
 	}
 	// Drop caches of unregistered sources so a stopped probe's topology
@@ -261,4 +318,25 @@ func markUnmonitored(reasons map[string]string, entities []Entity) {
 	for i := range entities {
 		reasons[entityKey(entities[i].Type, entities[i].ID)] = ReasonUnmonitored
 	}
+}
+
+// reportSlowCadence tells the hook about a source reading slower than the
+// consumer accepts, once per source and value.
+func (d *Detector) reportSlowCadence(id uint64, src Source) {
+	cs, ok := sourceAs[CadenceSource](src)
+	if !ok || d.onSlowCadence == nil {
+		return
+	}
+	c := cs.Cadence()
+	if c <= ConsumerIntervalCeiling {
+		return
+	}
+	if d.warnedCadence == nil {
+		d.warnedCadence = map[uint64]time.Duration{}
+	}
+	if d.warnedCadence[id] == c {
+		return
+	}
+	d.warnedCadence[id] = c
+	d.onSlowCadence(c)
 }

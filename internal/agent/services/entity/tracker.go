@@ -25,14 +25,15 @@ type Tracker struct {
 	// seen maps an item's identity key to the delete event that would
 	// retire it, captured from the last state we emitted for that key.
 	seen map[string]Event
-	// refresh is the change-suppression window: an UNCHANGED state is
-	// re-published only when this long has passed since its last emit
-	// (audit P6 — full-snapshot heartbeats with no suppression are
-	// ~12k records/min at 200 devices). Must stay well under the
-	// liveness Interval carried on events (cadence x slack factor) so
-	// suppression can never expire a live entity. Zero disables
-	// suppression (every state publishes every cycle).
+	// refresh is the heartbeat grid interval. Unchanged states are
+	// suppressed until the next grid slot; zero disables suppression and
+	// publishes every state every cycle.
 	refresh time.Duration
+	// grid is the first publication time that anchors the global heartbeat
+	// phase shared by all entities.
+	grid time.Time
+	// nextGrid is the next time at which unchanged states are due.
+	nextGrid time.Time
 	// pub maps an identity key to the content hash and emit time of the
 	// last published state for that key.
 	pub map[string]published
@@ -44,7 +45,7 @@ type published struct {
 }
 
 // NewTracker builds a Tracker that emits via publish. refresh is the
-// change-suppression window (see Tracker.refresh); zero disables it.
+// heartbeat grid interval (see Tracker.refresh); zero disables it.
 func NewTracker(publish func(Event), refresh time.Duration) *Tracker {
 	return &Tracker{
 		publish: publish,
@@ -55,8 +56,8 @@ func NewTracker(publish func(Event), refresh time.Duration) *Tracker {
 }
 
 // Reconcile publishes a state event for every entity in current (the full set
-// observed this cycle, all state-kind) whose content changed or whose refresh
-// window elapsed, then a delete for every previously seen entity absent from
+// observed this cycle, all state-kind) whose content changed or whose grid
+// slot is due, then a delete for every previously seen entity absent from
 // current. Deletes are stamped with now. current is expected to carry only
 // EntityState events.
 //
@@ -66,17 +67,43 @@ func NewTracker(publish func(Event), refresh time.Duration) *Tracker {
 // nil is fine and means every delete this cycle is a plain termination.
 func (t *Tracker) Reconcile(current []Event, now time.Time, reasons map[string]string) {
 	cur := make(map[string]bool, len(current))
+
+	// A ticker fires a little early as often as late: compared exactly, a
+	// tick a few milliseconds short of its slot misses it and the heartbeat
+	// leaves one tick later, which is how a 120 s cadence turned into
+	// alternating 120 s and 180 s gaps. Half a tick of tolerance absorbs it.
+	gridDue := false
+	if t.refresh > 0 && !t.nextGrid.IsZero() && !now.Before(t.nextGrid.Add(-t.refresh/4)) {
+		gridDue = true
+		for !t.nextGrid.After(now.Add(t.refresh / 4)) {
+			t.nextGrid = t.nextGrid.Add(t.refresh)
+		}
+	}
+
 	for _, ev := range current {
+		if ev.Kind == EntityState {
+			if ev.Entity != nil && !ev.Entity.ObservedAt.IsZero() {
+				ev.Time = ev.Entity.ObservedAt
+			} else if ev.Time.IsZero() {
+				ev.Time = now
+			}
+		}
 		k := eventKey(ev)
 		cur[k] = true
 		t.seen[k] = deleteFor(ev)
 
 		h := stateHash(ev)
-		if p, ok := t.pub[k]; ok && t.refresh > 0 && p.hash == h && now.Sub(p.at) < t.refresh {
-			continue // unchanged and fresh: suppressed heartbeat
+		p, ok := t.pub[k]
+		changed := !ok || p.hash != h
+		if t.refresh > 0 && !changed && !gridDue {
+			continue // unchanged before the next grid slot: suppressed heartbeat
 		}
 		t.publish(ev)
 		t.pub[k] = published{hash: h, at: now}
+		if t.grid.IsZero() {
+			t.grid = now
+			t.nextGrid = now.Add(t.refresh)
+		}
 	}
 	for k, del := range t.seen {
 		if cur[k] {
@@ -100,14 +127,17 @@ func (t *Tracker) Reconcile(current []Event, now time.Time, reasons map[string]s
 // Forget drops the record of what was published, so the next Reconcile
 // publishes every state in full. Used when a new consumer subscribes: it
 // has seen none of the states the suppression window would otherwise hold
-// back for up to two cycles, the host entity included.
+// back. The heartbeat grid is not reset, so the global phase is unchanged.
 func (t *Tracker) Forget() {
 	t.pub = map[string]published{}
 }
 
 // stateHash renders the mutable content of a state event (attributes +
-// relationships + liveness interval) into a stable string, so unchanged
+// relationships + announced interval) into a stable string, so unchanged
 // heartbeats are recognizable. Identity is excluded — it is the map key.
+// ObservedAt is excluded: a replayed fact must not count as a change. The
+// announced interval is included: when it changes the consumer must learn
+// the new liveness deadline at once, not at the next heartbeat.
 func stateHash(ev Event) string {
 	if ev.Entity == nil {
 		return ""

@@ -248,3 +248,14 @@ func defaultGetHostID() hostIDFunc {
 		return hi.ID
 	}
 }
+
+// CurrentID returns the id the entity carries, or "" while no entity has been
+// emitted under it, so a series never names an entity that does not exist.
+func (s *cephEntitySource) CurrentID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.pinned {
+		return ""
+	}
+	return s.id
+}

@@ -23,6 +23,9 @@ func TestParseConfig_Defaults(t *testing.T) {
 	if cfg.Interval != 30*time.Second {
 		t.Errorf("default interval = %v; want 30s", cfg.Interval)
 	}
+	if cfg.Detail != systemdDetailState {
+		t.Errorf("default detail = %q; want %q", cfg.Detail, systemdDetailState)
+	}
 	for _, typ := range defaultIncludeTypes {
 		if !cfg.IncludeTypes[typ] {
 			t.Errorf("default include_types missing %q", typ)
@@ -46,6 +49,23 @@ func TestParseConfig_ExplicitUnits(t *testing.T) {
 	}
 	if cfg.Interval != 60*time.Second {
 		t.Errorf("interval = %v; want 60s", cfg.Interval)
+	}
+	if cfg.Detail != systemdDetailState {
+		t.Errorf("detail = %q; want default %q", cfg.Detail, systemdDetailState)
+	}
+}
+
+func TestParseConfig_Detail(t *testing.T) {
+	cfg, err := parseConfig(map[string]interface{}{"detail": "full"})
+	if err != nil {
+		t.Fatalf("parseConfig with detail=full returned error: %v", err)
+	}
+	if cfg.Detail != systemdDetailFull {
+		t.Errorf("detail = %q; want %q", cfg.Detail, systemdDetailFull)
+	}
+
+	if _, err := parseConfig(map[string]interface{}{"detail": "verbose"}); err == nil {
+		t.Error("expected error for invalid detail")
 	}
 }
 
@@ -109,7 +129,12 @@ func TestFilterUnits_AllTypes_WhenUnitsEmpty(t *testing.T) {
 		makeUnit("logrotate.timer", "active", "waiting", "loaded"),
 		makeUnit("dbus.socket", "active", "running", "loaded"),
 	}
-	got := filterUnits(cfg, all)
+	unitFileStates := map[string]string{
+		"nginx.service":   "enabled",
+		"logrotate.timer": "enabled-runtime",
+		"dbus.socket":     "static",
+	}
+	got := filterUnits(cfg, all, unitFileStates)
 	if len(got) != 2 {
 		t.Errorf("filterUnits: got %d units; want 2 (service+timer only)", len(got))
 	}
@@ -126,7 +151,7 @@ func TestFilterUnits_GlobPattern(t *testing.T) {
 		makeUnit("ssh.service", "active", "running", "loaded"),
 		makeUnit("cron.service", "active", "running", "loaded"),
 	}
-	got := filterUnits(cfg, all)
+	got := filterUnits(cfg, all, nil)
 	if len(got) != 3 {
 		t.Errorf("filterUnits with globs: got %d; want 3", len(got))
 	}
@@ -141,7 +166,10 @@ func TestFilterUnits_ExcludesUnknownType(t *testing.T) {
 		makeUnit("bar.scope", "active", "running", "loaded"),
 		makeUnit("baz.path", "active", "waiting", "loaded"),
 	}
-	got := filterUnits(cfg, all)
+	unitFileStates := map[string]string{
+		"foo.service": "enabled",
+	}
+	got := filterUnits(cfg, all, unitFileStates)
 	if len(got) != 1 || got[0].Name != "foo.service" {
 		t.Errorf("filterUnits: expected only foo.service, got %v", got)
 	}
@@ -151,9 +179,83 @@ func TestFilterUnits_EmptyInput(t *testing.T) {
 	cfg := probeConfig{
 		IncludeTypes: map[string]bool{"service": true},
 	}
-	got := filterUnits(cfg, nil)
+	got := filterUnits(cfg, nil, nil)
 	if len(got) != 0 {
 		t.Errorf("filterUnits(nil): got %d; want 0", len(got))
+	}
+}
+
+func TestFilterUnits_DefaultUsesUnitFileState(t *testing.T) {
+	cfg := probeConfig{IncludeTypes: map[string]bool{"service": true}}
+	all := []dbus.UnitStatus{
+		makeUnit("enabled.service", "active", "running", "loaded"),
+		makeUnit("enabled-runtime.service", "active", "running", "loaded"),
+		makeUnit("disabled.service", "inactive", "dead", "loaded"),
+		makeUnit("static.service", "inactive", "dead", "loaded"),
+		makeUnit("unknown.service", "active", "running", "loaded"),
+	}
+	unitFileStates := map[string]string{
+		"enabled.service":         "enabled",
+		"enabled-runtime.service": "enabled-runtime",
+		"disabled.service":        "disabled",
+		"static.service":          "static",
+		// unknown.service has no UnitFileState; it must not be selected.
+	}
+
+	got := filterUnits(cfg, all, unitFileStates)
+	if len(got) != 2 {
+		t.Fatalf("default selection: got %d units; want 2", len(got))
+	}
+	names := map[string]bool{}
+	for _, u := range got {
+		names[u.Name] = true
+	}
+	if !names["enabled.service"] || !names["enabled-runtime.service"] {
+		t.Errorf("default selection: %v; want enabled and enabled-runtime", names)
+	}
+	if names["disabled.service"] || names["static.service"] || names["unknown.service"] {
+		t.Errorf("default selection must not include disabled/static/unknown units: %v", names)
+	}
+}
+
+func TestFilterUnits_ExplicitNamedUnitIgnoresUnitFileState(t *testing.T) {
+	cfg := probeConfig{
+		Units:        []string{"disabled.service"},
+		IncludeTypes: map[string]bool{"service": true},
+	}
+	all := []dbus.UnitStatus{
+		makeUnit("disabled.service", "inactive", "dead", "loaded"),
+		makeUnit("enabled.service", "active", "running", "loaded"),
+	}
+	got := filterUnits(cfg, all, nil)
+	if len(got) != 1 || got[0].Name != "disabled.service" {
+		t.Errorf("explicit named disabled unit should be selected: got %v", got)
+	}
+}
+
+// Each SSH login creates run-user-UID.mount and user-runtime-dir@UID.service,
+// removed at logout; in the default view they became series (and PRTG
+// channels) that stopped with the session.
+func TestFilterUnits_DefaultViewLeavesSessionUnitsOut(t *testing.T) {
+	cfg := probeConfig{IncludeTypes: map[string]bool{"service": true, "mount": true}}
+	all := []dbus.UnitStatus{
+		makeUnit("nginx.service", "active", "running", "loaded"),
+		makeUnit("run-user-1000.mount", "active", "mounted", "loaded"),
+		makeUnit("user-runtime-dir@1000.service", "active", "exited", "loaded"),
+		makeUnit("user@1000.service", "active", "running", "loaded"),
+		makeUnit("home.mount", "active", "mounted", "loaded"),
+	}
+	unitFileStates := map[string]string{
+		"nginx.service": "enabled",
+		"home.mount":    "enabled-runtime",
+	}
+	got := filterUnits(cfg, all, unitFileStates)
+	if len(got) != 2 || got[0].Name != "nginx.service" || got[1].Name != "home.mount" {
+		t.Errorf("default view = %v, want nginx.service and home.mount", got)
+	}
+	cfg.Units = []string{"user@*.service"}
+	if got := filterUnits(cfg, all, nil); len(got) != 1 {
+		t.Errorf("an explicit units list must still reach session units, got %v", got)
 	}
 }
 
@@ -164,11 +266,11 @@ func TestFilterUnits_EmptyInput(t *testing.T) {
 func TestBuildDatapoints_ActiveRunningLoaded(t *testing.T) {
 	u := makeUnit("nginx.service", "active", "running", "loaded")
 	ts := time.Unix(1000, 0)
-	pts := buildDatapoints(u, ts, nil)
+	pts := buildDatapoints(u, ts, nil, "host-1", "host-1.example", systemdDetailFull)
 
-	// Expect 3 datapoints (no NRestarts passed).
-	if len(pts) != 3 {
-		t.Fatalf("buildDatapoints: got %d points; want 3", len(pts))
+	// Expect 4 datapoints: host.service.running and 3 systemd states (no NRestarts passed).
+	if len(pts) != 4 {
+		t.Fatalf("buildDatapoints: got %d points; want 4", len(pts))
 	}
 
 	byName := make(map[string]float64, len(pts))
@@ -189,7 +291,7 @@ func TestBuildDatapoints_ActiveRunningLoaded(t *testing.T) {
 
 func TestBuildDatapoints_InactiveDeadNotFound(t *testing.T) {
 	u := makeUnit("failed.service", "inactive", "dead", "not-found")
-	pts := buildDatapoints(u, time.Now(), nil)
+	pts := buildDatapoints(u, time.Now(), nil, "host-1", "host-1.example", systemdDetailFull)
 
 	byName := make(map[string]float64, len(pts))
 	for _, p := range pts {
@@ -210,11 +312,11 @@ func TestBuildDatapoints_InactiveDeadNotFound(t *testing.T) {
 func TestBuildDatapoints_WithNRestarts(t *testing.T) {
 	u := makeUnit("crashed.service", "active", "running", "loaded")
 	restarts := float64(3)
-	pts := buildDatapoints(u, time.Now(), &restarts)
+	pts := buildDatapoints(u, time.Now(), &restarts, "host-1", "host-1.example", systemdDetailFull)
 
-	// Expect 4 datapoints (3 states + restarts).
-	if len(pts) != 4 {
-		t.Fatalf("buildDatapoints with restarts: got %d points; want 4", len(pts))
+	// Expect 5 datapoints: host.service.running, 3 systemd states and restarts.
+	if len(pts) != 5 {
+		t.Fatalf("buildDatapoints with restarts: got %d points; want 5", len(pts))
 	}
 	byName := make(map[string]float64, len(pts))
 	for _, p := range pts {
@@ -230,7 +332,7 @@ func TestBuildDatapoints_TimerNoRestarts(t *testing.T) {
 	// non-nil nRestarts is supplied (the helper guards on unit type).
 	u := makeUnit("logrotate.timer", "active", "waiting", "loaded")
 	restarts := float64(0)
-	pts := buildDatapoints(u, time.Now(), &restarts)
+	pts := buildDatapoints(u, time.Now(), &restarts, "host-1", "host-1.example", systemdDetailFull)
 
 	for _, p := range pts {
 		if p.Name == "systemd.unit.restarts" {
@@ -241,7 +343,7 @@ func TestBuildDatapoints_TimerNoRestarts(t *testing.T) {
 
 func TestBuildDatapoints_SubStateTags(t *testing.T) {
 	u := makeUnit("nginx.service", "active", "running", "loaded")
-	pts := buildDatapoints(u, time.Now(), nil)
+	pts := buildDatapoints(u, time.Now(), nil, "host-1", "host-1.example", systemdDetailFull)
 
 	for _, p := range pts {
 		if p.Name != "systemd.unit.sub_state" {
@@ -267,7 +369,7 @@ func TestBuildDatapoints_UnitTypeTags(t *testing.T) {
 	}
 	for _, c := range cases {
 		u := makeUnit(c.unitName, "active", "running", "loaded")
-		pts := buildDatapoints(u, time.Now(), nil)
+		pts := buildDatapoints(u, time.Now(), nil, "host-1", "host-1.example", systemdDetailFull)
 		for _, p := range pts {
 			if p.Name == "systemd.unit.sub_state" {
 				continue
@@ -287,7 +389,7 @@ func TestBuildDatapoints_UnitTypeTags(t *testing.T) {
 
 func TestBuildDatapoints_ListeningSubState(t *testing.T) {
 	u := makeUnit("dbus.socket", "active", "listening", "loaded")
-	pts := buildDatapoints(u, time.Now(), nil)
+	pts := buildDatapoints(u, time.Now(), nil, "host-1", "host-1.example", systemdDetailFull)
 	byName := make(map[string]float64, len(pts))
 	for _, p := range pts {
 		byName[p.Name] = p.Value
@@ -297,24 +399,26 @@ func TestBuildDatapoints_ListeningSubState(t *testing.T) {
 	}
 }
 
-// Each SSH login creates run-user-UID.mount and user-runtime-dir@UID.service,
-// removed at logout; in the default view they became series (and PRTG
-// channels) that stopped with the session.
-func TestFilterUnits_DefaultViewLeavesSessionUnitsOut(t *testing.T) {
-	cfg := probeConfig{IncludeTypes: map[string]bool{"service": true, "mount": true}}
-	all := []dbus.UnitStatus{
-		makeUnit("nginx.service", "active", "running", "loaded"),
-		makeUnit("run-user-1000.mount", "active", "mounted", "loaded"),
-		makeUnit("user-runtime-dir@1000.service", "active", "exited", "loaded"),
-		makeUnit("user@1000.service", "active", "running", "loaded"),
-		makeUnit("home.mount", "active", "mounted", "loaded"),
+func TestBuildDatapoints_DetailState(t *testing.T) {
+	u := makeUnit("nginx.service", "active", "running", "loaded")
+	restarts := float64(3)
+	pts := buildDatapoints(u, time.Now(), &restarts, "host-1", "host-1.example", systemdDetailState)
+
+	if len(pts) != 1 {
+		t.Fatalf("detail=state: got %d points; want 1", len(pts))
 	}
-	got := filterUnits(cfg, all)
-	if len(got) != 2 || got[0].Name != "nginx.service" || got[1].Name != "home.mount" {
-		t.Errorf("default view = %v, want nginx.service and home.mount", got)
+	if pts[0].Name != "host.service.running" {
+		t.Fatalf("detail=state point = %q; want host.service.running", pts[0].Name)
 	}
-	cfg.Units = []string{"user@*.service"}
-	if got := filterUnits(cfg, all); len(got) != 1 {
-		t.Errorf("an explicit units list must still reach session units, got %v", got)
+	if pts[0].Value != 1 {
+		t.Errorf("host.service.running = %v; want 1 (running)", pts[0].Value)
+	}
+	for _, tag := range pts[0].Tags {
+		if tag.Key == "sub_state" {
+			t.Error("detail=state must not emit sub_state tag")
+		}
+	}
+	if len(pts) != 1 {
+		t.Error("detail=state emitted more than active_state")
 	}
 }

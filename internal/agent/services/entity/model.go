@@ -64,6 +64,16 @@ const (
 	// probe stopped, or was removed from the configuration), or it failed for
 	// longer than lastGoodTTL. Says nothing about the resource.
 	ReasonUnmonitored = "unmonitored"
+	// ReasonRekeyed: the resource did not change, only the producer's
+	// identity for it. A third family next to the resource's lifecycle and
+	// the end of observation: nothing happened in the world.
+	ReasonRekeyed = "rekeyed"
+	// ReasonAgedOut: a cache the source reads forgot the entry (an ARP or
+	// NDP neighbour aged out, a bridge forgot a MAC). Nobody saw the thing
+	// leave; it simply went quiet long enough to be dropped. Not "evicted":
+	// Toise's contract already gives that word to a workload its scheduler
+	// removed, a resource that really ended, the opposite reading.
+	ReasonAgedOut = "aged_out"
 )
 
 // Entity is a node: a thing in the infrastructure the agent reports on.
@@ -94,6 +104,19 @@ type Entity struct {
 	Attributes    map[string]any
 	Relationships []Relationship
 	Scope         string
+	// ObservedAt is the producer-side observation time for this entity.
+	// Zero means "observed now" — the detector/tracker stamps the current
+	// tick. A source that re-uses a previous observation sets it to the
+	// time of that original observation, so a replayed fact keeps its
+	// original event_time. It is deliberately outside entity identity and
+	// change hashing.
+	ObservedAt time.Time
+	// Cadence is the interval at which the asserting source actually
+	// re-reads the fact. Zero means unknown or "this tick". It is also
+	// deliberately outside identity and change hashing; it widens the
+	// announced Event.Interval, but a cadence change is not an entity
+	// content change.
+	Cadence time.Duration
 }
 
 // Scope* are the frozen instrumentation-scope names that carry an entity's
@@ -108,6 +131,7 @@ const (
 	ScopeSNMPRoute = "senhub-agent/snmp-route" // device routing table (network.route)
 	ScopeSNMPIFMIB = "senhub-agent/snmp-ifmib" // device + IF-MIB ports/addresses
 	ScopeHostRoute = "senhub-agent/host-route" // host kernel routing table
+	ScopeHostARP   = "senhub-agent/host-arp"   // host ARP/NDP neighbour inventory
 	ScopeHostSvc   = "senhub-agent/host-svc"   // host listening-service inventory
 	ScopeHostIface = "senhub-agent/host-iface" // host interface/address inventory
 	ScopeHostDep   = "senhub-agent/host-dep"   // host outbound dependency flows

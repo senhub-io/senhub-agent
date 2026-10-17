@@ -1,17 +1,15 @@
-// Package elasticsearch implements the FREE-tier Elasticsearch monitoring probe.
-// It queries /_cluster/health and /_nodes/_local/stats over the REST JSON API
-// and emits OTel-first metrics aligned with the otelcol-contrib
-// elasticsearchreceiver where equivalents exist.
 package elasticsearch
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -44,6 +42,13 @@ type esConfig struct {
 	Interval     time.Duration
 	Timeout      time.Duration
 }
+
+type httpStatusError struct {
+	code int
+	msg  string
+}
+
+func (e *httpStatusError) Error() string { return e.msg }
 
 // NewElasticsearchProbe constructs the probe from the agent YAML params.
 func NewElasticsearchProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
@@ -106,6 +111,40 @@ func (p *elasticsearchProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
+func (p *elasticsearchProbe) baseTags() []tags.Tag {
+	if id := p.entitySrc.currentInstanceID(); id != "" {
+		return []tags.Tag{{Key: "db.instance.id", Value: id}}
+	}
+	return nil
+}
+
+func (p *elasticsearchProbe) tagsWithMetricType(metricType string, extra ...tags.Tag) []tags.Tag {
+	out := p.baseTags()
+	out = append(out, tags.Tag{Key: "metric_type", Value: metricType})
+	out = append(out, extra...)
+	return out
+}
+
+func (p *elasticsearchProbe) checkResultPoint(ts time.Time, err error, tags []tags.Tag) data_store.DataPoint {
+	return data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(classifyProbeError(err)),
+		Timestamp: ts,
+		Tags:      tags,
+	}
+}
+
+func classifyProbeError(err error) dbcommon.CheckResult {
+	if err == nil {
+		return dbcommon.CheckOK
+	}
+	var statusErr *httpStatusError
+	if errors.As(err, &statusErr) {
+		return dbcommon.ClassifyHTTPStatus(statusErr.code)
+	}
+	return dbcommon.ClassifyError(err)
+}
+
 // Collect fetches cluster health + local node stats and emits datapoints.
 // senhub.elasticsearch.up is always emitted, even on error (up=0).
 // On the first successful collect it also calls GET / to pin the cluster_uuid
@@ -114,14 +153,14 @@ func (p *elasticsearchProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 	var points []data_store.DataPoint
 
-	upTags := []tags.Tag{{Key: "metric_type", Value: "status"}}
-
 	health, err := p.fetchClusterHealth()
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("elasticsearch cluster health fetch failed")
 		p.entitySrc.setReachable(false)
+		upTags := p.tagsWithMetricType("status")
 		points = append(points,
 			data_store.DataPoint{Name: "senhub.elasticsearch.up", Value: 0, Timestamp: now, Tags: upTags},
+			p.checkResultPoint(now, err, upTags),
 		)
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
@@ -132,6 +171,7 @@ func (p *elasticsearchProbe) Collect() ([]data_store.DataPoint, error) {
 
 	p.entitySrc.setReachable(true)
 
+	upTags := p.tagsWithMetricType("status")
 	points = append(points,
 		data_store.DataPoint{Name: "senhub.elasticsearch.up", Value: 1, Timestamp: now, Tags: upTags},
 	)
@@ -141,9 +181,11 @@ func (p *elasticsearchProbe) Collect() ([]data_store.DataPoint, error) {
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("elasticsearch node stats fetch failed")
 		// Return what we have (cluster health is available).
+		points = append(points, p.checkResultPoint(now, err, upTags))
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 	points = append(points, p.buildNodeStatsPoints(nodeStats, now)...)
+	points = append(points, p.checkResultPoint(now, nil, upTags))
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
@@ -213,19 +255,19 @@ func statusToFloat(status string) float64 {
 }
 
 func (p *elasticsearchProbe) buildClusterHealthPoints(h *clusterHealth, ts time.Time) []data_store.DataPoint {
-	clusterTag := tags.Tag{Key: "metric_type", Value: "status"}
-	nodeTag := tags.Tag{Key: "metric_type", Value: "nodes"}
-	shardTag := tags.Tag{Key: "metric_type", Value: "shards"}
-	taskTag := tags.Tag{Key: "metric_type", Value: "tasks"}
+	clusterTag := p.tagsWithMetricType("status")
+	nodeTag := p.tagsWithMetricType("nodes")
+	shardTag := p.tagsWithMetricType("shards")
+	taskTag := p.tagsWithMetricType("tasks")
 
 	return []data_store.DataPoint{
-		{Name: "elasticsearch.cluster.health", Value: statusToFloat(h.Status), Timestamp: ts, Tags: []tags.Tag{clusterTag}},
-		{Name: "elasticsearch.cluster.nodes", Value: float64(h.NumberOfNodes), Timestamp: ts, Tags: []tags.Tag{nodeTag}},
-		{Name: "elasticsearch.cluster.data_nodes", Value: float64(h.NumberOfDataNodes), Timestamp: ts, Tags: []tags.Tag{nodeTag}},
-		{Name: "elasticsearch.cluster.shards.active", Value: float64(h.ActiveShards), Timestamp: ts, Tags: []tags.Tag{shardTag}},
-		{Name: "elasticsearch.cluster.shards.unassigned", Value: float64(h.UnassignedShards), Timestamp: ts, Tags: []tags.Tag{shardTag}},
-		{Name: "elasticsearch.cluster.shards.relocating", Value: float64(h.RelocatingShards), Timestamp: ts, Tags: []tags.Tag{shardTag}},
-		{Name: "elasticsearch.cluster.pending_tasks", Value: float64(h.NumberOfPendingTasks), Timestamp: ts, Tags: []tags.Tag{taskTag}},
+		{Name: "elasticsearch.cluster.health", Value: statusToFloat(h.Status), Timestamp: ts, Tags: clusterTag},
+		{Name: "elasticsearch.cluster.nodes", Value: float64(h.NumberOfNodes), Timestamp: ts, Tags: nodeTag},
+		{Name: "elasticsearch.cluster.data_nodes", Value: float64(h.NumberOfDataNodes), Timestamp: ts, Tags: nodeTag},
+		{Name: "elasticsearch.cluster.shards.active", Value: float64(h.ActiveShards), Timestamp: ts, Tags: shardTag},
+		{Name: "elasticsearch.cluster.shards.unassigned", Value: float64(h.UnassignedShards), Timestamp: ts, Tags: shardTag},
+		{Name: "elasticsearch.cluster.shards.relocating", Value: float64(h.RelocatingShards), Timestamp: ts, Tags: shardTag},
+		{Name: "elasticsearch.cluster.pending_tasks", Value: float64(h.NumberOfPendingTasks), Timestamp: ts, Tags: taskTag},
 	}
 }
 
@@ -303,7 +345,7 @@ func (p *elasticsearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.
 	var points []data_store.DataPoint
 
 	for _, node := range r.Nodes {
-		jvmTags := []tags.Tag{{Key: "metric_type", Value: "jvm"}}
+		jvmTags := p.tagsWithMetricType("jvm")
 		points = append(points,
 			data_store.DataPoint{
 				Name:      "elasticsearch.jvm.memory.heap.used",
@@ -320,10 +362,7 @@ func (p *elasticsearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.
 		)
 
 		for collectorName, gc := range node.JVM.GC.Collectors {
-			gcTags := []tags.Tag{
-				{Key: "metric_type", Value: "jvm"},
-				{Key: "collector", Value: collectorName},
-			}
+			gcTags := p.tagsWithMetricType("jvm", tags.Tag{Key: "collector", Value: collectorName})
 			points = append(points,
 				data_store.DataPoint{
 					Name:      "elasticsearch.jvm.gc.collections.count",
@@ -340,18 +379,9 @@ func (p *elasticsearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.
 			)
 		}
 
-		indexingTags := []tags.Tag{
-			{Key: "metric_type", Value: "indexing"},
-			{Key: "operation", Value: "index"},
-		}
-		searchQueryTags := []tags.Tag{
-			{Key: "metric_type", Value: "search"},
-			{Key: "operation", Value: "query"},
-		}
-		searchFetchTags := []tags.Tag{
-			{Key: "metric_type", Value: "search"},
-			{Key: "operation", Value: "fetch"},
-		}
+		indexingTags := p.tagsWithMetricType("indexing", tags.Tag{Key: "operation", Value: "index"})
+		searchQueryTags := p.tagsWithMetricType("search", tags.Tag{Key: "operation", Value: "query"})
+		searchFetchTags := p.tagsWithMetricType("search", tags.Tag{Key: "operation", Value: "fetch"})
 
 		points = append(points,
 			data_store.DataPoint{
@@ -392,7 +422,7 @@ func (p *elasticsearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.
 			},
 		)
 
-		processTags := []tags.Tag{{Key: "metric_type", Value: "process"}}
+		processTags := p.tagsWithMetricType("process")
 		points = append(points,
 			data_store.DataPoint{
 				Name:      "elasticsearch.process.cpu.usage",
@@ -402,7 +432,7 @@ func (p *elasticsearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.
 			},
 		)
 
-		osTags := []tags.Tag{{Key: "metric_type", Value: "os"}}
+		osTags := p.tagsWithMetricType("os")
 		points = append(points,
 			data_store.DataPoint{
 				Name:      "elasticsearch.os.memory.used",
@@ -413,10 +443,7 @@ func (p *elasticsearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.
 		)
 
 		for poolName, pool := range node.ThreadPool {
-			tpTags := []tags.Tag{
-				{Key: "metric_type", Value: "thread_pool"},
-				{Key: "thread_pool", Value: poolName},
-			}
+			tpTags := p.tagsWithMetricType("thread_pool", tags.Tag{Key: "thread_pool", Value: poolName})
 			points = append(points,
 				data_store.DataPoint{
 					Name:      "elasticsearch.thread_pool.tasks.queued",
@@ -469,7 +496,8 @@ func (p *elasticsearchProbe) getJSON(path string, v interface{}) error {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("GET %s returned %d: %s", url, resp.StatusCode, string(body))
+		msg := fmt.Sprintf("GET %s returned %d: %s", url, resp.StatusCode, string(body))
+		return &httpStatusError{code: resp.StatusCode, msg: msg}
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(v); err != nil {

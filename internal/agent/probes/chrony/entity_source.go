@@ -97,3 +97,14 @@ func (s *chronyEntitySource) Observe() (entity.Observation, bool) {
 
 	return obs, true
 }
+
+// ServiceInstanceID returns the id the entity carries, or "" while no entity has been
+// emitted under it, so a series never names an entity that does not exist.
+func (s *chronyEntitySource) ServiceInstanceID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.hostID == "" {
+		return ""
+	}
+	return "chrony@" + s.hostID
+}

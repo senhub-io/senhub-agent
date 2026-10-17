@@ -8,7 +8,7 @@ else is a parameter.
 docker run -d --name senhub-agent \
   -e OTLP_BEARER_TOKEN=<your token> \
   -v senhub-state:/var/lib/senhub-agent \
-  ghcr.io/senhub-io/senhub-agent:0.6.3
+  ghcr.io/senhub-io/senhub-agent:0.6.4
 ```
 
 That is the whole of it for a first run: one variable, one mount.
@@ -118,7 +118,7 @@ reads them, so they apply with a configuration of your own too (see
 | `SENHUB_LOG_QUEUE` | No | `true` | `false` stops the agent keeping failed log batches on disk during an OTLP outage |
 | `SENHUB_LOG_QUEUE_RETENTION` | No | `24h` | Age after which a queued log batch is dropped; `0` = no limit |
 | `SENHUB_LOG_QUEUE_MAX_BYTES` | No | `134217728` (128 MiB) | Disk cap of the logs queue, in bytes or with a suffix (`64MiB`). The queue lives in the state directory: put it on a persistent volume (a File Share on Container Apps) for logs to survive a restart; see [Logs survive an outage](otlp.md#logs-survive-an-outage) |
-| `SENHUB_HOST_ID` | No | kept in the state directory | Gives the host a stable identity across the re-creation of its container, so a new container is the same host in the graph and not a new one. 32 hexadecimal characters, dashes optional. One value per host: an example or blank value (all zeros, `01234567-89ab-cdef-…`) is refused at start, and the host entity is marked `senhub.host.id.source=configuration` |
+| `SENHUB_HOST_ID` | No | kept in the state directory | Gives the host a stable identity across the re-creation of its container, so a new container is the same host in the graph and not a new one. 32 hexadecimal characters, dashes optional. One value per host: an example or blank value (all zeros, `01234567-89ab-cdef-…`) is refused at start, and the host entity is marked `senhub.host.id.source=configuration`. The agent itself reads it, so it also applies to the binary run outside this image (several containers on one VM would otherwise all report the VM's DMI identity); a value it cannot use is named in the log at start |
 | `SENHUB_AGENT_KEY` | No | kept in the state directory | Agent identity, a UUID. One value per instance; with `SENHUB_HOST_ID` it lets a container without a volume keep one identity |
 | `SENHUB_PROBES` | No | - | YAML of the probes to run, as a `probes.d` file would hold it. For one probe at a time, the `SENHUB_PROBE_<NAME>_*` variables are shorter, see [Probes from variables](#probes-from-variables) |
 | `SENHUB_OUTPUT` | No | - | YAML of one more output, as a `strategies.d` file would hold it |
@@ -225,7 +225,7 @@ startup, so a container that ignores your variables tells you why.
 docker run -d --name senhub-agent \
   -v /srv/senhub/conf:/etc/senhub-agent \
   -v senhub-state:/var/lib/senhub-agent \
-  ghcr.io/senhub-io/senhub-agent:0.6.3
+  ghcr.io/senhub-io/senhub-agent:0.6.4
 ```
 
 Your configuration wins completely, and that includes the agent key
