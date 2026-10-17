@@ -1,6 +1,7 @@
 package ceph
 
 import (
+	"context"
 	"encoding/json"
 	"sync"
 
@@ -16,7 +17,7 @@ const (
 
 // fetchFsidFunc is the tech-id resolver injected at construction. The
 // production implementation calls GET /api/cluster; tests inject a stub.
-type fetchFsidFunc func() (string, error)
+type fetchFsidFunc func(ctx context.Context) (string, error)
 
 // hostIDFunc resolves the local host identity for the precedence-2 fallback.
 // Injected at construction so tests never touch the OS.
@@ -89,7 +90,7 @@ func (s *cephEntitySource) Observe() (entity.Observation, bool) {
 // a valid auth token).
 //
 // Callers check pinned before calling, so this is a one-shot operation.
-func (s *cephEntitySource) pinID() {
+func (s *cephEntitySource) pinID(ctx context.Context) {
 	s.mu.Lock()
 	alreadyPinned := s.pinned
 	s.mu.Unlock()
@@ -98,12 +99,16 @@ func (s *cephEntitySource) pinID() {
 	}
 
 	// Precedence 2: tech-reported fsid.
-	if fsid, err := s.fetchFsid(); err == nil && fsid != "" {
+	fsid, err := s.fetchFsid(ctx)
+	if err == nil && fsid != "" {
 		s.mu.Lock()
 		if !s.pinned {
 			s.pin("ceph:" + fsid)
 		}
 		s.mu.Unlock()
+		return
+	}
+	if ctx.Err() != nil {
 		return
 	}
 
@@ -223,8 +228,8 @@ func lastIndexOf(s, sub string) int {
 // given CephProbe to retrieve the cluster fsid. The probe's http client and
 // token are used directly, so this must only be called after authentication.
 func defaultFetchFsid(p *CephProbe) fetchFsidFunc {
-	return func() (string, error) {
-		raw, err := p.apiGet("/api/cluster")
+	return func(ctx context.Context) (string, error) {
+		raw, err := p.apiGet(ctx, "/api/cluster")
 		if err != nil {
 			return "", err
 		}
