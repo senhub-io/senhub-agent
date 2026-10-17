@@ -1,6 +1,10 @@
 package entity
 
-import "github.com/toise-dev/toise/pkg/emit/wire"
+import (
+	"github.com/toise-dev/toise/pkg/emit/wire"
+
+	"senhub-agent.go/internal/agent/probes/hostservice"
+)
 
 // Canonical entity-type vocabulary and the telemetry declaration each type
 // carries. Both halves of the entity/telemetry correlation contract live
@@ -185,7 +189,7 @@ var TelemetryContract = map[string]TelemetryDeclaration{
 	},
 	TypeComputeVM: {
 		Status:     StatusOwnKey,
-		SubjectKey: "vmid",
+		SubjectKey: KeyVMID,
 		Carrier:    CarrierDatapoint,
 		Shipped:    true,
 	},
@@ -200,7 +204,7 @@ var TelemetryContract = map[string]TelemetryDeclaration{
 	// datapoint: the probe observes many services from one resource.
 	TypeHostService: {
 		Status:     StatusOwnKey,
-		SubjectKey: "host.service.name",
+		SubjectKey: hostservice.KeyName,
 		Carrier:    CarrierDatapoint,
 		Shipped:    true,
 	},

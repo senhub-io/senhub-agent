@@ -3,6 +3,7 @@
 package systemd
 
 import (
+	"senhub-agent.go/internal/agent/probes/hostservice"
 	"sync"
 
 	"senhub-agent.go/internal/agent/services/entity"
@@ -54,7 +55,7 @@ func (s *systemdEntitySource) setUnits(units []hostServiceUnit, hostID, hostName
 			}
 			newID := map[string]any{
 				"host.id":           hostID,
-				"host.service.name": u.Name,
+				hostservice.KeyName: u.Name,
 			}
 			s.rekey[u.Name] = entity.NewRekeyAnnouncerWithIDs(
 				"service.instance",
