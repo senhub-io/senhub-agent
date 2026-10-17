@@ -149,7 +149,6 @@ func (p *snmppollProbe) Collect() ([]data_store.DataPoint, error) {
 	var points []data_store.DataPoint
 
 	keylessMode := p.identityGaveUp
-	identityResolved := p.entitySource.DeviceID() != ""
 
 	if err := client.Connect(); err != nil {
 		up = 0
@@ -166,7 +165,7 @@ func (p *snmppollProbe) Collect() ([]data_store.DataPoint, error) {
 		// reusing this already-connected client. Observe() (detector goroutine)
 		// reads the cache; this only walks when topologyInterval has elapsed.
 		p.entitySource.maybeSweep(client, start)
-		identityResolved = p.entitySource.DeviceID() != ""
+		identityResolved := p.entitySource.DeviceID() != ""
 
 		var deviceID string
 		var ifNames map[string]string
