@@ -759,7 +759,7 @@ For issues or questions:
 4. **Review documentation:**
    - [Complete Metrics Reference](./METRICS.md)
    - [Troubleshooting Guide](../../troubleshooting/)
-   - [Agent Configuration Guide](../../../configuration/)
+   - [Agent Configuration Guide](../../user-guide/docs/configuration.md)
 
 5. **Report issues:**
    - Include complete URL being monitored

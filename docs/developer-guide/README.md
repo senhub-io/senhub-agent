@@ -23,7 +23,7 @@ Welcome to the SenHub Agent Developer Guide. This documentation provides compreh
 - **Grafana catalog research** — kept in the private companion repo `senhub-io/senhub-internal-docs` (`grafana-research/`)
 
 ### Code Quality
-- **[Code Review Guidelines](./development-workflow.md#code-review-guidelines)** - Mandatory checklist for reviewers
+- **[Code Review Guidelines](./development-workflow.md#code-review-guidelines-mandatory-for-code-reviewer-agent)** - Mandatory checklist for reviewers
 - **[Testing Best Practices](./build-system.md#testing-best-practices)** - Test execution and coverage
 - **[Code Organization Rules](./design-patterns.md#code-organization-rules)** - File naming, ordering, imports
 
@@ -36,7 +36,7 @@ Welcome to the SenHub Agent Developer Guide. This documentation provides compreh
 4. Study [Design Patterns](./design-patterns.md) before writing code
 
 ### For Code Reviewers
-1. Review the [Code Review Guidelines](./development-workflow.md#code-review-guidelines)
+1. Review the [Code Review Guidelines](./development-workflow.md#code-review-guidelines-mandatory-for-code-reviewer-agent)
 2. Understand the [Pattern Compliance Checklist](./design-patterns.md#pattern-compliance-checklist)
 3. Verify [Testing Requirements](./build-system.md#testing-best-practices)
 
