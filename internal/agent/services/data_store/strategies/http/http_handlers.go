@@ -139,7 +139,7 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 		router.HandleFunc("/api/{agentkey}/config/outputs", h.adminOnly(h.HandleConfigOutputs)).Methods("GET")
 		router.HandleFunc("/api/{agentkey}/config/outputs", h.adminOnly(h.writes(h.HandleOutputCreate))).Methods("POST")
 		router.HandleFunc("/api/{agentkey}/config/outputs/validate", h.adminOnly(h.HandleOutputValidate)).Methods("POST")
-		router.HandleFunc("/api/{agentkey}/config/outputs/test", h.adminOnly(h.HandleOutputTest)).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/config/outputs/test", h.adminOnly(h.writes(h.HandleOutputTest))).Methods("POST")
 		router.HandleFunc("/api/{agentkey}/config/outputs/{name}", h.adminOnly(h.writes(h.HandleOutputUpdate))).Methods("PUT")
 		router.HandleFunc("/api/{agentkey}/config/outputs/{name}", h.adminOnly(h.writes(h.HandleOutputDelete))).Methods("DELETE")
 

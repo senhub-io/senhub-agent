@@ -832,6 +832,14 @@ func (cm *ConfigurationManager) admitProbeRun(w http.ResponseWriter, req *Univer
 	if req.Validation == ValidationSchemaOnly {
 		return true
 	}
+	if cm.Console().ReadOnly {
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"status": "error",
+			"code":   "console_read_only",
+			"error":  "this agent's console is read-only (console.read_only in the http output); a test that connects is refused, schema validation stays open",
+		})
+		return false
+	}
 	ps, known := spec.For(req.Probe)
 	if !known {
 		return true
