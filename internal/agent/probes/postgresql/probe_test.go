@@ -1,13 +1,21 @@
 package postgresql
 
 import (
+	"bytes"
+	"context"
+	"database/sql"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 // TestParseConfig_Defaults exercises the config parser with the minimum
@@ -513,5 +521,37 @@ func TestParseConfig_InstanceName(t *testing.T) {
 func TestProbeType(t *testing.T) {
 	if ProbeType != "postgresql" {
 		t.Errorf("ProbeType: got %q, want %q", ProbeType, "postgresql")
+	}
+}
+
+func TestCollectReplication_RoleReadFailureEmitsNothing(t *testing.T) {
+	db, err := sql.Open("pgx", "postgres://u:p@127.0.0.1:1/postgres")
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("db.Close: %v", err)
+	}
+
+	var buf bytes.Buffer
+	base := zerolog.New(&buf)
+	p := &pgProbe{
+		db:           db,
+		moduleLogger: logger.NewModuleLogger(&base, "probe.postgresql"),
+		entitySrc:    newPgEntitySource(config{Host: "pg.local", Port: 5432}, nil),
+	}
+	p.entitySrc.setRole(dbcommon.RoleReplica)
+
+	var points []data_store.DataPoint
+	p.collectReplication(context.Background(), time.Now(), "pg", &points)
+
+	if len(points) != 0 {
+		t.Errorf("expected no points when the role cannot be read, got %d", len(points))
+	}
+	if p.entitySrc.role != dbcommon.RoleReplica {
+		t.Errorf("last known role must be kept, got %v", p.entitySrc.role)
+	}
+	if !strings.Contains(buf.String(), "replication role unknown") {
+		t.Errorf("expected a warning, got %q", buf.String())
 	}
 }

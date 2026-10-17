@@ -11,6 +11,7 @@ package postgresql
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -432,7 +433,9 @@ func (p *pgProbe) collectWAL(ctx context.Context, now time.Time, instance string
 
 	// Archiver stats (only meaningful when archive_mode is on)
 	var archiveMode string
-	_ = p.db.QueryRowContext(ctx, `SHOW archive_mode`).Scan(&archiveMode)
+	if err := p.db.QueryRowContext(ctx, `SHOW archive_mode`).Scan(&archiveMode); err != nil {
+		p.moduleLogger.Warn().Err(err).Str("query", "archive_mode").Msg("postgresql: query failed, archiver age skipped")
+	}
 
 	var failedCount float64
 	var lastArchivedAge sql.NullFloat64
@@ -461,7 +464,13 @@ func (p *pgProbe) collectReplication(ctx context.Context, now time.Time, instanc
 
 	// Detect role: pg_is_in_recovery() → replica; connected replicas → primary
 	var isReplica bool
-	_ = p.db.QueryRowContext(ctx, `SELECT pg_is_in_recovery()`).Scan(&isReplica)
+	if err := p.db.QueryRowContext(ctx, `SELECT pg_is_in_recovery()`).Scan(&isReplica); err != nil {
+		// Without this answer a replica would be reported through the
+		// primary branch, so emit nothing and keep the last known role
+		// rather than assert one.
+		p.moduleLogger.Warn().Err(err).Str("query", "pg_is_in_recovery").Msg("postgresql: replication role unknown, replication metrics skipped")
+		return
+	}
 
 	var role dbcommon.Role
 	var replHealth float64 = 1
@@ -485,14 +494,18 @@ func (p *pgProbe) collectReplication(ctx context.Context, now time.Time, instanc
 
 		// WAL receiver status
 		var walRecvStatus sql.NullString
-		_ = p.db.QueryRowContext(ctx, `SELECT status FROM pg_stat_wal_receiver LIMIT 1`).Scan(&walRecvStatus)
-		ioRunning := float64(0)
-		if walRecvStatus.Valid && walRecvStatus.String == "streaming" {
-			ioRunning = 1
+		recvErr := p.db.QueryRowContext(ctx, `SELECT status FROM pg_stat_wal_receiver LIMIT 1`).Scan(&walRecvStatus)
+		if recvErr != nil && !errors.Is(recvErr, sql.ErrNoRows) {
+			p.moduleLogger.Warn().Err(recvErr).Str("query", "pg_stat_wal_receiver").Msg("postgresql: query failed, replica io state skipped")
 		} else {
-			replHealth = 0
+			ioRunning := float64(0)
+			if walRecvStatus.Valid && walRecvStatus.String == "streaming" {
+				ioRunning = 1
+			} else {
+				replHealth = 0
+			}
+			*points = append(*points, p.dp("senhub.db.postgresql.replica.io.running", ioRunning, now, replTags))
 		}
-		*points = append(*points, p.dp("senhub.db.postgresql.replica.io.running", ioRunning, now, replTags))
 
 	} else {
 		// Count connected replicas
