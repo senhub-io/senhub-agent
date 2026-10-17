@@ -163,6 +163,7 @@ p { margin: 0; }
 .kv.left dd { text-align: left; font-family: inherit; }
 
 /* Banner */
+html[data-console="read-only"] [data-write] { display: none !important; }
 .banner { padding: 10px 14px; border-radius: var(--r-md); border: 1px solid; font-size: var(--fs-sm); display: flex; gap: 10px; align-items: flex-start; }
 .banner.ok { background: var(--ok-soft); border-color: #b7e4c7; color: var(--ok); }
 .banner.err { background: var(--err-soft); border-color: #f5c6c2; color: var(--err); }

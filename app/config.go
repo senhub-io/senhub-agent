@@ -21,6 +21,7 @@ import (
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
+	httpstrategy "senhub-agent.go/internal/agent/services/data_store/strategies/http"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
 	"senhub-agent.go/internal/agent/services/entitydetect"
 	"senhub-agent.go/internal/agent/services/governance"
@@ -653,6 +654,10 @@ func checkConfig(configPath string) checkOutcome {
 				}
 			}
 			fmt.Printf("  [OK]   Storage: %s\n", s.Name)
+			if s.Name == "http" {
+				policy, _ := httpstrategy.ParseConsolePolicy(s.Params)
+				fmt.Printf("  [INFO] Console mode: %s (%s)\n", policy.Mode(), policy.Describe())
+			}
 		}
 		reportEntityEmission(config.Entities, config.Storage)
 	}

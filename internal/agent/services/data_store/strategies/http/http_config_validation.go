@@ -599,6 +599,10 @@ func (cm *ConfigurationManager) HandleUniversalConfigValidation(w http.ResponseW
 		return
 	}
 
+	if !cm.admitProbeRun(w, &req) {
+		return
+	}
+
 	// Validate the configuration
 	response, err := cm.ValidateUniversalConfig(&req)
 	if err != nil {
@@ -697,6 +701,9 @@ func (cm *ConfigurationManager) HandleUniversalConfigTest(w http.ResponseWriter,
 
 	// Force validation mode to "full" for comprehensive testing
 	req.Validation = ValidationFull
+	if !cm.admitProbeRun(w, &req) {
+		return
+	}
 	cm.logger.Debug().
 		Str("probe", req.Probe).
 		Msg("Test mode: forcing full validation including connectivity and metrics")
@@ -752,10 +759,16 @@ func (cm *ConfigurationManager) withStoredSecrets(req *UniversalConfigRequest) e
 			}
 			if found {
 				var secretPaths []string
+				var params []spec.ParamSpec
 				if ps, has := spec.For(req.Probe); has {
 					secretPaths = ps.SecretPaths()
+					params = ps.Params
 				}
-				req.Config = configuration.KeepStoredValues(existing.Params, req.Config, secretPaths)
+				merged, err := withStoredCredentials(params, secretPaths, existing.Params, req.Config)
+				if err != nil {
+					return err
+				}
+				req.Config = merged
 			}
 		}
 	}
@@ -810,4 +823,38 @@ func deadTarget(metrics []PreviewMetric) string {
 		}
 	}
 	return ""
+}
+
+// admitProbeRun refuses a validation that would go past the schema for a
+// probe the console may not make the agent run: connectivity and metric
+// checks start the probe the caller described.
+func (cm *ConfigurationManager) admitProbeRun(w http.ResponseWriter, req *UniversalConfigRequest) bool {
+	if req.Validation == ValidationSchemaOnly {
+		return true
+	}
+	if cm.Console().ReadOnly {
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"status": "error",
+			"code":   "console_read_only",
+			"error":  "this agent's console is read-only (console.read_only in the http output); a test that connects is refused, schema validation stays open",
+		})
+		return false
+	}
+	ps, known := spec.For(req.Probe)
+	if !known {
+		return true
+	}
+	var stored map[string]interface{}
+	if req.Name != "" {
+		if path := cm.agentConfig.GetConfigPath(); path != "" {
+			if p, err := configuration.ReadProbeFragmentParams(path, req.Name); err == nil {
+				stored = p
+			}
+		}
+	}
+	if reason := cm.Console().execRefusal(ps, req.Config, stored); reason != "" {
+		writeJSONError(w, http.StatusForbidden, reason)
+		return false
+	}
+	return true
 }

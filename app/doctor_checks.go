@@ -10,6 +10,7 @@ import (
 	"github.com/kardianos/service"
 
 	"senhub-agent.go/internal/agent/services/configuration"
+	httpstrategy "senhub-agent.go/internal/agent/services/data_store/strategies/http"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
 	"senhub-agent.go/internal/agent/services/status"
 )
@@ -299,6 +300,9 @@ func checkConfiguration(d doctorDeps, cfg doctorConfig, st statusResult) []docto
 		out = append(out, *c)
 	}
 	out = append(out, httpPortCheck(d, cfg, st))
+	if c := consoleModeCheck(cfg); c != nil {
+		out = append(out, *c)
+	}
 	return out
 }
 
@@ -407,6 +411,29 @@ func httpPortCheck(d doctorDeps, cfg doctorConfig, st statusResult) doctorCheck 
 			"stop the process holding the port, or set another one in strategies.d/00-http.yaml")
 	}
 	return okCheck(sectionConfiguration, "config.http_port", fmt.Sprintf("port %d is free on %s", port, bind))
+}
+
+// consoleModeCheck states what the console may change on this agent. A
+// restricted mode is a choice, not a defect, so it is reported OK: the
+// line is there for whoever finds a write refused and wonders why.
+func consoleModeCheck(cfg doctorConfig) *doctorCheck {
+	if cfg.err != nil {
+		return nil
+	}
+	for _, s := range cfg.data.Storage {
+		if s.Name != "http" {
+			continue
+		}
+		policy, err := httpstrategy.ParseConsolePolicy(s.Params)
+		if err != nil {
+			c := failCheck(sectionConfiguration, "config.console", fmt.Sprintf("the console block is invalid and the console is read-only until it is fixed (%v)", err),
+				"correct the console block in the http output, with read_only and allow_exec set to true or false")
+			return &c
+		}
+		c := okCheck(sectionConfiguration, "config.console", fmt.Sprintf("%s: %s", policy.Mode(), policy.Describe()))
+		return &c
+	}
+	return nil
 }
 
 func checkOutputs(d doctorDeps, cfg doctorConfig, st statusResult) []doctorCheck {
