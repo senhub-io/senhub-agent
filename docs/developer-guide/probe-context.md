@@ -44,6 +44,11 @@ repository) keeps working.
 | Deadline | `max(2 × interval, 5 min)` from the start of the cycle. |
 | Trace span | The `probe.collect` span, so client spans a probe opens are its children. |
 
+The first collection runs inside `Start`, under the scheduler's
+lifecycle lock, so only the agent's context can cancel it; a
+`Shutdown` issued meanwhile waits for it to return. Every later cycle
+is cancelled by either.
+
 The deadline is a backstop against a collection that hangs, not the
 operational limit. Probes keep their own `timeout` parameters, which
 stay the limit an operator tunes. The backstop is deliberately longer
@@ -77,8 +82,10 @@ before (the HTTP side stops waiting, the collection finishes on its own).
 - On cancellation the probe returns promptly with an error that wraps
   `ctx.Err()` (`fmt.Errorf("...: %w", err)`), so `errors.Is(err,
   context.Canceled)` holds.
-- Datapoints already gathered may be returned with the error under the
-  usual `PartialResultsProbe` rule; nothing else changes.
+- An interrupted cycle publishes nothing and records nothing: no up=0,
+  no check result, no entity marked unreachable, no error counter, no
+  identity pinned from a query that did not finish. A failure while the
+  context is still alive is handled exactly as before.
 
 ## Migrated probes
 
@@ -86,4 +93,10 @@ Probes whose collection is network I/O through a client that already
 accepts a context: `postgresql`, `mysql`, `redis`, `http_check`,
 `tcp_dial`, `kubernetes`, `kubelet_stats`, `elasticsearch`, `opensearch`,
 `prometheus_scrape`, `docker`. Each has a test proving a cancelled
-context returns promptly with `ctx.Err()` wrapped.
+context returns promptly with `ctx.Err()` wrapped, and a compile-time
+assertion that it still implements `ContextCollector`.
+
+`redis` speaks RESP over a raw connection; the end of the context
+closes that connection, which releases a blocked read or write.
+`docker` still negotiates the Engine API version once without a
+context (bounded by the client timeout).
