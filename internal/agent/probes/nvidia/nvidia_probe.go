@@ -191,23 +191,27 @@ func buildDatapoints(gpu nvidiaGPU, hostTags []tags.Tag, ts time.Time) []data_st
 
 	pts := []data_store.DataPoint{
 		{Name: "senhub.nvidia.up", Value: 1, Timestamp: ts, Tags: tag()},
-		{Name: "gpu.utilization", Value: gpu.utilizationGPU, Timestamp: ts, Tags: tag()},
-		{Name: "gpu.memory.used", Value: float64(gpu.memoryUsedMiB * 1024 * 1024), Timestamp: ts, Tags: tag()},
-		{Name: "gpu.memory.total", Value: float64(gpu.memoryTotalMiB * 1024 * 1024), Timestamp: ts, Tags: tag()},
-		{Name: "gpu.memory.utilization", Value: gpu.utilizationMemory, Timestamp: ts, Tags: tag()},
-		{Name: "gpu.temperature", Value: float64(gpu.temperatureGPU), Timestamp: ts, Tags: tag()},
-		{Name: "gpu.encoder.utilization", Value: gpu.utilizationEncoder, Timestamp: ts, Tags: tag()},
-		{Name: "gpu.decoder.utilization", Value: gpu.utilizationDecoder, Timestamp: ts, Tags: tag()},
-		{Name: "gpu.fan.speed", Value: gpu.fanSpeed, Timestamp: ts, Tags: tag()},
 	}
+	// A reading nvidia-smi reports as N/A, or that does not parse, is left
+	// out: publishing it as zero would read as an idle GPU or a stopped fan.
+	optional := func(name string, v, scale float64) {
+		if v >= 0 {
+			pts = append(pts, data_store.DataPoint{Name: name, Value: v * scale, Timestamp: ts, Tags: tag()})
+		}
+	}
+	const mib = 1024 * 1024
+	optional("gpu.utilization", gpu.utilizationGPU, 1)
+	optional("gpu.memory.used", gpu.memoryUsedMiB, mib)
+	optional("gpu.memory.total", gpu.memoryTotalMiB, mib)
+	optional("gpu.memory.utilization", gpu.utilizationMemory, 1)
+	optional("gpu.temperature", gpu.temperatureGPU, 1)
+	optional("gpu.encoder.utilization", gpu.utilizationEncoder, 1)
+	optional("gpu.decoder.utilization", gpu.utilizationDecoder, 1)
+	optional("gpu.fan.speed", gpu.fanSpeed, 1)
 	// Power metrics are optional: nvidia-smi reports "N/A" for cards that
 	// don't expose the power management interface (some laptop GPUs).
-	if gpu.powerDraw >= 0 {
-		pts = append(pts, data_store.DataPoint{Name: "gpu.power.usage", Value: float64(gpu.powerDraw), Timestamp: ts, Tags: tag()})
-	}
-	if gpu.powerLimit >= 0 {
-		pts = append(pts, data_store.DataPoint{Name: "gpu.power.limit", Value: float64(gpu.powerLimit), Timestamp: ts, Tags: tag()})
-	}
+	optional("gpu.power.usage", gpu.powerDraw, 1)
+	optional("gpu.power.limit", gpu.powerLimit, 1)
 	return pts
 }
 
@@ -269,11 +273,11 @@ func parseSmiOutput(output []byte) ([]nvidiaGPU, error) {
 			powerLimit: -1,
 		}
 
-		gpu.utilizationGPU = parseFloat(rec[3])
-		gpu.utilizationMemory = parseFloat(rec[4])
-		gpu.memoryUsedMiB = parseFloat(rec[5])
-		gpu.memoryTotalMiB = parseFloat(rec[6])
-		gpu.temperatureGPU = parseFloat(rec[7])
+		gpu.utilizationGPU = parseFloatNA(rec[3])
+		gpu.utilizationMemory = parseFloatNA(rec[4])
+		gpu.memoryUsedMiB = parseFloatNA(rec[5])
+		gpu.memoryTotalMiB = parseFloatNA(rec[6])
+		gpu.temperatureGPU = parseFloatNA(rec[7])
 
 		if pd := parseFloatNA(rec[8]); pd >= 0 {
 			gpu.powerDraw = pd
@@ -282,30 +286,20 @@ func parseSmiOutput(output []byte) ([]nvidiaGPU, error) {
 			gpu.powerLimit = pl
 		}
 
-		gpu.fanSpeed = parseFloatNA2(rec[10])
+		gpu.fanSpeed = parseFloatNA(rec[10])
 		// rec[11] = encoder.stats.sessionCount — not used as a metric
-		gpu.utilizationEncoder = parseFloat(rec[12])
-		gpu.utilizationDecoder = parseFloat(rec[13])
+		gpu.utilizationEncoder = parseFloatNA(rec[12])
+		gpu.utilizationDecoder = parseFloatNA(rec[13])
 
 		gpus = append(gpus, gpu)
 	}
 	return gpus, nil
 }
 
-// parseFloat parses a trimmed numeric string from nvidia-smi. Returns 0 on any
-// parse error (nvidia-smi guarantees numeric output for these fields).
-func parseFloat(s string) float64 {
-	s = strings.TrimSpace(s)
-	v, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return 0
-	}
-	return v
-}
-
-// parseFloatNA parses a field that may be "[N/A]" when the GPU does not
-// support it (e.g. power management on some laptop GPUs). Returns -1 when the
-// value is absent or unparseable.
+// parseFloatNA parses a field that may be "[N/A]" or "[Not Supported]" when the
+// GPU does not expose it (power management on some laptop GPUs, fan on
+// datacenter cards, utilization under vGPU). Returns -1 when the value is
+// absent or unparseable, so a missing reading is never published as zero.
 func parseFloatNA(s string) float64 {
 	s = strings.TrimSpace(s)
 	if s == "" || strings.Contains(s, "N/A") || strings.Contains(s, "[N/A]") {
@@ -314,16 +308,6 @@ func parseFloatNA(s string) float64 {
 	v, err := strconv.ParseFloat(s, 64)
 	if err != nil {
 		return -1
-	}
-	return v
-}
-
-// parseFloatNA2 is like parseFloatNA but returns 0 instead of -1 on absence
-// (fan speed: a missing value is treated as 0 rather than "not applicable").
-func parseFloatNA2(s string) float64 {
-	v := parseFloatNA(s)
-	if v < 0 {
-		return 0
 	}
 	return v
 }
