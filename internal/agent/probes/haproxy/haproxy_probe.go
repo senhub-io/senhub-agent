@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/subcollect"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -65,6 +66,7 @@ type haproxyProbe struct {
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
 	entitySrc    *haproxyEntitySource
+	failures     subcollect.Tracker
 }
 
 type haproxyConfig struct {
@@ -179,7 +181,7 @@ func (p *haproxyProbe) Collect() ([]data_store.DataPoint, error) {
 
 	rows, err := p.fetchCSV()
 	if err != nil {
-		p.moduleLogger.Warn().Err(err).Msg("haproxy stats fetch failed")
+		p.failures.Failed(p.moduleLogger, subcollect.Warn, "stats", err, "haproxy stats fetch failed")
 		p.entitySrc.setReachable(false)
 		up = 0
 
@@ -197,6 +199,7 @@ func (p *haproxyProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 
 	p.entitySrc.setReachable(true)
+	p.failures.Succeeded(p.moduleLogger, "stats", "haproxy stats fetch recovered")
 	points := []data_store.DataPoint{
 		{Name: "senhub.haproxy.up", Value: up, Timestamp: now, Tags: upTags},
 		{Name: dbcommon.CheckResultMetric, Value: float64(dbcommon.CheckOK), Timestamp: now, Tags: checkTags},

@@ -1,11 +1,15 @@
 package haproxy
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/rs/zerolog"
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/probes/types"
@@ -232,4 +236,50 @@ func TestFetchCSV_HTMLPageNamesTheCSVForm(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "/stats;csv") {
 		t.Errorf("error = %v, want it to point at the ;csv form", err)
 	}
+}
+
+func TestDownTargetWarnsOncePerOutage(t *testing.T) {
+	var down atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if down.Load() {
+			http.Error(w, "down", http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte(sampleCSV))
+	}))
+	defer srv.Close()
+	p := makeTestProbe(srv.URL)
+
+	var buf bytes.Buffer
+	base := zerolog.New(&buf).Level(zerolog.DebugLevel)
+	p.moduleLogger = logger.NewModuleLogger(&base, "probe.test")
+
+	down.Store(true)
+	for i := 0; i < 10; i++ {
+		points, err := p.Collect()
+		if err != nil {
+			t.Fatalf("Collect must not return an error for a down target, got: %v", err)
+		}
+		if got := metricOrMissing(points, "senhub.haproxy.up"); got != 0 {
+			t.Fatalf("%s = %v while the target is down, want 0", "senhub.haproxy.up", got)
+		}
+	}
+	down.Store(false)
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	if got := strings.Count(buf.String(), `"level":"warn"`); got != 1 {
+		t.Errorf("%d warnings over 10 failed cycles, want 1\n%s", got, buf.String())
+	}
+	if got := strings.Count(buf.String(), `"level":"info"`); got != 1 {
+		t.Errorf("%d recovery lines, want 1\n%s", got, buf.String())
+	}
+}
+
+func metricOrMissing(points []data_store.DataPoint, name string) float64 {
+	if v := findMetricValue(points, name); v != nil {
+		return *v
+	}
+	return -1
 }
