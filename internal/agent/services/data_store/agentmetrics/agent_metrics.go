@@ -65,9 +65,34 @@ type AgentMetricsSnapshot struct {
 const attrSenderService = "senhub.otlp_receiver.sender.service.name"
 
 func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
+	var records []otelmapper.OtelRecord
+	records = append(records, coreRecords(snap)...)
+	records = append(records, collectErrorRecords()...)
+	records = append(records, httpRequestRecords(snap)...)
+	records = append(records, otlpPushRecords()...)
+	records = append(records, entityChannelRecords()...)
+	records = append(records, otlpBufferRecords()...)
+	records = append(records, exportErrorRecords()...)
+	records = append(records, strategyFailureRecords()...)
+	records = append(records, configWatchRecords()...)
+	records = append(records, otlpDroppedRecords()...)
+	records = append(records, updateRejectedRecords()...)
+	records = append(records, licenseInvalidRecords()...)
+	records = append(records, cacheDroppedRecords()...)
+	records = append(records, pushBufferDroppedRecords()...)
+	records = append(records, exportSendFailedRecords()...)
+	records = append(records, exportRejectedRecords()...)
+	records = append(records, otlpReceiverRecords()...)
+	records = append(records, checkpointRecords()...)
+	records = append(records, processRecords()...)
+	records = append(records, buildInfoRecords(snap)...)
+	records = append(records, selfRecordProviderRecords()...)
+	return records
+}
+
+func coreRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 	uptime := time.Since(snap.StartTime).Seconds()
 
-	delivered, dropped, queued, capacity := entity.EventStats()
 	records := []otelmapper.OtelRecord{
 		{
 			Name:        "senhub.agent.uptime_seconds",
@@ -126,7 +151,11 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Cumulative count of datapoints processed without a transformer YAML definition (legacy fallback: no unit injection, no unit corrections).",
 		},
 	}
+	return records
+}
 
+func collectErrorRecords() []otelmapper.OtelRecord {
+	var records []otelmapper.OtelRecord
 	// Probe collection errors — one record per (probe, reason). Emitted
 	// only once an error has occurred, same emitted-when-touched shape as
 	// the other per-reason counters below (#646). Both labels are bounded:
@@ -145,7 +174,11 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Cumulative count of probe collection errors since agent start, by probe type and reason (collect, timeout, route).",
 		})
 	}
+	return records
+}
 
+func httpRequestRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
+	var records []otelmapper.OtelRecord
 	// HTTP requests by endpoint — one otelmapper.OtelRecord per (route template) pair.
 	// Endpoint label keeps cardinality bounded to the number of registered routes.
 	for endpoint, count := range snap.HTTPRequestsByEndpoint {
@@ -160,7 +193,11 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Lifetime count of HTTP requests served per route template.",
 		})
 	}
+	return records
+}
 
+func otlpPushRecords() []otelmapper.OtelRecord {
+	var records []otelmapper.OtelRecord
 	// OTLP push self-metrics — counters about the OTLP strategy's
 	// own activity. Per IMPLEMENTATION-PLAN §7, exposed on the
 	// Prometheus path only (not pushed via OTLP itself) to avoid
@@ -236,6 +273,15 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Value:       float64(logger.SelfLogsDropped()),
 			Description: "Cumulative count of the agent's own warnings and errors dropped by the self-log rate limit.",
 		},
+	)
+	return records
+}
+
+func entityChannelRecords() []otelmapper.OtelRecord {
+	delivered, dropped, queued, capacity := entity.EventStats()
+
+	var records []otelmapper.OtelRecord
+	records = append(records,
 		// The entity-event hand-off is reported with the OpenTelemetry SDK
 		// processor metrics: it is a log processor queue in all but name
 		// (entity events travel as OTLP log records), and a standard
@@ -274,6 +320,13 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Value:       float64(capacity),
 			Description: "Entity events the hand-off to the OTLP exporter can hold (signals.entities.buffer_size).",
 		},
+	)
+	return records
+}
+
+func otlpBufferRecords() []otelmapper.OtelRecord {
+	var records []otelmapper.OtelRecord
+	records = append(records,
 		otelmapper.OtelRecord{
 			Name:        "senhub.agent.otlp.dropped_span_batches",
 			Unit:        "{batch}",
@@ -315,7 +368,11 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "All-time mean of successful OTLP metrics export durations.",
 		},
 	)
+	return records
+}
 
+func exportErrorRecords() []otelmapper.OtelRecord {
+	var records []otelmapper.OtelRecord
 	// Export-error counters — one OTel metric with a `signal` attribute
 	// (metrics / logs / traces). The total is the sum over signals; the
 	// breakdown exists because a failing logs pipeline was invisible in
@@ -332,7 +389,11 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Cumulative count of OTLP exports that failed after retries were exhausted, by signal.",
 		})
 	}
+	return records
+}
 
+func strategyFailureRecords() []otelmapper.OtelRecord {
+	var records []otelmapper.OtelRecord
 	// Configured-but-not-running strategies. A gauge at 1 while the
 	// strategy fails to start, gone once it runs: the agent stays up and
 	// its other outputs keep working, so without this the only trace of
@@ -354,7 +415,11 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Set to 1 while a configured strategy is not running, by strategy and reason (unknown_type, create, invalid_config, start). No series means every configured strategy started.",
 		})
 	}
+	return records
+}
 
+func configWatchRecords() []otelmapper.OtelRecord {
+	var records []otelmapper.OtelRecord
 	// Configuration watch. A gauge at 1 while the agent is running
 	// without one, gone once it has it. The agent collects and exports
 	// normally in that state, so nothing else would show it — and the
@@ -372,7 +437,11 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Set to 1 while the agent is not watching its configuration, by reason (watcher_unavailable, path_not_watched). A configuration change then needs an agent restart to apply. No series means the configuration is watched.",
 		})
 	}
+	return records
+}
 
+func otlpDroppedRecords() []otelmapper.OtelRecord {
+	var records []otelmapper.OtelRecord
 	// Per-reason drop counters — emitted as a single OTel metric with
 	// `reason` attribute. Operators alert on this rising. Every known
 	// reason is emitted from start at 0 (agentstate.OTLPDropReasons).
@@ -386,7 +455,11 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Cumulative count of OTLP records dropped before export, by reason (store_cap, queue_full, …).",
 		})
 	}
+	return records
+}
 
+func updateRejectedRecords() []otelmapper.OtelRecord {
+	var records []otelmapper.OtelRecord
 	// Self-update rejections — artifact verification refused an update
 	// (signature_unavailable, signature_invalid). A nonzero value is a
 	// mis-published release or an attempted supply-chain tamper (#266);
@@ -401,7 +474,11 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Cumulative count of self-update attempts refused by artifact verification, by reason.",
 		})
 	}
+	return records
+}
 
+func licenseInvalidRecords() []otelmapper.OtelRecord {
+	var records []otelmapper.OtelRecord
 	// License rejection state — a configured licence the validator refused,
 	// labelled by reason (validation_failed, binding_mismatch,
 	// expired_no_grace). 1 means the agent is silently degraded to free tier
@@ -419,7 +496,11 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "1 when a configured license was rejected and the agent degraded to free tier (by reason: validation_failed, binding_mismatch, expired_no_grace); 0 once a license validates. Absent when no license is configured.",
 		})
 	}
+	return records
+}
 
+func cacheDroppedRecords() []otelmapper.OtelRecord {
+	var records []otelmapper.OtelRecord
 	// HTTP MetricCache drop counters — same emitted-only-when-touched
 	// shape as senhub.agent.otlp.dropped above. Today the only reason
 	// is `http_cache_cap` (cardinality cap on the shared cache, #281).
@@ -433,7 +514,11 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Cumulative count of datapoints refused by the shared HTTP metric cache, by reason (http_cache_cap, …).",
 		})
 	}
+	return records
+}
 
+func pushBufferDroppedRecords() []otelmapper.OtelRecord {
+	var records []otelmapper.OtelRecord
 	// Push-buffer drop counters (senhub cloud / PRTG push, #267) —
 	// same emitted-only-when-touched shape as the cache counter above.
 	for strategy, n := range agentstate.GetPushBufferDropped() {
@@ -446,7 +531,11 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Cumulative count of oldest datapoints dropped by a bounded push buffer at its cap, by strategy.",
 		})
 	}
+	return records
+}
 
+func exportSendFailedRecords() []otelmapper.OtelRecord {
+	var records []otelmapper.OtelRecord
 	// Export send-failure counters (#287). A sink whose backlog is still
 	// under its cap sheds nothing while failing every send, so the drop
 	// counter above stays flat through an outage — this is the series
@@ -461,7 +550,11 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Cumulative count of failed delivery attempts by a push strategy, by strategy and reason (transport: batch kept and retried; validation/configuration: batch dropped).",
 		})
 	}
+	return records
+}
 
+func exportRejectedRecords() []otelmapper.OtelRecord {
+	var records []otelmapper.OtelRecord
 	// Export rejection counters (#819). Distinct from the failure counter
 	// above and not derivable from it: the export SUCCEEDED, the consumer
 	// answered OK, and it kept only part of what it was given. Nothing on
@@ -477,7 +570,11 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Cumulative count of records refused by a consumer through an OTLP partial success, by strategy and signal. These records are lost — the export reported no error and they are not retried.",
 		})
 	}
+	return records
+}
 
+func otlpReceiverRecords() []otelmapper.OtelRecord {
+	var records []otelmapper.OtelRecord
 	// OTLP receiver ingest counters — items accepted per signal
 	// (metrics=emitted internal datapoints after family expansion,
 	// logs=records, traces=spans). Emitted only once the receiver has
@@ -534,7 +631,11 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 				Description: "Cumulative count of relayed records that still carried no host.id once the receiver was done with them. Expected on origin=remote; a defect on uds.",
 			})
 	}
+	return records
+}
 
+func checkpointRecords() []otelmapper.OtelRecord {
+	var records []otelmapper.OtelRecord
 	// Checkpoint self-metrics. These are emitted regardless of whether
 	// persistence is enabled — the size+age gauges read 0 when disabled
 	// (distinguishable from "never saved" only by also checking the
@@ -633,7 +734,11 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Cumulative count of OTLP checkpoint operation failures, by stage (read, parse, version_mismatch, mkdir, create_tmp, encode, fsync, close, rename).",
 		})
 	}
+	return records
+}
 
+func processRecords() []otelmapper.OtelRecord {
+	var records []otelmapper.OtelRecord
 	// Process self-monitoring — calqued on Grafana Alloy's resources
 	// mixin so operators recognize the names. Captured at scrape time
 	// via agentstate.GetProcessSnapshot() (cross-OS, ~µs cost).
@@ -688,7 +793,11 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Open file descriptors / Windows handles for the agent process. 0 if the running OS exposes no such counter.",
 		},
 	)
+	return records
+}
 
+func buildInfoRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
+	var records []otelmapper.OtelRecord
 	// Build info — gauge of value 1 with version + commit labels. Standard
 	// Prometheus pattern for static metadata that lets dashboards and
 	// alerting rules join on the build dimension via group_left.
@@ -712,7 +821,11 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "SenHub agent build information (gauge always 1; version and commit as labels).",
 		})
 	}
+	return records
+}
 
+func selfRecordProviderRecords() []otelmapper.OtelRecord {
+	var records []otelmapper.OtelRecord
 	for _, r := range exporthook.SelfRecords(time.Now()) {
 		attrs := r.Attributes
 		if attrs == nil {
