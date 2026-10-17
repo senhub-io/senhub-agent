@@ -411,10 +411,12 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// the same vmid but different types cannot coexist, so it does not add
 	// discriminating power and is intentionally omitted.
 	"proxmox": {
-		"proxmox.node",    // Proxmox cluster node name
-		"proxmox.vmid",    // VM/LXC numeric ID (unique per cluster)
-		"proxmox.vm.name", // VM/LXC display name (redundant with vmid but declared in multi_instance_labels)
-		"proxmox.storage", // Storage pool name
+		"proxmox.node",     // Proxmox cluster node name
+		"proxmox.vmid",     // VM/LXC numeric ID (unique per cluster)
+		"proxmox.vm.name",  // VM/LXC display name (redundant with vmid but declared in multi_instance_labels)
+		"proxmox.storage",  // Storage pool name
+		"proxmox.disk",     // Physical disk device path
+		"proxmox.zfs.pool", // ZFS pool name
 	},
 
 	// Kubernetes — one series per resource instance; the discriminant
