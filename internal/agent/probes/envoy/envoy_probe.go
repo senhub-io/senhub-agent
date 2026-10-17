@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/httpclient"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -91,7 +92,10 @@ func NewEnvoyProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 		cfg.InstanceName = v
 	}
 
-	client := &http.Client{Timeout: cfg.Timeout}
+	client, err := httpclient.NewClient(httpclient.Options{Timeout: cfg.Timeout})
+	if err != nil {
+		return nil, fmt.Errorf("building HTTP client: %w", err)
+	}
 
 	p := &EnvoyProbe{
 		BaseProbe:    &types.BaseProbe{},
