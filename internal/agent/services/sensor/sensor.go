@@ -179,6 +179,11 @@ func (s *sensor) GetName() string {
 	return "Sensor"
 }
 
+type pendingProbeStart struct {
+	id     string
+	config configuration.ProbeConfig
+}
+
 // SyncConfiguration synchronizes probes with current configuration.
 // Safe for concurrent use: invocations are serialized, so back-to-back
 // config events apply one after the other.
@@ -190,6 +195,46 @@ func (s *sensor) SyncConfiguration() error {
 
 	// Re-validate license from current configuration (may have been loaded after initial startup)
 	config := s.configProvider.GetConfiguration()
+	s.revalidateLicenseOnSync(config)
+
+	probeConfigs := config.Probes
+
+	s.moduleLogger.Info().
+		Int("config_probes", len(probeConfigs)).
+		Int("running_probes", len(s.startedProbes)).
+		Msg("Configuration sync status")
+
+	// Pre-validation: Check probe names
+	s.validateProbeNames(probeConfigs)
+
+	validProbeIds, toStart := s.planProbeStarts(probeConfigs)
+
+	stoppedCount := s.stopRemovedProbes(validProbeIds)
+
+	// Phase 3: Start new probes, now that what they replace is gone.
+	startedCount := s.startPendingProbes(toStart)
+	activeProbes := s.startedProbes
+
+	// Update the slice to contain only active probes
+	s.startedProbes = activeProbes
+
+	s.forgetUnlistedFailedProbes(validProbeIds)
+
+	// Publish the live probe set for the Prometheus bridge to read
+	// (senhub_agent_probe_count / senhub_agent_probes_active).
+	publishActiveProbes(s.startedProbes)
+	s.publishFailedProbes()
+
+	s.moduleLogger.Info().
+		Int("probes_started", startedCount).
+		Int("probes_stopped", stoppedCount).
+		Int("probes_active", len(activeProbes)).
+		Msg("Configuration synchronization completed")
+
+	return nil
+}
+
+func (s *sensor) revalidateLicenseOnSync(config configuration.ConfigurationData) {
 	if s.license == nil && config.Agent.License != "" && s.licenseValidator != nil {
 		lic, err := s.licenseValidator.ValidateLicense(config.Agent.License)
 		if err != nil {
@@ -218,16 +263,9 @@ func (s *sensor) SyncConfiguration() error {
 			}
 		}
 	}
+}
 
-	validProbeIds := []string{}
-	probeConfigs := config.Probes
-
-	s.moduleLogger.Info().
-		Int("config_probes", len(probeConfigs)).
-		Int("running_probes", len(s.startedProbes)).
-		Msg("Configuration sync status")
-
-	// Pre-validation: Check probe names
+func (s *sensor) validateProbeNames(probeConfigs []configuration.ProbeConfig) {
 	seenNames := make(map[string]bool)
 	for i, probeConfig := range probeConfigs {
 		// Validate probe name is URL-safe (used in HTTP endpoints like /prtg/{name})
@@ -245,7 +283,10 @@ func (s *sensor) SyncConfiguration() error {
 		}
 		seenNames[probeConfig.Name] = true
 	}
+}
 
+func (s *sensor) planProbeStarts(probeConfigs []configuration.ProbeConfig) ([]string, []pendingProbeStart) {
+	validProbeIds := []string{}
 	// Phase 1: decide which probes the configuration wants. Nothing is
 	// started yet: a probe whose configuration changed gets a new id, and
 	// its previous instance must release what it holds first. A listener
@@ -253,11 +294,7 @@ func (s *sensor) SyncConfiguration() error {
 	// found its port taken, failed, and the predecessor was then stopped,
 	// leaving nothing listening until the retry two minutes later.
 	processedNames := make(map[string]bool)
-	type pendingStart struct {
-		id     string
-		config configuration.ProbeConfig
-	}
-	toStart := []pendingStart{}
+	toStart := []pendingProbeStart{}
 	for _, probeConfig := range probeConfigs {
 		// Skip probes with invalid names (marked in pre-validation)
 		if probeConfig.Name == "" {
@@ -306,9 +343,12 @@ func (s *sensor) SyncConfiguration() error {
 				Msg("Probe already running, skipping")
 			continue
 		}
-		toStart = append(toStart, pendingStart{id: probeId, config: probeConfig})
+		toStart = append(toStart, pendingProbeStart{id: probeId, config: probeConfig})
 	}
+	return validProbeIds, toStart
+}
 
+func (s *sensor) stopRemovedProbes(validProbeIds []string) int {
 	// Phase 2: Stop removed probes
 	activeProbes := []*probes.ProbePoller{}
 	stoppedCount := 0
@@ -348,8 +388,10 @@ func (s *sensor) SyncConfiguration() error {
 		}
 	}
 	s.startedProbes = activeProbes
+	return stoppedCount
+}
 
-	// Phase 3: Start new probes, now that what they replace is gone.
+func (s *sensor) startPendingProbes(toStart []pendingProbeStart) int {
 	startedCount := 0
 	for _, p := range toStart {
 		probeLogger := s.getLoggerForProbe(p.config)
@@ -390,11 +432,10 @@ func (s *sensor) SyncConfiguration() error {
 				Msg("Probe started successfully")
 		}
 	}
-	activeProbes = s.startedProbes
+	return startedCount
+}
 
-	// Update the slice to contain only active probes
-	s.startedProbes = activeProbes
-
+func (s *sensor) forgetUnlistedFailedProbes(validProbeIds []string) {
 	// A probe removed from the configuration is no longer owed a retry.
 	valid := make(map[string]bool, len(validProbeIds))
 	for _, id := range validProbeIds {
@@ -405,19 +446,6 @@ func (s *sensor) SyncConfiguration() error {
 			delete(s.failedProbes, id)
 		}
 	}
-
-	// Publish the live probe set for the Prometheus bridge to read
-	// (senhub_agent_probe_count / senhub_agent_probes_active).
-	publishActiveProbes(s.startedProbes)
-	s.publishFailedProbes()
-
-	s.moduleLogger.Info().
-		Int("probes_started", startedCount).
-		Int("probes_stopped", stoppedCount).
-		Int("probes_active", len(activeProbes)).
-		Msg("Configuration synchronization completed")
-
-	return nil
 }
 
 // StopBudget gives the probe pool longer than the default: probes close
