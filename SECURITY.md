@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Send reports to **security@sensorfactory.fr**. Please do not open a public
+Send reports to **security@senhub.io**. Please do not open a public
 issue, pull request or discussion for a suspected vulnerability.
 
 A useful report says:
