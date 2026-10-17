@@ -41,6 +41,7 @@ type ProxmoxProbe struct {
 	resourcesDegraded atomic.Bool
 
 	denied deniedLog
+	tasks  failedTasks
 }
 
 type probeConfig struct {
@@ -295,6 +296,7 @@ func (p *ProxmoxProbe) collectNode(n pveNode, guests []pveGuest, guestsOK bool, 
 		p.moduleLogger.Warn().Err(err).Str("node", n.Node).Msg("failed to list storage")
 	}
 	points = append(points, p.collectBackups(n.Node, known, storages, now)...)
+	points = append(points, p.collectFailedTasks(n.Node, now)...)
 	for _, st := range storages {
 		stTags := []tags.Tag{
 			{Key: "proxmox.node", Value: n.Node},
@@ -378,30 +380,38 @@ func (p *ProxmoxProbe) fetchGuests() (guests []pveGuest, ok bool) {
 // --- API client helpers ---
 
 func (p *ProxmoxProbe) apiGet(path string, out interface{}) error {
-	url := p.cfg.Endpoint + apiBase + path
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	_, err := p.apiGetTotal(path, out)
+	return err
+}
+
+// apiGetTotal is apiGet that also returns the envelope's "total" field, which
+// paginated endpoints such as task logs carry next to "data" (0 when absent).
+func (p *ProxmoxProbe) apiGetTotal(path string, out interface{}) (int, error) {
+	target := p.cfg.Endpoint + apiBase + path
+	req, err := http.NewRequest(http.MethodGet, target, nil)
 	if err != nil {
-		return fmt.Errorf("building request for %s: %w", path, err)
+		return 0, fmt.Errorf("building request for %s: %w", path, err)
 	}
 	req.Header.Set("Authorization", fmt.Sprintf("PVEAPIToken=%s=%s", p.cfg.TokenID, p.cfg.TokenSecret))
 
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("GET %s: %w", path, err)
+		return 0, fmt.Errorf("GET %s: %w", path, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return &apiStatusError{Path: path, Status: resp.StatusCode}
+		return 0, &apiStatusError{Path: path, Status: resp.StatusCode}
 	}
 
 	var envelope struct {
-		Data json.RawMessage `json:"data"`
+		Data  json.RawMessage `json:"data"`
+		Total int             `json:"total"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
-		return fmt.Errorf("decoding %s response: %w", path, err)
+		return 0, fmt.Errorf("decoding %s response: %w", path, err)
 	}
-	return json.Unmarshal(envelope.Data, out)
+	return envelope.Total, json.Unmarshal(envelope.Data, out)
 }
 
 // apiStatusError reports a non-200 answer so callers can tell a missing

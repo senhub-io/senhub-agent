@@ -2,7 +2,7 @@ probe_name: "proxmox"
 friendly_name: "Proxmox VE"
 version: "1.0.0"
 host_level: false
-multi_instance_labels: ["proxmox.node", "proxmox.vmid", "proxmox.vm.name", "proxmox.storage", "proxmox.disk", "proxmox.zfs.pool"]
+multi_instance_labels: ["proxmox.node", "proxmox.vmid", "proxmox.vm.name", "proxmox.storage", "proxmox.disk", "proxmox.zfs.pool", "proxmox.task.type"]
 
 # Proxmox VE cluster monitoring via the REST API (FREE tier).
 # Covers nodes, QEMU virtual machines, LXC containers, and storage pools.
@@ -393,6 +393,22 @@ metrics:
       proxmox.storage: proxmox.storage
       proxmox.node: proxmox.node
 
+  # ── Failed tasks ──
+
+  - name: "proxmox.tasks.failed"
+    channel: "tasks_failed_{proxmox.task.type}"
+    display_name: "Proxmox Failed Tasks {proxmox.task.type}"
+    unit: "#"
+    category: "tasks"
+    description: "Tasks of this type that ended with a status other than OK since the previous collection, per node; each one is also published as an ERROR log record carrying the tail of its task log"
+    otel:
+      name: proxmox.tasks.failed
+      unit: "{task}"
+      type: gauge
+    tag_to_attribute:
+      proxmox.node: proxmox.node
+      proxmox.task.type: proxmox.task.type
+
   - name: "senhub.probe.check.result"
     channel: "check_result"
     display_name: "Check Result"
@@ -438,6 +454,9 @@ tag_metadata:
   proxmox.health:
     type: category
     label: "Reported State"
+  proxmox.task.type:
+    type: resource
+    label: "Task Type"
   metric_type:
     type: category
     label: "Metric Type"

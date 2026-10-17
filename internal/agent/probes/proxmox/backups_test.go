@@ -30,6 +30,10 @@ func backupHandlers(t *testing.T, now time.Time, tasksQuery *string) func(mux *h
 			http.Error(w, "unreachable", http.StatusInternalServerError)
 		})
 		mux.HandleFunc("/api2/json/nodes/node-a/tasks", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Query().Get("typefilter") != "vzdump" {
+				writeJSON(t, w, []interface{}{})
+				return
+			}
 			*tasksQuery = r.URL.RawQuery
 			writeJSON(t, w, []map[string]interface{}{
 				{"upid": "UPID:node-a:0001:0002:6700:vzdump:101:backup@pbs:", "node": "node-a", "type": "vzdump", "id": "101", "starttime": now.Add(-3 * time.Hour).Unix(), "endtime": now.Add(-2 * time.Hour).Unix(), "status": "ERROR: backup failed: timeout"},
