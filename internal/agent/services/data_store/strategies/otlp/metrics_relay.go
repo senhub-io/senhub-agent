@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sync"
 	"time"
 
 	collectormetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
@@ -186,10 +185,7 @@ type metricsRelay struct {
 	enricher  *relayEnricher
 	logger    *logger.ModuleLogger
 
-	mu         sync.Mutex
-	subscribed <-chan []*metricpb.ResourceMetrics
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
+	worker subscriptionWorker[[]*metricpb.ResourceMetrics]
 }
 
 func newMetricsRelay(cfg Config, enricher *relayEnricher, moduleLogger *logger.ModuleLogger) (*metricsRelay, error) {
@@ -210,24 +206,14 @@ func newMetricsRelay(cfg Config, enricher *relayEnricher, moduleLogger *logger.M
 // start subscribes to the agentstate verbatim-log channel and launches the
 // drain goroutine. Idempotent.
 func (r *metricsRelay) start() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.subscribed != nil {
-		return
-	}
-	ch := agentstate.SubscribeMetricBatchesFor(strategyName, defaultMetricRelayBufferSize)
-	r.subscribed = ch
-	ctx, cancel := context.WithCancel(context.Background())
-	r.cancel = cancel
-	r.wg.Add(1)
-	go r.drain(ctx, ch)
+	r.worker.start(func() <-chan []*metricpb.ResourceMetrics {
+		return agentstate.SubscribeMetricBatchesFor(strategyName, defaultMetricRelayBufferSize)
+	}, r.drain)
 }
 
 // drain accumulates ResourceLogs and flushes on the record-count budget or
 // the batch timeout, mirroring the span relay's batching contract.
 func (r *metricsRelay) drain(ctx context.Context, ch <-chan []*metricpb.ResourceMetrics) {
-	defer r.wg.Done()
-
 	timeout := r.cfg.Metrics.Interval
 	if timeout <= 0 {
 		timeout = DefaultMetricsInterval
@@ -353,32 +339,8 @@ func (r *metricsRelay) export(rm []*metricpb.ResourceMetrics, points int) {
 // stop cancels the drain goroutine, unsubscribes, waits for the final
 // flush (bounded), and closes the forwarder. Idempotent.
 func (r *metricsRelay) stop(ctx context.Context) {
-	r.mu.Lock()
-	ch := r.subscribed
-	cancel := r.cancel
-	r.subscribed = nil
-	r.cancel = nil
-	r.mu.Unlock()
-
-	if cancel == nil {
+	if !r.worker.stop(ctx, agentstate.UnsubscribeMetricBatches) {
 		return
-	}
-
-	cancel()
-	if ch != nil {
-		agentstate.UnsubscribeMetricBatches(ch)
-	}
-
-	done := make(chan struct{})
-	go func() {
-		r.wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-ctx.Done():
-	case <-time.After(5 * time.Second):
 	}
 
 	if err := r.forwarder.close(); err != nil {
