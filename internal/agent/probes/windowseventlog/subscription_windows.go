@@ -252,7 +252,11 @@ func (r *eventReader) runChannel(channel string) {
 		r.log.Error().Err(err).Str("channel", channel).Msg("create signal event")
 		return
 	}
-	defer windows.CloseHandle(signal)
+	defer func() {
+		if cErr := windows.CloseHandle(signal); cErr != nil {
+			r.log.Warn().Err(cErr).Str("channel", channel).Msg("close signal event")
+		}
+	}()
 
 	// A bookmark handle is always created so EvtUpdateBookmark has a
 	// target even when we subscribe to future events. If a persisted
@@ -309,7 +313,9 @@ func (r *eventReader) runChannel(channel string) {
 			return
 		case w == windows.WAIT_OBJECT_0: // signal: events ready
 			r.drain(channel, sub, bookmark)
-			windows.ResetEvent(signal)
+			if rErr := windows.ResetEvent(signal); rErr != nil {
+				r.log.Warn().Err(rErr).Str("channel", channel).Msg("reset signal event")
+			}
 		default: // WAIT_TIMEOUT (or benign): poll for events anyway
 			r.drain(channel, sub, bookmark)
 		}
@@ -498,7 +504,7 @@ func evtNext(sub windows.Handle, max int) ([]windows.Handle, error) {
 // ERROR_INSUFFICIENT_BUFFER), the second fills it.
 func evtRenderXML(fragment windows.Handle) (string, error) {
 	var bufferUsed, propertyCount uint32
-	procEvtRender.Call(
+	_, _, _ = procEvtRender.Call(
 		0,
 		uintptr(fragment),
 		evtRenderEventXml,
@@ -530,7 +536,7 @@ func evtRenderXML(fragment windows.Handle) (string, error) {
 // persist and feed back to EvtCreateBookmark on the next start.
 func evtRenderBookmarkXML(bookmark windows.Handle) (string, error) {
 	var bufferUsed, propertyCount uint32
-	procEvtRender.Call(
+	_, _, _ = procEvtRender.Call(
 		0,
 		uintptr(bookmark),
 		evtRenderBookmark,
@@ -649,6 +655,6 @@ func evtFormatMessage(publisherMetadata, event windows.Handle) (string, error) {
 // publisher metadata).
 func evtClose(h windows.Handle) {
 	if h != 0 {
-		procEvtClose.Call(uintptr(h))
+		_, _, _ = procEvtClose.Call(uintptr(h))
 	}
 }
