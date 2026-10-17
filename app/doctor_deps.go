@@ -15,10 +15,12 @@ import (
 	"github.com/shirou/gopsutil/v3/disk"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/auto_update"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/configuration/secret"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/http"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
+	"senhub-agent.go/internal/agent/services/instanceid"
 	"senhub-agent.go/internal/agent/services/license"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 )
@@ -66,6 +68,7 @@ type doctorDeps struct {
 	install       installProbe
 	serviceEnv    func() serviceEnvReport
 	unsetEnv      func(configPath string) []configuration.EnvReference
+	rolledBack    func() (*auto_update.RolledBackRecord, error)
 }
 
 // secretReport is what `secret status` says, or that no store exists.
@@ -116,6 +119,9 @@ func newDoctorDeps(configPath string) doctorDeps {
 		install:     platformInstallProbe(),
 		serviceEnv:  platformServiceEnv(configPath),
 		unsetEnv:    configuration.UnsetEnvReferences,
+		rolledBack: func() (*auto_update.RolledBackRecord, error) {
+			return auto_update.ReadRolledBack(instanceid.OwnStateDir())
+		},
 	}
 }
 
