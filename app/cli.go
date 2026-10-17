@@ -392,48 +392,8 @@ func Main() {
 
 	wireProbeTypeLookup()
 
-	// `--version` short-circuit: print version + exit, BEFORE any
-	// subcommand dispatch or privilege gate. The pre-0.2.x agent had
-	// no such handling — `senhub-agent --version` fell through to
-	// `run` and silently spawned a second agent, surfacing as a
-	// "bind: address already in use" only after the second process
-	// raced the systemd-managed one for the listener (issue #134).
-	//
-	// `version` is short-circuited here too, not left to the arg parser:
-	// both spellings must report the systemd service's binary when it runs
-	// a different build than this one, and the parser lives in cliArgs,
-	// below the layer that knows about units (#723).
-	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "version") {
-		_, jsonMode := extractJSONFlag(os.Args[2:])
-		if code := runVersion(jsonMode, os.Stdout); code != cliexit.OK {
-			os.Exit(code)
-		}
+	if handleEarlyExit() {
 		return
-	}
-
-	// Show help if no arguments or help is requested. Help is
-	// information-only so it runs even without root — placed before
-	// checkPrivileges so a fresh checkout / CI smoke test sees usage
-	// without hitting the gate. The bare word `help` is handled here too:
-	// it is a known top-level arg but matches no dispatch case, so without
-	// this short-circuit it fell through to the tolerant start-args parse
-	// and silently spawned a second agent (issue #134's failure mode).
-	if len(os.Args) <= 1 || os.Args[1] == "--help" || os.Args[1] == "-h" || os.Args[1] == "help" {
-		showHelp()
-		return
-	}
-
-	// Reject unknown top-level args. Pre-0.2.x the parser silently
-	// fell through to `run`, which is how `--version` (and any
-	// typo'd flag) ended up spawning an agent. We now exit non-zero
-	// with a clear error so a wrong invocation can never
-	// accidentally start a second monitoring process.
-	_, known := knownTopLevelArgs[os.Args[1]]
-	_, registered := extraCommands[os.Args[1]]
-	if !known && !registered {
-		fmt.Fprintf(os.Stderr, "Error: unknown command or flag %q\n", os.Args[1])
-		fmt.Fprintln(os.Stderr, "Run with --help for usage information.")
-		os.Exit(cliexit.Failure)
 	}
 
 	// If first argument is a service command
@@ -473,66 +433,7 @@ func Main() {
 		showDebugModules()
 		return
 	case "config":
-		if len(os.Args) > 2 && os.Args[2] == "check" {
-			if code := runConfigCheck(os.Args[3:], os.Stdout); code != cliexit.OK {
-				os.Exit(code)
-			}
-			return
-		}
-		if len(os.Args) > 2 && os.Args[2] == "show" {
-			// agent config show [--raw|--resolved|--redact] [--json] [path]
-			if code := runConfigShow(os.Args[3:], os.Stdout); code != cliexit.OK {
-				os.Exit(code)
-			}
-			return
-		}
-		if len(os.Args) > 2 && os.Args[2] == "migrate" {
-			// agent config migrate [path]
-			// Convert a legacy monolithic agent-config.yaml into the
-			// 0.2.x+ multi-file layout (agent.yaml + probes.d/ +
-			// strategies.d/), with a timestamped backup of the
-			// original. Idempotent: if the file is already multi-file
-			// (no top-level probes:/storage: blocks), the command
-			// reports "nothing to do" and exits 0.
-			configPath := ""
-			if len(os.Args) > 3 {
-				configPath = os.Args[3]
-			}
-			if resolved, err := cliArgs.GetAbsoluteConfigPath(configPath); err == nil {
-				configPath = resolved
-			}
-			migrateConfig(configPath)
-			return
-		}
-		if len(os.Args) > 2 && os.Args[2] == "set" {
-			// agent config set <key> <value> [--config-path <path>]
-			// Change one setting in the multi-file layout without
-			// hand-editing YAML. The running agent reloads the change.
-			if code := runConfigSet(os.Args[3:], os.Stdout); code != cliexit.OK {
-				os.Exit(code)
-			}
-			return
-		}
-		if len(os.Args) > 2 && os.Args[2] == "init" {
-			// agent config init [--config-path <path>] [--license <jwt>]
-			//                    [--tags k=v,k2=v2]
-			// Create the default offline configuration for an unattended
-			// install (MSI silent install), then apply the provisionable
-			// fields. Idempotent: leaves an existing config untouched.
-			initConfig(os.Args[3:])
-			return
-		}
-		// A typo'd subcommand (`config ini`) must not "succeed" with exit 0
-		// and generic help — a scripted provisioning step would read that as
-		// done without creating anything. Unknown top-level verbs already
-		// exit 2; the config subcommand does too. A bare `config` with no
-		// subcommand still prints help (exit 0).
-		if len(os.Args) > 2 {
-			fmt.Fprintf(os.Stderr, "Error: unknown config subcommand %q\n", os.Args[2])
-			fmt.Fprintln(os.Stderr, "Run with --help for usage information.")
-			os.Exit(cliexit.Failure)
-		}
-		showHelp()
+		handleConfigCommand()
 		return
 	case "license":
 		handleLicenseCommand()
@@ -541,24 +442,7 @@ func Main() {
 		handleDbMonitoringCommand()
 		return
 	case "update":
-		// Parse the full update invocation, not just os.Args[2]: the
-		// documented --registry-url / --dry-run flags must reach the
-		// updater, and an unknown flag must be rejected rather than taken
-		// as a version literal (the `--help` misfire family, #134).
-		parsed, wantHelp, err := parseUpdateCommand(os.Args[2:])
-		if wantHelp {
-			showUpdateHelp()
-			return
-		}
-		if err != nil {
-			fatalf("update: %v", err)
-		}
-		// The updater replaces the binary it runs from — the CLI copy. On a
-		// hardened install the systemd unit execs a second, service-owned
-		// copy the unprivileged daemon can replace itself; nothing else
-		// keeps them in sync, so `update` (which runs as root) reconciles
-		// it here (#723).
-		agent.UpdateAgent(parsed, agent.AfterInstall(syncServiceBinary), agent.RestartService(restartServiceAfterUpdate))
+		handleUpdateCommand()
 		return
 	case "refresh-unit":
 		runRefreshUnit()
@@ -572,52 +456,7 @@ func Main() {
 		}
 		return
 	case "install", "uninstall", "start", "stop", "restart", "status", "run":
-		// Commands that take no positional args: dispatched directly.
-		// `status` carries the optional --otlp view flag; `uninstall` the
-		// --yes confirmation-bypass flag. Both must still honour
-		// --config-path so a custom-path install is stopped/uninstalled
-		// against the right file (otherwise cleanupFiles resolves the
-		// DEFAULT path and leaves the custom config/certs behind).
-		if command == "start" || command == "stop" || command == "restart" || command == "status" || command == "uninstall" {
-			// --otlp / --yes / --json are view/confirm flags the start parser does
-			// not know; strip them before parsing so it does not reject
-			// them, then set the corresponding fields explicitly.
-			viewFlags := []string{"--otlp", "--yes"}
-			if command == "status" {
-				viewFlags = append(viewFlags, jsonFlag)
-			}
-			args := cliArgs.ParseStartArgs(stripFlags(os.Args[2:], viewFlags...))
-			if command == "status" {
-				args.ShowOTLP = hasArg("--otlp")
-			}
-			if command == "uninstall" {
-				args.Yes = hasArg("--yes")
-			}
-			handleServiceCommand(command, args)
-			return
-		}
-
-		// `install` and `run` accept optional flags (--config-path,
-		// --enable-https, …). In 0.2.0+ they also work with no args
-		// — install auto-generates a UUID agent key, run uses the
-		// OS-canonical default config path. Pre-0.2.0 the install
-		// path also works with no flags now.
-		//
-		// We parse the remaining args via `start`-subcommand parsing
-		// rather than calling MustParse() directly, because the
-		// top-level parser expects an explicit subcommand and would
-		// fail on the empty input that an arg-less `install` / `run`
-		// produces.
-		serviceArgs := []string{}
-		if len(os.Args) > 2 {
-			serviceArgs = os.Args[2:]
-		}
-		if command == "install" {
-			// --json is a view flag of install, like of status.
-			serviceArgs = stripFlags(serviceArgs, jsonFlag)
-		}
-		args := cliArgs.ParseStartArgs(serviceArgs)
-		handleServiceCommand(command, args)
+		handleServiceLifecycleCommand(command)
 		return
 	default:
 		// If command is not recognized or no arguments provided, show help
@@ -635,6 +474,186 @@ func Main() {
 
 		runAgent(args)
 	}
+}
+
+func handleEarlyExit() bool {
+	// `--version` short-circuit: print version + exit, BEFORE any
+	// subcommand dispatch or privilege gate. The pre-0.2.x agent had
+	// no such handling — `senhub-agent --version` fell through to
+	// `run` and silently spawned a second agent, surfacing as a
+	// "bind: address already in use" only after the second process
+	// raced the systemd-managed one for the listener (issue #134).
+	//
+	// `version` is short-circuited here too, not left to the arg parser:
+	// both spellings must report the systemd service's binary when it runs
+	// a different build than this one, and the parser lives in cliArgs,
+	// below the layer that knows about units (#723).
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "version") {
+		_, jsonMode := extractJSONFlag(os.Args[2:])
+		if code := runVersion(jsonMode, os.Stdout); code != cliexit.OK {
+			os.Exit(code)
+		}
+		return true
+	}
+
+	// Show help if no arguments or help is requested. Help is
+	// information-only so it runs even without root — placed before
+	// checkPrivileges so a fresh checkout / CI smoke test sees usage
+	// without hitting the gate. The bare word `help` is handled here too:
+	// it is a known top-level arg but matches no dispatch case, so without
+	// this short-circuit it fell through to the tolerant start-args parse
+	// and silently spawned a second agent (issue #134's failure mode).
+	if len(os.Args) <= 1 || os.Args[1] == "--help" || os.Args[1] == "-h" || os.Args[1] == "help" {
+		showHelp()
+		return true
+	}
+
+	// Reject unknown top-level args. Pre-0.2.x the parser silently
+	// fell through to `run`, which is how `--version` (and any
+	// typo'd flag) ended up spawning an agent. We now exit non-zero
+	// with a clear error so a wrong invocation can never
+	// accidentally start a second monitoring process.
+	_, known := knownTopLevelArgs[os.Args[1]]
+	_, registered := extraCommands[os.Args[1]]
+	if !known && !registered {
+		fmt.Fprintf(os.Stderr, "Error: unknown command or flag %q\n", os.Args[1])
+		fmt.Fprintln(os.Stderr, "Run with --help for usage information.")
+		os.Exit(cliexit.Failure)
+	}
+	return false
+}
+
+func handleConfigCommand() {
+	if len(os.Args) > 2 && os.Args[2] == "check" {
+		if code := runConfigCheck(os.Args[3:], os.Stdout); code != cliexit.OK {
+			os.Exit(code)
+		}
+		return
+	}
+	if len(os.Args) > 2 && os.Args[2] == "show" {
+		// agent config show [--raw|--resolved|--redact] [--json] [path]
+		if code := runConfigShow(os.Args[3:], os.Stdout); code != cliexit.OK {
+			os.Exit(code)
+		}
+		return
+	}
+	if len(os.Args) > 2 && os.Args[2] == "migrate" {
+		// agent config migrate [path]
+		// Convert a legacy monolithic agent-config.yaml into the
+		// 0.2.x+ multi-file layout (agent.yaml + probes.d/ +
+		// strategies.d/), with a timestamped backup of the
+		// original. Idempotent: if the file is already multi-file
+		// (no top-level probes:/storage: blocks), the command
+		// reports "nothing to do" and exits 0.
+		configPath := ""
+		if len(os.Args) > 3 {
+			configPath = os.Args[3]
+		}
+		if resolved, err := cliArgs.GetAbsoluteConfigPath(configPath); err == nil {
+			configPath = resolved
+		}
+		migrateConfig(configPath)
+		return
+	}
+	if len(os.Args) > 2 && os.Args[2] == "set" {
+		// agent config set <key> <value> [--config-path <path>]
+		// Change one setting in the multi-file layout without
+		// hand-editing YAML. The running agent reloads the change.
+		if code := runConfigSet(os.Args[3:], os.Stdout); code != cliexit.OK {
+			os.Exit(code)
+		}
+		return
+	}
+	if len(os.Args) > 2 && os.Args[2] == "init" {
+		// agent config init [--config-path <path>] [--license <jwt>]
+		//                    [--tags k=v,k2=v2]
+		// Create the default offline configuration for an unattended
+		// install (MSI silent install), then apply the provisionable
+		// fields. Idempotent: leaves an existing config untouched.
+		initConfig(os.Args[3:])
+		return
+	}
+	// A typo'd subcommand (`config ini`) must not "succeed" with exit 0
+	// and generic help — a scripted provisioning step would read that as
+	// done without creating anything. Unknown top-level verbs already
+	// exit 2; the config subcommand does too. A bare `config` with no
+	// subcommand still prints help (exit 0).
+	if len(os.Args) > 2 {
+		fmt.Fprintf(os.Stderr, "Error: unknown config subcommand %q\n", os.Args[2])
+		fmt.Fprintln(os.Stderr, "Run with --help for usage information.")
+		os.Exit(cliexit.Failure)
+	}
+	showHelp()
+}
+
+func handleUpdateCommand() {
+	// Parse the full update invocation, not just os.Args[2]: the
+	// documented --registry-url / --dry-run flags must reach the
+	// updater, and an unknown flag must be rejected rather than taken
+	// as a version literal (the `--help` misfire family, #134).
+	parsed, wantHelp, err := parseUpdateCommand(os.Args[2:])
+	if wantHelp {
+		showUpdateHelp()
+		return
+	}
+	if err != nil {
+		fatalf("update: %v", err)
+	}
+	// The updater replaces the binary it runs from — the CLI copy. On a
+	// hardened install the systemd unit execs a second, service-owned
+	// copy the unprivileged daemon can replace itself; nothing else
+	// keeps them in sync, so `update` (which runs as root) reconciles
+	// it here (#723).
+	agent.UpdateAgent(parsed, agent.AfterInstall(syncServiceBinary), agent.RestartService(restartServiceAfterUpdate))
+}
+
+func handleServiceLifecycleCommand(command string) {
+	// Commands that take no positional args: dispatched directly.
+	// `status` carries the optional --otlp view flag; `uninstall` the
+	// --yes confirmation-bypass flag. Both must still honour
+	// --config-path so a custom-path install is stopped/uninstalled
+	// against the right file (otherwise cleanupFiles resolves the
+	// DEFAULT path and leaves the custom config/certs behind).
+	if command == "start" || command == "stop" || command == "restart" || command == "status" || command == "uninstall" {
+		// --otlp / --yes / --json are view/confirm flags the start parser does
+		// not know; strip them before parsing so it does not reject
+		// them, then set the corresponding fields explicitly.
+		viewFlags := []string{"--otlp", "--yes"}
+		if command == "status" {
+			viewFlags = append(viewFlags, jsonFlag)
+		}
+		args := cliArgs.ParseStartArgs(stripFlags(os.Args[2:], viewFlags...))
+		if command == "status" {
+			args.ShowOTLP = hasArg("--otlp")
+		}
+		if command == "uninstall" {
+			args.Yes = hasArg("--yes")
+		}
+		handleServiceCommand(command, args)
+		return
+	}
+
+	// `install` and `run` accept optional flags (--config-path,
+	// --enable-https, …). In 0.2.0+ they also work with no args
+	// — install auto-generates a UUID agent key, run uses the
+	// OS-canonical default config path. Pre-0.2.0 the install
+	// path also works with no flags now.
+	//
+	// We parse the remaining args via `start`-subcommand parsing
+	// rather than calling MustParse() directly, because the
+	// top-level parser expects an explicit subcommand and would
+	// fail on the empty input that an arg-less `install` / `run`
+	// produces.
+	serviceArgs := []string{}
+	if len(os.Args) > 2 {
+		serviceArgs = os.Args[2:]
+	}
+	if command == "install" {
+		// --json is a view flag of install, like of status.
+		serviceArgs = stripFlags(serviceArgs, jsonFlag)
+	}
+	args := cliArgs.ParseStartArgs(serviceArgs)
+	handleServiceCommand(command, args)
 }
 
 func showHelp() {
