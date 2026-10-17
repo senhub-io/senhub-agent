@@ -250,6 +250,9 @@ func (h *HTTPSyncStrategy) handleOutputCreate(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
+	if !pinConsolePolicy(w, req.Type, req.Params, nil) {
+		return
+	}
 	spec, ok := h.checkOutputWrite(w, req, nil)
 	if !ok {
 		return
@@ -293,6 +296,9 @@ func (h *HTTPSyncStrategy) handleOutputUpdate(w http.ResponseWriter, r *http.Req
 	stored, err := configuration.StrategyFragmentParams(h.agentConfig.GetConfigPath(), name)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !pinConsolePolicy(w, name, req.Params, stored) {
 		return
 	}
 	spec, ok := h.checkOutputWrite(w, req, stored)

@@ -62,6 +62,9 @@ type ParamSpec struct {
 	// per-signal transport of an OTLP output). It changes nothing for
 	// the parser or the checks.
 	Advanced bool `json:"advanced,omitempty"`
+	// FileOnly marks a parameter that only the configuration file may
+	// set: the console shows it and its API refuses to change it.
+	FileOnly bool `json:"file_only,omitempty"`
 	// Executable marks a string parameter whose value is a program the
 	// agent will run. A deployment that forbids the console from making
 	// the agent execute anything refuses a value of it that differs from

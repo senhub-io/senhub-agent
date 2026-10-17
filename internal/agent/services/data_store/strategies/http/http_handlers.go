@@ -64,7 +64,7 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	// read the agent's own logs. See adminOnly.
 	if h.strategy.authManager.AdminEnabled() {
 		router.HandleFunc("/api/{agentkey}/debug/logs", h.adminOnly(h.HandleDebugLogs)).Methods("GET")
-		router.HandleFunc("/api/{agentkey}/debug/logs", h.adminOnly(h.HandleSetLogLevels)).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/debug/logs", h.adminOnly(h.writes(h.HandleSetLogLevels))).Methods("POST")
 
 		// Runtime profiling — Go's net/http/pprof handlers. A goroutine
 		// dump is how a stall is investigated and also a map of the
@@ -72,7 +72,7 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 		registerPprofRoutes(router, h)
 
 		router.HandleFunc("/api/{agentkey}/config/probes", h.adminOnly(h.HandleConfigProbes)).Methods("GET")
-		router.HandleFunc("/api/{agentkey}/admin/cache/clear", h.adminOnly(h.HandleAdminCacheClear)).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/admin/cache/clear", h.adminOnly(h.writes(h.HandleAdminCacheClear))).Methods("POST")
 		router.HandleFunc("/api/{agentkey}/config/validate", h.adminOnly(h.HandleUniversalConfigValidation)).Methods("POST")
 		router.HandleFunc("/api/{agentkey}/config/preview", h.adminOnly(h.HandleUniversalConfigPreview)).Methods("POST")
 		router.HandleFunc("/api/{agentkey}/config/test", h.adminOnly(h.HandleUniversalConfigTest)).Methods("POST")
@@ -128,20 +128,20 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 		router.HandleFunc("/web/{agentkey}/outputs/http", h.adminOnly(h.HandleWebOutputHTTP)).Methods("GET")
 		router.HandleFunc("/web/{agentkey}/outputs/{name}", h.adminOnly(h.HandleWebOutputEditor)).Methods("GET")
 		router.HandleFunc("/api/{agentkey}/config/settings", h.adminOnly(h.HandleConfigSettingsGet)).Methods("GET")
-		router.HandleFunc("/api/{agentkey}/config/settings", h.adminOnly(h.HandleConfigSettingsSet)).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/config/settings", h.adminOnly(h.writes(h.HandleConfigSettingsSet))).Methods("POST")
 		router.HandleFunc("/api/{agentkey}/config/governance", h.adminOnly(h.HandleConfigGovernanceGet)).Methods("GET")
-		router.HandleFunc("/api/{agentkey}/config/governance", h.adminOnly(h.HandleConfigGovernanceSet)).Methods("PUT")
+		router.HandleFunc("/api/{agentkey}/config/governance", h.adminOnly(h.writes(h.HandleConfigGovernanceSet))).Methods("PUT")
 		router.HandleFunc("/api/{agentkey}/catalog/probes", h.adminOnly(h.HandleCatalogProbes)).Methods("GET")
-		router.HandleFunc("/api/{agentkey}/config/probes", h.adminOnly(h.HandleProbeCreate)).Methods("POST")
-		router.HandleFunc("/api/{agentkey}/config/probes/{name}", h.adminOnly(h.HandleProbeUpdate)).Methods("PUT")
-		router.HandleFunc("/api/{agentkey}/config/probes/{name}", h.adminOnly(h.HandleProbeDelete)).Methods("DELETE")
+		router.HandleFunc("/api/{agentkey}/config/probes", h.adminOnly(h.writes(h.HandleProbeCreate))).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/config/probes/{name}", h.adminOnly(h.writes(h.HandleProbeUpdate))).Methods("PUT")
+		router.HandleFunc("/api/{agentkey}/config/probes/{name}", h.adminOnly(h.writes(h.HandleProbeDelete))).Methods("DELETE")
 		router.HandleFunc("/api/{agentkey}/catalog/outputs", h.adminOnly(h.HandleCatalogOutputs)).Methods("GET")
 		router.HandleFunc("/api/{agentkey}/config/outputs", h.adminOnly(h.HandleConfigOutputs)).Methods("GET")
-		router.HandleFunc("/api/{agentkey}/config/outputs", h.adminOnly(h.HandleOutputCreate)).Methods("POST")
+		router.HandleFunc("/api/{agentkey}/config/outputs", h.adminOnly(h.writes(h.HandleOutputCreate))).Methods("POST")
 		router.HandleFunc("/api/{agentkey}/config/outputs/validate", h.adminOnly(h.HandleOutputValidate)).Methods("POST")
 		router.HandleFunc("/api/{agentkey}/config/outputs/test", h.adminOnly(h.HandleOutputTest)).Methods("POST")
-		router.HandleFunc("/api/{agentkey}/config/outputs/{name}", h.adminOnly(h.HandleOutputUpdate)).Methods("PUT")
-		router.HandleFunc("/api/{agentkey}/config/outputs/{name}", h.adminOnly(h.HandleOutputDelete)).Methods("DELETE")
+		router.HandleFunc("/api/{agentkey}/config/outputs/{name}", h.adminOnly(h.writes(h.HandleOutputUpdate))).Methods("PUT")
+		router.HandleFunc("/api/{agentkey}/config/outputs/{name}", h.adminOnly(h.writes(h.HandleOutputDelete))).Methods("DELETE")
 
 		// Static assets
 		router.PathPrefix("/web/{agentkey}/assets/").HandlerFunc(h.HandleWebAssets).Methods("GET")

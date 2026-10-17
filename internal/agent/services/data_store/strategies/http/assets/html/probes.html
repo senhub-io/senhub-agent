@@ -57,7 +57,7 @@
         <h1>Probes</h1>
         <p class="sub">What this agent collects. One probe is one thing watched: a service, a device, an endpoint.</p>
       </div>
-      <a class="btn primary" id="btn-add" href="?new=1">Add a probe</a>
+      <a class="btn primary" id="btn-add" data-write href="?new=1">Add a probe</a>
     </div>
     <div id="list-banner" class="mb3"></div>
 
@@ -85,7 +85,7 @@
         <h2>No probe yet</h2>
         <p class="muted">Start with what this machine should watch. Each starter opens the editor with the type chosen and the minimum to fill in.</p>
         <div class="starters">
-          <div class="scard" id="starter-host" role="button" tabindex="0"><div class="t">This host</div><div class="d">CPU, memory, disks, network. Four probes, no parameter to fill. Ready in one click.</div><div class="go">Add the four</div></div>
+          <div class="scard" id="starter-host" data-write role="button" tabindex="0"><div class="t">This host</div><div class="d">CPU, memory, disks, network. Four probes, no parameter to fill. Ready in one click.</div><div class="go">Add the four</div></div>
           <a class="scard" href="?new=1&type=mysql"><div class="t">A database</div><div class="d">MySQL, PostgreSQL, SQL Server, MongoDB, Redis. Host, user, password.</div><div class="go">Choose a database</div></a>
           <a class="scard" href="?new=1&type=snmp_poll"><div class="t">A network device</div><div class="d">Switch, router, firewall, UPS over SNMP. Address and community.</div><div class="go">SNMP poll</div></a>
           <a class="scard" href="?new=1&type=http_check"><div class="t">A web endpoint</div><div class="d">Availability and latency of a URL. Nothing but the URL.</div><div class="go">HTTP check</div></a>
@@ -147,7 +147,7 @@
         <div class="actbar">
           <button type="button" class="btn" id="btn-validate">Validate</button>
           <button type="button" class="btn" id="btn-test">Test</button>
-          <button type="button" class="btn primary" id="btn-save" disabled>Save and start</button>
+          <button type="button" class="btn primary" id="btn-save" data-write disabled>Save and start</button>
           <a class="btn ghost" href="/web/{{.AgentKey}}/probes">Cancel</a>
           <span class="state" id="act-state"></span>
         </div>
@@ -172,7 +172,7 @@
               <div class="field span" data-path="governance.labels.application"><span class="lbl">Application chain <span class="opt">label application</span></span><input class="in gov" id="g-app" placeholder="billing" autocomplete="off"><span class="hint">Names the application this instance belongs to, so its metrics, logs and entities join the same chain in the map.</span><span class="ferr" hidden></span></div>
               <div class="field span" data-path="governance.labels"><span class="lbl">Other labels <span class="opt">key = value</span></span>
                 <table class="rows"><tbody id="label-rows"></tbody></table>
-                <div><button type="button" class="btn sm" id="btn-add-label">Add a label</button></div>
+                <div><button type="button" class="btn sm" id="btn-add-label" data-write>Add a label</button></div>
                 <span class="ferr" hidden></span>
               </div>
               <div class="field span" data-path="custom_tags"><span class="lbl">Custom tags <span class="opt">on every metric of this probe</span></span><input class="in" id="g-tags" placeholder="env=prod, tier=db" autocomplete="off"><span class="hint" id="tags-hint">Comma-separated key=value pairs. Tags are for filtering in PRTG or Prometheus; labels above describe ownership.</span></div>
@@ -380,7 +380,7 @@
       if (editable && s !== 'failing' && s !== 'target-down') acts += '<a class="btn sm" href="?edit=' + encodeURIComponent(p.name) + '">Edit</a> ';
       if (s !== 'disabled') acts += '<a class="btn sm" href="' + WEB + '/outputs/http#urls&probe=' + encodeURIComponent(p.name) + '">Sensor URL</a> ';
       if (envLocked) acts += '<button type="button" class="btn sm ghost" disabled title="' + esc(envWhy) + '">Edit, disable, delete</button>';
-      else if (p.managed) acts += '<span class="menu-wrap"><button type="button" class="btn sm ghost" data-menu title="More">&#8230;</button></span>';
+      else if (p.managed) acts += '<span class="menu-wrap" data-write><button type="button" class="btn sm ghost" data-menu title="More">&#8230;</button></span>';
       const cat = (List.types[p.type] && List.types[p.type].category) || 'other';
       tr.innerHTML = '<td>' + name + '</td><td><span class="tcell">' + glyphFor(cat) + '<code>' + esc(p.type) + '</code></span></td><td>' + state + '</td>' +
         '<td class="num">' + (p.interval ? esc(p.interval) + ' s' : '&ndash;') + '</td>' +
