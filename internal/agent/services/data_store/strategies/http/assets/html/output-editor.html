@@ -40,8 +40,8 @@
                 <p class="sub" id="sub">Loading...</p>
             </div>
             <div class="btn-row hide" id="top-actions" style="flex:none">
-                <button class="btn" id="btn-toggle">Disable</button>
-                <button class="btn danger" id="btn-delete">Delete</button>
+                <button class="btn" id="btn-toggle" data-write>Disable</button>
+                <button class="btn danger" id="btn-delete" data-write>Delete</button>
             </div>
         </div>
 
@@ -65,7 +65,7 @@
 
                 <div class="actbar">
                     <button class="btn" id="btn-test">Test connection</button>
-                    <button class="btn primary" id="btn-save">Save</button>
+                    <button class="btn primary" id="btn-save" data-write>Save</button>
                     <a class="btn ghost" href="/web/{{.AgentKey}}/outputs">Cancel</a>
                     <span class="state" id="state"><span class="dot"></span>Loading</span>
                 </div>

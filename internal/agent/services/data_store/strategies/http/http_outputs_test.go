@@ -34,6 +34,17 @@ func (p pathedConfig) GetConfigPath() string { return p.path }
 
 func newOutputsTestRouter(t *testing.T) (*mux.Router, string) {
 	t.Helper()
+	return newOutputsTestRouterWith(t, nil, "")
+}
+
+// newOutputsTestRouterWith serves the console with extra parameters on
+// the http output and, when httpFile is set, that text as the content
+// of the output's file.
+func newOutputsTestRouterWith(t *testing.T, extra map[string]interface{}, httpFile string) (*mux.Router, string) {
+	t.Helper()
+	if httpFile == "" {
+		httpFile = "http:\n  port: 8080\n  endpoints: [\"web\", \"prtg\"]\n"
+	}
 	dir := t.TempDir()
 	main := filepath.Join(dir, "agent.yaml")
 	if err := os.WriteFile(main, []byte("config_version: 3\nagent:\n  key: \"k\"\n"), 0o600); err != nil {
@@ -42,7 +53,7 @@ func newOutputsTestRouter(t *testing.T) (*mux.Router, string) {
 	if err := os.MkdirAll(filepath.Join(dir, "strategies.d"), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "strategies.d", "00-http.yaml"), []byte("http:\n  port: 8080\n  endpoints: [\"web\", \"prtg\"]\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "strategies.d", "00-http.yaml"), []byte(httpFile), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	secret.SetConfigDir(dir)
@@ -64,10 +75,14 @@ func newOutputsTestRouter(t *testing.T) (*mux.Router, string) {
 	// The console and the configuration API are the administration
 	// surface: they are served only when an administration key exists,
 	// and they answer that key alone.
-	strategy, ok := NewHTTPSyncStrategy(cfg, map[string]interface{}{
+	params := map[string]interface{}{
 		"endpoints": []interface{}{"web", "prtg"},
 		"admin_key": testAdminKey,
-	}, baseLogger).(*HTTPSyncStrategy)
+	}
+	for k, v := range extra {
+		params[k] = v
+	}
+	strategy, ok := NewHTTPSyncStrategy(cfg, params, baseLogger).(*HTTPSyncStrategy)
 	if !ok {
 		t.Fatal("strategy cast")
 	}

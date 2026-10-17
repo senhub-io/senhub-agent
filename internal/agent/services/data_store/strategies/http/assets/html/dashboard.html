@@ -45,8 +45,8 @@
                 <p class="sub">What this agent collects, and where it sends it.</p>
             </div>
             <div class="btn-row">
-                <a class="btn" href="/web/{{.AgentKey}}/probes?new=1">Add a probe</a>
-                <a class="btn" href="/web/{{.AgentKey}}/outputs">Add an output</a>
+                <a class="btn" data-write href="/web/{{.AgentKey}}/probes?new=1">Add a probe</a>
+                <a class="btn" data-write href="/web/{{.AgentKey}}/outputs">Add an output</a>
             </div>
         </div>
 
@@ -76,7 +76,7 @@
                     <a class="small" href="/web/{{.AgentKey}}/outputs">Manage</a>
                 </div>
                 <div id="outputs-body"><div class="loading">Loading outputs...</div></div>
-                <div class="card-foot"><span id="outputs-foot">-</span><a href="/web/{{.AgentKey}}/outputs">Add an output</a></div>
+                <div class="card-foot"><span id="outputs-foot">-</span><a data-write href="/web/{{.AgentKey}}/outputs">Add an output</a></div>
             </div>
         </div>
 

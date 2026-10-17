@@ -220,7 +220,7 @@
             return !!(p.essential_when && p.essential_when.length && !this._condHolds(p.essential_when));
         }
         _visible() {
-            return this.params.filter(p => !this.hide.includes(p.key) && !this.isHidden(p));
+            return this.params.filter(p => !this.hide.includes(p.key) && !p.file_only && !this.isHidden(p));
         }
         essentialKeys() {
             return this._visible().filter(p => this.isEssential(p)).map(p => p.key);

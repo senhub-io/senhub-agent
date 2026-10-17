@@ -175,6 +175,10 @@ func (h *HTTPSyncStrategy) checkProbeWrite(w http.ResponseWriter, req probeWrite
 		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("probe type %q is not in the catalogue of this agent", req.Type))
 		return ps, nil, false
 	}
+	if reason := h.configManager.Console().execRefusal(ps, req.Params, stored); reason != "" {
+		writeJSONError(w, http.StatusForbidden, reason)
+		return ps, nil, false
+	}
 	if verdict := annotateCatalogEntry(ps, h.currentLicense(), h.licenseAgentKey()); !verdict.Authorized {
 		writeJSONError(w, http.StatusForbidden, fmt.Sprintf("probe type %q: %s", req.Type, verdict.Reason))
 		return ps, nil, false
