@@ -23,6 +23,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/subcollect"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -66,6 +67,7 @@ type KubernetesProbe struct {
 	*types.BaseProbe
 	cfg          probeConfig
 	moduleLogger *logger.ModuleLogger
+	subFailures  subcollect.Tracker
 	clientset    kubernetes.Interface
 	// clusterEndpoint is the API server address — a display and fallback
 	// value, NOT the identity (see cluster_uid.go).
@@ -303,11 +305,12 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 	if p.cfg.CollectNodes {
 		pts, err := p.collectNodes(ctx, now)
 		if err != nil {
-			p.moduleLogger.Warn().Err(err).Msg("kubernetes: node collection failed")
+			p.subFailures.Failed(p.moduleLogger, subcollect.Warn, "nodes", err, "kubernetes: node collection failed")
 			if checkErr == nil {
 				checkErr = err
 			}
 		} else {
+			p.subFailures.Succeeded(p.moduleLogger, "nodes", "kubernetes: node collection recovered")
 			up = 1
 		}
 		points = append(points, pts...)
@@ -316,11 +319,12 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 	if p.cfg.CollectPods || p.cfg.CollectContainers {
 		pts, err := p.collectPods(ctx, now)
 		if err != nil {
-			p.moduleLogger.Warn().Err(err).Msg("kubernetes: pod collection failed")
+			p.subFailures.Failed(p.moduleLogger, subcollect.Warn, "pods", err, "kubernetes: pod collection failed")
 			if checkErr == nil {
 				checkErr = err
 			}
 		} else {
+			p.subFailures.Succeeded(p.moduleLogger, "pods", "kubernetes: pod collection recovered")
 			up = 1
 		}
 		points = append(points, pts...)
@@ -329,11 +333,12 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 	if p.cfg.CollectDeployments {
 		pts, err := p.collectDeployments(ctx, now)
 		if err != nil {
-			p.moduleLogger.Warn().Err(err).Msg("kubernetes: deployment collection failed")
+			p.subFailures.Failed(p.moduleLogger, subcollect.Warn, "deployments", err, "kubernetes: deployment collection failed")
 			if checkErr == nil {
 				checkErr = err
 			}
 		} else {
+			p.subFailures.Succeeded(p.moduleLogger, "deployments", "kubernetes: deployment collection recovered")
 			up = 1
 		}
 		points = append(points, pts...)
@@ -362,13 +367,16 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 		// discard the ones it can. The error is logged so a permission gap
 		// surfaces instead of presenting as an empty cluster.
 		if err != nil {
-			p.moduleLogger.Warn().Err(err).Str("kind", w.name).
-				Msg("kubernetes: workload collection partially failed")
+			p.subFailures.Failed(p.moduleLogger, subcollect.Warn, w.name, err,
+				"kubernetes: workload collection partially failed")
 			if checkErr == nil {
 				checkErr = err
 			}
-		} else if len(pts) > 0 {
-			up = 1
+		} else {
+			p.subFailures.Succeeded(p.moduleLogger, w.name, "kubernetes: workload collection recovered")
+			if len(pts) > 0 {
+				up = 1
+			}
 		}
 		points = append(points, pts...)
 	}
@@ -378,10 +386,12 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 	// message, which is the part that explains the metric.
 	if p.cfg.CollectEvents {
 		if err := p.collectEvents(ctx, now); err != nil {
-			p.moduleLogger.Warn().Err(err).Msg("kubernetes: event collection partially failed")
+			p.subFailures.Failed(p.moduleLogger, subcollect.Warn, "events", err, "kubernetes: event collection partially failed")
 			if checkErr == nil {
 				checkErr = err
 			}
+		} else {
+			p.subFailures.Succeeded(p.moduleLogger, "events", "kubernetes: event collection recovered")
 		}
 	}
 
