@@ -12,9 +12,7 @@ const (
 	entityTypeNetworkRoute   = "network.route"
 	entityTypeNetworkAddress = "network.address"
 	idKeyHost                = "host.id"
-	idKeyRouteDestination    = "route.destination"
 	idKeyNetworkAddress      = "network.address"
-	idKeyNextHopIP           = "next_hop.ip"
 	attrMetric               = "metric"
 	attrEgressInterface      = "network.interface.name"
 	attrRouteType            = "route.type"
@@ -122,9 +120,9 @@ func buildObservation(hostID string, routes []hostRoute) entity.Observation {
 		}
 
 		routeID := map[string]any{
-			idKeyHost:             hostID,
-			idKeyRouteDestination: r.Destination,
-			idKeyNextHopIP:        nextHop,
+			idKeyHost:                  hostID,
+			entity.KeyRouteDestination: r.Destination,
+			entity.KeyRouteNextHop:     nextHop,
 		}
 		attrs := map[string]any{attrRouteType: rt}
 		if r.Metric > 0 {
