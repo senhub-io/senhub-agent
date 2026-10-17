@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"database/sql/driver"
@@ -9,14 +10,17 @@ import (
 	"io"
 	"net"
 	"sort"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"testing"
 
 	gomysql "github.com/go-sql-driver/mysql"
+	"github.com/rs/zerolog"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 type fakeMySQLConn struct {
@@ -25,6 +29,7 @@ type fakeMySQLConn struct {
 	vars    map[string]string
 	uuid    string
 	uuidErr error
+	sizeErr error
 }
 
 func (c *fakeMySQLConn) Ping(ctx context.Context) error            { return c.pingErr }
@@ -46,6 +51,9 @@ func (c *fakeMySQLConn) QueryContext(ctx context.Context, query string, _ []driv
 	case replicaStatusQuery, replicaStatusFallback, replicaCountQuery, replicaCountFallback:
 		return &fakeRows{cols: []string{}}, nil
 	case totalSizeQuery, tableCountQuery:
+		if c.sizeErr != nil {
+			return nil, c.sizeErr
+		}
 		return newSingleValueRows(100.0), nil
 	default:
 		return nil, fmt.Errorf("unexpected query %q", query)
@@ -298,5 +306,29 @@ func TestCollectUnknownUUIDVariablePinsFallback(t *testing.T) {
 	}
 	if !p.entitySrc.isIDPinned() || !p.uuidFetched {
 		t.Fatal("a server without @@server_uuid must pin the host:port identity")
+	}
+}
+
+func TestCollectStorageQueryFailureIsLogged(t *testing.T) {
+	conn := &fakeMySQLConn{
+		uuid:    "uuid-123",
+		sizeErr: errors.New("access denied"),
+		status:  fakeStatusMap(),
+		vars:    fakeVarsMap(),
+	}
+	p := newProbeWithFakeDB(t, conn)
+	var buf bytes.Buffer
+	base := zerolog.New(&buf)
+	p.moduleLogger = logger.NewModuleLogger(&base, "probe.mysql")
+
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if findPoint(points, "senhub.db.database.size") != nil {
+		t.Error("size metric must be absent when its query fails")
+	}
+	if !strings.Contains(buf.String(), "mysql storage query failed") {
+		t.Errorf("expected a storage warning, got %q", buf.String())
 	}
 }

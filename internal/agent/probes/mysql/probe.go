@@ -542,9 +542,13 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 
 	if totalSize, err := p.querySingleFloat(storageCtx, totalSizeQuery); err == nil {
 		points = append(points, p.dp("senhub.db.database.size", totalSize, now, string(dbcommon.MetricTypeStorage), allCommonTags))
+	} else {
+		p.moduleLogger.Warn().Err(err).Str("instance", instance).Str("query", "database_size").Msg("mysql storage query failed")
 	}
 	if tableCount, err := p.querySingleFloat(storageCtx, tableCountQuery); err == nil {
 		points = append(points, p.dp("senhub.db.mysql.table.count", tableCount, now, string(dbcommon.MetricTypeStorage), allCommonTags))
+	} else {
+		p.moduleLogger.Warn().Err(err).Str("instance", instance).Str("query", "table_count").Msg("mysql storage query failed")
 	}
 
 	// Per-database sizes (opt-in).
@@ -566,8 +570,12 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 						}, allCommonTags...)
 						points = append(points, p.dp("senhub.db.mysql.table.size", ts.size, now, string(dbcommon.MetricTypePerTable), tbTags))
 					}
+				} else {
+					p.moduleLogger.Warn().Err(err).Str("instance", instance).Str("query", "per_table_sizes").Msg("mysql storage query failed")
 				}
 			}
+		} else {
+			p.moduleLogger.Warn().Err(err).Str("instance", instance).Str("query", "per_database_sizes").Msg("mysql storage query failed")
 		}
 	}
 

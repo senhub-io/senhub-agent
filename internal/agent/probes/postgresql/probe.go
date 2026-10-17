@@ -408,6 +408,8 @@ func (p *pgProbe) collectStorage(ctx context.Context, now time.Time, instance st
 	if err := p.db.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM pg_class WHERE relkind = 'r'`).Scan(&tableCount); err == nil {
 		*points = append(*points, p.dp("postgresql.table.count", float64(tableCount), now, stTags))
+	} else {
+		p.moduleLogger.Warn().Err(err).Str("query", "table_count").Msg("postgresql: query failed")
 	}
 }
 
@@ -420,6 +422,8 @@ func (p *pgProbe) collectLocks(ctx context.Context, now time.Time, instance stri
 	var waiting float64
 	if err := p.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pg_locks WHERE NOT granted`).Scan(&waiting); err == nil {
 		*points = append(*points, p.dp("senhub.db.postgresql.lock.waiting", float64(waiting), now, locksTags))
+	} else {
+		p.moduleLogger.Warn().Err(err).Str("query", "locks_waiting").Msg("postgresql: query failed")
 	}
 
 	// Oldest active transaction age
@@ -430,6 +434,8 @@ func (p *pgProbe) collectLocks(ctx context.Context, now time.Time, instance stri
 		WHERE state IN ('active', 'idle in transaction')
 		  AND xact_start IS NOT NULL`).Scan(&longestXact); err == nil && longestXact.Valid {
 		*points = append(*points, p.dp("senhub.db.postgresql.long_running_xact", float64(longestXact.Float64), now, locksTags))
+	} else if err != nil {
+		p.moduleLogger.Warn().Err(err).Str("query", "long_running_xact").Msg("postgresql: query failed")
 	}
 }
 
@@ -461,6 +467,8 @@ func (p *pgProbe) collectWAL(ctx context.Context, now time.Time, instance string
 		if archiveMode != "off" && archiveMode != "" && lastArchivedAge.Valid {
 			*points = append(*points, p.dp("senhub.db.postgresql.archiver.last_archived.age", float64(lastArchivedAge.Float64), now, archTags))
 		}
+	} else {
+		p.moduleLogger.Warn().Err(err).Str("query", "pg_stat_archiver").Msg("postgresql: query failed")
 	}
 }
 
@@ -497,6 +505,8 @@ func (p *pgProbe) collectReplication(ctx context.Context, now time.Time, instanc
 			if p.cfg.MaxReplicationLag > 0 && replayLag.Float64 > p.cfg.MaxReplicationLag.Seconds() {
 				replHealth = 0
 			}
+		} else if err != nil {
+			p.moduleLogger.Warn().Err(err).Str("query", "replay_lag").Msg("postgresql: query failed")
 		}
 
 		// WAL receiver status
@@ -522,6 +532,8 @@ func (p *pgProbe) collectReplication(ctx context.Context, now time.Time, instanc
 				role = dbcommon.RolePrimary
 			}
 			*points = append(*points, p.dp("senhub.db.replication.replicas.connected", float64(replicaCount), now, replTags))
+		} else {
+			p.moduleLogger.Warn().Err(err).Str("query", "pg_stat_replication").Msg("postgresql: query failed")
 		}
 	}
 
