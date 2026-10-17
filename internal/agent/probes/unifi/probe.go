@@ -18,7 +18,6 @@ package unifi
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,6 +29,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/httpclient"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -97,19 +97,15 @@ func NewUnifiProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger) 
 		return nil, fmt.Errorf("creating cookie jar: %w", err)
 	}
 
+	httpClient, err := httpclient.NewClient(httpclient.Options{Timeout: cfg.Timeout, InsecureSkipVerify: !cfg.VerifyTLS, DisableProxy: true, DisableHTTP2: true, Jar: jar})
+	if err != nil {
+		return nil, fmt.Errorf("building HTTP client: %w", err)
+	}
 	probe := &unifiProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
 		moduleLogger: moduleLogger,
-		client: &http.Client{
-			Timeout: cfg.Timeout,
-			Jar:     jar,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: !cfg.VerifyTLS, // #nosec G402 - verify_tls defaults to true; operator must set verify_tls: false to skip verification
-				},
-			},
-		},
+		client:       httpClient,
 		entitySource: newEntitySource(cfg.Endpoint),
 	}
 	probe.SetProbeType(ProbeType)

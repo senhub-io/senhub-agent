@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/httpclient"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -102,14 +103,16 @@ func NewWildflyProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 		return id.ID
 	}
 
+	httpClient, err := httpclient.NewClient(httpclient.Options{Timeout: cfg.Timeout})
+	if err != nil {
+		return nil, fmt.Errorf("building HTTP client: %w", err)
+	}
 	p := &WildflyProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
 		moduleLogger: moduleLogger,
-		client: &http.Client{
-			Timeout: cfg.Timeout,
-		},
-		entitySrc: newWildflyEntitySource(cfg.Endpoint, cfg.InstanceName, resolveHostID),
+		client:       httpClient,
+		entitySrc:    newWildflyEntitySource(cfg.Endpoint, cfg.InstanceName, resolveHostID),
 	}
 	p.SetProbeType(ProbeType)
 	p.SetEntitySource(p.entitySrc)

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/httpclient"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -128,13 +129,15 @@ func NewHAProxyProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 		hostID = hi.ID
 	}
 
+	httpClient, err := httpclient.NewClient(httpclient.Options{Timeout: cfg.Timeout})
+	if err != nil {
+		return nil, fmt.Errorf("building HTTP client: %w", err)
+	}
 	probe := &haproxyProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
 		moduleLogger: moduleLogger,
-		client: &http.Client{
-			Timeout: cfg.Timeout,
-		},
+		client:       httpClient,
 	}
 	probe.SetProbeType(ProbeType)
 

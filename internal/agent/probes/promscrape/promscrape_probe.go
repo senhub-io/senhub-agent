@@ -19,7 +19,6 @@ package promscrape
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -33,6 +32,7 @@ import (
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
 
+	"senhub-agent.go/internal/agent/probes/httpclient"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -105,19 +105,16 @@ func NewPromScrapeProbe(config map[string]interface{}, baseLogger *logger.Logger
 		}
 	}
 
+	httpClient, err := httpclient.NewClient(httpclient.Options{Timeout: cfg.Timeout, InsecureSkipVerify: cfg.InsecureSkipVerify, DisableProxy: true, DisableHTTP2: true})
+	if err != nil {
+		return nil, fmt.Errorf("building HTTP client: %w", err)
+	}
 	probe := &PromScrapeProbe{
 		BaseProbe:    &types.BaseProbe{},
 		config:       cfg,
 		moduleLogger: moduleLogger,
 		metricRe:     metricRe,
-		client: &http.Client{
-			Timeout: cfg.Timeout,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: cfg.InsecureSkipVerify, // #nosec G402 - operator opt-in for self-signed exporters
-				},
-			},
-		},
+		client:       httpClient,
 	}
 	probe.SetProbeType(ProbeType)
 	probe.scrape = probe.scrapeOnce

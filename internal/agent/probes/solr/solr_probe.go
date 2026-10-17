@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/httpclient"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -93,8 +94,9 @@ func NewSolrProbe(config map[string]interface{}, baseLogger *logger.Logger) (typ
 		cfg.InstanceName = v
 	}
 
-	httpClient := &http.Client{
-		Timeout: cfg.Timeout,
+	httpClient, err := httpclient.NewClient(httpclient.Options{Timeout: cfg.Timeout})
+	if err != nil {
+		return nil, fmt.Errorf("building HTTP client: %w", err)
 	}
 	probe := &SolrProbe{
 		BaseProbe:    &types.BaseProbe{},

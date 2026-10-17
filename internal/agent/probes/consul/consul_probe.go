@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/httpclient"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -93,13 +94,15 @@ func NewConsulProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 		return nil, err
 	}
 
+	httpClient, err := httpclient.NewClient(httpclient.Options{Timeout: cfg.Timeout})
+	if err != nil {
+		return nil, fmt.Errorf("building HTTP client: %w", err)
+	}
 	p := &ConsulProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
 		moduleLogger: moduleLogger,
-		client: &http.Client{
-			Timeout: cfg.Timeout,
-		},
+		client:       httpClient,
 	}
 	p.SetProbeType(ProbeType)
 
