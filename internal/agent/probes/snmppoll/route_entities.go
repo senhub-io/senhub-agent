@@ -165,9 +165,9 @@ func appendRouteEntities(obs *entity.Observation, selfID string, self deviceIden
 		routeSeen[key] = true
 
 		routeID := map[string]any{
-			idKeyNetworkDevice:    selfID,
-			idKeyRouteDestination: nr.Destination,
-			attrNextHopIP:         nr.NextHop,
+			idKeyNetworkDevice:         selfID,
+			entity.KeyRouteDestination: nr.Destination,
+			entity.KeyRouteNextHop:     nr.NextHop,
 		}
 		attrs := map[string]any{
 			attrRouteType: routeTypeName(nr.Type),
@@ -283,7 +283,7 @@ func linkPrivateNextHops(obs *entity.Observation) {
 		if rt != "remote" && rt != "other" {
 			continue
 		}
-		gw, _ := e.ID[attrNextHopIP].(string)
+		gw, _ := e.ID[entity.KeyRouteNextHop].(string)
 		if c, ok := entity.CanonicalIP(gw); ok {
 			gw = c
 		}

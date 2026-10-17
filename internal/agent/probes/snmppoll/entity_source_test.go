@@ -190,12 +190,12 @@ func TestBuildObservation_NetworkRoute(t *testing.T) {
 		if e.ID[idKeyNetworkDevice] != "serial:9:S1" {
 			t.Errorf("route owner = %v, want serial:9:S1", e.ID[idKeyNetworkDevice])
 		}
-		if e.ID[idKeyRouteDestination] == "10.20.0.0/16" && e.ID[attrNextHopIP] == "10.0.0.254" {
+		if e.ID["route.destination"] == "10.20.0.0/16" && e.ID["next_hop.ip"] == "10.0.0.254" {
 			if e.Attributes[attrRouteMetric] != int64(10) {
 				t.Errorf("route 10.20.0.0/16 via 10.0.0.254 attrs = %+v", e.Attributes)
 			}
 		}
-		if _, isAttr := e.Attributes[attrNextHopIP]; isAttr {
+		if _, isAttr := e.Attributes["next_hop.ip"]; isAttr {
 			t.Errorf("next_hop.ip is identity now, not an attribute: %+v", e)
 		}
 	}

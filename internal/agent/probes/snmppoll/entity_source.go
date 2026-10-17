@@ -39,11 +39,9 @@ const (
 	idKeyServiceInstanceID     = "service.instance.id"
 	idKeyNetworkDevice         = "network.device.id"
 	idKeyHost                  = "host.id"
-	idKeyRouteDestination      = "route.destination"
 	idKeyInterfaceName         = "network.interface.name"
 	idKeyNetworkAddress        = "network.address"
 	idKeyNeighborMAC           = "mac"
-	attrNextHopIP              = "next_hop.ip"
 	attrRouteMetric            = "metric"
 	// oper_state is a Toise state-key (closed set, underscore spelling): a change
 	// fires entity.state_changed. The old dotted "oper.state" was silently
