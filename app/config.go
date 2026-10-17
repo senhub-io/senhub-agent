@@ -659,6 +659,10 @@ func checkConfig(configPath string) checkOutcome {
 
 	errorCount += reportAgentGovernanceProblems(config.Governance)
 
+	opampErrors, opampWarnings := reportOpAMP(config.OpAMP)
+	errorCount += opampErrors
+	warnings += opampWarnings
+
 	errorCount, warnings = reportNagiosFile(configPath, errorCount, warnings)
 
 	// Binary writability. What is correct differs per platform: on Linux the
