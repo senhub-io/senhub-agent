@@ -2,6 +2,7 @@ package redis
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -162,7 +163,7 @@ func TestCollectKeysOnSuccess(t *testing.T) {
 	p := probeIntf.(*redisProbe)
 
 	client, serverErrCh := runFakeRedis(infoBody, cmdStatsBody)
-	p.dialFn = func(network, address string, timeout time.Duration) (net.Conn, error) {
+	p.dialFn = func(_ context.Context, network, address string, timeout time.Duration) (net.Conn, error) {
 		return client, nil
 	}
 
@@ -197,7 +198,7 @@ func TestCollectKeysOnConnectionFailure(t *testing.T) {
 	p := probeIntf.(*redisProbe)
 
 	dialErr := &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}
-	p.dialFn = func(network, address string, timeout time.Duration) (net.Conn, error) {
+	p.dialFn = func(_ context.Context, network, address string, timeout time.Duration) (net.Conn, error) {
 		return nil, dialErr
 	}
 
