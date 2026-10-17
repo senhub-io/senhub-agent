@@ -4,6 +4,7 @@ package windowseventlog
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -325,7 +326,7 @@ func (r *eventReader) drain(channel string, sub, bookmark windows.Handle) {
 		events, err := evtNext(sub, drainBatchSize)
 		if err != nil {
 			// ERROR_NO_MORE_ITEMS is the normal end of a drain.
-			if err != windows.ERROR_NO_MORE_ITEMS && err != windows.ERROR_TIMEOUT {
+			if !errors.Is(err, windows.ERROR_NO_MORE_ITEMS) && !errors.Is(err, windows.ERROR_TIMEOUT) {
 				r.log.Debug().Err(err).Str("channel", channel).Msg("EvtNext ended")
 			}
 			break
@@ -618,7 +619,7 @@ func evtFormatMessage(publisherMetadata, event windows.Handle) (string, error) {
 		0, // Buffer
 		uintptr(unsafe.Pointer(&bufferUsed)),
 	)
-	if r == 0 && e != windows.ERROR_INSUFFICIENT_BUFFER {
+	if r == 0 && !errors.Is(e, windows.ERROR_INSUFFICIENT_BUFFER) {
 		return "", fmt.Errorf("EvtFormatMessage sizing: %w", e)
 	}
 	if bufferUsed == 0 {
