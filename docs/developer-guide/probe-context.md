@@ -45,9 +45,9 @@ repository) keeps working.
 | Trace span | The `probe.collect` span, so client spans a probe opens are its children. |
 
 The first collection runs inside `Start`, under the scheduler's
-lifecycle lock, so only the agent's context can cancel it; a
-`Shutdown` issued meanwhile waits for it to return. Every later cycle
-is cancelled by either.
+lifecycle lock. `Shutdown` cancels the run context before it waits for
+that lock, so a stop issued meanwhile interrupts the first collection
+as it does every later cycle.
 
 The deadline is a backstop against a collection that hangs, not the
 operational limit. Probes keep their own `timeout` parameters, which
@@ -92,11 +92,39 @@ before (the HTTP side stops waiting, the collection finishes on its own).
 Probes whose collection is network I/O through a client that already
 accepts a context: `postgresql`, `mysql`, `redis`, `http_check`,
 `tcp_dial`, `kubernetes`, `kubelet_stats`, `elasticsearch`, `opensearch`,
-`prometheus_scrape`, `docker`. Each has a test proving a cancelled
-context returns promptly with `ctx.Err()` wrapped, and a compile-time
-assertion that it still implements `ContextCollector`.
+`prometheus_scrape`, `docker`, and the network probes `mongodb`,
+`rabbitmq`, `kafka`, `nats`, `consul`, `couchdb`, `influxdb`,
+`clickhouse`, `activemq`, `wildfly`, `solr`, `haproxy`, `nginx`,
+`apache`, `phpfpm`, `jenkins`, `envoy`, `pulsar`, `ceph`, `proxmox`,
+`unifi`, `dns_latency`, `ntp`, `icmp_check`, `mssql`, `oracle`,
+`cassandra`, `zookeeper`, `memcached`, `varnish`. Each has a test
+proving a cancelled context returns promptly with `ctx.Err()` wrapped,
+and a compile-time assertion that it still implements
+`ContextCollector`.
 
 `redis` speaks RESP over a raw connection; the end of the context
 closes that connection, which releases a blocked read or write.
-`docker` still negotiates the Engine API version once without a
-context (bounded by the client timeout).
+`zookeeper`, `memcached` and `ntp` do the same on their raw TCP or UDP
+connection.
+
+`docker` negotiates the Engine API version under the same context; an
+interrupted negotiation is not remembered.
+
+Two clients take no context and are run aside instead. `kafka` (sarama)
+closes its connections when the context ends, which fails every call in
+flight; a dial already underway ends at its own timeout and its result
+is closed and discarded. `dns_latency` abandons the lookup, because the
+Go resolver does not watch the context while it waits for an answer; the
+lookup's own deadline bounds the abandoned goroutine.
+
+Where a probe pins an identity or an entity attribute from a query
+(ClickHouse `serverUUID`, Ceph fsid, Solr cluster id, ActiveMQ
+`BrokerId`, Cassandra `host_id`, Oracle version, UniFi controller id),
+that query failing because the context ended pins nothing: the next
+cycle asks again.
+
+`snmp_poll` is not migrated. gosnmp accepts a context, but the
+topology sweep that runs inside the cycle treats a walk that failed as a
+partial result and retires the entities it did not see, so a cancelled
+walk would have to be told apart from a failed one in every walker
+before the probe could be cancelled safely.
