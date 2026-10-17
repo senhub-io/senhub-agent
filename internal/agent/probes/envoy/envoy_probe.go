@@ -63,7 +63,7 @@ type EnvoyProbe struct {
 	client       *http.Client
 
 	// collectFunc is the production fetch; overridable in tests.
-	collectFunc func() ([]data_store.DataPoint, error)
+	collectFunc func(ctx context.Context) ([]data_store.DataPoint, error)
 
 	entitySrc *envoyEntitySource
 }
@@ -155,12 +155,21 @@ func (p *EnvoyProbe) identityTags() []tags.Tag {
 	return t
 }
 
-// Collect fetches Envoy stats and returns OTel-first datapoints.
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
+func (p *EnvoyProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext fetches Envoy stats and returns OTel-first datapoints.
 // If the admin interface is unreachable, senhub.envoy.up=0 is emitted
 // and Collect returns nil (a transient error is never a fatal collection
 // failure for monitoring probes).
-func (p *EnvoyProbe) Collect() ([]data_store.DataPoint, error) {
-	points, err := p.collectFunc()
+func (p *EnvoyProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
+	points, err := p.collectFunc(ctx)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("envoy collection interrupted: %w", ctxErr)
+	}
 	now := time.Now()
 
 	if err != nil {
@@ -212,10 +221,10 @@ func classifyCollectErr(err error) dbcommon.CheckResult {
 
 // fetchAndParse is the production implementation: GET /stats?format=prometheus
 // and parse the Prometheus text exposition.
-func (p *EnvoyProbe) fetchAndParse() ([]data_store.DataPoint, error) {
+func (p *EnvoyProbe) fetchAndParse(ctx context.Context) ([]data_store.DataPoint, error) {
 	url := p.config.Endpoint + "/stats?format=prometheus"
 
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("building request for %s: %w", url, err)
 	}
