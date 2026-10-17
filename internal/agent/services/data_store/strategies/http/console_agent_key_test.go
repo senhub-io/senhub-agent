@@ -31,6 +31,11 @@ func TestTheConsoleShowsTheAgentKeyNotTheAdministrationKey(t *testing.T) {
 
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest("GET", "/web/admin-key/dashboard", nil))
+	cookie := sessionCookieOf(t, rec)
+	req := httptest.NewRequest("GET", "/web/_/dashboard", nil)
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
 	if !strings.Contains(rec.Body.String(), "window.AGENT_READ_KEY = 'read-key'") {
 		t.Error("the dashboard page does not carry the agent key for its licence card")
 	}
