@@ -277,7 +277,15 @@ func (p *KubernetesProbe) OnShutdown(_ context.Context) error {
 // unreachable API server or expired credentials produce an observable
 // up=0 series rather than vanishing from all sinks.
 func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.Interval/2)
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext is Collect under the poller's context. A cycle whose
+// context ends returns its error and publishes nothing: the half-built
+// inventory would retire every entity it had not reached yet, and up=0
+// would report an API server that was merely not waited for.
+func (p *KubernetesProbe) CollectContext(parent context.Context) ([]data_store.DataPoint, error) {
+	ctx, cancel := context.WithTimeout(parent, p.cfg.Interval/2)
 	defer cancel()
 
 	now := time.Now()
@@ -383,6 +391,10 @@ func (p *KubernetesProbe) Collect() ([]data_store.DataPoint, error) {
 				checkErr = err
 			}
 		}
+	}
+
+	if err := parent.Err(); err != nil {
+		return nil, fmt.Errorf("kubernetes collection interrupted: %w", err)
 	}
 
 	p.entitySrc.setInventory(p.pendingInventory)
