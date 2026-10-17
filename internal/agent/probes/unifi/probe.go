@@ -25,7 +25,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
-	"strconv"
 	"sync"
 	"time"
 
@@ -447,10 +446,10 @@ func (p *unifiProbe) buildDevicePoints(devices deviceEnvelope, baseTags []tags.T
 			tags.Tag{Key: "device_type", Value: dt},
 			tags.Tag{Key: "metric_type", Value: "device"},
 		)
-		if cpu, ok := parseFloat(d.SysStats.CPU); ok {
+		if cpu, ok := types.ParseFloat(d.SysStats.CPU); ok {
 			points = append(points, data_store.DataPoint{Name: "unifi.device.cpu", Value: float64(cpu), Timestamp: ts, Tags: devTags})
 		}
-		if mem, ok := parseFloat(d.SysStats.Mem); ok {
+		if mem, ok := types.ParseFloat(d.SysStats.Mem); ok {
 			points = append(points, data_store.DataPoint{Name: "unifi.device.memory", Value: float64(mem), Timestamp: ts, Tags: devTags})
 		}
 		// An access point that is not connected has no clients to count and
@@ -525,18 +524,6 @@ func deviceName(d deviceRow) string {
 		return d.Name
 	}
 	return shortType(d.Type)
-}
-
-// parseFloat parses the controller's stringified cpu/mem percentages.
-func parseFloat(s string) (float64, bool) {
-	if s == "" {
-		return 0, false
-	}
-	v, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return 0, false
-	}
-	return v, true
 }
 
 // drain consumes and closes a response body so the connection can be
