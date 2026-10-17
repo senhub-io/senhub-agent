@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -90,3 +91,7 @@ func TestCollectContext_TimeoutStillReportsDown(t *testing.T) {
 		t.Fatalf("senhub.db.up = %v, want 0 on a query timeout", up)
 	}
 }
+
+// The poller detects cancellation support by type assertion; a lost
+// method would silently fall back to the uncancellable Collect.
+var _ types.ContextCollector = (*pgProbe)(nil)

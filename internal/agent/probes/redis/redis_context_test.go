@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"senhub-agent.go/internal/agent/probes/types"
 )
 
 // A server that accepted the connection and never replies must not hold
@@ -119,3 +121,7 @@ func TestCollect_StillReportsDownWhenNotCancelled(t *testing.T) {
 		t.Fatalf("Collect() did not emit senhub.db.up=0 for an unreachable target")
 	}
 }
+
+// The poller detects cancellation support by type assertion; a lost
+// method would silently fall back to the uncancellable Collect.
+var _ types.ContextCollector = (*redisProbe)(nil)

@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"senhub-agent.go/internal/agent/probes/types"
 )
 
 // A cluster that stops answering must not hold a cancelled collection,
@@ -45,3 +47,7 @@ func TestCollectContext_CancelledReturnsPromptly(t *testing.T) {
 		t.Fatalf("an interrupted cycle emitted %d datapoints, want none (no false up=0)", len(points))
 	}
 }
+
+// The poller detects cancellation support by type assertion; a lost
+// method would silently fall back to the uncancellable Collect.
+var _ types.ContextCollector = (*opensearchProbe)(nil)

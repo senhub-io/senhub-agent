@@ -7,6 +7,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"senhub-agent.go/internal/agent/probes/types"
 )
 
 // stallingConn answers the ping, then never answers a query: the shape
@@ -59,3 +61,7 @@ func TestCollectContext_CancelledReturnsPromptly(t *testing.T) {
 		t.Fatal("an interrupted server-UUID query was recorded as fetched")
 	}
 }
+
+// The poller detects cancellation support by type assertion; a lost
+// method would silently fall back to the uncancellable Collect.
+var _ types.ContextCollector = (*mysqlProbe)(nil)
