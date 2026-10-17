@@ -296,21 +296,9 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 	_, familyOf := variantFamilies(def)
 	placed := map[string]placement{} // metric name -> where its item prototype lives
 
-	ensureRule := func(ruleKey, ruleTitle string) *DiscoveryRule {
-		rule, ok := rules[ruleKey]
-		if !ok {
-			rule = &DiscoveryRule{
-				UUID:        uid("rule", name, ruleKey),
-				Name:        ruleTitle,
-				Type:        "ZABBIX_ACTIVE",
-				Key:         ruleKey,
-				Delay:       opts.DiscoveryDelay,
-				Description: "Served by the SenHub Agent zabbix output.",
-			}
-			rules[ruleKey] = rule
-			order = append(order, ruleKey)
-		}
-		return rule
+	b := &templateBuilder{
+		def: def, opts: opts, name: name, rules: rules, order: order, valueMaps: valueMaps,
+		seenKeys: seenKeys, fedOf: fedOf, familyOf: familyOf, placed: placed,
 	}
 
 	for _, m := range def.Metrics {
@@ -323,27 +311,7 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 		// family, under the rule that discovers which of its values the
 		// host actually feeds.
 		if f := familyOf[m.Name]; f != nil {
-			key := variantPrototypeKey(opts.Prefix, def.ProbeName, f)
-			ruleKey := variantRuleKey(opts.Prefix, def.ProbeName, f.otelName, labels)
-			placed[m.Name] = placement{ruleKey: ruleKey, key: key, macros: append(labelMacros(labels), attrMacros(f.labels, f.attrKeys)...)}
-			if seenKeys[key] {
-				continue
-			}
-			seenKeys[key] = true
-			rule := ensureRule(ruleKey, variantRuleName(def.ProbeName, f))
-			proto := ItemPrototype{
-				Name:        variantPrototypeName(f),
-				Type:        "ZABBIX_ACTIVE",
-				Key:         key,
-				Delay:       opts.ItemDelay,
-				ValueType:   "FLOAT",
-				Units:       units(m),
-				Description: m.Description,
-			}
-			asPercent(&proto, m)
-			asRate(&proto, m)
-			proto.UUID = uid("item", name, proto.Key)
-			rule.ItemPrototypes = append(rule.ItemPrototypes, proto)
+			b.addVariantPrototype(m, f, labels)
 			continue
 		}
 
@@ -353,69 +321,12 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 		// A histogram is declared as the two facts a scalar sink can
 		// hold, each under its own key.
 		if isHistogram(m) {
-			ruleKey := discoveryKey(opts.Prefix, def.ProbeName, labels)
-			rule := ensureRule(ruleKey, ruleName(def.ProbeName, labels))
-			for _, part := range HistogramParts {
-				key := prototypeKeyPart(opts.Prefix, def.ProbeName, m, labels, part)
-				if seenKeys[key] {
-					continue
-				}
-				seenKeys[key] = true
-				proto := ItemPrototype{
-					Name:        prototypeName(m, labels) + " (" + part + ")",
-					Type:        "ZABBIX_ACTIVE",
-					Key:         key,
-					Delay:       opts.ItemDelay,
-					ValueType:   "FLOAT",
-					Units:       histogramUnits(m, part),
-					Description: m.Description,
-				}
-				proto.UUID = uid("item", name, proto.Key)
-				fedOf[proto.Key] = FedID(m)
-				rule.ItemPrototypes = append(rule.ItemPrototypes, proto)
-			}
+			b.addHistogramPrototypes(m, labels)
 			continue
 		}
-
-		key := prototypeKey(opts.Prefix, def.ProbeName, m, labels)
-		ruleKey := discoveryKey(opts.Prefix, def.ProbeName, labels)
-		placed[m.Name] = placement{ruleKey: ruleKey, key: key, macros: labelMacros(labels)}
-		if seenKeys[key] {
-			continue
-		}
-		seenKeys[key] = true
-		rule := ensureRule(ruleKey, ruleName(def.ProbeName, labels))
-		proto := ItemPrototype{
-			Name:        prototypeName(m, labels),
-			Type:        "ZABBIX_ACTIVE",
-			Key:         prototypeKey(opts.Prefix, def.ProbeName, m, labels),
-			Delay:       opts.ItemDelay,
-			ValueType:   "FLOAT",
-			Units:       units(m),
-			Description: m.Description,
-		}
-		asPercent(&proto, m)
-		asRate(&proto, m)
-		proto.UUID = uid("item", name, proto.Key)
-		fedOf[proto.Key] = FedID(m)
-		if m.Lookup != "" && opts.Lookups != nil {
-			if mapping, ok := opts.Lookups.Lookup(m.Lookup); ok && len(mapping) > 0 {
-				if _, seen := valueMaps[m.Lookup]; !seen {
-					valueMaps[m.Lookup] = valueMap(name, m.Lookup, mapping)
-				}
-				proto.ValueMap = &ValueRef{Name: m.Lookup}
-			}
-			if sev, ok := opts.Lookups.(SeveritySource); ok {
-				if bySeverity, ok := sev.Severities(m.Lookup); ok {
-					proto.TriggerPrototypes = append(proto.TriggerPrototypes, stateTriggers(name, proto, bySeverity)...)
-				}
-			}
-		}
-		if m.AlertOnChange {
-			proto.TriggerPrototypes = append(proto.TriggerPrototypes, changeTrigger(name, proto))
-		}
-		rule.ItemPrototypes = append(rule.ItemPrototypes, proto)
+		b.addScalarPrototype(m, labels)
 	}
+	order = b.order
 
 	macros, err := thresholdTriggers(name, def, opts, rules, familyOf)
 	if err != nil {
@@ -455,6 +366,125 @@ func Generate(def transformers.ProbeDefinition, opts Options) (Export, error) {
 		Groups:         groupsFor(opts, true),
 		Templates:      []Template{tpl},
 	}}, nil
+}
+
+type templateBuilder struct {
+	def       transformers.ProbeDefinition
+	opts      Options
+	name      string
+	rules     map[string]*DiscoveryRule
+	order     []string
+	valueMaps map[string]ValueMap
+	seenKeys  map[string]bool
+	fedOf     map[string]string
+	familyOf  map[string]*family
+	placed    map[string]placement
+}
+
+func (b *templateBuilder) ensureRule(ruleKey, ruleTitle string) *DiscoveryRule {
+	rule, ok := b.rules[ruleKey]
+	if !ok {
+		rule = &DiscoveryRule{
+			UUID:        uid("rule", b.name, ruleKey),
+			Name:        ruleTitle,
+			Type:        "ZABBIX_ACTIVE",
+			Key:         ruleKey,
+			Delay:       b.opts.DiscoveryDelay,
+			Description: "Served by the SenHub Agent zabbix output.",
+		}
+		b.rules[ruleKey] = rule
+		b.order = append(b.order, ruleKey)
+	}
+	return rule
+}
+
+func (b *templateBuilder) addVariantPrototype(m transformers.MetricDefinition, f *family, labels []string) {
+	key := variantPrototypeKey(b.opts.Prefix, b.def.ProbeName, f)
+	ruleKey := variantRuleKey(b.opts.Prefix, b.def.ProbeName, f.otelName, labels)
+	b.placed[m.Name] = placement{ruleKey: ruleKey, key: key, macros: append(labelMacros(labels), attrMacros(f.labels, f.attrKeys)...)}
+	if b.seenKeys[key] {
+		return
+	}
+	b.seenKeys[key] = true
+	rule := b.ensureRule(ruleKey, variantRuleName(b.def.ProbeName, f))
+	proto := ItemPrototype{
+		Name:        variantPrototypeName(f),
+		Type:        "ZABBIX_ACTIVE",
+		Key:         key,
+		Delay:       b.opts.ItemDelay,
+		ValueType:   "FLOAT",
+		Units:       units(m),
+		Description: m.Description,
+	}
+	asPercent(&proto, m)
+	asRate(&proto, m)
+	proto.UUID = uid("item", b.name, proto.Key)
+	rule.ItemPrototypes = append(rule.ItemPrototypes, proto)
+}
+
+func (b *templateBuilder) addHistogramPrototypes(m transformers.MetricDefinition, labels []string) {
+	ruleKey := discoveryKey(b.opts.Prefix, b.def.ProbeName, labels)
+	rule := b.ensureRule(ruleKey, ruleName(b.def.ProbeName, labels))
+	for _, part := range HistogramParts {
+		key := prototypeKeyPart(b.opts.Prefix, b.def.ProbeName, m, labels, part)
+		if b.seenKeys[key] {
+			continue
+		}
+		b.seenKeys[key] = true
+		proto := ItemPrototype{
+			Name:        prototypeName(m, labels) + " (" + part + ")",
+			Type:        "ZABBIX_ACTIVE",
+			Key:         key,
+			Delay:       b.opts.ItemDelay,
+			ValueType:   "FLOAT",
+			Units:       histogramUnits(m, part),
+			Description: m.Description,
+		}
+		proto.UUID = uid("item", b.name, proto.Key)
+		b.fedOf[proto.Key] = FedID(m)
+		rule.ItemPrototypes = append(rule.ItemPrototypes, proto)
+	}
+}
+
+func (b *templateBuilder) addScalarPrototype(m transformers.MetricDefinition, labels []string) {
+	key := prototypeKey(b.opts.Prefix, b.def.ProbeName, m, labels)
+	ruleKey := discoveryKey(b.opts.Prefix, b.def.ProbeName, labels)
+	b.placed[m.Name] = placement{ruleKey: ruleKey, key: key, macros: labelMacros(labels)}
+	if b.seenKeys[key] {
+		return
+	}
+	b.seenKeys[key] = true
+	rule := b.ensureRule(ruleKey, ruleName(b.def.ProbeName, labels))
+	proto := ItemPrototype{
+		Name:        prototypeName(m, labels),
+		Type:        "ZABBIX_ACTIVE",
+		Key:         prototypeKey(b.opts.Prefix, b.def.ProbeName, m, labels),
+		Delay:       b.opts.ItemDelay,
+		ValueType:   "FLOAT",
+		Units:       units(m),
+		Description: m.Description,
+	}
+	asPercent(&proto, m)
+	asRate(&proto, m)
+	proto.UUID = uid("item", b.name, proto.Key)
+	b.fedOf[proto.Key] = FedID(m)
+	if m.Lookup != "" && b.opts.Lookups != nil {
+		if mapping, ok := b.opts.Lookups.Lookup(m.Lookup); ok && len(mapping) > 0 {
+			if _, seen := b.valueMaps[m.Lookup]; !seen {
+				b.valueMaps[m.Lookup] = valueMap(b.name, m.Lookup, mapping)
+			}
+			proto.ValueMap = &ValueRef{Name: m.Lookup}
+		}
+		if sev, ok := b.opts.Lookups.(SeveritySource); ok {
+			if bySeverity, ok := sev.Severities(m.Lookup); ok {
+				proto.TriggerPrototypes = append(proto.TriggerPrototypes, stateTriggers(b.name, proto, bySeverity)...)
+			}
+		}
+	}
+	if m.AlertOnChange {
+		proto.TriggerPrototypes = append(proto.TriggerPrototypes, changeTrigger(b.name, proto))
+	}
+	rule.ItemPrototypes = append(rule.ItemPrototypes, proto)
 }
 
 // Encode writes the export as the YAML Zabbix imports.

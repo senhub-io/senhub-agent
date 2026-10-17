@@ -87,6 +87,88 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 	}
 	workingDir := filepath.Dir(executablePath)
 
+	configPath := resolveConfigPath(args, workingDir)
+
+	serviceArgs := buildServiceArgs(configPath, args)
+
+	svcConfig := newServiceConfig(executablePath, serviceArgs, workingDir)
+
+	// On Linux the installer emits the hardened unit shipped in the
+	// .deb/.rpm packages (User=senhub, capabilities dropped — #223)
+	// instead of an implicit root unit. `install --user root` keeps
+	// the legacy root unit for operators whose probes need blanket
+	// root (e.g. icmp_check raw sockets without granting CAP_NET_RAW).
+	serviceUser := args.ServiceUser
+	if serviceUser == "" {
+		serviceUser = defaultServiceUser
+	}
+
+	// A second install on a machine that already is in the requested state
+	// changes nothing: no binary copy, no unit write, no configuration
+	// touch. It says so and exits with the Unchanged code.
+	run := newInstallRun(command == "install" && hasArg(jsonFlag), configPath)
+	state := detectInstallStateOrExit(command, args, svcConfig, configPath, executablePath, serviceUser, serviceArgs, run)
+	if runtime.GOOS == "linux" {
+		prepareLinuxService(command, svcConfig, serviceUser, executablePath, run)
+	}
+
+	prg := &program{
+		done: make(chan bool, 1),
+		args: args,
+	}
+
+	s, err := service.New(prg, svcConfig)
+	if err != nil {
+		if jsonStatus {
+			os.Exit(reportFailure("status", true, os.Stdout, err))
+		}
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(cliexit.Failure)
+	}
+
+	switch command {
+	case "install":
+		err = installServiceCase(s, svcConfig, args, configPath, serviceUser, serviceArgs, state, run)
+	case "uninstall":
+		if !uninstallServiceCase(s, args) {
+			return
+		}
+	case "start":
+		// Heal a pre-0.2.x Windows registration whose command line
+		// lacks the `run` subcommand before attempting the start —
+		// otherwise the binary prints usage, exits, and the SCM
+		// reports a connect timeout (#309).
+		migrateLegacyServiceRegistration()
+		err = s.Start()
+		if err == nil {
+			fmt.Println("Service started successfully")
+		}
+	case "stop":
+		err = s.Stop()
+		if err == nil {
+			fmt.Println("Service stopped successfully")
+		}
+	case "restart":
+		err = restartServiceCase(s)
+	case "status":
+		if code := runStatus(s, args, jsonStatus, os.Stdout); code != cliexit.OK {
+			os.Exit(code)
+		}
+	case "run":
+		runInstalledAgent(configPath, args)
+		return
+	}
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(run.finish(cliexit.Failure, err))
+	}
+	if command == "install" {
+		run.finish(cliexit.OK, nil)
+	}
+}
+
+func resolveConfigPath(args *cliArgs.ParsedArgs, workingDir string) string {
 	configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error getting absolute config path: %v\n", err)
@@ -98,7 +180,10 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			configPath = args.ConfigPath
 		}
 	}
+	return configPath
+}
 
+func buildServiceArgs(configPath string, args *cliArgs.ParsedArgs) []string {
 	serviceArgs := []string{"run", "--config-path", configPath}
 
 	if args.Verbose {
@@ -107,8 +192,11 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 	if len(args.DebugModules) > 0 {
 		serviceArgs = append(serviceArgs, "--debug-modules", strings.Join(args.DebugModules, ","))
 	}
+	return serviceArgs
+}
 
-	svcConfig := &service.Config{
+func newServiceConfig(executablePath string, serviceArgs []string, workingDir string) *service.Config {
+	return &service.Config{
 		Name:             "senhub-agent",
 		DisplayName:      "SenHub Agent",
 		Description:      "SenHub Agent Service for monitoring and management",
@@ -128,22 +216,10 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			"Actions":          []string{"restart"},
 		},
 	}
+}
 
-	// On Linux the installer emits the hardened unit shipped in the
-	// .deb/.rpm packages (User=senhub, capabilities dropped — #223)
-	// instead of an implicit root unit. `install --user root` keeps
-	// the legacy root unit for operators whose probes need blanket
-	// root (e.g. icmp_check raw sockets without granting CAP_NET_RAW).
-	serviceUser := args.ServiceUser
-	if serviceUser == "" {
-		serviceUser = defaultServiceUser
-	}
-
-	// A second install on a machine that already is in the requested state
-	// changes nothing: no binary copy, no unit write, no configuration
-	// touch. It says so and exits with the Unchanged code.
+func detectInstallStateOrExit(command string, args *cliArgs.ParsedArgs, svcConfig *service.Config, configPath, executablePath, serviceUser string, serviceArgs []string, run *installRun) installState {
 	var state installState
-	run := newInstallRun(command == "install" && hasArg(jsonFlag), configPath)
 	if command == "install" {
 		probe, probeErr := service.New(&program{done: make(chan bool, 1), args: args}, svcConfig)
 		if probeErr == nil {
@@ -159,297 +235,267 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			}
 		}
 	}
-	if runtime.GOOS == "linux" {
-		// Never fall back to kardianos's built-in systemd script: it
-		// places StartLimitInterval/StartLimitBurst in [Service], where
-		// systemd does not honour them (#577), so the root unit gets a
-		// corrected template too.
-		svcConfig.Option["SystemdScript"] = linuxSystemdScript(serviceUser)
+	return state
+}
 
-		// Install the ONE binary at a root-owned system path and point
-		// ExecStart there (#794). The daemon must not be able to write
-		// the executable systemd runs: it is the process exposed to
-		// untrusted input, and write access to its own binary is
-		// persistence across restarts for whoever compromises it.
-		if command == "install" {
-			// The dedicated user must exist before installManagedBinary
-			// chowns the staged binary to it, and before systemd
-			// validates the unit's User= (#575). No-op for root.
-			if userErr := ensureServiceUser(serviceUser); userErr != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", userErr)
-				fmt.Fprintln(os.Stderr, "Re-run with '--user root' to install the legacy root service if a dedicated user cannot be created.")
-				os.Exit(run.finish(cliexit.Failure, userErr))
-			}
+func prepareLinuxService(command string, svcConfig *service.Config, serviceUser, executablePath string, run *installRun) {
+	// Never fall back to kardianos's built-in systemd script: it
+	// places StartLimitInterval/StartLimitBurst in [Service], where
+	// systemd does not honour them (#577), so the root unit gets a
+	// corrected template too.
+	svcConfig.Option["SystemdScript"] = linuxSystemdScript(serviceUser)
 
-			// ExecStart MUST point at the installed system binary, never
-			// at the installer's invocation path (which may be /tmp and
-			// vanish, leaving systemd with 203/EXEC — #576). This holds
-			// for the root unit as well. An install failure here is fatal:
-			// a unit written with the temp path would crash-loop, which is
-			// worse than aborting the install.
-			binaryWasCurrent := installBinaryCurrent(executablePath, serviceUser)
-			installed, err := installSystemBinary(executablePath)
-			if err == nil && !binaryWasCurrent {
-				run.add(installed)
-			}
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: could not install the agent binary to %s: %v\n", systemBinaryDir, err)
-				fmt.Fprintln(os.Stderr, "The service was NOT installed (a unit pointing at the installer's temp path would fail to start).")
-				os.Exit(run.finish(cliexit.Failure, err))
-			}
-			svcConfig.Executable = installed
-			svcConfig.WorkingDirectory = systemBinaryDir
+	// Install the ONE binary at a root-owned system path and point
+	// ExecStart there (#794). The daemon must not be able to write
+	// the executable systemd runs: it is the process exposed to
+	// untrusted input, and write access to its own binary is
+	// persistence across restarts for whoever compromises it.
+	if command == "install" {
+		// The dedicated user must exist before installManagedBinary
+		// chowns the staged binary to it, and before systemd
+		// validates the unit's User= (#575). No-op for root.
+		if userErr := ensureServiceUser(serviceUser); userErr != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", userErr)
+			fmt.Fprintln(os.Stderr, "Re-run with '--user root' to install the legacy root service if a dedicated user cannot be created.")
+			os.Exit(run.finish(cliexit.Failure, userErr))
+		}
 
-			// A host upgrading from the pre-0.5.4 layout still carries the
-			// service-user-owned second copy. Leaving it behind would leave
-			// an executable the daemon can write, which is what this change
-			// exists to remove. Cleanup failure is reported, not fatal: the
-			// unit already points at the system binary, so the host is in
-			// the right shape and an orphan file is untidy, not dangerous.
-			if err := removeLegacyManagedBinary(); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
-				fmt.Fprintf(os.Stderr, "Remove %s by hand: it is no longer executed, but it is writable by the service user.\n", legacyManagedBinaryDir)
+		// ExecStart MUST point at the installed system binary, never
+		// at the installer's invocation path (which may be /tmp and
+		// vanish, leaving systemd with 203/EXEC — #576). This holds
+		// for the root unit as well. An install failure here is fatal:
+		// a unit written with the temp path would crash-loop, which is
+		// worse than aborting the install.
+		binaryWasCurrent := installBinaryCurrent(executablePath, serviceUser)
+		installed, err := installSystemBinary(executablePath)
+		if err == nil && !binaryWasCurrent {
+			run.add(installed)
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: could not install the agent binary to %s: %v\n", systemBinaryDir, err)
+			fmt.Fprintln(os.Stderr, "The service was NOT installed (a unit pointing at the installer's temp path would fail to start).")
+			os.Exit(run.finish(cliexit.Failure, err))
+		}
+		svcConfig.Executable = installed
+		svcConfig.WorkingDirectory = systemBinaryDir
+
+		// A host upgrading from the pre-0.5.4 layout still carries the
+		// service-user-owned second copy. Leaving it behind would leave
+		// an executable the daemon can write, which is what this change
+		// exists to remove. Cleanup failure is reported, not fatal: the
+		// unit already points at the system binary, so the host is in
+		// the right shape and an orphan file is untidy, not dangerous.
+		if err := removeLegacyManagedBinary(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Remove %s by hand: it is no longer executed, but it is writable by the service user.\n", legacyManagedBinaryDir)
+		}
+	}
+}
+
+func installServiceCase(s service.Service, svcConfig *service.Config, args *cliArgs.ParsedArgs, configPath, serviceUser string, serviceArgs []string, state installState, run *installRun) error {
+	var err error
+	// A service already registered is reconciled, not re-installed:
+	// the service manager refuses to install over an existing unit,
+	// and what is wrong (a drifted unit, a disabled service) is
+	// fixed in place. Nothing is restarted either way.
+	if state.serviceInstalled && runtime.GOOS == "linux" {
+		var reconciled []string
+		reconciled, err = reconcileInstalledServiceOnHost(serviceUser, serviceArgs)
+		run.add(reconciled...)
+		if err == nil {
+			fmt.Println("Service already installed; its unit and boot enablement now match this install.")
+			if len(reconciled) > 0 {
+				fmt.Println("Restart the service to apply a changed unit: senhub-agent restart")
 			}
+		}
+	} else {
+		err = s.Install()
+		if err == nil {
+			run.add("service " + installServiceName)
+			fmt.Println("Service installed successfully")
+		}
+	}
+	if err == nil {
+		printLicenseNotice()
+
+		// A fresh configuration is about to be written: say now if
+		// its HTTP port is already taken, while the operator is
+		// still reading. The service would otherwise start, log
+		// one line and answer nothing.
+		if _, statErr := os.Stat(configPath); os.IsNotExist(statErr) {
+			bindAddress, port := defaultHTTPBindAddress, args.HttpPort
+			if port == 0 {
+				port = defaultHTTPPort
+			}
+			if args.EnableHttps {
+				bindAddress, port = "0.0.0.0", args.HttpsPort
+			}
+			if portErr := checkHTTPPortFree(bindAddress, port); portErr != nil {
+				fmt.Fprintf(os.Stderr, "Warning: %v; the agent will not answer on this port until it is freed or changed in strategies.d/00-http.yaml\n", portErr)
+			}
+		}
+
+		// Always generate the local configuration at install time
+		if written, err := generateConfigurationWritten(args, configPath, generateConfiguration); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to generate configuration: %v\n", err)
+		} else {
+			run.add(written...)
+			if len(written) > 0 {
+				fmt.Printf("Configuration generated: %s\n", configPath)
+			} else {
+				fmt.Printf("Configuration already present, unchanged: %s\n", configPath)
+			}
+			if args.EnableHttps {
+				fmt.Printf("HTTPS certificates generated in %s\n", filepath.Join(filepath.Dir(configPath), "certs"))
+			}
+			// The console opens with the administration key, which the
+			// service generates at its first start: an address built
+			// here, on the agent key, could never be opened.
+			exe := svcConfig.Executable
+			if exe == "" {
+				exe = os.Args[0]
+			}
+			fmt.Printf("\nOnce the service has started, open the console with:\n    %s console\n(or '%s console --print' for its address)\n", exe, exe)
+		}
+
+		// The installer runs as root but the daemon does not; the
+		// generated 0600 config (and certs/logs) must belong to
+		// the service user or the first start fails on a read.
+		if chownErr := chownServiceTree(serviceUser, configPath, args.EnableHttps); chownErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to hand install files to user %q: %v\n", serviceUser, chownErr)
+			fmt.Printf("Fix manually with: chown %s:%s %s (and the log/certs directories the install created)\n", serviceUser, serviceUser, configPath)
+		}
+
+		// A reinstall over a sealed systemd-creds store must come
+		// back able to read it.
+		followCredentialStore(configPath)
+
+		fmt.Print(installedHint(svcConfig.Executable))
+	}
+	return err
+}
+
+func uninstallServiceCase(s service.Service, args *cliArgs.ParsedArgs) bool {
+	// Confirm the destructive cleanup BEFORE touching the running
+	// service. Answering "n" (or a non-TTY stdin, which resolves to
+	// abort) must leave monitoring exactly as it was — running, config
+	// and certs and logs intact. Stopping first and prompting after
+	// left the service DOWN on a cancelled uninstall; --yes skips the
+	// prompt for unattended removal.
+	if !args.Yes {
+		fmt.Println("Uninstall will remove the whole agent configuration directory — agent.yaml,")
+		fmt.Println("probes.d/, strategies.d/ AND the sealed secret store, which holds the agent")
+		fmt.Println("key and every credential the agent sealed (database, BMC, API tokens).")
+		fmt.Println("That is irreversible: sealed values cannot be recovered afterwards.")
+		fmt.Println("The certs/ directory and log files/directories are removed too.")
+		fmt.Print("Proceed? [y/N] ")
+		if !readYesConfirmation() {
+			fmt.Println("Uninstall cancelled; nothing was removed.")
+			return false
 		}
 	}
 
-	prg := &program{
-		done: make(chan bool, 1),
-		args: args,
+	// Confirmed: stop a running service before removing it.
+	status, err := s.Status()
+	if err == nil && status == service.StatusRunning {
+		fmt.Println("Stopping service before uninstall...")
+		err = s.Stop()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error stopping service: %v\n", err)
+			os.Exit(cliexit.Failure)
+		}
+		time.Sleep(2 * time.Second)
 	}
 
-	s, err := service.New(prg, svcConfig)
-	if err != nil {
-		if jsonStatus {
-			os.Exit(reportFailure("status", true, os.Stdout, err))
-		}
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	if removeService(s, args, os.Stdout, os.Stderr) != nil {
+		os.Exit(cliexit.Failure)
+	}
+	return true
+}
+
+func restartServiceCase(s service.Service) error {
+	var err error
+	// First check if service is running
+	status, statusErr := s.Status()
+	if statusErr != nil {
+		fmt.Fprintf(os.Stderr, "Error checking service status: %v\n", statusErr)
 		os.Exit(cliexit.Failure)
 	}
 
-	switch command {
-	case "install":
-		// A service already registered is reconciled, not re-installed:
-		// the service manager refuses to install over an existing unit,
-		// and what is wrong (a drifted unit, a disabled service) is
-		// fixed in place. Nothing is restarted either way.
-		if state.serviceInstalled && runtime.GOOS == "linux" {
-			var reconciled []string
-			reconciled, err = reconcileInstalledServiceOnHost(serviceUser, serviceArgs)
-			run.add(reconciled...)
-			if err == nil {
-				fmt.Println("Service already installed; its unit and boot enablement now match this install.")
-				if len(reconciled) > 0 {
-					fmt.Println("Restart the service to apply a changed unit: senhub-agent restart")
-				}
-			}
-		} else {
-			err = s.Install()
-			if err == nil {
-				run.add("service " + installServiceName)
-				fmt.Println("Service installed successfully")
-			}
-		}
-		if err == nil {
-			printLicenseNotice()
+	fmt.Printf("Current service status: %s\n", getServiceStatusText(status))
 
-			// A fresh configuration is about to be written: say now if
-			// its HTTP port is already taken, while the operator is
-			// still reading. The service would otherwise start, log
-			// one line and answer nothing.
-			if _, statErr := os.Stat(configPath); os.IsNotExist(statErr) {
-				bindAddress, port := defaultHTTPBindAddress, args.HttpPort
-				if port == 0 {
-					port = defaultHTTPPort
-				}
-				if args.EnableHttps {
-					bindAddress, port = "0.0.0.0", args.HttpsPort
-				}
-				if portErr := checkHTTPPortFree(bindAddress, port); portErr != nil {
-					fmt.Fprintf(os.Stderr, "Warning: %v; the agent will not answer on this port until it is freed or changed in strategies.d/00-http.yaml\n", portErr)
-				}
-			}
-
-			// Always generate the local configuration at install time
-			if written, err := generateConfigurationWritten(args, configPath, generateConfiguration); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: Failed to generate configuration: %v\n", err)
-			} else {
-				run.add(written...)
-				if len(written) > 0 {
-					fmt.Printf("Configuration generated: %s\n", configPath)
-				} else {
-					fmt.Printf("Configuration already present, unchanged: %s\n", configPath)
-				}
-				if args.EnableHttps {
-					fmt.Printf("HTTPS certificates generated in %s\n", filepath.Join(filepath.Dir(configPath), "certs"))
-				}
-				// The console opens with the administration key, which the
-				// service generates at its first start: an address built
-				// here, on the agent key, could never be opened.
-				exe := svcConfig.Executable
-				if exe == "" {
-					exe = os.Args[0]
-				}
-				fmt.Printf("\nOnce the service has started, open the console with:\n    %s console\n(or '%s console --print' for its address)\n", exe, exe)
-			}
-
-			// The installer runs as root but the daemon does not; the
-			// generated 0600 config (and certs/logs) must belong to
-			// the service user or the first start fails on a read.
-			if chownErr := chownServiceTree(serviceUser, configPath, args.EnableHttps); chownErr != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to hand install files to user %q: %v\n", serviceUser, chownErr)
-				fmt.Printf("Fix manually with: chown %s:%s %s (and the log/certs directories the install created)\n", serviceUser, serviceUser, configPath)
-			}
-
-			// A reinstall over a sealed systemd-creds store must come
-			// back able to read it.
-			followCredentialStore(configPath)
-
-			fmt.Print(installedHint(svcConfig.Executable))
-		}
-	case "uninstall":
-		// Confirm the destructive cleanup BEFORE touching the running
-		// service. Answering "n" (or a non-TTY stdin, which resolves to
-		// abort) must leave monitoring exactly as it was — running, config
-		// and certs and logs intact. Stopping first and prompting after
-		// left the service DOWN on a cancelled uninstall; --yes skips the
-		// prompt for unattended removal.
-		if !args.Yes {
-			fmt.Println("Uninstall will remove the whole agent configuration directory — agent.yaml,")
-			fmt.Println("probes.d/, strategies.d/ AND the sealed secret store, which holds the agent")
-			fmt.Println("key and every credential the agent sealed (database, BMC, API tokens).")
-			fmt.Println("That is irreversible: sealed values cannot be recovered afterwards.")
-			fmt.Println("The certs/ directory and log files/directories are removed too.")
-			fmt.Print("Proceed? [y/N] ")
-			if !readYesConfirmation() {
-				fmt.Println("Uninstall cancelled; nothing was removed.")
-				return
-			}
-		}
-
-		// Confirmed: stop a running service before removing it.
-		status, err := s.Status()
-		if err == nil && status == service.StatusRunning {
-			fmt.Println("Stopping service before uninstall...")
-			err = s.Stop()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error stopping service: %v\n", err)
-				os.Exit(cliexit.Failure)
-			}
-			time.Sleep(2 * time.Second)
-		}
-
-		if removeService(s, args, os.Stdout, os.Stderr) != nil {
-			os.Exit(cliexit.Failure)
-		}
-	case "start":
-		// Heal a pre-0.2.x Windows registration whose command line
-		// lacks the `run` subcommand before attempting the start —
-		// otherwise the binary prints usage, exits, and the SCM
-		// reports a connect timeout (#309).
-		migrateLegacyServiceRegistration()
-		err = s.Start()
-		if err == nil {
-			fmt.Println("Service started successfully")
-		}
-	case "stop":
+	// Stop the service if it's running
+	if status == service.StatusRunning {
+		fmt.Println("Stopping service...")
 		err = s.Stop()
-		if err == nil {
-			fmt.Println("Service stopped successfully")
-		}
-	case "restart":
-		// First check if service is running
-		status, statusErr := s.Status()
-		if statusErr != nil {
-			fmt.Fprintf(os.Stderr, "Error checking service status: %v\n", statusErr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error stopping service: %v\n", err)
 			os.Exit(cliexit.Failure)
 		}
 
-		fmt.Printf("Current service status: %s\n", getServiceStatusText(status))
+		// Wait and verify the service has stopped
+		fmt.Println("Waiting for service to stop...")
+		maxWaitTime := 10 * time.Second
+		waitInterval := 500 * time.Millisecond
+		elapsed := time.Duration(0)
 
-		// Stop the service if it's running
-		if status == service.StatusRunning {
-			fmt.Println("Stopping service...")
-			err = s.Stop()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error stopping service: %v\n", err)
-				os.Exit(cliexit.Failure)
+		for elapsed < maxWaitTime {
+			time.Sleep(waitInterval)
+			elapsed += waitInterval
+
+			currentStatus, _ := s.Status()
+			if currentStatus == service.StatusStopped {
+				fmt.Println("Service stopped successfully")
+				break
 			}
 
-			// Wait and verify the service has stopped
-			fmt.Println("Waiting for service to stop...")
-			maxWaitTime := 10 * time.Second
-			waitInterval := 500 * time.Millisecond
-			elapsed := time.Duration(0)
-
-			for elapsed < maxWaitTime {
-				time.Sleep(waitInterval)
-				elapsed += waitInterval
-
-				currentStatus, _ := s.Status()
-				if currentStatus == service.StatusStopped {
-					fmt.Println("Service stopped successfully")
-					break
-				}
-
-				if elapsed >= maxWaitTime {
-					fmt.Println("Warning: Service may not have stopped completely, proceeding anyway...")
-				}
+			if elapsed >= maxWaitTime {
+				fmt.Println("Warning: Service may not have stopped completely, proceeding anyway...")
 			}
-		} else if status == service.StatusStopped {
-			fmt.Println("Service is already stopped")
 		}
-
-		// Start the service
-		fmt.Println("Starting service...")
-		migrateLegacyServiceRegistration() // see the "start" case (#309)
-		err = s.Start()
-		if err == nil {
-			fmt.Println("Service restarted successfully")
-
-			// Verify the service started
-			time.Sleep(1 * time.Second)
-			finalStatus, _ := s.Status()
-			fmt.Printf("Final service status: %s\n", getServiceStatusText(finalStatus))
-		}
-	case "status":
-		if code := runStatus(s, args, jsonStatus, os.Stdout); code != cliexit.OK {
-			os.Exit(code)
-		}
-	case "run":
-		// The agent expects to find its YAML configuration on disk; the
-		// install path generates a default one if missing, so a
-		// missing file here means run was invoked before install.
-		//
-		// We check the RESOLVED path (configPath), not args.ConfigPath
-		// — the latter is empty when the operator runs `agent run`
-		// with no --config-path flag, and os.Stat("") always returns
-		// ENOENT, which would reject a perfectly valid install at the
-		// OS-canonical location.
-		if _, err := os.Stat(configPath); os.IsNotExist(err) {
-			fmt.Fprintf(os.Stderr, "Error: Configuration file not found: %s\n", configPath)
-			fmt.Printf("\nInstall the agent first to generate the configuration:\n")
-			fmt.Printf("    %s install\n", os.Args[0])
-			fmt.Printf("\nThen you can run the agent:\n")
-			fmt.Printf("    %s run\n", os.Args[0])
-			os.Exit(cliexit.Failure)
-		}
-
-		// Pin the resolved absolute path so every downstream consumer
-		// (logger, LocalConfiguration) sees the same file the
-		// existence check above validated.
-		args.ConfigPath = configPath
-		runAgent(args)
-		return
+	} else if status == service.StatusStopped {
+		fmt.Println("Service is already stopped")
 	}
 
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(run.finish(cliexit.Failure, err))
+	// Start the service
+	fmt.Println("Starting service...")
+	migrateLegacyServiceRegistration() // see the "start" case (#309)
+	err = s.Start()
+	if err == nil {
+		fmt.Println("Service restarted successfully")
+
+		// Verify the service started
+		time.Sleep(1 * time.Second)
+		finalStatus, _ := s.Status()
+		fmt.Printf("Final service status: %s\n", getServiceStatusText(finalStatus))
 	}
-	if command == "install" {
-		run.finish(cliexit.OK, nil)
+	return err
+}
+
+func runInstalledAgent(configPath string, args *cliArgs.ParsedArgs) {
+	// The agent expects to find its YAML configuration on disk; the
+	// install path generates a default one if missing, so a
+	// missing file here means run was invoked before install.
+	//
+	// We check the RESOLVED path (configPath), not args.ConfigPath
+	// — the latter is empty when the operator runs `agent run`
+	// with no --config-path flag, and os.Stat("") always returns
+	// ENOENT, which would reject a perfectly valid install at the
+	// OS-canonical location.
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "Error: Configuration file not found: %s\n", configPath)
+		fmt.Printf("\nInstall the agent first to generate the configuration:\n")
+		fmt.Printf("    %s install\n", os.Args[0])
+		fmt.Printf("\nThen you can run the agent:\n")
+		fmt.Printf("    %s run\n", os.Args[0])
+		os.Exit(cliexit.Failure)
 	}
+
+	// Pin the resolved absolute path so every downstream consumer
+	// (logger, LocalConfiguration) sees the same file the
+	// existence check above validated.
+	args.ConfigPath = configPath
+	runAgent(args)
 }
 
 func runAgent(args *cliArgs.ParsedArgs) {

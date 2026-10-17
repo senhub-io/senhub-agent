@@ -1,0 +1,85 @@
+===== 1-kitchen-sink =====
+Checking configuration: <dir>/agent-config.yaml
+
+  [WARN] ${env:GOLDEN_UNSET_ENDPOINT} in <dir>/agent-config.yaml: GOLDEN_UNSET_ENDPOINT is not set in this shell
+         The service reads its variables from its unit; run the check with the same
+         environment (systemctl show senhub-agent -p Environment) or export them first.
+  [OK]   config_version: 3
+  [OK]   agent.key: set (UUID, value hidden; `senhub-agent key show` prints it)
+  [ERROR] agent.license: invalid (failed to parse token: token is malformed: token contains an invalid number of segments)
+  [OK]   10 probe(s) configured, 1 disabled
+  [OK]   Probe "cpu" (type: cpu)
+  [ERROR] Probe "cpu" (type: cpu): the name is already used by an earlier probe; the agent runs the first and ignores this one
+  [ERROR] Probe with empty name
+  [ERROR] Probe "notype": type is missing
+  [ERROR] Probe "bogus": unknown probe type "nonesuch_type"
+  [ERROR] Probe "badlog": log_strategies names "http", which cannot receive logs (accepted: otlp, event)
+  [OFF]  Probe "off" (type: memory) - disabled, will not collect
+  [OK]   Probe "routed" (type: memory), logs routed to otlp, event
+  [OK]   Probe "tail-a" (type: filetail)
+  [OK]   Probe "tail-b" (type: filetail)
+  [WARN] /var/log/golden.log is read by filetail probes "tail-a" and "tail-b": each line is sent once per probe and the probes share one rotation notice; declare the file in a single probe
+         [ERROR] Storage "http": param "bogus_param" is not read by the http strategy and has no effect
+  [OK]   Storage: http
+  [WARN] Storage "nonesuch": unknown strategy
+  [ERROR] Storage "otlp": staleness_ttl must be a duration string (e.g. "10m"), got int
+  [NOTE] No entity event is emitted: neither an `entities:` block nor
+         `signals.entities.enabled` on the otlp output is set. Metrics and
+         logs export normally; a consumer of the topology sees this host
+         as absent. Add `entities: {enabled: true}` to turn it on.
+  [OK]   auto_update.enabled: binary is replaceable in place
+
+Configuration has 8 error(s) and 3 warning(s).
+-- errors=8 warnings=3 loadErr=<nil>
+===== 2-valid =====
+Checking configuration: <dir>/agent-config.yaml
+
+  [OK]   config_version: 3
+  [OK]   agent.key: set (UUID, value hidden; `senhub-agent key show` prints it)
+  [INFO] agent.license not set (free tier)
+  [OK]   1 probe(s) configured
+  [OK]   Probe "cpu" (type: cpu)
+  [OK]   Storage: http
+
+Configuration is valid.
+-- errors=0 warnings=0 loadErr=<nil>
+===== 3-nothing =====
+Checking configuration: <dir>/agent-config.yaml
+
+  [OK]   config_version: 3
+  [OK]   agent.key: set (UUID, value hidden; `senhub-agent key show` prints it)
+  [INFO] agent.license not set (free tier)
+  [WARN] No probes configured
+  [ERROR] at least one storage strategy is required (the agent refuses to load a configuration without one)
+
+Configuration has 1 error(s) and 1 warning(s).
+-- errors=1 warnings=1 loadErr=<nil>
+===== 4-bad-version =====
+Checking configuration: <dir>/agent-config.yaml
+
+  [ERROR] config_version: 9999 (configuration version 9999 is too new for this agent (current: 3, agent: ))
+  [OK]   agent.key: set (UUID, value hidden; `senhub-agent key show` prints it)
+  [INFO] agent.license not set (free tier)
+  [WARN] No probes configured
+  [OK]   Storage: http
+  [ERROR] storage strategy name cannot be empty
+  [ERROR] auto_update.url scheme ftp is not supported — expected https (or http for a local mirror)
+          configured: ftp://example.invalid
+
+Configuration has 3 error(s) and 1 warning(s).
+-- errors=3 warnings=1 loadErr=<nil>
+===== 5-yaml-error =====
+Checking configuration: <dir>/agent-config.yaml
+
+  [ERROR] Configuration load failed
+           parsing <dir>/agent-config.yaml: yaml: line 4: did not find expected node content
+
+  Error at line 4: line 4: did not find expected node content
+
+       2 | agent:
+       3 |   key: 0f4c2a51-9b7e-4d3a-8c61-2e5f7a9b0d13
+  >>   4 | probes: [
+       5 | 
+
+  Hint: Check indentation — YAML uses spaces, not tabs
+-- errors=0 warnings=0 loadErr=configuration load failed: parsing <dir>/agent-config.yaml: yaml: line 4: did not find expected node content
