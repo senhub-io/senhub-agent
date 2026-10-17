@@ -53,7 +53,7 @@ type httpResult struct {
 	err           error
 }
 
-type checkFunc func(target string) httpResult
+type checkFunc func(ctx context.Context, target string) httpResult
 
 type HTTPCheckProbe struct {
 	*types.BaseProbe
@@ -205,9 +205,17 @@ func (p *HTTPCheckProbe) OnShutdown(ctx context.Context) error {
 	return nil
 }
 
-// Collect checks every target (bounded parallelism). A failing target
-// is a measurement (up=0), never a collection error.
+// Collect checks every target without a cancellation signal; the poller
+// calls CollectContext.
 func (p *HTTPCheckProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext checks every target (bounded parallelism). A failing
+// target is a measurement (up=0), never a collection error. A cycle
+// whose context ends is not: its targets did not fail, the check was
+// interrupted, so it returns ctx.Err() and no datapoint.
+func (p *HTTPCheckProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 	targetInfos := p.entitySrc.rebuild(p.config.Targets)
 	results := make([]httpResult, len(p.config.Targets))
@@ -220,10 +228,13 @@ func (p *HTTPCheckProbe) Collect() ([]data_store.DataPoint, error) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			results[i] = p.check(target)
+			results[i] = p.check(ctx, target)
 		}(i, target)
 	}
 	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("http_check collection interrupted: %w", err)
+	}
 
 	var points []data_store.DataPoint
 	for _, res := range results {
@@ -336,7 +347,7 @@ func (p *HTTPCheckProbe) checkResultValue(res httpResult) float64 {
 }
 
 // checkOnce is the production checkFunc: one traced HTTP request.
-func (p *HTTPCheckProbe) checkOnce(target string) httpResult {
+func (p *HTTPCheckProbe) checkOnce(ctx context.Context, target string) httpResult {
 	res := httpResult{target: target, tlsDaysLeft: noTLSSentinel, tlsCertValid: noTLSSentinel}
 
 	var dnsStart, connectStart, tlsStart, reqStart time.Time
@@ -366,7 +377,7 @@ func (p *HTTPCheckProbe) checkOnce(target string) httpResult {
 		GotFirstResponseByte: func() { res.ttfb = time.Since(reqStart) },
 	}
 
-	req, err := http.NewRequest(p.config.Method, target, nil)
+	req, err := http.NewRequestWithContext(ctx, p.config.Method, target, nil)
 	if err != nil {
 		res.err = fmt.Errorf("building request for %s: %w", target, err)
 		return res

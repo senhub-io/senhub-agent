@@ -71,7 +71,10 @@ func decodeConfigRequest(w http.ResponseWriter, r *http.Request, req *UniversalC
 // Universal Configuration Validation Methods
 
 // ValidateUniversalConfig validates a universal configuration request according to the specified validation mode
-func (cm *ConfigurationManager) ValidateUniversalConfig(req *UniversalConfigRequest) (*UniversalConfigResponse, error) {
+//
+// ctx is the request's context: a client that goes away cancels a test
+// collection in progress.
+func (cm *ConfigurationManager) ValidateUniversalConfig(ctx context.Context, req *UniversalConfigRequest) (*UniversalConfigResponse, error) {
 	startTime := time.Now()
 
 	cm.logger.Info().
@@ -153,7 +156,7 @@ func (cm *ConfigurationManager) ValidateUniversalConfig(req *UniversalConfigRequ
 
 	// Step 3: Full Metrics Validation (if requested)
 	if req.Validation == ValidationFull {
-		metricsResult, previewMetrics := cm.validateProbeMetrics(req.Probe, req.Config, req.Target, req.Timeout)
+		metricsResult, previewMetrics := cm.validateProbeMetrics(ctx, req.Probe, req.Config, req.Target, req.Timeout)
 		response.Tests["metrics"] = metricsResult
 		response.PreviewMetrics = previewMetrics
 
@@ -303,7 +306,7 @@ func (cm *ConfigurationManager) validateProbeConnectivity(probeName string, conf
 }
 
 // validateProbeMetrics attempts to collect actual metrics from the configured probe
-func (cm *ConfigurationManager) validateProbeMetrics(probeName string, config map[string]interface{}, target string, timeout int) (ValidationTestResult, []PreviewMetric) {
+func (cm *ConfigurationManager) validateProbeMetrics(ctx context.Context, probeName string, config map[string]interface{}, target string, timeout int) (ValidationTestResult, []PreviewMetric) {
 	startTime := time.Now()
 
 	cm.logger.Debug().
@@ -324,7 +327,7 @@ func (cm *ConfigurationManager) validateProbeMetrics(probeName string, config ma
 		result.Duration = time.Since(startTime).Milliseconds()
 		return result, nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(clampConnectivityTimeout(timeout))*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(clampConnectivityTimeout(timeout))*time.Second)
 	defer cancel()
 	collected, err := ProbeCollector(ctx, probeName, config)
 	if err != nil {
@@ -600,7 +603,7 @@ func (cm *ConfigurationManager) HandleUniversalConfigValidation(w http.ResponseW
 	}
 
 	// Validate the configuration
-	response, err := cm.ValidateUniversalConfig(&req)
+	response, err := cm.ValidateUniversalConfig(r.Context(), &req)
 	if err != nil {
 		cm.logger.Error().
 			Err(err).
@@ -652,7 +655,7 @@ func (cm *ConfigurationManager) HandleUniversalConfigPreview(w http.ResponseWrit
 	}
 
 	// Validate the configuration
-	response, err := cm.ValidateUniversalConfig(&req)
+	response, err := cm.ValidateUniversalConfig(r.Context(), &req)
 	if err != nil {
 		cm.logger.Error().
 			Err(err).
@@ -702,7 +705,7 @@ func (cm *ConfigurationManager) HandleUniversalConfigTest(w http.ResponseWriter,
 		Msg("Test mode: forcing full validation including connectivity and metrics")
 
 	// Validate the configuration
-	response, err := cm.ValidateUniversalConfig(&req)
+	response, err := cm.ValidateUniversalConfig(r.Context(), &req)
 	if err != nil {
 		cm.logger.Error().
 			Err(err).

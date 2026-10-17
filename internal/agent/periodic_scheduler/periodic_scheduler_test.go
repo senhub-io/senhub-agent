@@ -2,6 +2,7 @@ package periodic_scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -799,5 +800,78 @@ func TestPeriodicScheduler_OnStartChannelFreshAfterRestart(t *testing.T) {
 	case <-hookChans[1]:
 		t.Fatal("second Start handed OnStart an already-closed channel")
 	default:
+	}
+}
+
+// A call that honours its context must be released by Shutdown, not
+// waited for: that is what lets a reload stop a collection in flight.
+func TestExecuteContextIsCancelledByShutdown(t *testing.T) {
+	logger := zerolog.New(io.Discard)
+	entered := make(chan struct{})
+	returned := make(chan error, 1)
+
+	s := NewPeriodicScheduler(PeriodicSchedulerConfig{
+		Interval: 5 * time.Millisecond,
+		ExecuteContext: func(ctx context.Context) error {
+			select {
+			case entered <- struct{}{}:
+			default:
+			}
+			<-ctx.Done()
+			returned <- ctx.Err()
+			return ctx.Err()
+		},
+	}, &logger)
+
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("ExecuteContext was never called")
+	}
+
+	stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	started := time.Now()
+	if err := s.Shutdown(stopCtx); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("Shutdown waited %v for a call blocked on its context", elapsed)
+	}
+	select {
+	case err := <-returned:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("call ended with %v, want context.Canceled", err)
+		}
+	default:
+		t.Fatal("the call in flight was not released by Shutdown")
+	}
+}
+
+func TestExecuteContextTakesPrecedenceOverExecute(t *testing.T) {
+	logger := zerolog.New(io.Discard)
+	var plain, withCtx int64
+	s := NewPeriodicScheduler(PeriodicSchedulerConfig{
+		ExecuteOnStart: true,
+		Execute:        func() error { atomic.AddInt64(&plain, 1); return nil },
+		ExecuteContext: func(ctx context.Context) error {
+			if ctx == nil {
+				t.Error("ExecuteContext received a nil context")
+			}
+			atomic.AddInt64(&withCtx, 1)
+			return nil
+		},
+	}, &logger)
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := s.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+	if plain != 0 || withCtx != 1 {
+		t.Fatalf("Execute ran %d times and ExecuteContext %d, want 0 and 1", plain, withCtx)
 	}
 }
