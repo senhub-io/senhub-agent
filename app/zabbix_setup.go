@@ -368,76 +368,13 @@ func tokenFrom(flagValue, filePath string) (string, error) {
 // is the server half of a deployment, run once by an administrator; the
 // agents themselves register with no credentials at all.
 func runZabbixSetup(args []string) {
-	var (
-		rawURL, token, tokenFile string
-		group                    = "SenHub Agents"
-		metadata                 = "senhub-agent"
-		actionName               = "Autoregistration — SenHub Agent"
-		discoveryDelay           = "5m"
-		dryRun                   bool
-		probes                   []string
-		allProbes                bool
-		opts                     = template.Options{}
-	)
-	for i := 0; i < len(args); i++ {
-		flag := args[i]
-		value := func() string {
-			if i+1 >= len(args) {
-				fmt.Fprintf(os.Stderr, "Error: %s needs a value\n", flag)
-				os.Exit(cliexit.Failure)
-			}
-			i++
-			return args[i]
-		}
-		switch flag {
-		case "--url":
-			rawURL = value()
-		case "--token":
-			token = value()
-		case "--token-file":
-			tokenFile = value()
-		case "--group":
-			group = value()
-		case "--metadata":
-			metadata = value()
-		case "--action-name":
-			actionName = value()
-		case "--discovery-delay":
-			discoveryDelay = value()
-		case "--no-discovery-delay":
-			discoveryDelay = ""
-		case "--probe":
-			probes = append(probes, value())
-		case "--all-probes":
-			allProbes = true
-		case "--prefix":
-			opts.Prefix = value()
-		case "--version":
-			opts.Version = value()
-		case "--dry-run":
-			dryRun = true
-		case "--help", "-h":
-			fmt.Println(zabbixUsage)
-			return
-		default:
-			fmt.Fprintf(os.Stderr, "Error: unknown option %s\n%s\n", flag, zabbixUsage)
-			os.Exit(cliexit.Failure)
-		}
+	f, ok := parseZabbixSetupFlags(args)
+	if !ok {
+		return
 	}
-	if rawURL == "" {
-		fmt.Fprintln(os.Stderr, "Error: --url is required (the Zabbix frontend, for example https://zabbix.example.com)")
-		os.Exit(cliexit.Failure)
-	}
-	if opts.Version != "" && opts.Version != "6.0" && opts.Version != "7.0" {
-		fmt.Fprintln(os.Stderr, "Error: --version must be 6.0 or 7.0")
-		os.Exit(cliexit.Failure)
-	}
-	if resolved, err := tokenFrom(token, tokenFile); err == nil {
-		token = resolved
-	} else if !dryRun {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(cliexit.Failure)
-	}
+	rawURL, token, group, metadata, actionName := f.rawURL, f.token, f.group, f.metadata, f.actionName
+	discoveryDelay := f.discoveryDelay
+	probes, allProbes, dryRun, opts := f.probes, f.allProbes, f.dryRun, f.opts
 
 	// Without --probe the command used to link every template it could
 	// generate, so a Linux host autoregistered carrying Hyper-V, Veeam,
@@ -492,51 +429,7 @@ func runZabbixSetup(args []string) {
 	// which platform it is on in its host metadata, so the server picks
 	// without anyone choosing.
 	for _, platform := range supportedPlatforms {
-		platOpts := opts
-		platOpts.Platform = platform
-		defs, derr := transformers.Definitions()
-		if derr != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", derr)
-			os.Exit(cliexit.Failure)
-		}
-		linked := withDefaultProbes(defs, platform, probes)
-		if allProbes {
-			linked = linked[:0]
-			for name := range defs {
-				linked = append(linked, name)
-			}
-			sort.Strings(linked)
-		}
-		rendered, names, rerr := renderTemplates(linked, platOpts)
-		if rerr != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", rerr)
-			os.Exit(cliexit.Failure)
-		}
-		s.templates = rendered
-		fmt.Printf("  for %s:\n", platform)
-		if err := s.importTemplates(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(cliexit.Failure)
-		}
-		var ids []string
-		if !dryRun {
-			if ids, err = s.templateIDs(names); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(cliexit.Failure)
-			}
-			if len(ids) == 0 {
-				fmt.Fprintln(os.Stderr, "Error: the templates were imported but cannot be read back; check the account's permissions")
-				os.Exit(cliexit.Failure)
-			}
-		}
-		if err := s.ensureAction(actionName+" ("+platform+")", metadata+" "+platform, groupID, ids); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(cliexit.Failure)
-		}
-		if err := s.quickenDiscovery(ids); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(cliexit.Failure)
-		}
+		s.setupPlatform(platform, opts, probes, allProbes, dryRun, actionName, metadata, groupID)
 	}
 
 	if err := s.reportCollidingActions(actionName, metadata); err != nil {
@@ -548,6 +441,144 @@ func runZabbixSetup(args []string) {
 		os.Exit(cliexit.Failure)
 	}
 
+	printZabbixSetupSummary(rawURL, probes, allProbes, linkedByDefault)
+}
+
+type zabbixSetupFlags struct {
+	rawURL, token, tokenFile string
+	group, metadata          string
+	actionName               string
+	discoveryDelay           string
+	dryRun                   bool
+	probes                   []string
+	allProbes                bool
+	opts                     template.Options
+}
+
+func parseZabbixSetupFlags(args []string) (zabbixSetupFlags, bool) {
+	var (
+		rawURL, token, tokenFile string
+		group                    = "SenHub Agents"
+		metadata                 = "senhub-agent"
+		actionName               = "Autoregistration — SenHub Agent"
+		discoveryDelay           = "5m"
+		dryRun                   bool
+		probes                   []string
+		allProbes                bool
+		opts                     = template.Options{}
+	)
+	for i := 0; i < len(args); i++ {
+		flag := args[i]
+		value := func() string {
+			if i+1 >= len(args) {
+				fmt.Fprintf(os.Stderr, "Error: %s needs a value\n", flag)
+				os.Exit(cliexit.Failure)
+			}
+			i++
+			return args[i]
+		}
+		switch flag {
+		case "--url":
+			rawURL = value()
+		case "--token":
+			token = value()
+		case "--token-file":
+			tokenFile = value()
+		case "--group":
+			group = value()
+		case "--metadata":
+			metadata = value()
+		case "--action-name":
+			actionName = value()
+		case "--discovery-delay":
+			discoveryDelay = value()
+		case "--no-discovery-delay":
+			discoveryDelay = ""
+		case "--probe":
+			probes = append(probes, value())
+		case "--all-probes":
+			allProbes = true
+		case "--prefix":
+			opts.Prefix = value()
+		case "--version":
+			opts.Version = value()
+		case "--dry-run":
+			dryRun = true
+		case "--help", "-h":
+			fmt.Println(zabbixUsage)
+			return zabbixSetupFlags{}, false
+		default:
+			fmt.Fprintf(os.Stderr, "Error: unknown option %s\n%s\n", flag, zabbixUsage)
+			os.Exit(cliexit.Failure)
+		}
+	}
+	if rawURL == "" {
+		fmt.Fprintln(os.Stderr, "Error: --url is required (the Zabbix frontend, for example https://zabbix.example.com)")
+		os.Exit(cliexit.Failure)
+	}
+	if opts.Version != "" && opts.Version != "6.0" && opts.Version != "7.0" {
+		fmt.Fprintln(os.Stderr, "Error: --version must be 6.0 or 7.0")
+		os.Exit(cliexit.Failure)
+	}
+	if resolved, err := tokenFrom(token, tokenFile); err == nil {
+		token = resolved
+	} else if !dryRun {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(cliexit.Failure)
+	}
+	return zabbixSetupFlags{rawURL: rawURL, token: token, tokenFile: tokenFile, group: group, metadata: metadata, actionName: actionName, discoveryDelay: discoveryDelay, dryRun: dryRun, probes: probes, allProbes: allProbes, opts: opts}, true
+}
+
+func (s *zabbixSetup) setupPlatform(platform string, opts template.Options, probes []string, allProbes, dryRun bool, actionName, metadata, groupID string) {
+	var err error
+	platOpts := opts
+	platOpts.Platform = platform
+	defs, derr := transformers.Definitions()
+	if derr != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", derr)
+		os.Exit(cliexit.Failure)
+	}
+	linked := withDefaultProbes(defs, platform, probes)
+	if allProbes {
+		linked = linked[:0]
+		for name := range defs {
+			linked = append(linked, name)
+		}
+		sort.Strings(linked)
+	}
+	rendered, names, rerr := renderTemplates(linked, platOpts)
+	if rerr != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", rerr)
+		os.Exit(cliexit.Failure)
+	}
+	s.templates = rendered
+	fmt.Printf("  for %s:\n", platform)
+	if err := s.importTemplates(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(cliexit.Failure)
+	}
+	var ids []string
+	if !dryRun {
+		if ids, err = s.templateIDs(names); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(cliexit.Failure)
+		}
+		if len(ids) == 0 {
+			fmt.Fprintln(os.Stderr, "Error: the templates were imported but cannot be read back; check the account's permissions")
+			os.Exit(cliexit.Failure)
+		}
+	}
+	if err := s.ensureAction(actionName+" ("+platform+")", metadata+" "+platform, groupID, ids); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(cliexit.Failure)
+	}
+	if err := s.quickenDiscovery(ids); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(cliexit.Failure)
+	}
+}
+
+func printZabbixSetupSummary(rawURL string, probes []string, allProbes, linkedByDefault bool) {
 	fmt.Println()
 	if linkedByDefault {
 		fmt.Println("Linked the probes every machine runs (the host's processor, memory,")
