@@ -299,6 +299,7 @@ func checkConfiguration(d doctorDeps, cfg doctorConfig, st statusResult) []docto
 		out = append(out, *c)
 	}
 	out = append(out, httpPortCheck(d, cfg, st))
+	out = append(out, extensionChecks(cfg, st)...)
 	return out
 }
 
