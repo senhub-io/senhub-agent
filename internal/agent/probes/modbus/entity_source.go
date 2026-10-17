@@ -29,6 +29,15 @@ func newModbusEntitySource(instanceID, host string) *modbusEntitySource {
 	return &modbusEntitySource{instanceID: instanceID, host: host, hostID: dbcommon.HostID}
 }
 
+// ServiceInstanceID returns the service.instance.id that Observe would emit,
+// or "" before the first successful connection. Series tags use this value so
+// they cannot drift from the observed entity.
+func (s *modbusEntitySource) ServiceInstanceID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.instanceID
+}
+
 // markLive signals that the Modbus target was reached this cycle.
 // Called by the probe after a successful Connect; makes Observe return ok=true.
 func (s *modbusEntitySource) markLive() {

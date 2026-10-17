@@ -79,5 +79,6 @@ series' tags.
 | `varnish.session.dropped` | `varnish.session.dropped` | Varnish Session Dropped | # | Client sessions dropped because the session queue was full |
 | `varnish.objects.stored` | `varnish.objects.stored` | Varnish Objects Stored | # | Number of HTTP objects currently stored in the cache |
 | `varnish.memory.allocated` | `varnish.memory.allocated` | Varnish Memory Allocated | bytes | Total bytes currently allocated across all storage allocators (SMA/SMF) |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

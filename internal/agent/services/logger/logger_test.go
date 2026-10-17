@@ -50,7 +50,7 @@ func TestDebugLogShipperInDevelopmentMode(t *testing.T) {
 	}
 
 	// Build a development logger
-	logger := buildDevelopmentLogger(args, config)
+	logger := buildDevelopmentLogger(args, config, nil)
 
 	// Write a test log message
 	logger.Info().Msg("Test log message")

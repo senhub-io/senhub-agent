@@ -86,5 +86,6 @@ series' tags.
 | `sqlserver.user.connection.count` | `sqlserver.user.connection.count` | User Connections | # | Number of user connections to the instance (User Connections) |
 | `sqlserver.database.io` | `sqlserver.database.io` | DB {database} I/O {direction} | B | Total bytes read/written per database since startup (sys.dm_io_virtual_file_stats) |
 | `sqlserver.database.status` | `sqlserver.database.status` | DB {database} Status | # | Database state code (sys.databases.state — 0=ONLINE, 6=OFFLINE, …) |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

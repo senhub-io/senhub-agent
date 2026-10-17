@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -120,11 +121,20 @@ func (p *MemcachedProbe) Collect() ([]data_store.DataPoint, error) {
 	commonTags := []tags.Tag{
 		{Key: "instance", Value: addr},
 	}
+	if id := p.entitySrc.InstanceID(); id != "" {
+		commonTags = append(commonTags, tags.Tag{Key: "db.instance.id", Value: id})
+	}
 
 	points := []data_store.DataPoint{
 		{
 			Name:      "senhub.memcached.up",
 			Value:     upValue,
+			Timestamp: now,
+			Tags:      append(commonTags, tags.Tag{Key: "metric_type", Value: "status"}),
+		},
+		{
+			Name:      dbcommon.CheckResultMetric,
+			Value:     float64(dbcommon.ClassifyError(err)),
 			Timestamp: now,
 			Tags:      append(commonTags, tags.Tag{Key: "metric_type", Value: "status"}),
 		},

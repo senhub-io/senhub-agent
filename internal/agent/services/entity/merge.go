@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"sort"
 	"sync/atomic"
+	"time"
 )
 
 // AttributeConflict is one attribute two sources of this agent reported
@@ -79,6 +80,8 @@ func (o Observation) mergeDuplicates(onConflict func(AttributeConflict), onMerge
 		}
 		sort.SliceStable(copies, func(i, j int) bool { return copies[i].Scope < copies[j].Scope })
 		out := Entity{Type: copies[0].Type, ID: copies[0].ID, Scope: copies[0].Scope, Attributes: map[string]any{}}
+		out.ObservedAt = newestObservedAt(copies)
+		out.Cadence = maxCadence(copies)
 		scopeOf := map[string]string{}
 		for _, c := range copies {
 			for attr, v := range c.Attributes {
@@ -106,4 +109,33 @@ func (o Observation) mergeDuplicates(onConflict func(AttributeConflict), onMerge
 	}
 	o.Entities = merged
 	return o
+}
+
+// newestObservedAt picks the observation time that survives a duplicate fold.
+// A zero time means "observed now" and wins over every past stamp, because a
+// source asserting the entity this tick is fresher than any replay.
+func newestObservedAt(copies []Entity) time.Time {
+	for _, c := range copies {
+		if c.ObservedAt.IsZero() {
+			return time.Time{}
+		}
+	}
+	var newest time.Time
+	for _, c := range copies {
+		if newest.IsZero() || c.ObservedAt.After(newest) {
+			newest = c.ObservedAt
+		}
+	}
+	return newest
+}
+
+// maxCadence picks the coarsest actual read interval among duplicate copies.
+func maxCadence(copies []Entity) time.Duration {
+	var max time.Duration
+	for _, c := range copies {
+		if c.Cadence > max {
+			max = c.Cadence
+		}
+	}
+	return max
 }

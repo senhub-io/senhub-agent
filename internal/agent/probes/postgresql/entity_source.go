@@ -192,3 +192,11 @@ func (s *pgEntitySource) Observe() (entity.Observation, bool) {
 	defer s.mu.Unlock()
 	return s.obs, s.ready
 }
+
+// currentDBInstanceID returns the db.instance.id the entity carries right now,
+// or "" while it has not been emitted yet.
+func (s *pgEntitySource) currentDBInstanceID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.instanceID
+}

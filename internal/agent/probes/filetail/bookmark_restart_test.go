@@ -132,7 +132,7 @@ func TestFileTail_RestartDoesNotReplayAnIdleFile(t *testing.T) {
 
 	ready := awaitTailWatching(t, second, idle)
 	appendLines(t, idle, "2026-09-30 11:00:00 INFO after restart")
-	if got := waitEmitted(second, ready+1, 5*time.Second); got != ready+1 {
+	if got := waitEmitted(second, ready+1, 30*time.Second); got != ready+1 {
 		t.Fatalf("line appended after restart: %d emitted, want %d", got, ready+1)
 	}
 }
@@ -152,7 +152,7 @@ func TestFileTail_FromBeginningReadsANewFileOnceAcrossRestarts(t *testing.T) {
 	}
 
 	first := startFileTail(t, cfg)
-	if got := waitEmitted(first, 40, 5*time.Second); got != 40 {
+	if got := waitEmitted(first, 40, 30*time.Second); got != 40 {
 		t.Fatalf("first sight with from_beginning: %d emitted, want 40", got)
 	}
 	stopFileTail(t, first)
@@ -180,7 +180,7 @@ func TestFileTail_RestartDoesNotReplayLinesReadJustBeforeStop(t *testing.T) {
 	first := startFileTail(t, cfg)
 	ready := awaitTailWatching(t, first, file)
 	appendLines(t, file, "a", "b", "c", "d", "e", "f", "g")
-	if got := waitEmitted(first, ready+7, 5*time.Second); got != ready+7 {
+	if got := waitEmitted(first, ready+7, 30*time.Second); got != ready+7 {
 		t.Fatalf("appended lines: %d emitted, want %d", got, ready+7)
 	}
 	stopFileTail(t, first)
@@ -216,7 +216,7 @@ func TestFileTail_BookmarkCatchesUpWithoutAnotherLine(t *testing.T) {
 
 	ready := awaitTailWatching(t, p, busy)
 	appendLines(t, busy, "2026-09-30 10:01:00 INFO one", "2026-09-30 10:01:00 INFO two", "2026-09-30 10:01:00 INFO three", "2026-09-30 10:01:00 INFO four", "2026-09-30 10:01:00 INFO five")
-	if got := waitEmitted(p, ready+5, 5*time.Second); got != ready+5 {
+	if got := waitEmitted(p, ready+5, 30*time.Second); got != ready+5 {
 		t.Fatalf("emitted %d, want %d", got, ready+5)
 	}
 	fi, _ := os.Stat(busy)

@@ -191,3 +191,11 @@ func fetchInstanceIdentity(getJSON func(path string, out interface{}) error) (st
 	// 20 hex chars = 10 bytes = 80 bits: collision-safe for a service inventory.
 	return fmt.Sprintf("jenkins:%x", sum[:10]), nil
 }
+
+// serviceInstanceID returns the id the entity carries, or "" while no entity has been
+// emitted under it, so a series never names an entity that does not exist.
+func (s *entitySource) serviceInstanceID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pinnedID
+}

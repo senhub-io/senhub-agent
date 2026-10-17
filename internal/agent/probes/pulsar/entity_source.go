@@ -291,3 +291,14 @@ func hostPortFromEndpoint(rawURL string) (host string, port int64) {
 	}
 	return host, n
 }
+
+// telemetryID returns the id the entity carries, or "" while no entity has been
+// emitted under it, so a series never names an entity that does not exist.
+func (s *pulsarEntitySource) telemetryID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if !s.pinned {
+		return ""
+	}
+	return s.id
+}

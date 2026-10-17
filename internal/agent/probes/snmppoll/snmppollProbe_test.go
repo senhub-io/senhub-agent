@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"testing"
 
 	"senhub-agent.go/internal/agent/cliArgs"
@@ -44,6 +45,9 @@ func TestCollect_Success(t *testing.T) {
 	fc := &fakeClient{
 		getResult: []snmpVarBind{
 			{OID: "1.3.6.1.2.1.1.3.0", Value: 54321, IsNumeric: true},
+		},
+		walkRawResult: map[string][]snmpRawBind{
+			oidSysNameBase: {{OID: oidSysName, Value: []byte("sw1")}},
 		},
 	}
 	probe := newTestProbe(t, baseRaw(), fc)
@@ -163,4 +167,34 @@ func TestNewProbe_MIBResolutionFailsFast(t *testing.T) {
 			t.Fatal("expected a missing-metric config error")
 		}
 	})
+}
+
+// TestCollect_CheckResultSaysWhy checks the poll emits why it failed from the
+// first failed cycle: a socket error is classified, and a device that answers
+// nothing reads as a timeout, the only thing UDP ever returns.
+func TestCollect_CheckResultSaysWhy(t *testing.T) {
+	timeout := errors.New("request timeout")
+	for _, tc := range []struct {
+		name string
+		fc   *fakeClient
+		want dbcommon.CheckResult
+	}{
+		{"answers", &fakeClient{getResult: []snmpVarBind{{OID: "1.3.6.1.2.1.1.3.0", Value: 54321, IsNumeric: true}}}, dbcommon.CheckOK},
+		{"socket error", &fakeClient{connectErr: errors.New("dial udp: lookup sw.invalid: no such host")}, dbcommon.CheckTargetDown},
+		{"silent", &fakeClient{getErr: timeout, walkErr: timeout, walkRawErr: timeout}, dbcommon.CheckTimeout},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			points, err := newTestProbe(t, baseRaw(), tc.fc).Collect()
+			if err != nil {
+				t.Fatalf("Collect: %v", err)
+			}
+			cr, ok := find(points, dbcommon.CheckResultMetric)
+			if !ok {
+				t.Fatalf("no %s point", dbcommon.CheckResultMetric)
+			}
+			if cr.Value != float64(tc.want) {
+				t.Errorf("check result = %v, want %v (%s)", cr.Value, float64(tc.want), tc.want)
+			}
+		})
+	}
 }

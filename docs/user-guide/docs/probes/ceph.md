@@ -85,5 +85,6 @@ series' tags.
 | `ceph.pool.used` | `ceph.pool.used` | Ceph {instance} Pool {pool} Used | B | Bytes stored in the pool |
 | `ceph.pool.rd_ops` | `ceph.pool.rd_ops` | Ceph {instance} Pool {pool} Read Ops | # | Cumulative read operations on the pool |
 | `ceph.pool.wr_ops` | `ceph.pool.wr_ops` | Ceph {instance} Pool {pool} Write Ops | # | Cumulative write operations on the pool |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

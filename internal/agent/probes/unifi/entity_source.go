@@ -84,6 +84,19 @@ func (s *unifiEntitySource) identity(controllerID string) string {
 	return ""
 }
 
+// ServiceInstanceID returns the service.instance.id that Observe would
+// currently emit, or "" when the entity has not been observed yet or has no
+// identifiable key. The metric path uses this so series never carry an ID
+// different from the emitted entity.
+func (s *unifiEntitySource) ServiceInstanceID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.observed {
+		return ""
+	}
+	return s.identity(s.controllerID)
+}
+
 // hostFromEndpoint extracts the host from an endpoint URL (e.g.
 // "https://localhost:8443" → "localhost"), returning the raw endpoint when it
 // is not a parseable URL.

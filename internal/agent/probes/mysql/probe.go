@@ -343,23 +343,7 @@ func (p *mysqlProbe) OnShutdown(_ context.Context) error {
 func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 	instance := fmt.Sprintf("%s:%d", p.cfg.Host, p.cfg.Port)
-
-	commonTags := []tags.Tag{
-		{Key: "instance", Value: instance},
-		{Key: "db.system.name", Value: "mysql"},
-		{Key: "server.address", Value: p.cfg.Host},
-		{Key: "server.port", Value: strconv.Itoa(p.cfg.Port)},
-	}
-	// The identity of the entity these metrics describe (#741). Without it a
-	// consumer holding a db entity has no key that matches any series: it can
-	// only guess from db.system.name plus an address, which stops working the
-	// moment two databases of the same kind share a host — the collapse #740
-	// was about. Omitted while the id is unresolved (MySQL pins it from
-	// @@server_uuid on the first successful cycle) rather than emitted empty,
-	// since a blank label and the real one are two series for one database.
-	if id := p.entitySrc.instanceID(); id != "" {
-		commonTags = append(commonTags, tags.Tag{Key: "db.instance.id", Value: id})
-	}
+	commonTags := p.commonTags(instance)
 
 	// Always emit up=0 first; overwritten to 1 if queries succeed.
 	up := float64(0)
@@ -374,11 +358,13 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	if p.db == nil {
 		p.moduleLogger.Warn().Str("instance", instance).Msg("mysql: no connection pool")
 		points = append(points, p.dp("senhub.db.up", 0, now, string(dbcommon.MetricTypeOverview), commonTags))
+		points = append(points, p.dp(dbcommon.CheckResultMetric, float64(dbcommon.ClassifyError(fmt.Errorf("mysql: no connection pool"))), now, "status", commonTags))
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 	if err := p.db.PingContext(ctx); err != nil {
 		p.moduleLogger.Warn().Err(err).Str("instance", instance).Msg("mysql ping failed")
 		points = append(points, p.dp("senhub.db.up", 0, now, string(dbcommon.MetricTypeOverview), commonTags))
+		points = append(points, p.dp(dbcommon.CheckResultMetric, float64(dbcommon.ClassifyError(err)), now, "status", commonTags))
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 	up = 1
@@ -391,6 +377,7 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 		uuid := p.queryServerUUID(ctx)
 		p.entitySrc.pinServerUUID(uuid)
 		p.uuidFetched = true
+		commonTags = p.commonTags(instance)
 	}
 
 	// SHOW GLOBAL STATUS
@@ -398,6 +385,7 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("instance", instance).Msg("mysql SHOW GLOBAL STATUS failed")
 		points = append(points, p.dp("senhub.db.up", up, now, string(dbcommon.MetricTypeOverview), commonTags))
+		points = append(points, p.dp(dbcommon.CheckResultMetric, float64(dbcommon.ClassifyError(err)), now, "status", commonTags))
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 
@@ -599,7 +587,25 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 	points = append(points, p.dp("senhub.db.replication.health", health, now, string(dbcommon.MetricTypeReplication), allCommonTags))
 
+	points = append(points, p.dp(dbcommon.CheckResultMetric, 0, now, "status", commonTags))
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+}
+
+// commonTags builds the base tag set used by every datapoint emitted by
+// this probe, including the up/health series and the check result.
+// db.instance.id always comes from the entity source so the metric identity
+// and the emitted entity cannot diverge.
+func (p *mysqlProbe) commonTags(instance string) []tags.Tag {
+	t := []tags.Tag{
+		{Key: "instance", Value: instance},
+		{Key: "db.system.name", Value: "mysql"},
+		{Key: "server.address", Value: p.cfg.Host},
+		{Key: "server.port", Value: strconv.Itoa(p.cfg.Port)},
+	}
+	if id := p.entitySrc.instanceID(); id != "" {
+		t = append(t, tags.Tag{Key: "db.instance.id", Value: id})
+	}
+	return t
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────

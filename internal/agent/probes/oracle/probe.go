@@ -16,6 +16,7 @@ import (
 
 	go_ora "github.com/sijms/go-ora/v2"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -35,6 +36,7 @@ const (
 	metricTypeStorage     = "storage"
 	metricTypeWait        = "wait"
 	metricTypeLocks       = "locks"
+	metricTypeStatus      = "status"
 
 	queryTimeout = 15 * time.Second
 )
@@ -118,11 +120,14 @@ func (p *oracleProbe) Collect() ([]data_store.DataPoint, error) {
 
 	var points []data_store.DataPoint
 
+	var checkErr error
 	up := float64(1)
 	if p.db == nil {
 		up = 0
+		checkErr = errors.New("oracle database handle is nil")
 	} else if err := p.db.PingContext(ctx); err != nil {
 		up = 0
+		checkErr = err
 		p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("oracle ping failed")
 	}
 	points = append(points, p.point("senhub.db.up", up, now, metricTypeOverview, nil))
@@ -135,6 +140,8 @@ func (p *oracleProbe) Collect() ([]data_store.DataPoint, error) {
 		points = append(points, p.collectTablespaces(ctx, now)...)
 		points = append(points, p.collectWaitClasses(ctx, now)...)
 	}
+
+	points = append(points, p.point(dbcommon.CheckResultMetric, float64(dbcommon.ClassifyError(checkErr)), now, metricTypeStatus, nil))
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
@@ -346,6 +353,11 @@ func (p *oracleProbe) point(name string, value float64, ts time.Time, metricType
 		{Key: "db.system.name", Value: "oracle"},
 		{Key: "server.address", Value: p.cfg.Host},
 		{Key: "server.port", Value: strconv.Itoa(p.cfg.Port)},
+	}
+	// The db entity's identity, so the series joins to it (pinned when the
+	// probe is built); a blank value is never emitted.
+	if id := p.entitySource.dbInstanceID(); id != "" {
+		dpTags = append(dpTags, tags.Tag{Key: idKeyDBInstance, Value: id})
 	}
 	for k, v := range extra {
 		dpTags = append(dpTags, tags.Tag{Key: k, Value: v})

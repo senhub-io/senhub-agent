@@ -75,5 +75,6 @@ series' tags.
 | `envoy.cluster.upstream.connections.total` | `envoy.cluster.upstream.connections.total` | Envoy Cluster {cluster} Upstream Connections Total | # | Total upstream connections opened to cluster members (cumulative) |
 | `envoy.cluster.upstream.requests.total` | `envoy.cluster.upstream.requests.total` | Envoy Cluster {cluster} Upstream Requests Total | # | Total upstream requests dispatched to cluster members (cumulative) |
 | `envoy.cluster.upstream.requests.time` | `envoy.cluster.upstream.requests.time` | Envoy Cluster {cluster} Upstream Request Time | ms | Cumulative upstream request latency across all requests to cluster members |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

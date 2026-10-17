@@ -27,7 +27,7 @@ image:
   # -- Image repository. Empty picks ghcr.io/senhub-io/senhub-agent
   # (edition full) or ghcr.io/senhub-io/senhub-agent-oss (edition oss).
   repository: ""
-  # -- Image tag. Empty uses the chart appVersion (0.6.1). There is no `latest`.
+  # -- Image tag. Empty uses the chart appVersion (0.6.4). There is no `latest`.
   tag: ""
   pullPolicy: IfNotPresent
 
@@ -70,6 +70,39 @@ hostMonitoring:
   enabled: true
   # -- Where the node's root filesystem is mounted in the pod.
   hostRoot: /host
+
+# Pod logs from the node. DaemonSet only: one agent per node reads that
+# node's /var/log/pods. In a Deployment this block is ignored, because a
+# single agent cannot read every node's pod log directory, and a pod in
+# a Deployment runs on one node only.
+podLogs:
+  # -- Adds a `kubernetes_logs` probe (probes.d/56-kubernetes-logs.yaml)
+  # and mounts podLogs.podLogsPath read-only from a hostPath. Only
+  # effective when the workload is a DaemonSet.
+  enabled: true
+  # -- Name of the `kubernetes_logs` probe.
+  name: pods
+  # -- Where the node's pod log directory is mounted in the pod, and the
+  # root the probe scans. The hostPath is mounted at the same path.
+  podLogsPath: /var/log/pods
+  # -- Probe parameters (include_namespaces, exclude_namespaces, ...).
+  params: {}
+
+# Resource usage of the node, its pods and containers, read from the
+# node's kubelet (/stats/summary). DaemonSet only, like podLogs.
+kubeletStats:
+  # -- Adds a `kubelet_stats` probe (probes.d/57-kubelet-stats.yaml), a
+  # ClusterRole with get on nodes/stats bound to the service account, and
+  # mounts the service account token.
+  enabled: true
+  name: kubelet
+  # -- Most kubelets serve a self-signed certificate the cluster CA does
+  # not sign (kubeadm's default), which the probe cannot verify. Set
+  # false once kubelet serving certificates are signed by the cluster CA
+  # (serverTLSBootstrap).
+  insecureSkipVerify: true
+  # -- Probe parameters (include_namespaces, exclude_namespaces, interval).
+  params: {}
 
 # -- `info` or `debug`. `debug` starts the agent with --verbose.
 logLevel: info

@@ -1,27 +1,7 @@
-// Package hostiface is the host-side interface-inventory entity source (#458):
-// it emits the host's own network interfaces and their IP addresses so a
-// consumer can resolve a connection peer back to this host.
-//
-// Contract (topology-as-entities, ADR 0022; identity frozen with Toise, see
-// docs/data-model/otel-mapping.md): a host interface is a network.interface
-// entity identified by {host.id, network.interface.name} (the host-owner analogue of a
-// device port's {network.device.id, network.interface.name}); each unicast IP is a
-// network.address entity identified by {network.address} (the bare IP).
-// Attachment: network.address --bound_to--> network.interface, and the host
-// --has_interface--> network.interface (the host endpoint comes from the
-// foundation entity merged into the same cycle, so it is referenced, not
-// re-emitted — mirroring hostnet's has_route and hostsvc's runs_on).
-//
-// This is what makes connection topology resolve: a depends_on edge to a
-// network.endpoint{server.address=IP} resolves to "this host's listener" only
-// when the host's own IP is in the graph as a network.address bound to an
-// interface the host has (Toise #184 / senhub-agent #457).
-//
-// Loopback and link-local addresses are skipped: they never identify a host to
-// a remote peer and would only add churn.
 package hostiface
 
 import (
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -68,6 +48,14 @@ type linkMeta struct {
 	Speed     int64  // bit/s, 0 = unknown
 }
 
+// aggregationInfo carries the Linux LAG membership/aggregate metadata. It is
+// platform-populated; non-Linux builds leave it nil.
+type aggregationInfo struct {
+	Mode       string // "lacp", "active-backup" or "static" on the aggregate
+	State      string // "active"/"standby" on a member
+	MasterName string // aggregate interface name for a member
+}
+
 // ifaceAddrs is one interface with its retained unicast IPs and descriptive
 // metadata. An interface is emitted even with no IPs (AT13: a down/IP-less NIC
 // is still a real entity, so a link going down is a clean state_changed).
@@ -83,6 +71,9 @@ type ifaceAddrs struct {
 	Type      string
 	Duplex    string
 	Speed     int64
+	// Aggregation is set only when platformAggregation returned an entry
+	// for this interface and entity.AggregationEnabled is true.
+	Aggregation *aggregationInfo
 }
 
 // Source implements entity.Source for the host's own interfaces/addresses.
@@ -142,7 +133,7 @@ func buildObservation(hostID string, ias []ifaceAddrs) entity.Observation {
 	hostKey := map[string]any{idKeyHost: hostID}
 
 	obs := entity.Observation{}
-	seenAddr := map[string]bool{}
+	ifaceByID := make(map[string]map[string]any, len(ias))
 	for _, ia := range ias {
 		if ia.Name == "" {
 			continue
@@ -155,6 +146,18 @@ func buildObservation(hostID string, ias []ifaceAddrs) entity.Observation {
 			FromType: entityTypeHost, FromID: hostKey,
 			ToType: entityTypeNetworkInterface, ToID: ifaceKey,
 		})
+		ifaceByID[ia.Name] = ifaceKey
+	}
+
+	seenAddr := map[string]bool{}
+	for _, ia := range ias {
+		if ia.Name == "" {
+			continue
+		}
+		ifaceKey, ok := ifaceByID[ia.Name]
+		if !ok {
+			continue
+		}
 		for _, ip := range ia.IPs {
 			// The interface is kept (above), but a host-local IP — most visibly
 			// the Docker bridge gateway 172.17.0.1, identical on every host — must
@@ -177,6 +180,27 @@ func buildObservation(hostID string, ias []ifaceAddrs) entity.Observation {
 				Type:     relBoundTo,
 				FromType: entityTypeNetworkAddress, FromID: addrKey,
 				ToType: entityTypeNetworkInterface, ToID: ifaceKey,
+			})
+		}
+	}
+
+	if entity.AggregationEnabled() {
+		for _, ia := range ias {
+			if ia.Aggregation == nil || ia.Aggregation.MasterName == "" {
+				continue
+			}
+			memberKey, ok := ifaceByID[ia.Name]
+			if !ok {
+				continue
+			}
+			masterKey, ok := ifaceByID[ia.Aggregation.MasterName]
+			if !ok {
+				continue
+			}
+			obs.Relations = append(obs.Relations, entity.Relation{
+				Type:     entity.RelAggregatedInto,
+				FromType: entityTypeNetworkInterface, FromID: memberKey,
+				ToType: entityTypeNetworkInterface, ToID: masterKey,
 			})
 		}
 	}
@@ -204,6 +228,14 @@ func ifaceAttributes(ia ifaceAddrs) map[string]any {
 	}
 	if ia.Speed > 0 {
 		attrs[attrKeySpeed] = ia.Speed
+	}
+	if entity.AggregationEnabled() && ia.Aggregation != nil {
+		if ia.Aggregation.State != "" {
+			attrs[entity.AttrAggregationState] = ia.Aggregation.State
+		}
+		if ia.Aggregation.Mode != "" {
+			attrs[entity.AttrAggregationMode] = ia.Aggregation.Mode
+		}
 	}
 	for k, v := range entity.InterfaceNetworkAttributes(ia.IPs, ia.Prefixes) {
 		attrs[k] = v
@@ -236,6 +268,15 @@ func (s *Source) enumerate() ([]ifaceAddrs, error) {
 	if lmFn == nil {
 		lmFn = resolveLinkMeta
 	}
+
+	var aggByName map[string]*aggregationInfo
+	if entity.AggregationEnabled() {
+		aggByName, err = platformAggregation()
+		if err != nil {
+			return nil, fmt.Errorf("read interface aggregation: %w", err)
+		}
+	}
+
 	out := make([]ifaceAddrs, 0, len(ifaces))
 	for _, ifc := range ifaces {
 		if isLoopbackIface(ifc.Flags) {
@@ -253,16 +294,23 @@ func (s *Source) enumerate() ([]ifaceAddrs, error) {
 			}
 		}
 		lm := lmFn(ifc.Name, ifc.Flags)
+		var agg *aggregationInfo
+		if aggByName != nil {
+			agg = aggByName[ifc.Name]
+		}
 		// Drop IP-less virtual interfaces (ephemeral container plumbing). Type
 		// is only known on Linux; an unknown type ("" on other OSes) is kept,
 		// since the veth churn it targets is a Linux-container concern.
-		if len(ips) == 0 && lm.Type == "virtual" {
+		// Aggregation members and aggregates are kept even when IP-less,
+		// because they participate in aggregated_into topology.
+		if len(ips) == 0 && lm.Type == "virtual" && !(agg != nil && (agg.MasterName != "" || agg.Mode != "")) {
 			continue
 		}
 		out = append(out, ifaceAddrs{
 			Name: ifc.Name, IPs: ips, Prefixes: prefixes,
 			MAC: canonicalMAC(ifc.HardwareAddr), MTU: int64(ifc.MTU),
 			OperState: lm.OperState, Type: lm.Type, Duplex: lm.Duplex, Speed: lm.Speed,
+			Aggregation: agg,
 		})
 	}
 	return out, nil

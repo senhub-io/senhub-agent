@@ -12,6 +12,7 @@ import (
 	"time"
 
 	gops "github.com/shirou/gopsutil/v3/process"
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -31,20 +32,83 @@ type processSnapshot struct {
 	createTime int64 // Unix ms
 }
 
+// getHostID returns the same host id the entity source uses, or "" when the
+// host identity is not available yet.
+func getHostID() string {
+	if hi, err := common.GetHostIdentity(); err == nil {
+		return hi.ID
+	}
+	return ""
+}
+
+// buildHostTags returns the probe's base tags with host.id taken from the same
+// identity function the entity source uses.
+func buildHostTags(hostID string) ([]tags.Tag, error) {
+	baseTags, err := common.GetHostTags()
+	if err != nil {
+		return nil, fmt.Errorf("host tags: %w", err)
+	}
+	return addHostIDTag(baseTags, hostID), nil
+}
+
+func addHostIDTag(baseTags []tags.Tag, hostID string) []tags.Tag {
+	out := make([]tags.Tag, 0, len(baseTags)+1)
+	for _, t := range baseTags {
+		if t.Key == "host.id" {
+			continue
+		}
+		out = append(out, t)
+	}
+	if hostID != "" {
+		out = append(out, tags.Tag{Key: "host.id", Value: hostID})
+	}
+	return out
+}
+
+func hostIdentityTags(hostID string) []tags.Tag {
+	if hostID == "" {
+		return nil
+	}
+	return []tags.Tag{{Key: "host.id", Value: hostID}}
+}
+
+func filterOutTag(in []tags.Tag, key string) []tags.Tag {
+	out := make([]tags.Tag, 0, len(in))
+	for _, t := range in {
+		if t.Key != key {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+func newCheckResultPoint(baseTags []tags.Tag, ts time.Time, err error) data_store.DataPoint {
+	return data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Timestamp: ts,
+		Value:     float64(dbcommon.ClassifyError(err)),
+		Tags:      append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "status"}),
+	}
+}
+
 // collect enumerates processes, applies filters, and builds datapoints. It
 // also returns the filtered snapshot set so the caller can feed the entity
 // rail from the same enumeration (no second pass over the process table).
 func collect(ts time.Time, cfg config, log *logger.ModuleLogger) ([]data_store.DataPoint, []processSnapshot, error) {
-	baseTags, err := common.GetHostTags()
+	hostID := getHostID()
+	baseTags, err := buildHostTags(hostID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("host tags: %w", err)
+		return []data_store.DataPoint{newCheckResultPoint(hostIdentityTags(hostID), ts, err)}, nil, fmt.Errorf("host tags: %w", err)
 	}
+	return collectWithBaseTags(ts, cfg, log, baseTags)
+}
 
+func collectWithBaseTags(ts time.Time, cfg config, log *logger.ModuleLogger, baseTags []tags.Tag) ([]data_store.DataPoint, []processSnapshot, error) {
 	hostname, _ := os.Hostname()
 
 	procs, err := gops.Processes()
 	if err != nil {
-		return nil, nil, fmt.Errorf("listing processes: %w", err)
+		return []data_store.DataPoint{newCheckResultPoint(baseTags, ts, err)}, nil, fmt.Errorf("listing processes: %w", err)
 	}
 
 	snaps := make([]processSnapshot, 0, len(procs))
@@ -56,19 +120,19 @@ func collect(ts time.Time, cfg config, log *logger.ModuleLogger) ([]data_store.D
 		snaps = append(snaps, snap)
 	}
 
-	// top_n filter: keep the N processes with highest CPU usage.
 	if cfg.topN > 0 && len(snaps) > cfg.topN {
-		sort.Slice(snaps, func(i, j int) bool {
-			return snaps[i].cpuPct > snaps[j].cpuPct
-		})
-		snaps = snaps[:cfg.topN]
+		snaps = topProcesses(snaps, cfg.topN, cfg.topBy)
 	}
 
-	points := make([]data_store.DataPoint, 0, len(snaps)*7)
+	points := make([]data_store.DataPoint, 0, len(snaps)*7+1)
 
 	if cfg.detailed() {
+		processEntityMode := cfg.byName != nil || cfg.byUser != ""
 		for _, snap := range snaps {
-			processTags := buildProcessTags(baseTags, snap, hostname)
+			// Only processes the entity source would emit may carry the full
+			// process identity keys {host.id, process.pid, process.creation.time}.
+			includeHostID := processEntityMode && snap.createTime > 0
+			processTags := buildProcessTags(baseTags, snap, hostname, includeHostID)
 			points = appendProcessPoints(points, ts, snap, processTags)
 		}
 	}
@@ -168,6 +232,7 @@ func collect(ts time.Time, cfg config, log *logger.ModuleLogger) ([]data_store.D
 		log.Debug().Err(e).Msg("Host security signal not available")
 	}
 
+	points = append(points, newCheckResultPoint(baseTags, ts, nil))
 	return points, snaps, nil
 }
 
@@ -251,8 +316,11 @@ func snapshotProcess(p *gops.Process, cfg config, log *logger.ModuleLogger) (pro
 }
 
 // buildProcessTags constructs the per-process tag set.
-func buildProcessTags(baseTags []tags.Tag, snap processSnapshot, hostname string) []tags.Tag {
+func buildProcessTags(baseTags []tags.Tag, snap processSnapshot, hostname string, includeHostID bool) []tags.Tag {
 	pt := append([]tags.Tag{}, baseTags...)
+	if !includeHostID {
+		pt = filterOutTag(pt, "host.id")
+	}
 	pt = append(pt,
 		tags.Tag{Key: "process.pid", Value: strconv.Itoa(int(snap.pid))},
 		tags.Tag{Key: "process.name", Value: snap.name},
@@ -343,4 +411,16 @@ func appendProcessPoints(
 	}
 
 	return points
+}
+
+// topProcesses keeps the n processes ranking highest on by: resident memory
+// (the working set on Windows) for "memory", CPU otherwise.
+func topProcesses(snaps []processSnapshot, n int, by string) []processSnapshot {
+	sort.SliceStable(snaps, func(i, j int) bool {
+		if by == topByMemory {
+			return snaps[i].rss > snaps[j].rss
+		}
+		return snaps[i].cpuPct > snaps[j].cpuPct
+	})
+	return snaps[:n]
 }

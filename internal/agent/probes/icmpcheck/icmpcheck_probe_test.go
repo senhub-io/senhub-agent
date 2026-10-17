@@ -161,8 +161,8 @@ func TestCollect_BuildsExpectedMetricSet(t *testing.T) {
 	if _, hasRTT := down["senhub.icmp.rtt.avg"]; hasRTT {
 		t.Error("down target must not emit RTT points")
 	}
-	if len(down) != 4 {
-		t.Errorf("down target emits %d metrics, want 4 (up/loss/sent/received)", len(down))
+	if len(down) != 5 {
+		t.Errorf("down target emits %d metrics, want 5 (up/loss/sent/received/check_result)", len(down))
 	}
 }
 

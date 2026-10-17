@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -156,40 +157,82 @@ func (p *NATSProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
+// baseTagsWithIdentity returns the common tags every datapoint emits. The
+// service.instance.id comes from the entity source so telemetry and topology
+// can never disagree.
+func (p *NATSProbe) baseTagsWithIdentity() []tags.Tag {
+	t := []tags.Tag{
+		{Key: "instance", Value: p.cfg.Endpoint},
+		{Key: "metric_type", Value: "overview"},
+	}
+	if id := p.entitySrc.currentInstanceID(); id != "" {
+		t = append(t, tags.Tag{Key: "service.instance.id", Value: id})
+	}
+	return t
+}
+
+// checkResultPoint builds the single per-collection check-result gauge.
+func checkResultPoint(ts time.Time, result dbcommon.CheckResult, base []tags.Tag) data_store.DataPoint {
+	return data_store.DataPoint{
+		Name:      dbcommon.CheckResultMetric,
+		Value:     float64(result),
+		Timestamp: ts,
+		Tags:      tagsWithType(base, "status"),
+	}
+}
+
 // Collect fetches /varz, /routez, and /jsz from the NATS management API and
 // builds the metric set. A failure on /varz (primary endpoint) marks the
 // server as down; /routez and /jsz failures are tolerated (partial data).
 func (p *NATSProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 
-	baseTags := []tags.Tag{
-		{Key: "instance", Value: p.cfg.Endpoint},
-		{Key: "metric_type", Value: "overview"},
-	}
-
-	var points []data_store.DataPoint
-
-	// --- /varz (required) --------------------------------------------------
+	// Fetch /varz first; its outcome determines whether this collection is up
+	// and which entity identity the metrics carry on the error paths.
 	varzBody, status, varzErr := p.fetch("/varz")
 	up := float64(0)
 	if varzErr == nil && status == http.StatusOK {
 		up = 1
 	}
-	points = append(points, data_store.DataPoint{
-		Name: "senhub.nats.up", Value: up, Timestamp: now, Tags: baseTags,
-	})
 
+	var checkResult dbcommon.CheckResult
 	if varzErr != nil {
+		checkResult = dbcommon.ClassifyError(varzErr)
 		p.moduleLogger.Warn().Err(varzErr).
 			Str("endpoint", p.cfg.Endpoint).
 			Msg("NATS /varz request failed; emitting up=0")
+		baseTags := p.baseTagsWithIdentity()
+		points := []data_store.DataPoint{
+			{Name: "senhub.nats.up", Value: up, Timestamp: now, Tags: baseTags},
+			checkResultPoint(now, checkResult, baseTags),
+		}
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+	}
+	if status != http.StatusOK {
+		checkResult = dbcommon.ClassifyHTTPStatus(status)
 	}
 
 	var varz varzResponse
 	if err := json.Unmarshal(varzBody, &varz); err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("NATS /varz JSON decode failed")
+		if up == 1 {
+			checkResult = dbcommon.ClassifyError(err)
+		}
+		baseTags := p.baseTagsWithIdentity()
+		points := []data_store.DataPoint{
+			{Name: "senhub.nats.up", Value: up, Timestamp: now, Tags: baseTags},
+			checkResultPoint(now, checkResult, baseTags),
+		}
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+	}
+
+	// Pin the entity identity on the first successful /varz (nop if already pinned).
+	p.entitySrc.pinFromVarz(varz.ServerName, varz.ServerID, varz.Version)
+	baseTags := p.baseTagsWithIdentity()
+
+	points := []data_store.DataPoint{
+		{Name: "senhub.nats.up", Value: up, Timestamp: now, Tags: baseTags},
+		checkResultPoint(now, checkResult, baseTags),
 	}
 
 	connTags := tagsWithType(baseTags, "connections")
@@ -215,9 +258,6 @@ func (p *NATSProbe) Collect() ([]data_store.DataPoint, error) {
 	points = append(points,
 		data_store.DataPoint{Name: "nats.slow_consumers", Value: float64(varz.SlowConsumers), Timestamp: now, Tags: slowTags},
 	)
-
-	// Pin the entity identity on the first successful /varz (nop if already pinned).
-	p.entitySrc.pinFromVarz(varz.ServerName, varz.ServerID, varz.Version)
 
 	// --- /routez (optional) ------------------------------------------------
 	routezBody, routeStatus, routeErr := p.fetch("/routez")

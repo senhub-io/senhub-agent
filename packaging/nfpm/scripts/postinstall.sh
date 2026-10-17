@@ -42,6 +42,47 @@ if [ -f "${legacy_unit}" ]; then
     fi
 fi
 
+# Default fragments the agent adds on a multi-file install. The packaged
+# unit runs with /etc read-only, so the agent cannot write them itself:
+# they are written here, under the same rules (no file, no *.disabled
+# twin, no probe of that type configured elsewhere).
+add_default_fragment() {
+    file=/etc/senhub-agent/probes.d/$1
+    [ -e "${file}" ] || [ -e "${file}.disabled" ] && return 0
+    grep -Eqs "^[[:space:]]*type:[[:space:]]*\"?$2\"?[[:space:]]*$" /etc/senhub-agent/probes.d/*.yaml && return 0
+    cat > "${file}" <<FRAGMENT
+# $3 Rename to *.disabled to
+# turn it off (it is added once per host: deleting it also works).
+
+- name: $4
+  type: $2
+  params:
+    interval: 60
+FRAGMENT
+    chown senhub:senhub "${file}" 2>/dev/null || true
+    chmod 0600 "${file}"
+}
+# Once per host: an upgrade after this one must not bring back a fragment
+# the operator deleted. The opt-out the agent honours is honoured here too.
+defaults_marker=/var/lib/senhub-agent/.default-probes-0.6.4
+defaults_off=0
+if command -v systemctl >/dev/null 2>&1 && \
+    systemctl show -p Environment senhub-agent.service 2>/dev/null | grep -qi 'SENHUB_DEFAULT_PROBES=off'; then
+    defaults_off=1
+fi
+if [ "${defaults_off}" = 0 ] && [ ! -e "${defaults_marker}" ] && [ -d /etc/senhub-agent/probes.d ] && \
+    ! grep -Eq '^(probes|storage):' /etc/senhub-agent/agent.yaml 2>/dev/null; then
+    if [ -d /run/systemd/system ]; then
+        add_default_fragment 05-services.yaml systemd "Default OS service supervisor probe." services
+    fi
+    if [ -S /var/run/docker.sock ]; then
+        add_default_fragment 06-swarm.yaml swarm "Default Docker Swarm probe (declares overlay networks on a manager)." swarm
+    fi
+    mkdir -p /var/lib/senhub-agent
+    : > "${defaults_marker}"
+    chown senhub:senhub "${defaults_marker}" 2>/dev/null || true
+fi
+
 # The shipped config carries an empty agent key; the agent refuses to start
 # without one. Each host gets its own, and an operator-set key is never
 # touched. Written in place (cat >) so owner and mode survive.

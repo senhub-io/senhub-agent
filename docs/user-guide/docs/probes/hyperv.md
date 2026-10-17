@@ -68,5 +68,6 @@ series' tags.
 | `hyperv.vm.memory.usage` | `hyperv.vm.memory.usage` | VM {hyperv.vm.name} Memory Usage | Bytes | Memory consumed by the virtual machine in bytes |
 | `hyperv.vm.state` | `hyperv.vm.state` | VM {hyperv.vm.name} State | # | 1 when the VM is in running state, 0 otherwise |
 | `hyperv.vm.count` | `hyperv.vm.count` | VM Count ({state}) | # | Number of virtual machines in the given state (running / stopped / paused) |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

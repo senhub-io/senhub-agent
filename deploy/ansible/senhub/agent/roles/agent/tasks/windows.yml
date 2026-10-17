@@ -1,6 +1,6 @@
 ---
-# Written against the documented MSI and release manifest; not yet run on a
-# Windows host.
+# Written against the documented MSI and release manifest. The
+# configuration path has run on a Windows host; the MSI install below not yet.
 - name: Manifest address
   ansible.builtin.set_fact:
     _senhub_agent_manifest_url: >-
@@ -14,6 +14,7 @@
     return_content: true
   register: _senhub_agent_manifest_raw
   changed_when: false
+  check_mode: false
 
 - name: Pick the MSI of this edition
   ansible.builtin.set_fact:
@@ -42,6 +43,7 @@
   register: _senhub_agent_installed
   changed_when: false
   failed_when: false
+  check_mode: false
 
 - name: Version installed now
   ansible.builtin.set_fact:
@@ -54,8 +56,14 @@
          or ((_senhub_agent_pinned | bool or _senhub_agent_follow_latest | bool)
              and _senhub_agent_installed_version != _senhub_agent_manifest.version) }}
 
+- name: MSI a real run would install
+  ansible.builtin.debug:
+    msg: "Check mode: {{ _senhub_agent_msi[0].name }} would be downloaded, verified and installed."
+  when: _senhub_agent_msi_needed | bool and ansible_check_mode
+  changed_when: true
+
 - name: Download, verify and install the MSI
-  when: _senhub_agent_msi_needed | bool
+  when: _senhub_agent_msi_needed | bool and not ansible_check_mode
   block:
     - name: Download the MSI
       ansible.windows.win_get_url:
@@ -98,8 +106,19 @@
         state: absent
       changed_when: false
 
+- name: Agent binary
+  ansible.windows.win_stat:
+    path: "{{ senhub_agent_windows_bin }}"
+  register: _senhub_agent_bin_file
+
+- name: Configuration a real run would write
+  ansible.builtin.debug:
+    msg: "Check mode: {{ senhub_agent_windows_bin }} is not installed yet, so the configuration is neither built nor checked."
+  when: ansible_check_mode and not _senhub_agent_bin_file.stat.exists
+
 - name: Configuration
   ansible.builtin.include_tasks: configure_windows.yml
+  when: not ansible_check_mode or _senhub_agent_bin_file.stat.exists
 
 - name: Apply pending restarts before the final state
   ansible.builtin.meta: flush_handlers
@@ -109,3 +128,5 @@
     name: "{{ senhub_agent_windows_service_name }}"
     start_mode: "{{ 'auto' if senhub_agent_service_enabled | bool else 'disabled' }}"
     state: "{{ senhub_agent_service_state }}"
+  # Under --check on a host without the agent there is no service yet.
+  when: not (ansible_check_mode and not _senhub_agent_bin_file.stat.exists)

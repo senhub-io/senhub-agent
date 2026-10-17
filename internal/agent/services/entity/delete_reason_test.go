@@ -210,3 +210,106 @@ func TestDeleteReason_NotSpelledCascade(t *testing.T) {
 		t.Errorf("ReasonParentRemoved = %q, want parent_removed", ReasonParentRemoved)
 	}
 }
+
+// unobservedFake is a source that drops part of its view because it can no
+// longer read it, and says so through Unobserved.
+type unobservedFake struct {
+	fakeSource
+	dropped []Entity
+}
+
+func (u *unobservedFake) Unobserved() []Entity {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	out := u.dropped
+	u.dropped = nil
+	return out
+}
+
+// A source still answering, which stops reporting a device it can no longer
+// read, must not have that read as the device ending: the snmp_poll case of a
+// switch cut off from the only agent that polled it.
+func TestDeleteReason_UnobservedPartOfAnAnsweringSource_Unmonitored(t *testing.T) {
+	for _, wrap := range []struct {
+		name string
+		fn   func(Source) Source
+	}{
+		{"bare", func(s Source) Source { return s }},
+		{"with governance attributes", func(s Source) Source {
+			return WithAttributes(s, map[string]any{"senhub.site": "lab"})
+		}},
+	} {
+		t.Run(wrap.name, func(t *testing.T) {
+			src := &unobservedFake{fakeSource: fakeSource{obs: monitoredDB(), ok: true}}
+			unregister := RegisterSource(wrap.fn(src))
+			defer unregister()
+
+			var mu sync.Mutex
+			var got []Event
+			tr := NewTracker(func(ev Event) { mu.Lock(); got = append(got, ev); mu.Unlock() }, 0)
+			d := newReasonDetector()
+			t0 := time.Unix(1780272000, 0).UTC()
+
+			d.reconcile(tr, t0)
+			src.mu.Lock()
+			src.dropped = monitoredDB().Entities
+			src.mu.Unlock()
+			src.set(Observation{}, true)
+			got = nil
+			d.reconcile(tr, t0.Add(time.Minute))
+
+			del, ok := deletesByType(got)["db"]
+			if !ok {
+				t.Fatalf("no delete for the db entity; got %d events", len(got))
+			}
+			if del.DeleteReason != ReasonUnmonitored {
+				t.Errorf("DeleteReason = %q, want %q", del.DeleteReason, ReasonUnmonitored)
+			}
+		})
+	}
+}
+
+// departureFake is a source reading a cache: what it stops listing aged
+// out, not seen to leave.
+type departureFake struct{ fakeSource }
+
+func (*departureFake) DepartureReason(Entity) string { return ReasonAgedOut }
+
+// A neighbour forgotten by the ARP cache must not read as having ended, also
+// through the governance wrapper every probe source is registered with.
+func TestDeleteReason_CacheSourceDropsAsAgedOut(t *testing.T) {
+	for _, wrap := range []struct {
+		name string
+		fn   func(Source) Source
+	}{
+		{"bare", func(s Source) Source { return s }},
+		{"with governance attributes", func(s Source) Source {
+			return WithAttributes(s, map[string]any{"senhub.site": "lab"})
+		}},
+	} {
+		t.Run(wrap.name, func(t *testing.T) {
+			src := &departureFake{fakeSource{obs: monitoredDB(), ok: true}}
+			unregister := RegisterSource(wrap.fn(src))
+			defer unregister()
+
+			var mu sync.Mutex
+			var got []Event
+			tr := NewTracker(func(ev Event) { mu.Lock(); got = append(got, ev); mu.Unlock() }, 0)
+			d := newReasonDetector()
+			t0 := time.Unix(1780272000, 0).UTC()
+
+			d.reconcile(tr, t0)
+			src.set(Observation{}, true)
+			got = nil
+			d.reconcile(tr, t0.Add(time.Minute))
+
+			del, ok := deletesByType(got)["db"]
+			if !ok {
+				t.Fatalf("no delete for the entity; got %d events", len(got))
+			}
+			if del.DeleteReason != ReasonAgedOut {
+				t.Errorf("DeleteReason = %q, want %q", del.DeleteReason, ReasonAgedOut)
+			}
+		})
+	}
+}

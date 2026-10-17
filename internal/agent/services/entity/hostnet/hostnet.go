@@ -1,27 +1,8 @@
-// Package hostnet is the host-side routing entity source (entity Lot 4, #212):
-// it reads the local kernel routing table and emits the host's routes as
-// network.route entities on the frozen entity rail — the host-side equivalent
-// of snmp_poll's device routing, with no SNMP needed.
-//
-// Contract (topology-as-entities, ADR 0022, frozen with Toise #222/#87): a
-// host route is a network.route entity identified by {host.id, route.destination}
-// (route.destination a canonical CIDR), carrying the next hop as a scalar
-// next_hop.ip attribute — network.address (and the gateway as its own entity)
-// is deferred, so the next hop stays an IP, not a node. The route attaches to
-// the host by has_route (host → network.route), mirroring has_interface.
-//
-// This supersedes the earlier gateway-as-network.device + routes_via model:
-// the host does not discover its gateway as a managed device (that is what an
-// SNMP poll does); it records where its traffic egresses. Scope: routes with a
-// next hop (default + gateway'd routes); link-local/connected routes are
-// skipped (no next hop, low value, would flood).
 package hostnet
 
 import (
-	"net"
-	"os"
-	"strconv"
-	"strings"
+	"net/netip"
+	"sort"
 
 	"senhub-agent.go/internal/agent/services/entity"
 )
@@ -36,99 +17,133 @@ const (
 	idKeyNextHopIP           = "next_hop.ip"
 	attrMetric               = "metric"
 	attrEgressInterface      = "network.interface.name"
+	attrRouteType            = "route.type"
+	attrRouteProtocol        = "route.protocol"
+	attrRouteProtocolCode    = "network.route.protocol.code"
+	attrRoutesOmitted        = "senhub.routes.omitted"
+	attrRoutesLimit          = "senhub.routes.limit"
 	relHasRoute              = "has_route"
 	relNextHopVia            = "next_hop_via"
 
-	procRoute = "/proc/net/route"
+	maxHostRoutes = 500
+
+	routeTypeOther     = "other"
+	routeTypeReject    = "reject"
+	routeTypeLocal     = "local"
+	routeTypeRemote    = "remote"
+	routeTypeBlackhole = "blackhole"
+	// routeTypeInvalid marks a row the source listed but that is not a
+	// route; it is never emitted, only counted as omitted.
+	routeTypeInvalid = "invalid"
 )
 
-// hostRoute is one next-hop route parsed from the kernel routing table.
+// hostRoute is one route parsed from the kernel routing table.
 type hostRoute struct {
-	Destination string // canonical CIDR, e.g. "0.0.0.0/0"
-	NextHop     string // gateway IP (dotted)
-	Metric      int64
-	// Iface names the interface the route leaves by, when the platform
-	// says so; a container bridge's gateway is the same on every host.
-	Iface string
+	Destination  string // canonical CIDR, e.g. "0.0.0.0/0"
+	NextHop      string // gateway IP; zero for local/reject/blackhole
+	Metric       int64
+	Iface        string
+	RouteType    string // route.type value
+	ProtocolName string // route.protocol value; empty when absent
+	ProtocolCode *int   // raw source protocol code; nil when unknown
 }
 
 // Source implements entity.Source for the host routing table.
 type Source struct {
 	hostID     func() string
 	readRoutes func() ([]hostRoute, error)
+	forwarding func() (v4, v6 string)
 }
 
 // New builds the host-route source. hostID returns the host's stable id
-// (gopsutil HostID) used as the route entity's owning host.id.
+// used as the route entity's owning host.id.
 func New(hostID func() string) *Source {
 	return &Source{
 		hostID:     hostID,
 		readRoutes: platformRoutes,
+		forwarding: platformForwarding,
 	}
 }
 
-// Observe reads the routing table and builds the snapshot: /proc/net/route
-// on Linux, the IP helper API on Windows. Both are fast and non-blocking.
-// A read failure reports ok=false so the detector keeps the last good
-// snapshot instead of deleting the host's routes on a transient error
-// (audit D3); where no reader exists the source never contributes.
+// Observe reads the routing table and builds the snapshot. A read failure
+// reports ok=false so the detector keeps the last good snapshot instead of
+// deleting the host's routes on a transient error.
 func (s *Source) Observe() (entity.Observation, bool) {
 	routes, err := s.readRoutes()
 	if err != nil {
 		return entity.Observation{}, false
 	}
-	return buildObservation(s.hostID(), routes).WithScope(entity.ScopeHostRoute), true
-}
-
-// procRoutes reads the Linux kernel routing table.
-func procRoutes() ([]hostRoute, error) {
-	b, err := os.ReadFile(procRoute)
-	if err != nil {
-		return nil, err
+	hostID := s.hostID()
+	obs := buildObservation(hostID, routes)
+	if s.forwarding != nil {
+		v4, v6 := s.forwarding()
+		obs = withForwarding(obs, hostID, v4, v6)
 	}
-	return parseProcRoute(b), nil
+	return obs.WithScope(entity.ScopeHostRoute), true
 }
 
-// buildObservation maps next-hop routes → network.route entities owned by the
-// host (has_route). The next hop is carried both as the scalar next_hop.ip
-// attribute and as a network.address entity the route reaches via next_hop_via:
-// that same network.address {ip} node is bound_to a device's interface by the
-// SNMP poll when the gateway is a managed device, so the shared address joins
-// the host and device topology graphs.
+// buildObservation maps routes to network.route entities owned by the host.
+// It emits a host entity for owner counters, route entities, and shared
+// network.address nodes for usable gateways.
 func buildObservation(hostID string, routes []hostRoute) entity.Observation {
-	if hostID == "" || len(routes) == 0 {
+	if hostID == "" {
 		return entity.Observation{}
 	}
-	hostKey := map[string]any{idKeyHost: hostID}
 
-	obs := entity.Observation{}
+	candidates := filterRoutes(routes)
+	selected := selectRoutes(candidates)
+
+	// senhub.routes.omitted counts every route the source listed and this
+	// producer did not emit, whatever the reason (bound, invalid row,
+	// unusable gateway, container bridge): a counter that only saw the
+	// bound would read 0 while rows were dropped.
+	hostKey := map[string]any{idKeyHost: hostID}
+	hostAttrs := map[string]any{attrRoutesLimit: maxHostRoutes}
+	obs := entity.Observation{
+		Entities: []entity.Entity{{Type: entityTypeHost, ID: hostKey, Attributes: hostAttrs}},
+	}
+	emitted := 0
+
 	addrSeen := map[string]bool{}
-	for _, r := range routes {
-		// Identity after IP-FORWARD-MIB (RFC 4292), which indexes a route on
-		// its destination AND its next hop: two routes to one destination
-		// through two gateways are two routes. The next hop is always
-		// present because only indirect routes are emitted; emitting direct
-		// (on-link) routes would break this identity. A gateway change is a
-		// delete and a create. TOS and policy, also in the MIB index, are
-		// not read: routes differing only by them collapse.
+	for _, r := range selected {
+		rt := effectiveRouteType(r)
 		nextHop := r.NextHop
+		switch rt {
+		case routeTypeLocal, routeTypeReject, routeTypeBlackhole:
+			nextHop = zeroNextHop(r.Destination)
+		case routeTypeRemote, routeTypeOther:
+			if !usableNextHop(nextHop) {
+				continue
+			}
+		}
+
 		if c, ok := entity.CanonicalIP(nextHop); ok {
 			nextHop = c
 		}
-		routeID := map[string]any{idKeyHost: hostID, idKeyRouteDestination: r.Destination, idKeyNextHopIP: nextHop}
-		attrs := map[string]any{}
+
+		routeID := map[string]any{
+			idKeyHost:             hostID,
+			idKeyRouteDestination: r.Destination,
+			idKeyNextHopIP:        nextHop,
+		}
+		attrs := map[string]any{attrRouteType: rt}
 		if r.Metric > 0 {
 			attrs[attrMetric] = r.Metric
 		}
-		// The egress interface explains an absent next_hop_via (a
-		// container bridge) and tells two routes to one destination
-		// apart when a host has two paths.
-		if r.Iface != "" {
+		// A reject or blackhole route ends by design: the interface the
+		// kernel attaches to it (often lo) represents the drop, not an
+		// egress, and drawn as one it would put a hop to loopback on the path.
+		if r.Iface != "" && rt != routeTypeReject && rt != routeTypeBlackhole {
 			attrs[attrEgressInterface] = r.Iface
 		}
-		if len(attrs) == 0 {
-			attrs = nil
+		if r.ProtocolCode != nil {
+			attrs[attrRouteProtocolCode] = *r.ProtocolCode
 		}
+		if r.ProtocolName != "" {
+			attrs[attrRouteProtocol] = r.ProtocolName
+		}
+
+		emitted++
 		obs.Entities = append(obs.Entities, entity.Entity{
 			Type:       entityTypeNetworkRoute,
 			ID:         routeID,
@@ -136,18 +151,16 @@ func buildObservation(hostID string, routes []hostRoute) entity.Observation {
 		})
 		obs.Relations = append(obs.Relations, entity.Relation{
 			Type:     relHasRoute,
-			FromType: entityTypeHost, FromID: hostKey,
-			ToType: entityTypeNetworkRoute, ToID: routeID,
+			FromType: entityTypeHost,
+			FromID:   hostKey,
+			ToType:   entityTypeNetworkRoute,
+			ToID:     routeID,
 		})
 
-		// The gateway IP as a shared network.address node + next_hop_via edge,
-		// only when both rules agree: the address is not in the exclusion list
-		// (the same value on every host, so a shared node would falsely join
-		// unrelated hosts) AND the route does not leave by a container bridge,
-		// whose gateway is reused on every such host (br-<id> on 172.18+, cni0,
-		// ...). In doubt, no edge: the next hop still rides as the host-scoped
-		// next_hop.ip attribute above.
-		if !entity.AddressEdgeAllowed(nextHop) || entity.IsContainerBridgeIface(r.Iface) {
+		if rt != routeTypeRemote && rt != routeTypeOther {
+			continue
+		}
+		if !usableNextHop(nextHop) || !entity.AddressEdgeAllowed(nextHop) || entity.IsContainerBridgeIface(r.Iface) {
 			continue
 		}
 		addrID := map[string]any{idKeyNetworkAddress: nextHop}
@@ -157,92 +170,96 @@ func buildObservation(hostID string, routes []hostRoute) entity.Observation {
 		}
 		obs.Relations = append(obs.Relations, entity.Relation{
 			Type:     relNextHopVia,
-			FromType: entityTypeNetworkRoute, FromID: routeID,
-			ToType: entityTypeNetworkAddress, ToID: addrID,
+			FromType: entityTypeNetworkRoute,
+			FromID:   routeID,
+			ToType:   entityTypeNetworkAddress,
+			ToID:     addrID,
 		})
 	}
+	hostAttrs[attrRoutesOmitted] = len(routes) - emitted
 	return obs
 }
 
-// parseProcRoute returns the distinct next-hop routes from the Linux
-// /proc/net/route table. Destination/Gateway/Mask are hex little-endian;
-// connected routes (zero gateway) are skipped — only routes with a next hop
-// are topology. Routes are deduped by destination CIDR, first-seen order.
-func parseProcRoute(data []byte) []hostRoute {
-	var out []hostRoute
-	seen := map[string]bool{}
-	for i, line := range strings.Split(string(data), "\n") {
-		if i == 0 { // header
+func filterRoutes(routes []hostRoute) []hostRoute {
+	out := make([]hostRoute, 0, len(routes))
+	for _, r := range routes {
+		rt := effectiveRouteType(r)
+		if rt == routeTypeInvalid {
 			continue
 		}
-		f := strings.Fields(line)
-		if len(f) < 8 {
+		if rt == routeTypeLocal && entity.IsContainerBridgeIface(r.Iface) {
 			continue
 		}
-		gw := hexLEToIP(f[2])
-		if gw == "" || gw == "0.0.0.0" {
+		if (rt == routeTypeRemote || rt == routeTypeOther) && !usableNextHop(r.NextHop) {
 			continue
 		}
-		dst := hexLEToIP(f[1])
-		if dst == "" {
-			continue
-		}
-		prefix := maskHexToPrefix(f[7])
-		if prefix < 0 {
-			continue
-		}
-		// Canonical route.destination identity: explicit prefix, host bits
-		// zeroed (entity.CanonicalCIDR) — same rule as the SNMP-side routes, so
-		// the host and device views of one route derive byte-identical ids.
-		cidr, ok := entity.CanonicalCIDR(dst, prefix)
-		if !ok {
-			continue
-		}
-		if seen[cidr+" "+gw] {
-			continue
-		}
-		seen[cidr+" "+gw] = true
-		var metric int64
-		if m, err := strconv.ParseInt(f[6], 10, 64); err == nil {
-			metric = m
-		}
-		out = append(out, hostRoute{Destination: cidr, NextHop: gw, Metric: metric, Iface: f[0]})
+		out = append(out, r)
 	}
 	return out
 }
 
-// hexLEToIP decodes an 8-hex-char little-endian IPv4 (as in /proc/net/route)
-// to dotted form.
-func hexLEToIP(h string) string {
-	if len(h) != 8 {
-		return ""
-	}
-	b := make([]byte, 4)
-	for i := 0; i < 4; i++ {
-		v, err := strconv.ParseUint(h[2*i:2*i+2], 16, 8)
-		if err != nil {
-			return ""
+func selectRoutes(routes []hostRoute) []hostRoute {
+	var protected, rest []hostRoute
+	for _, r := range routes {
+		if isAlwaysKeepRoute(r) {
+			protected = append(protected, r)
+			continue
 		}
-		b[3-i] = byte(v) // little-endian → network order
+		rest = append(rest, r)
 	}
-	return net.IP(b).String()
+	sort.Slice(rest, func(i, j int) bool {
+		if rest[i].Destination != rest[j].Destination {
+			return rest[i].Destination < rest[j].Destination
+		}
+		return rest[i].NextHop < rest[j].NextHop
+	})
+
+	if len(protected) >= maxHostRoutes {
+		return protected
+	}
+	remaining := maxHostRoutes - len(protected)
+	if remaining >= len(rest) {
+		return append(protected, rest...)
+	}
+	return append(protected, rest[:remaining]...)
 }
 
-// maskHexToPrefix decodes an 8-hex-char little-endian IPv4 netmask to its
-// prefix length (e.g. "00FFFFFF" → 24, "00000000" → 0). Returns -1 on a
-// malformed or non-canonical mask.
-func maskHexToPrefix(h string) int {
-	dotted := hexLEToIP(h)
-	if dotted == "" {
-		return -1
+func isAlwaysKeepRoute(r hostRoute) bool {
+	if r.Destination == "0.0.0.0/0" || r.Destination == "::/0" {
+		return true
 	}
-	ip := net.ParseIP(dotted).To4()
-	if ip == nil {
-		return -1
+	switch effectiveRouteType(r) {
+	case routeTypeLocal, routeTypeReject, routeTypeBlackhole:
+		return true
+	default:
+		return false
 	}
-	ones, bits := net.IPMask(ip).Size()
-	if bits == 0 { // non-canonical mask
-		return -1
+}
+
+func effectiveRouteType(r hostRoute) string {
+	if r.RouteType != "" {
+		return r.RouteType
 	}
-	return ones
+	if usableNextHop(r.NextHop) {
+		return routeTypeRemote
+	}
+	return routeTypeLocal
+}
+
+func zeroNextHop(dest string) string {
+	if p, err := netip.ParsePrefix(dest); err == nil && p.Addr().Is6() {
+		return "::"
+	}
+	return "0.0.0.0"
+}
+
+func usableNextHop(s string) bool {
+	if s == "" {
+		return false
+	}
+	addr, err := netip.ParseAddr(s)
+	if err != nil {
+		return false
+	}
+	return !addr.Unmap().IsUnspecified()
 }

@@ -14,6 +14,7 @@ import (
 
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
+	"senhub-agent.go/internal/agent/services/exporthook"
 )
 
 // scopeName / scopeVersion identify the Meter that produced these
@@ -98,6 +99,10 @@ func pushMetrics(
 		}
 	}
 
+	if exporthook.HasSeriesObservers() {
+		exporthook.ObserveSeries("otlp", seriesPoints(records), now)
+	}
+
 	// Decide between single-batch and parallel-by-probe paths. Below
 	// SplitBatchThreshold or when maxConcurrent<=1, the goroutine
 	// fan-out is pure overhead — encoding 50 records in one batch is
@@ -114,6 +119,16 @@ func pushMetrics(
 	parts := partitionRecordsByProbe(records)
 	agentstate.RecordOTLPSubBatchCount(len(parts))
 	return exportInParallel(ctx, parts, res, scopeVersion, startTime, now, export, maxConcurrent)
+}
+
+// seriesPoints views the records as the series they export. The maps are
+// shared, not copied: observers only read them.
+func seriesPoints(records []otelmapper.OtelRecord) []exporthook.SeriesPoint {
+	pts := make([]exporthook.SeriesPoint, len(records))
+	for i, r := range records {
+		pts[i] = exporthook.SeriesPoint{Probe: r.Attributes["probe_name"], Name: r.Name, Attributes: r.Attributes}
+	}
+	return pts
 }
 
 // partitionRecordsByProbe groups records by their probe_name
@@ -257,10 +272,8 @@ func buildResourceMetrics(
 		})
 	}
 
-	if scopeVersion == "" {
-		scopeVersion = "dev"
-	}
-
+	// No "dev" fallback: an empty scope version is omitted, and a version
+	// here would become an otel_scope_version label on every series.
 	return &metricdata.ResourceMetrics{
 		Resource: res,
 		ScopeMetrics: []metricdata.ScopeMetrics{

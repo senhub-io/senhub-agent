@@ -6,9 +6,10 @@ import (
 )
 
 // Observation is the set of entities and relations a Source currently sees.
-// It carries identity + descriptive attributes only — the detector stamps
-// event_time and the liveness interval uniformly, so sources never deal with
-// timestamps. Returning a smaller set than last cycle is how a source signals
+// It carries identity + descriptive attributes. The detector stamps event_time
+// and the liveness interval uniformly; a source that re-uses a previous read
+// can set Entity.ObservedAt to that read's time, and zero means the detector's
+// current tick. Returning a smaller set than last cycle is how a source signals
 // that something it used to observe is gone (the tracker emits the delete).
 type Observation struct {
 	Entities  []Entity
@@ -33,6 +34,50 @@ type Observation struct {
 // legitimate way to say "everything I watched is gone".
 type Source interface {
 	Observe() (Observation, bool)
+}
+
+// UnobservedSource is a Source that stops reporting part of what it watched
+// because it can no longer look at it (a discovered device that no longer
+// answers), not because it learned it is gone. Unobserved returns, once, the
+// entities it dropped that way since the last call, so their removal reads as
+// unmonitored instead of as the producer having seen them end.
+type UnobservedSource interface {
+	Source
+	Unobserved() []Entity
+}
+
+// DepartureSource is a Source that knows what an entity it stops listing
+// means. A source reading a cache (ARP, NDP, a bridge table) never sees a
+// neighbour leave: an absent entry was forgotten, and calling that a
+// termination asserts an end nobody observed. DepartureReason returns the
+// reason for e, or "" to keep the default.
+type DepartureSource interface {
+	Source
+	DepartureReason(e Entity) string
+}
+
+// CadenceSource is a Source that reports the interval at which it actually
+// re-reads what it observes. Some sources re-emit a cached view more often
+// than they re-read the underlying facts; the announced interval must not
+// claim a finer resolution than that read cadence.
+type CadenceSource interface {
+	Cadence() time.Duration
+}
+
+// sourceAs finds the optional interface T on src or on what it wraps.
+func sourceAs[T any](src Source) (T, bool) {
+	for src != nil {
+		if t, ok := src.(T); ok {
+			return t, true
+		}
+		u, ok := src.(interface{ Unwrap() Source })
+		if !ok {
+			break
+		}
+		src = u.Unwrap()
+	}
+	var zero T
+	return zero, false
 }
 
 // registered pairs a Source with the registry id its detector-side caches
@@ -202,13 +247,28 @@ func dropOrphanEntities(entities []Entity, onOrphan func([]Entity)) (kept, dropp
 	return kept, dropped
 }
 
+// ConsumerIntervalCeiling is the longest announced interval the consumer
+// accepts (frozen on its side: it tells us before moving it). A cadence beyond it is still announced as it is: shortening it
+// would make the consumer expire an entity that is fine, silently, while the
+// real value gets refused and counted there as a producer defect. The
+// detector reports it locally as well (OnCadenceBeyondCeiling).
+const ConsumerIntervalCeiling = 7 * 24 * time.Hour
+
 // stateEvents stamps entities into state events at instant ts with the given
-// liveness interval.
+// liveness interval, widened by each entity's actual source cadence.
 func stateEvents(entities []Entity, ts time.Time, interval time.Duration) []Event {
 	out := make([]Event, len(entities))
 	for i := range entities {
 		e := entities[i]
-		out[i] = Event{Kind: EntityState, Entity: &e, Time: ts, Interval: interval}
+		eventTime := ts
+		if !e.ObservedAt.IsZero() {
+			eventTime = e.ObservedAt
+		}
+		announced := interval
+		if e.Cadence > announced {
+			announced = e.Cadence
+		}
+		out[i] = Event{Kind: EntityState, Entity: &e, Time: eventTime, Interval: announced}
 	}
 	return out
 }

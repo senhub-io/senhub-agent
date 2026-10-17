@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"strings"
 	"testing"
 
@@ -194,7 +195,7 @@ func TestCollect_EmptyDaemon(t *testing.T) {
 		t.Fatalf("Collect: unexpected error: %v", err)
 	}
 	for _, pt := range points {
-		if pt.Name != "senhub.docker.source" {
+		if pt.Name != "senhub.docker.source" && pt.Name != dbcommon.CheckResultMetric {
 			t.Errorf("empty daemon produced a container metric %q", pt.Name)
 		}
 	}
@@ -211,7 +212,7 @@ func TestCollect_EmptyDaemon(t *testing.T) {
 func sourceValue(t *testing.T, points []data_store.DataPoint, source string) float64 {
 	t.Helper()
 	for _, pt := range points {
-		if pt.Name != "senhub.docker.source" {
+		if pt.Name != "senhub.docker.source" && pt.Name != dbcommon.CheckResultMetric {
 			continue
 		}
 		for _, tag := range pt.Tags {

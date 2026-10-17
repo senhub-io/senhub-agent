@@ -14,6 +14,7 @@ package haproxy
 import (
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -73,6 +75,15 @@ type haproxyConfig struct {
 	Interval     time.Duration
 	Timeout      time.Duration
 }
+
+// httpStatusError is returned by fetchCSV for non-200 responses so Collect
+// can classify the HTTP status with dbcommon.ClassifyHTTPStatus.
+type httpStatusError struct {
+	code int
+	msg  string
+}
+
+func (e *httpStatusError) Error() string { return e.msg }
 
 const (
 	defaultEndpoint = "http://localhost:8080/stats;csv"
@@ -160,7 +171,10 @@ func (p *haproxyProbe) OnShutdown(_ context.Context) error {
 func (p *haproxyProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
 
-	upTags := []tags.Tag{{Key: "metric_type", Value: "status"}}
+	statusTags := p.baseStatusTags()
+	upTags := cloneTags(statusTags)
+	checkTags := cloneTags(statusTags)
+
 	up := float64(1)
 
 	rows, err := p.fetchCSV()
@@ -168,8 +182,16 @@ func (p *haproxyProbe) Collect() ([]data_store.DataPoint, error) {
 		p.moduleLogger.Warn().Err(err).Msg("haproxy stats fetch failed")
 		p.entitySrc.setReachable(false)
 		up = 0
+
+		checkResult := float64(dbcommon.ClassifyError(err))
+		var statusErr *httpStatusError
+		if errors.As(err, &statusErr) {
+			checkResult = float64(dbcommon.ClassifyHTTPStatus(statusErr.code))
+		}
+
 		points := []data_store.DataPoint{
 			{Name: "senhub.haproxy.up", Value: up, Timestamp: now, Tags: upTags},
+			{Name: dbcommon.CheckResultMetric, Value: checkResult, Timestamp: now, Tags: checkTags},
 		}
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
@@ -177,10 +199,29 @@ func (p *haproxyProbe) Collect() ([]data_store.DataPoint, error) {
 	p.entitySrc.setReachable(true)
 	points := []data_store.DataPoint{
 		{Name: "senhub.haproxy.up", Value: up, Timestamp: now, Tags: upTags},
+		{Name: dbcommon.CheckResultMetric, Value: float64(dbcommon.CheckOK), Timestamp: now, Tags: checkTags},
 	}
 	points = append(points, p.buildDatapoints(rows, now)...)
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+}
+
+// baseStatusTags returns the probe-level status tags: metric_type status and
+// the service.instance identity key carried by every status datapoint.
+func (p *haproxyProbe) baseStatusTags() []tags.Tag {
+	t := []tags.Tag{{Key: "metric_type", Value: "status"}}
+	return append(t, p.identityTags()...)
+}
+
+// identityTags returns the service.instance.id identity tag for the target.
+func (p *haproxyProbe) identityTags() []tags.Tag {
+	if p.entitySrc == nil {
+		return nil
+	}
+	if id := p.entitySrc.InstanceID(); id != "" {
+		return []tags.Tag{{Key: "service.instance.id", Value: id}}
+	}
+	return nil
 }
 
 // fetchCSV issues the HTTP GET, optionally with BasicAuth, and returns
@@ -201,7 +242,10 @@ func (p *haproxyProbe) fetchCSV() ([][]string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("haproxy stats endpoint returned HTTP %d", resp.StatusCode)
+		return nil, &httpStatusError{
+			code: resp.StatusCode,
+			msg:  fmt.Sprintf("haproxy stats endpoint returned HTTP %d", resp.StatusCode),
+		}
 	}
 
 	// The HTML stats page answers on the same URL without ";csv", and read
@@ -251,6 +295,7 @@ func (p *haproxyProbe) buildDatapoints(rows [][]string, ts time.Time) []data_sto
 			{Key: "proxy", Value: pxname},
 			{Key: "component", Value: component},
 		}
+		baseTags = append(baseTags, p.identityTags()...)
 
 		// Sessions — frontends and backends only.
 		if rowType == typeFrontend || rowType == typeBackend {

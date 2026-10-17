@@ -57,3 +57,8 @@ func (a attributedSource) Observe() (Observation, bool) {
 	o.Entities = entities
 	return o, ok
 }
+
+// Unwrap exposes the wrapped source, so the detector still finds its optional
+// interfaces (UnobservedSource, DepartureSource, CadenceSource) through the
+// governance wrapper.
+func (a attributedSource) Unwrap() Source { return a.src }

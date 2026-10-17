@@ -63,5 +63,6 @@ series' tags.
 | `senhub.dns.up` | `senhub.dns.up` | DNS {name} via {resolver} Up | # | 1 when the lookup returned at least one answer within the timeout |
 | `senhub.dns.lookup.duration` | `senhub.dns.lookup.duration` | DNS {name} via {resolver} Lookup Time | ms | Wall-clock resolution time |
 | `senhub.dns.answers` | `senhub.dns.answers` | DNS {name} via {resolver} Answers | # | Number of addresses returned |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

@@ -14,7 +14,10 @@ import (
 	"sync"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -43,6 +46,7 @@ type DNSLatencyProbe struct {
 	config       checkConfig
 	moduleLogger *logger.ModuleLogger
 	lookup       lookupFunc
+	entitySrc    *dnsEntitySource
 }
 
 type checkConfig struct {
@@ -67,12 +71,19 @@ func NewDNSLatencyProbe(config map[string]interface{}, baseLogger *logger.Logger
 		return nil, err
 	}
 
+	var hostID string
+	if hi, err := common.GetHostIdentity(); err == nil {
+		hostID = hi.ID
+	}
+
 	probe := &DNSLatencyProbe{
 		BaseProbe:    &types.BaseProbe{},
 		config:       cfg,
 		moduleLogger: moduleLogger,
+		entitySrc:    newDNSEntitySource(hostID),
 	}
 	probe.SetProbeType(ProbeType)
+	probe.SetEntitySource(probe.entitySrc)
 	probe.lookup = probe.lookupOnce
 	return probe, nil
 }
@@ -157,6 +168,10 @@ func (p *DNSLatencyProbe) Collect() ([]data_store.DataPoint, error) {
 		resolvers = []string{systemResolverLabel}
 	}
 
+	if p.entitySrc != nil {
+		p.entitySrc.rebuild(resolvers, agentstate.GetAgentInstanceID())
+	}
+
 	type pair struct{ name, resolver string }
 	var pairs []pair
 	for _, name := range p.config.Names {
@@ -190,8 +205,14 @@ func (p *DNSLatencyProbe) buildDatapoints(res lookupResult, ts time.Time) []data
 	baseTags := []tags.Tag{
 		{Key: "name", Value: res.name},
 		{Key: "resolver", Value: res.resolver},
-		{Key: "metric_type", Value: "availability"},
 	}
+	if p.entitySrc != nil {
+		baseTags = append(baseTags, p.entitySrc.identityTags(res.resolver)...)
+	}
+
+	availabilityTags := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "availability"})
+	statusTags := append(append([]tags.Tag{}, baseTags...), tags.Tag{Key: "metric_type", Value: "status"})
+
 	up := float64(0)
 	if res.up {
 		up = 1
@@ -204,12 +225,13 @@ func (p *DNSLatencyProbe) buildDatapoints(res lookupResult, ts time.Time) []data
 			Msg("dns_latency lookup failed")
 	}
 	points := []data_store.DataPoint{
-		{Name: "senhub.dns.up", Value: up, Timestamp: ts, Tags: baseTags},
+		{Name: "senhub.dns.up", Value: up, Timestamp: ts, Tags: availabilityTags},
+		{Name: dbcommon.CheckResultMetric, Value: float64(dbcommon.ClassifyError(res.err)), Timestamp: ts, Tags: statusTags},
 	}
 	if res.up {
 		points = append(points,
-			data_store.DataPoint{Name: "senhub.dns.lookup.duration", Value: res.duration.Seconds() * 1000, Timestamp: ts, Tags: baseTags},
-			data_store.DataPoint{Name: "senhub.dns.answers", Value: float64(res.answers), Timestamp: ts, Tags: baseTags},
+			data_store.DataPoint{Name: "senhub.dns.lookup.duration", Value: res.duration.Seconds() * 1000, Timestamp: ts, Tags: availabilityTags},
+			data_store.DataPoint{Name: "senhub.dns.answers", Value: float64(res.answers), Timestamp: ts, Tags: availabilityTags},
 		)
 	}
 	return points

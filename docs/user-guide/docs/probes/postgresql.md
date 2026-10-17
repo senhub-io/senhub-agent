@@ -265,5 +265,6 @@ series' tags.
 | `senhub.db.replication.replicas.connected` | `senhub.db.replication.replicas.connected` | Replicas Connected | # | On primary: number of streaming replicas connected (pg_stat_replication count) |
 | `postgresql.wal.lag` | `postgresql.wal.lag` | Replication Lag | s | On replica: replay lag in seconds (now() - pg_last_xact_replay_timestamp()). Attribute operation=replay (contrib canon). |
 | `senhub.db.postgresql.replica.io.running` | `senhub.db.postgresql.replica.io.running` | Replica IO Running | # | On replica: 1 if WAL receiver is connected (pg_stat_wal_receiver.status='streaming'), 0 otherwise |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

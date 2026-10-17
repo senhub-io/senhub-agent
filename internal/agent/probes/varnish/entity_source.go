@@ -59,6 +59,12 @@ func resolveInstanceID(instanceName, hostID string) string {
 	return "varnish"
 }
 
+// InstanceID returns the resolved service.instance.id. It is shared by the
+// entity source and the telemetry tags so the two can never diverge.
+func (s *varnishEntitySource) InstanceID() string {
+	return s.instanceID
+}
+
 // setReachable is called by Collect each cycle. When up is true the entity is
 // (re-)emitted; when false ok=false is returned to keep the last good snapshot.
 func (s *varnishEntitySource) setReachable(up bool) {

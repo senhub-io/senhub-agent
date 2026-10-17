@@ -464,7 +464,8 @@ WantedBy=multi-user.target
 // current one leaves it out because the IBM i probe's JVM cannot start
 // under it. Refreshing an installed unit carried it over as an operator
 // addition and the probe kept failing after `refresh-unit` (seen on the
-// recette bench).
+// recette bench). ProtectClock=true, set up to 0.6.3, likewise kept
+// adjtimex filtered after `refresh-unit`.
 func TestRefreshedUnit_DropsRetiredDirectives(t *testing.T) {
 	installed := `[Unit]
 Description=SenHub Agent
@@ -476,6 +477,7 @@ Group=senhub
 ExecStart=` + systemBinaryUnitPath() + `
 LockPersonality=true
 MemoryDenyWriteExecute=true
+ProtectClock=true
 EnvironmentFile=/etc/senhub-agent/bearer.env
 
 [Install]
@@ -483,11 +485,34 @@ WantedBy=multi-user.target
 `
 	got := refreshedUnit(installed, func(string) bool { return true })
 	for _, line := range strings.Split(got, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "MemoryDenyWriteExecute=") {
-			t.Fatalf("the retired directive came back:\n%s", got)
+		for _, retired := range []string{"MemoryDenyWriteExecute=", "ProtectClock="} {
+			if strings.HasPrefix(strings.TrimSpace(line), retired) {
+				t.Fatalf("the retired directive %s came back:\n%s", retired, got)
+			}
 		}
 	}
 	if !strings.Contains(got, "EnvironmentFile=/etc/senhub-agent/bearer.env") {
 		t.Error("an operator directive was dropped along with the retired one")
+	}
+}
+
+// doctor compares the installed unit with the refreshed rendering, so a
+// unit still carrying a retired directive must not read as current: on a
+// host updated from 0.6.3 it reported "matches" while ProtectClock kept the
+// clock synchronisation read filtered.
+func TestUnitCheck_FlagsARetiredDirective(t *testing.T) {
+	current := refreshedUnit(canonicalUnitForUser("senhub"), func(string) bool { return true })
+	if c := unitCheck(doctorDeps{}, current, nil); c.Level != levelOK {
+		t.Fatalf("the current unit: level %q (%s), want ok", c.Level, c.Message)
+	}
+	// Placed where a refresh that preserved it wrote it, so only the
+	// directive itself tells this unit from the current one.
+	stale := strings.Replace(current, "\n[Install]", "\n"+preservedDirectivesComment+"\nProtectClock=true\n\n[Install]", 1)
+	if stale == current {
+		t.Fatal("test setup: no [Install] section to place the directive before")
+	}
+	c := unitCheck(doctorDeps{}, stale, nil)
+	if c.Level != levelWarn || c.Fix != "sudo senhub-agent refresh-unit" {
+		t.Fatalf("a unit with ProtectClock=true: level %q fix %q, want warn with refresh-unit", c.Level, c.Fix)
 	}
 }

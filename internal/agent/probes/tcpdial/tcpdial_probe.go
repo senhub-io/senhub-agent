@@ -12,7 +12,10 @@ import (
 	"sync"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -35,6 +38,8 @@ type TCPDialProbe struct {
 	config       checkConfig
 	moduleLogger *logger.ModuleLogger
 	dial         dialFunc
+	hostID       string
+	entitySrc    *tcpdialEntitySource
 }
 
 type checkConfig struct {
@@ -58,12 +63,20 @@ func NewTCPDialProbe(config map[string]interface{}, baseLogger *logger.Logger) (
 		return nil, err
 	}
 
+	var hostID string
+	if hi, err := common.GetHostIdentity(); err == nil {
+		hostID = hi.ID
+	}
+
 	probe := &TCPDialProbe{
 		BaseProbe:    &types.BaseProbe{},
 		config:       cfg,
 		moduleLogger: moduleLogger,
+		hostID:       hostID,
 	}
 	probe.SetProbeType(ProbeType)
+	probe.entitySrc = newTCPDialEntitySource(agentstate.GetAgentInstanceID)
+	probe.SetEntitySource(probe.entitySrc)
 	probe.dial = probe.dialOnce
 	return probe, nil
 }
@@ -125,6 +138,13 @@ func (p *TCPDialProbe) OnShutdown(ctx context.Context) error { return nil }
 // out target is a measurement (up=0), never a collection error.
 func (p *TCPDialProbe) Collect() ([]data_store.DataPoint, error) {
 	now := time.Now()
+
+	infos := make([]targetInfo, len(p.config.Targets))
+	for i, target := range p.config.Targets {
+		infos[i] = buildTargetInfo(target, p.hostID)
+	}
+	p.entitySrc.rebuild(p.config.Targets, p.hostID)
+
 	results := make([]dialResult, len(p.config.Targets))
 
 	sem := make(chan struct{}, maxParallelTargets)
@@ -141,35 +161,68 @@ func (p *TCPDialProbe) Collect() ([]data_store.DataPoint, error) {
 	wg.Wait()
 
 	var points []data_store.DataPoint
-	for _, res := range results {
-		points = append(points, p.buildDatapoints(res, now)...)
+	for i, res := range results {
+		points = append(points, p.buildDatapoints(res, now, infos[i])...)
 	}
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
-func (p *TCPDialProbe) buildDatapoints(res dialResult, ts time.Time) []data_store.DataPoint {
-	baseTags := []tags.Tag{
-		{Key: "target", Value: res.target},
-		{Key: "metric_type", Value: "availability"},
-	}
+func (p *TCPDialProbe) buildDatapoints(res dialResult, ts time.Time, info targetInfo) []data_store.DataPoint {
+	identityAndTarget := make([]tags.Tag, 0, len(info.identityTags)+1)
+	identityAndTarget = append(identityAndTarget, tags.Tag{Key: "target", Value: res.target})
+	identityAndTarget = append(identityAndTarget, info.identityTags...)
+
+	availabilityTags := make([]tags.Tag, 0, len(identityAndTarget)+1)
+	availabilityTags = append(availabilityTags, identityAndTarget...)
+	availabilityTags = append(availabilityTags, tags.Tag{Key: "metric_type", Value: "availability"})
+
+	statusTags := make([]tags.Tag, 0, len(identityAndTarget)+1)
+	statusTags = append(statusTags, identityAndTarget...)
+	statusTags = append(statusTags, tags.Tag{Key: "metric_type", Value: "status"})
+
 	up := float64(0)
 	if res.up {
 		up = 1
 	}
+
+	checkResult := dbcommon.CheckOK
+	if res.err != nil {
+		checkResult = dbcommon.ClassifyError(res.err)
+	}
+	statusValue := float64(checkResult)
+
 	if res.err != nil {
 		p.moduleLogger.Warn().
 			Err(res.err).
 			Str("target", res.target).
 			Msg("tcp_dial target failed")
 	}
+
 	points := []data_store.DataPoint{
-		{Name: "senhub.tcpdial.up", Value: up, Timestamp: ts, Tags: baseTags},
+		{Name: "senhub.tcpdial.up", Value: up, Timestamp: ts, Tags: availabilityTags},
+		{Name: dbcommon.CheckResultMetric, Value: statusValue, Timestamp: ts, Tags: statusTags},
 	}
 	if res.up {
 		points = append(points,
-			data_store.DataPoint{Name: "senhub.tcpdial.duration", Value: res.duration.Seconds() * 1000, Timestamp: ts, Tags: baseTags},
+			data_store.DataPoint{Name: "senhub.tcpdial.duration", Value: res.duration.Seconds() * 1000, Timestamp: ts, Tags: availabilityTags},
 		)
 	}
+
+	if res.err != nil && info.local &&
+		checkResult == dbcommon.CheckTargetDown &&
+		dbcommon.IsConnectionRefused(res.err) {
+		diagnosticTags := make([]tags.Tag, 0, len(identityAndTarget)+1)
+		diagnosticTags = append(diagnosticTags, identityAndTarget...)
+		diagnosticTags = append(diagnosticTags, tags.Tag{Key: "reason", Value: dbcommon.UnresolvedReasonNoListener})
+
+		points = append(points, data_store.DataPoint{
+			Name:      dbcommon.UnresolvedTargetMetric,
+			Value:     1,
+			Timestamp: ts,
+			Tags:      diagnosticTags,
+		})
+	}
+
 	return points
 }
 
