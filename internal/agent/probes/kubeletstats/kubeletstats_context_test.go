@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"senhub-agent.go/internal/agent/probes/types"
 )
 
 // A kubelet that stops answering must not hold a cancelled collection,
@@ -46,3 +48,7 @@ func TestCollectContext_CancelledReturnsPromptly(t *testing.T) {
 		t.Fatalf("an interrupted scrape was counted as a scrape error: %v", probe.scrapeErrors)
 	}
 }
+
+// The poller detects cancellation support by type assertion; a lost
+// method would silently fall back to the uncancellable Collect.
+var _ types.ContextCollector = (*KubeletStatsProbe)(nil)

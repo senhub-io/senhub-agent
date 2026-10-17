@@ -10,6 +10,8 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+
+	"senhub-agent.go/internal/agent/probes/types"
 )
 
 // An API server that stops answering must not hold a cancelled
@@ -47,3 +49,7 @@ func TestCollectContext_CancelledReturnsPromptly(t *testing.T) {
 		t.Fatalf("an interrupted cycle emitted %d datapoints, want none", len(points))
 	}
 }
+
+// The poller detects cancellation support by type assertion; a lost
+// method would silently fall back to the uncancellable Collect.
+var _ types.ContextCollector = (*KubernetesProbe)(nil)

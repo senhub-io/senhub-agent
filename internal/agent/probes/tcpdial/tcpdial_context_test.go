@@ -6,6 +6,8 @@ import (
 	"net"
 	"testing"
 	"time"
+
+	"senhub-agent.go/internal/agent/probes/types"
 )
 
 // The production dial honours the context: a cancelled one fails at once
@@ -52,3 +54,7 @@ func TestCollectContext_CancelledReturnsPromptly(t *testing.T) {
 		t.Fatalf("an interrupted cycle emitted %d datapoints, want none (no false up=0)", len(points))
 	}
 }
+
+// The poller detects cancellation support by type assertion; a lost
+// method would silently fall back to the uncancellable Collect.
+var _ types.ContextCollector = (*TCPDialProbe)(nil)
