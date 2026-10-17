@@ -80,11 +80,18 @@ Both defaults are the behaviour of earlier versions.
 
 | Setting | Effect |
 |---|---|
-| `read_only: true` | Every route that changes the agent answers `403` with the code `console_read_only`: probe create, update and delete, output create, update and delete, the settings (port, bind address, licence), the governance block, log levels and the cache clear. Reading stays open, and so does checking a configuration against its schema. The pages hide their Save, Add, Enable and Delete controls and show a note saying why. |
+| `read_only: true` | Every route that changes the agent answers `403` with the code `console_read_only`: probe create, update and delete, output create, update and delete, the settings (port, bind address, licence), the governance block, log levels and the cache clear. Reading stays open, and so does checking a configuration against its schema and its parser. The pages hide their Save, Add, Enable and Delete controls and show a note saying why. |
 | `allow_exec: false` | Writes work as usual except those that make the agent run a program: a probe of type `exec`, and a program path such as `smartctl_path` of `smart`, `ipmitool_path` of `ipmi`, `chronyc_path`, `varnishstat_path` or `nvidia_smi_path` that differs from its default. A path the file already sets stays in place: you can edit the rest of that probe, not the path. The connectivity and metric tests of such a probe are refused too, because they start it. A refused write answers `403` and says which setting. |
+
 
 A read-only console also refuses to start a probe the caller describes,
 since that is how a program path would otherwise be reached.
+
+In every mode, a connection test never sends a stored credential to another
+destination. If the test changes the address of an output or a probe (endpoint,
+server, URL, host, port and the like) from what the file holds, the stored
+secrets are not used: send the credentials with the request, otherwise the
+output test answers `400` and the probe test reports the error.
 
 The `console` block can only be set in the file. The console and its API
 refuse to change it: a request that rewrites the `http` output with a

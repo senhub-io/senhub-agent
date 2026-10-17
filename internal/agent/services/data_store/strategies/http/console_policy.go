@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"senhub-agent.go/internal/agent/probes/spec"
+	"senhub-agent.go/internal/agent/services/configuration"
 )
 
 // ConsolePolicy is what the console and its API may change on this
@@ -202,4 +203,82 @@ func pinConsolePolicy(w http.ResponseWriter, outputType string, params, stored m
 		delete(params, "console")
 	}
 	return true
+}
+
+// changedDestination reports the first destination parameter the request
+// sets to something other than what the file holds. References are
+// resolved on both sides, so a form that shows the resolved address of a
+// stored ${env:} is not mistaken for a change. A parameter the request
+// leaves out is not a change.
+func changedDestination(paths []string, stored, incoming map[string]interface{}) (string, bool) {
+	for _, path := range paths {
+		want := resolvedText(lookupPath(incoming, path))
+		if want == "" {
+			continue
+		}
+		if resolvedText(lookupPath(stored, path)) != want {
+			return path, true
+		}
+	}
+	return "", false
+}
+
+func resolvedText(v interface{}) string {
+	if v == nil {
+		return ""
+	}
+	s, ok := v.(string)
+	if !ok {
+		return fmt.Sprint(v)
+	}
+	if resolved, err := configuration.SubstituteString(s); err == nil {
+		return strings.TrimSpace(resolved)
+	}
+	return strings.TrimSpace(s)
+}
+
+// storedSecretsNotResent lists the secret parameters the file holds that
+// the request does not carry itself.
+func storedSecretsNotResent(secretPaths []string, stored, incoming map[string]interface{}) []string {
+	var missing []string
+	for _, path := range secretPaths {
+		if isEmptyValue(lookupPath(stored, path)) || !isEmptyValue(lookupPath(incoming, path)) {
+			continue
+		}
+		missing = append(missing, path)
+	}
+	return missing
+}
+
+func isEmptyValue(v interface{}) bool {
+	switch t := v.(type) {
+	case nil:
+		return true
+	case string:
+		return strings.TrimSpace(t) == ""
+	case map[string]interface{}:
+		return len(t) == 0
+	case map[interface{}]interface{}:
+		return len(t) == 0
+	}
+	return false
+}
+
+// withStoredCredentials returns the parameters to test with: the request
+// completed with the secrets the file holds, unless the request moves the
+// destination. A credential stored for one address is never sent to
+// another on the strength of a form that merely left it blank, so a moved
+// destination takes the credentials from the request or fails.
+func withStoredCredentials(params []spec.ParamSpec, secretPaths []string, stored, incoming map[string]interface{}) (map[string]interface{}, error) {
+	if stored == nil {
+		return incoming, nil
+	}
+	moved, changed := changedDestination(spec.DestinationPaths(params), stored, incoming)
+	if !changed {
+		return configuration.KeepStoredValues(stored, incoming, secretPaths), nil
+	}
+	if missing := storedSecretsNotResent(secretPaths, stored, incoming); len(missing) > 0 {
+		return nil, fmt.Errorf("%s differs from the stored configuration, so the stored credentials (%s) are not used for this test; send them with the request", moved, strings.Join(missing, ", "))
+	}
+	return incoming, nil
 }

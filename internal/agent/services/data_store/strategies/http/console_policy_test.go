@@ -2,9 +2,12 @@ package http
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/gorilla/mux"
@@ -350,5 +353,136 @@ func TestConsoleAssetsHideWriteControlsWhenReadOnly(t *testing.T) {
 				t.Errorf("%s.html: %s is not marked data-write", page, id)
 			}
 		}
+	}
+}
+
+// credentialSink is a collector that records the Authorization header of
+// every export it receives.
+type credentialSink struct {
+	*httptest.Server
+	mu    sync.Mutex
+	auths []string
+}
+
+func newCredentialSink(t *testing.T) *credentialSink {
+	t.Helper()
+	s := &credentialSink{}
+	s.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.mu.Lock()
+		s.auths = append(s.auths, r.Header.Get("Authorization"))
+		s.mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(s.Close)
+	return s
+}
+
+func (s *credentialSink) endpoint() string { return strings.TrimPrefix(s.URL, "http://") }
+
+func (s *credentialSink) received() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.auths...)
+}
+
+func otlpTestBody(endpoint string, headers map[string]interface{}) map[string]interface{} {
+	params := map[string]interface{}{"endpoint": endpoint, "protocol": "http", "compression": "none", "tls": map[string]interface{}{"enabled": false}}
+	if headers != nil {
+		params["headers"] = headers
+	}
+	return map[string]interface{}{"type": "otlp", "name": "otlp", "params": params, "timeout": 3}
+}
+
+// A credential stored for one collector must never travel to another on
+// the strength of a form that left it blank.
+func TestOutputTestNeverSendsStoredCredentialsToAnotherDestination(t *testing.T) {
+	router, _ := consoleRouter(t, nil)
+	base := "/api/" + testAdminKey
+	stored, other := newCredentialSink(t), newCredentialSink(t)
+
+	if code, resp := doJSON(t, router, "POST", base+"/config/outputs", otlpTestBody(stored.endpoint(),
+		map[string]interface{}{"Authorization": "Bearer stored-token"})); code != 201 {
+		t.Fatalf("create: %d %v", code, resp)
+	}
+
+	// Same destination, credentials left out: the stored ones are used, as before.
+	code, resp := doJSON(t, router, "POST", base+"/config/outputs/test", otlpTestBody(stored.endpoint(), nil))
+	if code != 200 {
+		t.Fatalf("same destination: %d %v", code, resp)
+	}
+	if got := stored.received(); len(got) == 0 || got[len(got)-1] != "Bearer stored-token" {
+		t.Errorf("the stored credential was not used for the stored destination: %v", got)
+	}
+
+	// Another destination, no credentials: refused, and nothing reaches it.
+	code, resp = doJSON(t, router, "POST", base+"/config/outputs/test", otlpTestBody(other.endpoint(), nil))
+	if code != 400 || !strings.Contains(fmt.Sprint(resp["error"]), "send them with the request") {
+		t.Errorf("changed destination without credentials: %d %v, want 400 saying so", code, resp)
+	}
+	if got := other.received(); len(got) != 0 {
+		t.Errorf("the other destination received a request: %v", got)
+	}
+
+	// Another destination with its own credentials: tested with those only.
+	code, resp = doJSON(t, router, "POST", base+"/config/outputs/test", otlpTestBody(other.endpoint(),
+		map[string]interface{}{"Authorization": "Bearer typed-token"}))
+	if code != 200 {
+		t.Fatalf("changed destination with credentials: %d %v", code, resp)
+	}
+	for _, a := range other.received() {
+		if a != "Bearer typed-token" {
+			t.Errorf("the other destination received %q, want only the typed credential", a)
+		}
+	}
+}
+
+func TestProbeTestDoesNotReuseTheStoredPasswordForAnotherTarget(t *testing.T) {
+	if _, has := spec.For("pwprobe"); !has {
+		spec.Register(spec.Probe{Type: "pwprobe", DisplayName: "PW", Params: []spec.ParamSpec{
+			{Key: "host", Kind: spec.KindString, Required: true},
+			{Key: "password", Kind: spec.KindString, Secret: true},
+		}})
+	}
+	router, _ := consoleRouter(t, nil)
+	base := "/api/" + testAdminKey
+	if code, resp := doJSON(t, router, "POST", base+"/config/probes", map[string]interface{}{
+		"name": "pw", "type": "pwprobe", "params": map[string]interface{}{"host": "db1", "password": "s3cret"},
+	}); code != 201 {
+		t.Fatalf("create: %d %v", code, resp)
+	}
+	run := func(host string, extra map[string]interface{}) map[string]interface{} {
+		cfg := map[string]interface{}{"host": host}
+		for k, v := range extra {
+			cfg[k] = v
+		}
+		_, resp := doJSON(t, router, "POST", base+"/config/validate", map[string]interface{}{
+			"probe": "pwprobe", "name": "pw", "config": cfg, "validation": "schema",
+		})
+		return resp
+	}
+	if errs := fmt.Sprint(run("db1", nil)["errors"]); strings.Contains(errs, "stored credentials") {
+		t.Errorf("the stored target must keep its credentials: %s", errs)
+	}
+	resp := run("evil.example", nil)
+	if resp["valid"] != false || !strings.Contains(fmt.Sprint(resp["errors"]), "stored credentials") {
+		t.Errorf("a moved target without a password must be refused, got %v", resp)
+	}
+	if errs := fmt.Sprint(run("evil.example", map[string]interface{}{"password": "typed"})["errors"]); strings.Contains(errs, "stored credentials") {
+		t.Errorf("a moved target with its own password must be tested: %s", errs)
+	}
+}
+
+func TestChangedDestinationComparesResolvedValues(t *testing.T) {
+	t.Setenv("SINK_ENDPOINT", "collector:4318")
+	paths := []string{"endpoint"}
+	stored := map[string]interface{}{"endpoint": "${env:SINK_ENDPOINT}"}
+	if _, changed := changedDestination(paths, stored, map[string]interface{}{"endpoint": "collector:4318"}); changed {
+		t.Error("the resolved form of a stored reference is not a change")
+	}
+	if _, changed := changedDestination(paths, stored, map[string]interface{}{}); changed {
+		t.Error("an omitted destination is not a change")
+	}
+	if _, changed := changedDestination(paths, stored, map[string]interface{}{"endpoint": "elsewhere:4318"}); !changed {
+		t.Error("another address is a change")
 	}
 }

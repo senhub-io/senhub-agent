@@ -759,10 +759,16 @@ func (cm *ConfigurationManager) withStoredSecrets(req *UniversalConfigRequest) e
 			}
 			if found {
 				var secretPaths []string
+				var params []spec.ParamSpec
 				if ps, has := spec.For(req.Probe); has {
 					secretPaths = ps.SecretPaths()
+					params = ps.Params
 				}
-				req.Config = configuration.KeepStoredValues(existing.Params, req.Config, secretPaths)
+				merged, err := withStoredCredentials(params, secretPaths, existing.Params, req.Config)
+				if err != nil {
+					return err
+				}
+				req.Config = merged
 			}
 		}
 	}
