@@ -65,7 +65,10 @@ func TestCollect_FailedTasksCountAndLogs(t *testing.T) {
 		}
 		out := map[string]float64{}
 		for _, dp := range points {
-			if dp.Name == "proxmox.tasks.failed" {
+			if dp.Name == "proxmox.task.count" {
+				if st := tagsMap(dp)["proxmox.task.state"]; st != "failed" {
+					t.Errorf("proxmox.task.state = %q, want failed", st)
+				}
 				out[tagsMap(dp)["proxmox.task.type"]] = dp.Value
 			}
 		}

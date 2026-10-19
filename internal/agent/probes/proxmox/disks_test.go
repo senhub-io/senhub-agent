@@ -3,6 +3,7 @@ package proxmox
 import (
 	"math"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -39,58 +40,122 @@ func TestCollect_DisksAndZFS(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 
-	type key struct{ name, id string }
-	got := map[key]float64{}
-	attrs := map[key]map[string]string{}
+	// series: name|hw.id|state attribute -> value
+	got := map[string]float64{}
+	attrs := map[string]map[string]string{}
 	for _, dp := range points {
 		tm := tagsMap(dp)
-		id := tm["proxmox.disk"] + tm["proxmox.zfs.pool"]
-		if id == "" {
+		if tm["hw.id"] == "" {
 			continue
 		}
 		if tm["proxmox.node"] != "node-a" {
 			t.Errorf("%s from %q: node-b answers 403, only node-a may contribute", dp.Name, tm["proxmox.node"])
 		}
-		got[key{dp.Name, id}] = dp.Value
-		attrs[key{dp.Name, id}] = tm
+		state := tm["hw.state"] + tm["hw.physical_disk.state"] + tm["hw.logical_disk.state"]
+		k := dp.Name + "|" + tm["hw.id"] + "|" + state
+		if _, dup := got[k]; dup {
+			t.Errorf("series %s emitted twice", k)
+		}
+		got[k] = dp.Value
+		attrs[k] = tm
 	}
 
-	want := map[key]float64{
-		{"proxmox.disk.health", "/dev/nvme0n1"}:     1,
-		{"proxmox.disk.wearout", "/dev/nvme0n1"}:    0.03,
-		{"proxmox.disk.health", "/dev/sda"}:         0,
-		{"proxmox.zfs.pool.health", "rpool"}:        1,
-		{"proxmox.zfs.pool.health", "tank"}:         0,
-		{"proxmox.zfs.pool.size", "rpool"}:          999650344960,
-		{"proxmox.zfs.pool.used", "rpool"}:          412316860416,
-		{"proxmox.zfs.pool.free", "rpool"}:          587333484544,
-		{"proxmox.zfs.pool.fragmentation", "rpool"}: 0.12,
-		{"proxmox.zfs.pool.fragmentation", "tank"}:  0.03,
+	want := map[string]float64{
+		"hw.physical_disk.status|SN0001|ok":                       1,
+		"hw.physical_disk.status|SN0001|degraded":                 0,
+		"hw.physical_disk.status|SN0001|failed":                   0,
+		"hw.physical_disk.status|SN0001|predicted_failure":        0,
+		"hw.physical_disk.status|SN0002|ok":                       0,
+		"hw.physical_disk.status|SN0002|failed":                   1,
+		"hw.physical_disk.endurance_utilization|SN0001|remaining": 0.97,
+		"hw.logical_disk.status|rpool|ok":                         1,
+		"hw.logical_disk.status|rpool|degraded":                   0,
+		"hw.logical_disk.status|rpool|failed":                     0,
+		"hw.logical_disk.status|tank|ok":                          0,
+		"hw.logical_disk.status|tank|degraded":                    1,
+		"hw.logical_disk.status|tank|failed":                      0,
+		"hw.logical_disk.limit|rpool|":                            999650344960,
+		"hw.logical_disk.usage|rpool|used":                        412316860416,
+		"hw.logical_disk.usage|rpool|free":                        587333484544,
+		"hw.logical_disk.utilization|rpool|":                      412316860416.0 / 999650344960.0,
+		"proxmox.zfs.pool.fragmentation|rpool|":                   0.12,
+		"proxmox.zfs.pool.fragmentation|tank|":                    0.03,
 	}
 	for k, v := range want {
 		g, ok := got[k]
 		if !ok {
-			t.Errorf("missing %s for %s", k.name, k.id)
+			t.Errorf("missing series %s", k)
 			continue
 		}
 		if math.Abs(g-v) > 1e-9 {
-			t.Errorf("%s %s = %v, want %v", k.name, k.id, g, v)
+			t.Errorf("%s = %v, want %v", k, g, v)
 		}
 	}
 
-	if _, ok := got[key{"proxmox.disk.wearout", "/dev/sda"}]; ok {
-		t.Error("wearout N/A must produce no point")
-	}
-	for _, n := range []string{"proxmox.disk.health", "proxmox.disk.wearout"} {
-		if _, ok := got[key{n, "/dev/sdb"}]; ok {
-			t.Errorf("%s: a disk without SMART verdict must produce no point", n)
+	for k := range got {
+		if strings.HasPrefix(k, "hw.physical_disk.endurance_utilization|SN0002") {
+			t.Error("wearout N/A must produce no point")
+		}
+		if strings.Contains(k, "|SN0003|") {
+			t.Errorf("%s: a disk without SMART verdict must produce no point", k)
+		}
+		if strings.HasPrefix(k, "proxmox.disk.") || strings.HasPrefix(k, "proxmox.zfs.pool.health") {
+			t.Errorf("legacy series %s must be gone", k)
 		}
 	}
-	if a := attrs[key{"proxmox.disk.health", "/dev/sda"}]; a["proxmox.health"] != "FAILED" || a["proxmox.disk.serial"] != "SN0002" || a["proxmox.disk.type"] != "ssd" {
+
+	a := attrs["hw.physical_disk.status|SN0002|failed"]
+	if a["hw.name"] != "/dev/sda" || a["hw.model"] != "Vendor SSD" || a["hw.serial_number"] != "SN0002" || a["hw.physical_disk.type"] != "ssd" {
 		t.Errorf("disk attributes = %v", a)
 	}
-	if a := attrs[key{"proxmox.zfs.pool.health", "tank"}]; a["proxmox.health"] != "DEGRADED" {
-		t.Errorf("pool attributes = %v", a)
+	if a := attrs["hw.physical_disk.endurance_utilization|SN0001|remaining"]; a["hw.name"] != "/dev/nvme0n1" {
+		t.Errorf("wearout attributes = %v", a)
+	}
+}
+
+func TestDiskAndPoolStateMapping(t *testing.T) {
+	for in, want := range map[string]string{"PASSED": "ok", "OK": "ok", " passed ": "ok", "FAILED": "failed", "weird": "failed"} {
+		if got, ok := diskState(in); !ok || got != want {
+			t.Errorf("diskState(%q) = %q,%v want %q", in, got, ok, want)
+		}
+	}
+	for _, in := range []string{"", "UNKNOWN"} {
+		if _, ok := diskState(in); ok {
+			t.Errorf("diskState(%q) must be unjudged", in)
+		}
+	}
+	for in, want := range map[string]string{"ONLINE": "ok", "DEGRADED": "degraded", "FAULTED": "failed", "UNAVAIL": "failed", "REMOVED": "failed", "SUSPENDED": "failed", "OFFLINE": "failed"} {
+		if got, ok := poolState(in); !ok || got != want {
+			t.Errorf("poolState(%q) = %q,%v want %q", in, got, ok, want)
+		}
+	}
+	if _, ok := poolState(""); ok {
+		t.Error("an empty pool state must be unjudged")
+	}
+}
+
+func TestCollect_DiskWithoutSerialFallsBackToDevicePath(t *testing.T) {
+	srv := newPVE9Server(t, resourcesReply(t), func(mux *http.ServeMux) {
+		mux.HandleFunc("/api2/json/nodes/node-a/disks/list", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(t, w, []map[string]interface{}{{"devpath": "/dev/sdc", "type": "hdd", "serial": "", "health": "PASSED", "wearout": "N/A"}})
+		})
+	})
+	p := newGuestProbe(t, srv.URL, "node-a")
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	n := 0
+	for _, dp := range points {
+		if dp.Name == "hw.physical_disk.status" {
+			n++
+			if id := tagsMap(dp)["hw.id"]; id != "/dev/sdc" {
+				t.Errorf("hw.id = %q, want the device path", id)
+			}
+		}
+	}
+	if n != 4 {
+		t.Errorf("hw.physical_disk.status series = %d, want 4", n)
 	}
 }
 
@@ -104,7 +169,7 @@ func TestCollect_DisksDeniedIsSilentAndNotAnError(t *testing.T) {
 			t.Fatalf("Collect: %v", err)
 		}
 		for _, dp := range points {
-			if tagsMap(dp)["proxmox.disk"] != "" || tagsMap(dp)["proxmox.zfs.pool"] != "" {
+			if tagsMap(dp)["hw.id"] != "" {
 				t.Errorf("%s emitted although the token cannot read the endpoint", dp.Name)
 			}
 			if dp.Name == "senhub.probe.check.result" && dp.Value != 0 {

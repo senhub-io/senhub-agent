@@ -81,18 +81,57 @@ func numberOrNil(raw json.RawMessage) *float64 {
 	return &f
 }
 
-// diskHealthy maps a SMART verdict to 1/0. ok is false when the verdict
-// cannot be judged (no SMART data), in which case no point is emitted.
-func diskHealthy(health string) (healthy float64, ok bool) {
+// stateSeries emits one point per state of an enumerated status, 1 for the
+// current state and 0 for the others, as the hw.status convention does.
+func stateSeries(name, stateKey string, states []string, current string, base []tags.Tag, now time.Time) []data_store.DataPoint {
+	out := make([]data_store.DataPoint, 0, len(states))
+	for _, st := range states {
+		v := float64(0)
+		if st == current {
+			v = 1
+		}
+		t := append(append([]tags.Tag{}, base...), tags.Tag{Key: stateKey, Value: st})
+		out = append(out, data_store.DataPoint{Name: name, Value: v, Timestamp: now, Tags: t})
+	}
+	return out
+}
+
+func boolState(cond bool, yes, no string) string {
+	if cond {
+		return yes
+	}
+	return no
+}
+
+var diskStates = []string{"ok", "degraded", "failed", "predicted_failure"}
+
+// diskState maps a SMART verdict to an hw.state. ok is false when the
+// verdict cannot be judged (no SMART data), in which case nothing is emitted.
+func diskState(health string) (state string, ok bool) {
+	switch strings.ToUpper(strings.TrimSpace(health)) {
+	case "", "UNKNOWN":
+		return "", false
+	case "PASSED", "OK":
+		return "ok", true
+	default:
+		return "failed", true
+	}
+}
+
+var poolStates = []string{"ok", "degraded", "failed"}
+
+// poolState maps a ZFS pool state to an hw.state; OFFLINE is failed because
+// an offline top-level vdev takes the pool out of service.
+func poolState(health string) (state string, ok bool) {
 	switch strings.ToUpper(strings.TrimSpace(health)) {
 	case "":
-		return 0, false
-	case "UNKNOWN":
-		return 0, false
-	case "PASSED", "OK":
-		return 1, true
+		return "", false
+	case "ONLINE":
+		return "ok", true
+	case "DEGRADED":
+		return "degraded", true
 	default:
-		return 0, true
+		return "failed", true
 	}
 }
 
@@ -109,21 +148,26 @@ func (p *ProxmoxProbe) collectDisks(node string, now time.Time) []data_store.Dat
 		}
 	}
 	for _, d := range disks {
+		id := d.Serial
+		if id == "" {
+			id = d.DevPath
+		}
 		diskTags := []tags.Tag{
 			{Key: "proxmox.node", Value: node},
-			{Key: "proxmox.disk", Value: d.DevPath},
-			{Key: "proxmox.disk.type", Value: d.Type},
-			{Key: "proxmox.disk.model", Value: d.Model},
-			{Key: "proxmox.disk.serial", Value: d.Serial},
+			{Key: "hw.id", Value: id},
+			{Key: "hw.name", Value: d.DevPath},
+			{Key: "hw.model", Value: d.Model},
+			{Key: "hw.serial_number", Value: d.Serial},
+			{Key: "hw.physical_disk.type", Value: d.Type},
 			{Key: "metric_type", Value: "disk"},
 		}
-		if h, ok := diskHealthy(d.Health); ok {
-			healthTags := append(append([]tags.Tag{}, diskTags...), tags.Tag{Key: "proxmox.health", Value: d.Health})
-			points = append(points, data_store.DataPoint{Name: "proxmox.disk.health", Value: h, Timestamp: now, Tags: healthTags})
+		if state, ok := diskState(d.Health); ok {
+			points = append(points, stateSeries("hw.physical_disk.status", "hw.state", diskStates, state, diskTags, now)...)
 		}
-		// PVE reports the life left in percent; the metric is the life used.
+		// PVE reports the life left in percent.
 		if left := numberOrNil(d.Wearout); left != nil {
-			points = append(points, data_store.DataPoint{Name: "proxmox.disk.wearout", Value: (100 - *left) / 100, Timestamp: now, Tags: diskTags})
+			wearTags := append(append([]tags.Tag{}, diskTags...), tags.Tag{Key: "hw.physical_disk.state", Value: "remaining"})
+			points = append(points, data_store.DataPoint{Name: "hw.physical_disk.endurance_utilization", Value: *left / 100, Timestamp: now, Tags: wearTags})
 		}
 	}
 
@@ -136,27 +180,25 @@ func (p *ProxmoxProbe) collectDisks(node string, now time.Time) []data_store.Dat
 	for _, z := range pools {
 		poolTags := []tags.Tag{
 			{Key: "proxmox.node", Value: node},
-			{Key: "proxmox.zfs.pool", Value: z.Name},
+			{Key: "hw.id", Value: z.Name},
 			{Key: "metric_type", Value: "zfs"},
 		}
-		if z.Health != "" {
-			online := float64(0)
-			if strings.EqualFold(z.Health, "ONLINE") {
-				online = 1
+		if state, ok := poolState(z.Health); ok {
+			points = append(points, stateSeries("hw.logical_disk.status", "hw.state", poolStates, state, poolTags, now)...)
+		}
+		if z.Size != nil {
+			points = append(points, data_store.DataPoint{Name: "hw.logical_disk.limit", Value: *z.Size, Timestamp: now, Tags: poolTags})
+			if z.Alloc != nil && *z.Size > 0 {
+				points = append(points, data_store.DataPoint{Name: "hw.logical_disk.utilization", Value: *z.Alloc / *z.Size, Timestamp: now, Tags: poolTags})
 			}
-			healthTags := append(append([]tags.Tag{}, poolTags...), tags.Tag{Key: "proxmox.health", Value: z.Health})
-			points = append(points, data_store.DataPoint{Name: "proxmox.zfs.pool.health", Value: online, Timestamp: now, Tags: healthTags})
 		}
 		for _, m := range []struct {
-			name string
-			v    *float64
-		}{
-			{"proxmox.zfs.pool.size", z.Size},
-			{"proxmox.zfs.pool.used", z.Alloc},
-			{"proxmox.zfs.pool.free", z.Free},
-		} {
+			state string
+			v     *float64
+		}{{"used", z.Alloc}, {"free", z.Free}} {
 			if m.v != nil {
-				points = append(points, data_store.DataPoint{Name: m.name, Value: *m.v, Timestamp: now, Tags: poolTags})
+				t := append(append([]tags.Tag{}, poolTags...), tags.Tag{Key: "hw.logical_disk.state", Value: m.state})
+				points = append(points, data_store.DataPoint{Name: "hw.logical_disk.usage", Value: *m.v, Timestamp: now, Tags: t})
 			}
 		}
 		if frag := numberOrNil(z.Frag); frag != nil {

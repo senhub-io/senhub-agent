@@ -137,11 +137,7 @@ func (p *ProxmoxProbe) collectBackups(node string, known map[int]guestRef, stora
 			points = append(points, data_store.DataPoint{Name: "proxmox.vm.backup.age", Value: age, Timestamp: now, Tags: vmTags})
 		}
 		if st, ok := lastStatus[id]; ok {
-			v := float64(0)
-			if st.ok {
-				v = 1
-			}
-			points = append(points, data_store.DataPoint{Name: "proxmox.vm.backup.last_status", Value: v, Timestamp: now, Tags: vmTags})
+			points = append(points, stateSeries("proxmox.vm.backup.status", "proxmox.vm.backup.state", []string{"ok", "failed"}, boolState(st.ok, "ok", "failed"), vmTags, now)...)
 		}
 	}
 	return points

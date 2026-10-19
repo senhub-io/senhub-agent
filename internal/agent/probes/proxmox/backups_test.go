@@ -60,8 +60,14 @@ func TestCollect_BackupsAndStorageActive(t *testing.T) {
 	if age := web["proxmox.vm.backup.age"]; age < 26*3600-5 || age > 26*3600+60 {
 		t.Errorf("backup age = %v s, want about %v", age, 26*3600)
 	}
-	if st, ok := web["proxmox.vm.backup.last_status"]; !ok || st != 0 {
-		t.Errorf("last task failed: last_status = %v (present=%v), want 0", st, ok)
+	states := map[string]float64{}
+	for _, dp := range points {
+		if tm := tagsMap(dp); dp.Name == "proxmox.vm.backup.status" && tm["proxmox.vmid"] == "101" {
+			states[tm["proxmox.vm.backup.state"]] = dp.Value
+		}
+	}
+	if len(states) != 2 || states["ok"] != 0 || states["failed"] != 1 {
+		t.Errorf("last task failed: backup status series = %v, want ok=0 failed=1", states)
 	}
 	if len(vmPoints(points, "999")) != 0 {
 		t.Error("an archive of a guest unknown to the node must produce nothing")
@@ -71,14 +77,25 @@ func TestCollect_BackupsAndStorageActive(t *testing.T) {
 		t.Errorf("task query = %q, want %q", tasksQuery, want)
 	}
 
-	active := map[string]float64{}
+	status := map[string]float64{}
 	for _, dp := range points {
-		if dp.Name == "proxmox.storage.active" {
-			active[tagsMap(dp)["proxmox.storage"]] = dp.Value
+		if dp.Name == "proxmox.storage.status" {
+			tm := tagsMap(dp)
+			status[tm["proxmox.storage"]+"|"+tm["proxmox.storage.state"]] = dp.Value
 		}
 	}
-	if len(active) != 3 || active["pbs-main"] != 1 || active["pbs-offline"] != 0 || active["local-zfs"] != 1 {
-		t.Errorf("storage.active = %v", active)
+	wantStatus := map[string]float64{
+		"pbs-main|active": 1, "pbs-main|inactive": 0,
+		"pbs-offline|active": 0, "pbs-offline|inactive": 1,
+		"local-zfs|active": 1, "local-zfs|inactive": 0,
+	}
+	if len(status) != len(wantStatus) {
+		t.Errorf("storage.status = %v", status)
+	}
+	for k, v := range wantStatus {
+		if g, ok := status[k]; !ok || g != v {
+			t.Errorf("storage.status %s = %v (present=%v), want %v", k, g, ok, v)
+		}
 	}
 }
 
@@ -91,8 +108,48 @@ func TestCollect_NoBackupInformationEmitsNothing(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 	for _, dp := range points {
-		if dp.Name == "proxmox.vm.backup.age" || dp.Name == "proxmox.vm.backup.last_status" || dp.Name == "proxmox.storage.active" {
+		if dp.Name == "proxmox.vm.backup.age" || dp.Name == "proxmox.vm.backup.status" || dp.Name == "proxmox.storage.status" {
 			t.Errorf("%s emitted without any backup data", dp.Name)
+		}
+	}
+}
+
+func TestCollect_BackupCoverage(t *testing.T) {
+	srv := newPVE9Server(t, resourcesReply(t), func(mux *http.ServeMux) {
+		mux.HandleFunc("/api2/json/cluster/backup", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(t, w, []map[string]interface{}{
+				{"id": "backup-all", "enabled": 1, "all": 1, "exclude": "201,102"},
+				{"id": "backup-off", "enabled": 0, "vmid": "201"},
+			})
+		})
+	})
+	p := newGuestProbe(t, srv.URL, "")
+
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	got := map[string]float64{}
+	for _, dp := range points {
+		if dp.Name == "proxmox.backup.job.count" || dp.Name == "proxmox.vm.backup.unprotected.count" {
+			got[dp.Name] = dp.Value
+		}
+	}
+	if got["proxmox.backup.job.count"] != 1 || got["proxmox.vm.backup.unprotected.count"] != 2 {
+		t.Errorf("coverage = %v, want 1 enabled job and 2 unprotected guests (201 and 102)", got)
+	}
+}
+
+func TestCollect_BackupCoverageUnreadableEmitsNothing(t *testing.T) {
+	srv := newPVE9Server(t, resourcesReply(t), nil)
+	p := newGuestProbe(t, srv.URL, "")
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	for _, dp := range points {
+		if dp.Name == "proxmox.backup.job.count" || dp.Name == "proxmox.vm.backup.unprotected.count" {
+			t.Errorf("%s emitted although /cluster/backup is unreadable", dp.Name)
 		}
 	}
 }
