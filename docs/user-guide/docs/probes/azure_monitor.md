@@ -146,32 +146,32 @@ Example: the `Percentage CPU` metric of a virtual machine is `azure.vm.percentag
 
 | ARM type | Product |
 |---|---|
-| `Microsoft.Compute/virtualMachines` | `azure.vm` |
-| `Microsoft.Compute/virtualMachineScaleSets` | `azure.vm.scale_set` |
-| `Microsoft.Compute/disks` | `azure.disk` |
-| `Microsoft.Web/sites` | `azure.app_service` (`azure.functions` for a Function App) |
-| `Microsoft.Web/serverFarms` | `azure.app_service.plan` |
-| `Microsoft.Web/hostingEnvironments` | `azure.app_service.environment` |
-| `Microsoft.ContainerService/managedClusters` | `azure.aks` |
-| `Microsoft.App/containerApps` | `azure.container_apps` |
-| `Microsoft.ContainerInstance/containerGroups` | `azure.container_instances` |
-| `Microsoft.DocumentDB/databaseAccounts` | `azure.cosmosdb` |
-| `Microsoft.ServiceBus/namespaces` | `azure.servicebus` |
-| `Microsoft.EventHub/namespaces` | `azure.eventhubs` |
-| `Microsoft.Storage/storageAccounts` | `azure.storage` |
-| `Microsoft.Sql/servers/databases` | `azure.sql.database` |
-| `Microsoft.Sql/servers` | `azure.sql.server` |
-| `Microsoft.KeyVault/vaults` | `azure.keyvault` |
-| `Microsoft.Network/loadBalancers` | `azure.load_balancer` |
-| `Microsoft.Network/applicationGateways` | `azure.application_gateway` |
-| `Microsoft.Network/publicIPAddresses` | `azure.public_ip` |
-| `Microsoft.Cache/redis` | `azure.redis` |
-| `Microsoft.DBforMySQL/flexibleServers` | `azure.mysql.flexible_server` |
-| `Microsoft.DBforPostgreSQL/flexibleServers` | `azure.postgresql.flexible_server` |
-| `Microsoft.EventGrid/topics` | `azure.eventgrid.topic` |
-| `Microsoft.ApiManagement/service` | `azure.api_management` |
-| `Microsoft.OperationalInsights/workspaces` | `azure.log_analytics.workspace` |
-| `Microsoft.Insights/components` | `azure.application_insights` |
+| `Microsoft.Compute/virtualMachines` | `azure.vm.*` |
+| `Microsoft.Compute/virtualMachineScaleSets` | `azure.vm.scale_set.*` |
+| `Microsoft.Compute/disks` | `azure.disk.*` |
+| `Microsoft.Web/sites` | `azure.app_service.*` (`azure.functions.*` for a Function App) |
+| `Microsoft.Web/serverFarms` | `azure.app_service.plan.*` |
+| `Microsoft.Web/hostingEnvironments` | `azure.app_service.environment.*` |
+| `Microsoft.ContainerService/managedClusters` | `azure.aks.*` |
+| `Microsoft.App/containerApps` | `azure.container_apps.*` |
+| `Microsoft.ContainerInstance/containerGroups` | `azure.container_instances.*` |
+| `Microsoft.DocumentDB/databaseAccounts` | `azure.cosmosdb.*` |
+| `Microsoft.ServiceBus/namespaces` | `azure.servicebus.*` |
+| `Microsoft.EventHub/namespaces` | `azure.eventhubs.*` |
+| `Microsoft.Storage/storageAccounts` | `azure.storage.*` |
+| `Microsoft.Sql/servers/databases` | `azure.sql.database.*` |
+| `Microsoft.Sql/servers` | `azure.sql.server.*` |
+| `Microsoft.KeyVault/vaults` | `azure.keyvault.*` |
+| `Microsoft.Network/loadBalancers` | `azure.load_balancer.*` |
+| `Microsoft.Network/applicationGateways` | `azure.application_gateway.*` |
+| `Microsoft.Network/publicIPAddresses` | `azure.public_ip.*` |
+| `Microsoft.Cache/redis` | `azure.redis.*` |
+| `Microsoft.DBforMySQL/flexibleServers` | `azure.mysql.flexible_server.*` |
+| `Microsoft.DBforPostgreSQL/flexibleServers` | `azure.postgresql.flexible_server.*` |
+| `Microsoft.EventGrid/topics` | `azure.eventgrid.topic.*` |
+| `Microsoft.ApiManagement/service` | `azure.api_management.*` |
+| `Microsoft.OperationalInsights/workspaces` | `azure.log_analytics.workspace.*` |
+| `Microsoft.Insights/components` | `azure.application_insights.*` |
 
 ## Tier 2: curated names
 

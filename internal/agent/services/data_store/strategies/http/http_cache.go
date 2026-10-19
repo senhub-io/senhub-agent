@@ -185,6 +185,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// agent may watch several. The job name is what tells their series
 	// apart; the resource group is what tells two jobs of the same name
 	// in two groups apart; the reason splits its read failures by cause.
+	// One rows count per instance; the azure.log_query.<channel> series it
+	// publishes are named by the query and carry their own attributes.
+	"azure_log_query": {},
 	"azure_container_app_jobs": {
 		"metric_type",
 		"azure_job",
