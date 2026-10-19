@@ -114,7 +114,7 @@ Extra columns are not published unless named in `attribute_columns`: each distin
 
 | Metric | Unit | Attributes | Description |
 |---|---|---|---|
-| `azure.log_query.<channel>` | from `unit` | `azure.tenant.id`, `cloud.provider`, `azure.log_analytics.workspace.id`, `azure.log_query.channel`, and the chosen `azure.log_query.attribute.<column>` | One gauge per result row |
+| `azure.log_query.<channel>` | from `unit` | Attributes `azure.tenant.id`, `cloud.provider`, `azure.log_analytics.workspace.id`, `azure.log_query.channel`, and the chosen `azure.log_query.attribute.<column>` | One gauge per result row |
 | `senhub.azure_log_query.rows` | `{row}` | - | Rows the last query returned, before the `max_rows` cap. `0` when the query returned nothing, in which case no other series is published |
 
 # Troubleshooting
@@ -138,3 +138,20 @@ The metrics are available through every configured output. For PRTG and Nagios, 
 curl "http://localhost:8080/api/{agentkey}/prtg/metrics/failed-signins"
 curl "http://localhost:8080/api/{agentkey}/nagios/metrics/failed-signins"
 ```
+
+## Metric reference
+
+Every metric this probe can emit. **Metric** is the OpenTelemetry name the
+OTLP, Prometheus and Zabbix outputs derive theirs from. **Name** is what a
+[Nagios check](../nagios.md) and the API `metrics=` filter match.
+**PRTG channel** is the label PRTG shows, placeholders filled from the
+series' tags.
+
+<!-- schema:metrics:start -->
+<!-- Generated from the probe's definition. Run `make docs-metrics` after changing it. -->
+
+| Metric | Name | PRTG channel | Unit | Description |
+|---|---|---|---|---|
+| `senhub.azure_log_query.rows` | `senhub.azure_log_query.rows` | Rows Returned | # | Rows the last query returned, before the max_rows cap; 0 when the query matched nothing |
+
+<!-- schema:metrics:end -->
