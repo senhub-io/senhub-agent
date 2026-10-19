@@ -555,6 +555,7 @@ var endpointDescriptions = map[string]string{
 	"/api/{agentkey}/info/schema/{probe}":    "Schema of one probe",
 	"/api/{agentkey}/info/system":            "Version, host, resources and cache",
 	"/api/{agentkey}/info/endpoints":         "Which pull formats are enabled",
+	"/api/{agentkey}/info/self-records":      "Records added to the agent's own metrics by the build",
 	"/api/{agentkey}/admin/cache/clear":      "Clear the metric cache",
 	"/api/{agentkey}/debug/logs":             "View or set log levels",
 	"/api/{agentkey}/license/status":         "License status and tier",

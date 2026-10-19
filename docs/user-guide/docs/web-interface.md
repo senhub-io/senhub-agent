@@ -350,6 +350,7 @@ The routes marked **admin** answer the administration key alone and exist only w
 | `GET /api/{key}/debug/logs`, `POST` | admin | Read the agent's recent logs; change log levels |
 | `GET /api/{key}/debug/pprof/...` | admin | Go runtime profiler |
 | `GET /api/{key}/info/events` | agent or admin | The recent events shown on the Overview |
+| `GET /api/{key}/info/self-records` | agent or admin | The records a build adds to the agent's own metrics (`{"records": [...]}`); an empty list when the build adds none |
 
 An update sends only what it changes. A `PUT` on an output without `enabled` keeps it in its current state, so a parameter edit never re-enables what an operator disabled. A stored secret the body does not mention is kept, for probes and outputs alike; to drop one, send its key with the value `null`, inside a block or a list of blocks as well.
 
