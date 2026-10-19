@@ -74,38 +74,46 @@ The secret is taken from the first of these that is set: `client_secret`, `clien
 
 # Configuration Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:cd2fb5ae7ac7aa6c7aa537329b876fe5561f72c35a07218b902525a586af7a02 -->
+
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `tenant_id` | In practice | - | Entra ID tenant (directory) ID; required unless `SENHUB_AZURE_TENANT_ID` is set |
-| `client_id` | In practice | - | Application (client) ID of the app registration; required unless `SENHUB_AZURE_CLIENT_ID` is set |
-| `client_secret` | In practice | - | Client secret of the app registration; one of `client_secret`, `client_secret_file`, `SENHUB_AZURE_CLIENT_SECRET` or `SENHUB_AZURE_CLIENT_SECRET_FILE` is required, in that order. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` |
-| `client_secret_file` | No | - | File holding the client secret; used when `client_secret` is not set |
-| `subscription_ids` | In practice | - | Subscriptions to discover and read; the application needs Reader and Monitoring Reader on each. `SENHUB_AZURE_SUBSCRIPTION_ID` is used when empty |
-| `subscription_id` | No | - | A single subscription, when `subscription_ids` is not set |
-| `interval` | No | `60` | Seconds between two metric reads, at least 10 |
-| `discovery` | No | - | What Resource Graph is asked for; ignored when `resources` is set |
-| `discovery.interval` | No | `900` | Seconds between two discoveries, 60 to 86400 |
-| `discovery.include_types` | No | every type | Follow only these ARM types (`Microsoft.Compute/virtualMachines`); case is ignored |
+| `tenant_id` | In practice | - | Entra ID tenant (directory) ID; required unless SENHUB_AZURE_TENANT_ID is set for every Azure probe of the agent |
+| `client_id` | In practice | - | Application (client) ID of the app registration; required unless SENHUB_AZURE_CLIENT_ID is set |
+| `client_secret` | In practice | - | Client secret of the app registration; one of client_secret, client_secret_file, SENHUB_AZURE_CLIENT_SECRET or SENHUB_AZURE_CLIENT_SECRET_FILE is required, in that order. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `client_secret_file` | No | - | File holding the client secret; read when the probe is configured. Used when client_secret is not set |
+| `subscription_ids` | In practice | - | Subscriptions to discover and read; the application needs Reader (discovery) and Monitoring Reader (metrics) on each. SENHUB_AZURE_SUBSCRIPTION_ID is used when empty |
+| `subscription_id` | No | - | A single subscription, when subscription_ids is not set |
+| `interval` | No | `60` | Seconds between two metric reads |
+| `discovery` | No | - | What Resource Graph is asked for; ignored when 'resources' is set |
+| `discovery.interval` | No | `900` | Seconds between two discoveries |
+| `discovery.include_types` | No | - | Follow only these ARM types (Microsoft.Compute/virtualMachines); case is ignored |
 | `discovery.exclude_types` | No | - | Never follow these ARM types |
-| `discovery.include_resource_groups` | No | every group | Follow only these resource groups |
+| `discovery.include_resource_groups` | No | - | Follow only these resource groups |
 | `discovery.exclude_resource_groups` | No | - | Never follow these resource groups |
-| `discovery.tags` | No | - | Follow only resources carrying these tags (`name: value`); an empty value requires the tag to exist |
-| `discovery.max_resources` | No | `500` | Hard cap on followed resources, 1 to 5000; what is left out is named in the log |
+| `discovery.tags` | No | - | Follow only resources carrying these tags; an empty value requires the tag to exist |
+| `discovery.max_resources` | No | `500` | Hard cap on followed resources; what is left out is named in the log |
 | `resources` | No | - | Explicit ARM resource ids; when set, they replace discovery |
-| `metrics` | No | - | List, per ARM type, restricting what is read (see [Choosing metrics](#choosing-metrics)) |
-| `metrics[].type` | No | - | ARM type, for example `Microsoft.Storage/storageAccounts` |
+| `metrics` | No | - | Per ARM type, restrict what is read to an allow-list of Azure metric names, optionally split by one dimension |
+| `metrics[].type` | No | - | ARM type, for example Microsoft.Storage/storageAccounts |
 | `metrics[].names` | No | - | Azure metric names to read; empty reads every metric without a required dimension |
 | `metrics[].dimension` | No | - | Dimension to split the listed metrics by |
-| `metrics[].dimension_values` | No | every value | Values of the dimension to read; needs `dimension` |
-| `tags_allow` | No | none | Azure tags published as `azure.resource.tag.<name>`; none by default, to keep cardinality bounded |
+| `metrics[].dimension_values` | No | - | Values of the dimension to read; empty reads every value |
+| `tags_allow` | No | - | Azure tags published as azure.resource.tag.<name>; none by default, to keep cardinality bounded |
+| `plugins` | No | - | Figures the platform metrics do not carry |
 | `plugins.servicebus` | No | `true` | Queue, topic and subscription message counts of discovered Service Bus namespaces |
 | `plugins.app_service_plan` | No | `true` | Usages of discovered App Service Plans |
 | `plugins.vm_disk_log_analytics` | No | `false` | Free disk space of virtual machines from Log Analytics (needs VM Insights) |
-| `plugins.workspace_id` | No | - | Log Analytics workspace ID for `vm_disk_log_analytics`; required when it is on |
-| `entities.enabled` | No | `false` | Emit a `cloud.resource` entity per discovered resource (see [Entities](#entities)) |
+| `plugins.workspace_id` | No | - | Log Analytics workspace ID (GUID) for vm_disk_log_analytics |
+| `entities` | No | - | Entity emission for Toise |
+| `entities.enabled` | No | `false` | Emit a cloud.resource entity per discovered resource; turn on only once the tenant's Toise carries the type |
 | `authority_host` | No | `login.microsoftonline.com` | Entra ID authority, for sovereign clouds |
 | `management_host` | No | `management.azure.com` | Azure Resource Manager endpoint, for sovereign clouds |
 | `log_analytics_host` | No | `api.loganalytics.io` | Log Analytics query endpoint, for sovereign clouds |
+
+<!-- schema:params:end -->
 
 `resources` entries must be full ARM ids (`/subscriptions/.../resourceGroups/.../providers/...`); anything else is refused when the probe is configured.
 

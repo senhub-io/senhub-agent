@@ -86,21 +86,27 @@ The secret is taken from the first of these that is set: `client_secret`, `clien
 
 # Configuration Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:a2f4af32f55f258e13402941d2b72a027ab9b9f1f2face91c1f2b4d07e8cefb8 -->
+
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `tenant_id` | In practice | - | Entra ID tenant (directory) ID; required unless `SENHUB_AZURE_TENANT_ID` is set |
-| `client_id` | In practice | - | Application (client) ID of the app registration; required unless `SENHUB_AZURE_CLIENT_ID` is set |
-| `client_secret` | In practice | - | Client secret of the app registration; one of `client_secret`, `client_secret_file`, `SENHUB_AZURE_CLIENT_SECRET` or `SENHUB_AZURE_CLIENT_SECRET_FILE` is required, in that order. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` |
-| `client_secret_file` | No | - | File holding the client secret; used when `client_secret` is not set |
-| `workspace_id` | Yes | - | Log Analytics workspace ID (1 to 64 letters, digits or hyphens) to query |
-| `query` | Yes | - | KQL query to run; its result must contain `channel`, `value` and `unit` columns |
-| `timespan` | No | `PT1H` | ISO 8601 duration of the query time span (`PT15M`, `PT1H`, `P1D`) |
-| `interval` | No | `300` | Seconds between two query cycles, at least 10 |
-| `max_rows` | No | `200` | Maximum rows processed per cycle, 1 to 10000 |
-| `attribute_columns` | No | none | Extra result columns published as attributes `azure.log_query.attribute.<column>` |
-| `max_attribute_columns` | No | `5` | Cap on the extra attribute columns actually published, 0 to 20 |
+| `tenant_id` | In practice | - | Entra ID tenant (directory) ID; required unless SENHUB_AZURE_TENANT_ID is set for every Azure probe of the agent |
+| `client_id` | In practice | - | Application (client) ID of the app registration; required unless SENHUB_AZURE_CLIENT_ID is set |
+| `client_secret` | In practice | - | Client secret of the app registration; one of client_secret, client_secret_file, SENHUB_AZURE_CLIENT_SECRET or SENHUB_AZURE_CLIENT_SECRET_FILE is required, in that order. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `client_secret_file` | No | - | File holding the client secret; read when the probe is configured. Used when client_secret is not set |
+| `workspace_id` | In practice | - | Log Analytics workspace ID (GUID-like, 1 to 64 letters, digits or hyphens) to query |
+| `query` | In practice | - | KQL query to run; its result must contain channel, value and unit columns |
+| `timespan` | No | `PT1H` | ISO 8601 duration for the query time span |
+| `interval` | No | `300` | Seconds between two query cycles |
+| `max_rows` | No | `200` | Maximum rows processed per cycle |
+| `attribute_columns` | No | - | Extra result columns published as azure.log_query.attribute.<column>; none by default |
+| `max_attribute_columns` | No | `5` | Cap on extra attribute columns actually published |
 | `authority_host` | No | `login.microsoftonline.com` | Entra ID authority, for sovereign clouds |
 | `log_analytics_host` | No | `api.loganalytics.io` | Log Analytics query endpoint, for sovereign clouds |
+
+<!-- schema:params:end -->
 
 Extra columns are not published unless named in `attribute_columns`: each distinct value of an attribute is a distinct series, so name only columns of bounded cardinality. A value is cut at 128 characters, and the column name is normalised like a channel.
 
