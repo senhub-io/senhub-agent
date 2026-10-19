@@ -409,7 +409,7 @@
       if (s === 'failing' || s === 'target-down') tr.classList.add('bad');
       const spec = List.types[p.type];
       const sub = firstEssentialValue(spec, p.params);
-      let name = '<span class="name">' + esc(p.name) + '</span>';
+      let name = '<a class="name" href="?view=' + encodeURIComponent(p.name) + '">' + esc(p.name) + '</a>';
       const envLocked = !!(p.env_variables && p.env_variables.length);
       const envWhy = 'Set by environment variables: ' + (p.env_variables || []).join(', ') + '. Change them where the agent is started.';
       if (envLocked) name += ' <span class="pill file" title="' + esc(envWhy) + '">Set by environment variables</span>';
@@ -431,11 +431,13 @@
       if (envLocked) acts += '<button type="button" class="btn sm ghost" disabled title="' + esc(envWhy) + '">Edit, disable, delete</button>';
       else if (p.managed) acts += '<span class="menu-wrap"><button type="button" class="btn sm ghost" data-menu title="More">&#8230;</button></span>';
       const cat = (List.types[p.type] && List.types[p.type].category) || 'other';
-      tr.innerHTML = '<td>' + name + '</td><td><span class="tcell">' + glyphFor(cat) + '<code>' + esc(p.type) + '</code></span></td><td>' + state + '</td>' +
+      tr.classList.add('go');
+      tr.innerHTML = '<td class="pname">' + name + '</td><td><span class="tcell">' + glyphFor(cat) + '<code>' + esc(p.type) + '</code></span></td><td>' + state + '</td>' +
         '<td class="num">' + (p.interval ? esc(p.interval) + ' s' : '&ndash;') + '</td>' +
         '<td class="num">' + (p.enabled ? esc(p.metrics_count || 0) : '&ndash;') + '</td>' +
         '<td class="num">' + (p.last_update ? esc(hhmmss(p.last_update)) : '&ndash;') + '</td>' +
         '<td class="acts">' + acts + '</td>';
+      tr.onclick = (e) => { if (!e.target.closest('a, button, .menu-wrap')) location.href = '?view=' + encodeURIComponent(p.name); };
       const mb = tr.querySelector('[data-menu]');
       if (mb) mb.onclick = (e) => { e.stopPropagation(); List.openMenu(mb, p); };
       return tr;

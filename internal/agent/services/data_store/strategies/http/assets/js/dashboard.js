@@ -140,6 +140,19 @@
         return out;
     }
 
+    function probeHref(name) { return WEB + 'probes?view=' + encodeURIComponent(name); }
+    function outputHref(name) { return WEB + 'outputs/' + encodeURIComponent(name === 'http' ? 'http' : name); }
+    // The full text stays in the tooltip; the cell shows one line.
+    function reasonText(t) { return '<span title="' + esc(t) + '">' + esc(t) + '</span>'; }
+    // A row opens its target; links and buttons inside it keep their own.
+    function wireRows(root) {
+        if (!root) return;
+        root.querySelectorAll('[data-href]').forEach(el => el.addEventListener('click', (e) => {
+            if (e.target.closest('a, button')) return;
+            location.href = el.dataset.href;
+        }));
+    }
+
     function renderProbes(data, system, catalog) {
         const types = byType(catalog);
         const list = (data && data.probes) || [];
@@ -161,16 +174,16 @@
             // Same wrapper as the Probes page: this table is wider than a
             // phone, and without its own scroller it pushes the whole
             // document sideways instead of scrolling inside its card.
-            let html = '<div style="overflow-x:auto"><table class="tbl compact"><thead><tr><th>Name</th><th>Type</th><th>State</th><th class="right">Metrics</th><th class="right">Last run</th></tr></thead><tbody>';
+            let html = '<div style="overflow-x:auto"><table class="tbl compact" id="probes-tbl"><thead><tr><th>Name</th><th>Type</th><th>State</th><th class="right">Metrics</th><th class="right">Last run</th></tr></thead><tbody>';
             rows.forEach(p => {
                 const s = probeState(p);
                 let state, last;
                 if (s === 'failing') {
                     state = pill('err', 'failing');
-                    last = '<span class="reason">' + short(p.last_error || p.reason || 'collection failed', 80) + '</span>';
+                    last = '<span class="reason">' + reasonText(p.last_error || p.reason || 'collection failed') + '</span>';
                 } else if (s === 'target-down') {
                     state = pill('err', 'target down');
-                    last = '<span class="reason">' + short('collecting, and ' + (p.target_metric || 'its up metric') + ' reads 0', 80) + '</span>';
+                    last = '<span class="reason">' + reasonText('collecting, and ' + (p.target_metric || 'its up metric') + ' reads 0') + '</span>';
                 } else if (s === 'running') {
                     state = pill('ok', 'running');
                     last = p.last_update ? esc(rel(p.last_update)) : '-';
@@ -179,21 +192,22 @@
                     last = '-';
                 } else if (s === 'locked') {
                     state = pill('pro', 'license needed');
-                    last = '<span class="reason">' + short(p.reason || 'not authorized', 80) + '</span>';
+                    last = '<span class="reason">' + reasonText(p.reason || 'not authorized') + '</span>';
                 } else if (s === 'unsupported') {
                     state = pill('off', 'not on this platform');
-                    last = '<span class="reason">' + short(p.reason || 'another platform', 80) + '</span>';
+                    last = '<span class="reason">' + reasonText(p.reason || 'another platform') + '</span>';
                 } else {
                     state = pill('warn', 'stopped');
-                    last = p.reason ? '<span class="reason">' + short(p.reason, 80) + '</span>' : '-';
+                    last = p.reason ? '<span class="reason">' + reasonText(p.reason) + '</span>' : '-';
                 }
                 const metrics = s === 'disabled' ? '-' : num(p.metrics_count);
                 const cat = (types[p.type] && types[p.type].category) || 'other';
-                html += '<tr><td class="name">' + esc(p.name) + '</td><td><span class="tcell">' + glyphFor(cat) + '<code>' + esc(p.type) + '</code></span></td><td>' + state +
-                    '</td><td class="num">' + metrics + '</td><td class="num">' + last + '</td></tr>';
+                html += '<tr class="go" data-href="' + esc(probeHref(p.name)) + '"><td class="name"><a href="' + esc(probeHref(p.name)) + '">' + esc(p.name) + '</a></td><td><span class="tcell">' + glyphFor(cat) + '<code>' + esc(p.type) + '</code></span></td><td>' + state +
+                    '</td><td class="num">' + metrics + '</td><td class="num last">' + last + '</td></tr>';
             });
             html += '</tbody></table></div>';
             $('probes-body').innerHTML = html;
+            wireRows($('probes-tbl'));
         }
 
         const total = system && system.cache ? system.cache.total_metrics : null;
@@ -283,11 +297,12 @@
                 if (o.type === 'http') action = '<a class="btn sm" href="' + WEB + 'outputs/http#urls">Sensor URLs</a>';
                 else if (off) action = '<button type="button" class="btn sm" data-enable="' + esc(o.name) + '">Enable</button>';
                 else action = '<a class="btn sm" href="' + WEB + 'outputs/' + encodeURIComponent(o.name) + '">Edit</a>';
-                html += '<div class="orow"><div class="oicon' + (off ? ' off' : '') + '">' + esc(String(o.type).toUpperCase().slice(0, 6)) + '</div>' +
+                html += '<div class="orow go" data-href="' + esc(outputHref(o.name)) + '"><div class="oicon' + (off ? ' off' : '') + '">' + esc(String(o.type).toUpperCase().slice(0, 6)) + '</div>' +
                     '<div><div class="t">' + esc(title) + ' ' + outputPill(o) + '</div>' +
                     '<div class="d">' + (o.type === 'http' ? httpLine(o) : pushLine(o)) + '</div></div>' + action + '</div>';
             });
             $('outputs-body').innerHTML = html;
+            wireRows($('outputs-body'));
             $('outputs-body').querySelectorAll('button[data-enable]').forEach(b => b.addEventListener('click', () => enableOutput(b.dataset.enable, list, b)));
         }
         const paths = list.filter(o => o.enabled && (o.state === 'exporting' || (o.state === 'listening' && pollers(o).some(r => r.total > 0)))).length;
@@ -479,8 +494,9 @@
         }
         $('events-body').innerHTML = list.map(e => {
             const lvl = e.level === 'error' ? 'err' : (e.level === 'warn' ? 'warn' : 'ok');
-            return '<div class="ev"><span class="dot ' + lvl + '"></span><div class="msg">' +
-                (e.subject ? '<b>' + esc(e.subject) + '</b> ' : '') + short(e.message, 160) +
+            const href = e.subject && e.kind === 'probe' ? probeHref(e.subject) : (e.subject && e.kind === 'output' ? outputHref(e.subject) : '');
+            const subject = e.subject ? (href ? '<a href="' + esc(href) + '"><b>' + esc(e.subject) + '</b></a> ' : '<b>' + esc(e.subject) + '</b> ') : '';
+            return '<div class="ev"><span class="dot ' + lvl + '"></span><div class="msg">' + subject + short(e.message, 160) +
                 '<div class="xs muted">' + esc(when(e.time)) + (e.kind ? ' &middot; ' + esc(e.kind) : '') + '</div></div></div>';
         }).join('');
     }
