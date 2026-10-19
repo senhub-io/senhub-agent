@@ -27,6 +27,9 @@ carries `senhub.link.peer_state`: `unread` (the far device is not polled),
 were read. A device that stops answering is no longer reported after three
 topology intervals; it leaves the map as unmonitored, not as gone.
 
+Topology is off until the `entities` block is enabled, and only the
+[OTLP output](../otlp.md) carries it, see [Topology](../topology.md).
+
 One probe instance polls one device for its metrics. With a `discovery`
 block it also crawls the network outward from seed devices (by default the
 host's gateways) and puts every device it finds on the map, with its interfaces and links (see
@@ -176,7 +179,7 @@ table and the row index becomes that tag.
 ### Discovery
 
 A `discovery` block makes the probe crawl outward from seed devices
-through their LLDP neighbor tables, bounded by CIDR ranges and depth and
+through their LLDP neighbor tables (CDP is not read), bounded by CIDR ranges and depth and
 device caps, and report every device found on the entity rail: the
 device, its interfaces and addresses, its routes and its LLDP links.
 Discovered devices give topology only, no metrics: metrics stay with

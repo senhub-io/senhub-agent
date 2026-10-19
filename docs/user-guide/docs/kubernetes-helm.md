@@ -156,6 +156,21 @@ podLogs:
 
 Turn it off with `--set podLogs.enabled=false`.
 
+## Sample dashboards
+
+Two sample Grafana dashboards are in
+[`docs/grafana/`](https://github.com/senhub-io/senhub-agent/tree/master/docs/grafana),
+for metrics and logs stored in a Prometheus-compatible backend and a
+VictoriaLogs backend fed through [OTLP](otlp.md):
+
+| File | Content |
+|---|---|
+| `kubernetes-workloads.json` | Node, pod and container CPU, memory, filesystem and network from `kubelet_stats`; the probe's own scrape errors |
+| `kubernetes-logs.json` | Pod logs by namespace, pod, container and severity; log volume; files and pods followed, truncated records and read errors from `kubernetes_logs` |
+
+They are a starting point, not a supported product: adjust the
+datasource variables at the top of each dashboard to your setup.
+
 ## Monitoring the cluster
 
 Two values turn it on: one adds the probe, the other the read-only
