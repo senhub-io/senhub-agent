@@ -166,6 +166,7 @@ func NewHTTPSyncStrategy(
 	strategy.port = strategy.configManager.GetPort()
 	strategy.bindAddress = strategy.configManager.GetBindAddress()
 	strategy.cache.SetMaxSeries(strategy.configManager.GetMaxCacheSize())
+	strategy.formatConverter.checkResultChannel = strategy.configManager.IsPRTGCheckResultChannel
 
 	// Initialize debug manager
 	strategy.debugManager = NewDebugManager(strategy, moduleLogger)
