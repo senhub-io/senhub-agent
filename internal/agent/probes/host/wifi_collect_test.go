@@ -509,9 +509,10 @@ func TestCheckWifiWindowsStateDetection(t *testing.T) {
 		output string
 		want   bool
 	}{
-		{"english connected", "State          : connected\n", true},
+		{"english connected", "State          : connected\nBSSID          : 00:11:22:33:44:55\n", true},
 		{"english disconnected", "State          : disconnected\n", false},
-		{"french connected", "État          : connecté\n", true},
+		{"french connected", "État          : connecté\nBSSID          : 00:11:22:33:44:55\n", true},
+		{"windows 11 connected", "State          : connected\nAP BSSID       : 00:11:22:33:44:55\n", true},
 	}
 
 	for _, tt := range tests {
