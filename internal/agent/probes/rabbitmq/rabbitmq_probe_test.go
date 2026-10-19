@@ -1,9 +1,14 @@
 package rabbitmq
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
+
+	"github.com/rs/zerolog"
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -341,5 +346,56 @@ func TestFetchJSON_InvalidJSON(t *testing.T) {
 	var s strict
 	if err := p.fetchJSON("/api/overview", &s); err == nil {
 		t.Error("fetchJSON should fail on invalid JSON body")
+	}
+}
+
+func TestDownBrokerWarnsOncePerOutage(t *testing.T) {
+	var down atomic.Bool
+	inner := newFakeServer(t)
+	defer inner.Close()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if down.Load() {
+			http.Error(w, "down", http.StatusServiceUnavailable)
+			return
+		}
+		inner.Config.Handler.ServeHTTP(w, r)
+	}))
+	defer srv.Close()
+
+	probe, err := NewRabbitMQProbe(map[string]interface{}{
+		"endpoint": srv.URL,
+		"username": "guest",
+		"password": "guest",
+	}, newTestLogger())
+	if err != nil {
+		t.Fatalf("NewRabbitMQProbe: %v", err)
+	}
+	p := probe.(*rabbitProbe)
+	var buf bytes.Buffer
+	base := zerolog.New(&buf).Level(zerolog.DebugLevel)
+	p.moduleLogger = logger.NewModuleLogger(&base, "probe.test")
+
+	down.Store(true)
+	for i := 0; i < 10; i++ {
+		points, err := p.Collect()
+		if err != nil {
+			t.Fatalf("Collect must not return an error for a down broker, got: %v", err)
+		}
+		for _, dp := range points {
+			if dp.Name == "senhub.rabbitmq.up" && dp.Value != 0 {
+				t.Fatalf("senhub.rabbitmq.up = %v while down, want 0", dp.Value)
+			}
+		}
+	}
+	down.Store(false)
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	if got := strings.Count(buf.String(), `"level":"warn"`); got != 1 {
+		t.Errorf("%d warnings over 10 failed cycles, want 1\n%s", got, buf.String())
+	}
+	if got := strings.Count(buf.String(), `"level":"info"`); got != 1 {
+		t.Errorf("%d recovery lines, want 1\n%s", got, buf.String())
 	}
 }
