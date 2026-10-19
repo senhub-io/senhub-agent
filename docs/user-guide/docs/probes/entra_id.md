@@ -82,20 +82,26 @@ The secret is taken from the first of these that is set: `client_secret`, `clien
 
 # Configuration Parameters
 
+<!-- schema:params:start -->
+<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
+<!-- sha256:3e8efbaa2ab9cb19e73962e7851721fe4e0eeeba37c9d26b575d875a9e1c4389 -->
+
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `tenant_id` | In practice | - | Entra ID tenant (directory) ID; required unless `SENHUB_AZURE_TENANT_ID` is set |
-| `client_id` | In practice | - | Application (client) ID of the app registration; required unless `SENHUB_AZURE_CLIENT_ID` is set |
-| `client_secret` | In practice | - | Client secret of the app registration; one of `client_secret`, `client_secret_file`, `SENHUB_AZURE_CLIENT_SECRET` or `SENHUB_AZURE_CLIENT_SECRET_FILE` is required, in that order. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` |
-| `client_secret_file` | No | - | File holding the client secret; used when `client_secret` is not set |
-| `modules` | No | `sp`, `sync`, `users`, `licenses`, `health` | Modules to run: `sp`, `sync`, `syncapp`, `users`, `security`, `groups`, `apps`, `devices`, `licenses`, `health`, `authmethods`, `apppermissions`, `pim`. An unknown name is refused |
+| `tenant_id` | In practice | - | Entra ID tenant (directory) ID; required unless SENHUB_AZURE_TENANT_ID is set for every Azure probe of the agent |
+| `client_id` | In practice | - | Application (client) ID of the app registration; required unless SENHUB_AZURE_CLIENT_ID is set for every Azure probe of the agent |
+| `client_secret` | In practice | - | Client secret of the app registration; one of client_secret, client_secret_file, SENHUB_AZURE_CLIENT_SECRET or SENHUB_AZURE_CLIENT_SECRET_FILE is required, in that order of precedence. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
+| `client_secret_file` | No | - | File holding the client secret (a mounted secret, for example); read when the probe is configured. Used when client_secret is not set |
+| `modules` | No | - | What to collect: sp (secret and certificate expiry), sync (directory synchronisation), syncapp (provisioning job), users, security, groups, apps, devices, licenses, health, authmethods, apppermissions, pim. Empty reads sp, sync, users, licenses and health. Each module needs its own Application permission with admin consent; a refusal names the permission |
 | `interval` | No | `300` | Seconds between collections |
 | `timeout` | No | `30` | Per-request timeout in seconds for calls to Microsoft Graph |
-| `auth_mode` | No | `overview` | What `sp` reports: `overview` counts credentials by type and time to expiry; `cert`, `secret` or `certsecret` publish the time left of each credential |
-| `app_scope` | No | `registrations` | Where `sp` reads credentials: `registrations` (app registrations), `enterprise` (enterprise applications, which hold SAML signing certificates) or `both` |
+| `auth_mode` | No | `overview` | What the sp module reports: overview counts credentials by type and time to expiry; cert, secret or certsecret publish the time left of each credential. One of `overview`, `cert`, `secret`, `certsecret` |
+| `app_scope` | No | `registrations` | Where the sp module reads credentials: app registrations, enterprise applications (service principals, which hold SAML signing certificates) or both. One of `registrations`, `enterprise`, `both` |
 | `include` | No | - | Report only applications whose display name or application ID contains one of these (case-insensitive) |
-| `exclude` | No | - | Skip applications whose display name or application ID contains one of these (case-insensitive); wins over `include` |
-| `sp_id` | No | - | Object ID of the provisioning service principal read by `syncapp`; empty finds the `ConnectSyncProvisioning` application |
+| `exclude` | No | - | Skip applications whose display name or application ID contains one of these (case-insensitive); wins over include |
+| `sp_id` | No | - | Object ID of the provisioning service principal read by the syncapp module; empty finds the ConnectSyncProvisioning application |
+
+<!-- schema:params:end -->
 
 Choose `auth_mode` with care: `cert`, `secret` and `certsecret` publish one series per credential, with its identifier, so a tenant with thousands of credentials gets thousands of series. Narrow them with `include` and `exclude`.
 
