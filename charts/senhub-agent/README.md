@@ -215,7 +215,7 @@ No `watch`, no Secrets, no ConfigMaps, no write.
 |---|---|---|
 | `edition` | `full` | `full` (licensed probes, `ghcr.io/senhub-io/senhub-agent`) or `oss` (`ghcr.io/senhub-io/senhub-agent-oss`) |
 | `image.repository` | `""` | Overrides the repository `edition` picks |
-| `image.tag` | `""` | Image tag; empty uses the chart `appVersion` (0.6.1). There is no `latest` |
+| `image.tag` | `""` | Image tag; empty uses the chart `appVersion` (0.6.4). There is no `latest` |
 | `image.pullPolicy` | `IfNotPresent` | |
 | `imagePullSecrets` | `[]` | |
 | `nameOverride`, `fullnameOverride` | `""` | |
