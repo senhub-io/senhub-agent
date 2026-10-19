@@ -426,3 +426,41 @@ func BenchmarkRedactPasshash(b *testing.B) {
 		_ = redactLogRecord(rec)
 	}
 }
+
+// An attribute named after a credential holds the secret itself, with no
+// "key=" form for the patterns to find.
+func TestRedactAttributeByCredentialKey(t *testing.T) {
+	setupRedactionTest(t)
+	if errs := ConfigureLogRedaction(true, nil); len(errs) != 0 {
+		t.Fatalf("ConfigureLogRedaction errors: %v", errs)
+	}
+	rec := redactLogRecord(LogRecord{
+		Attributes: map[string]string{
+			"password":                          "hunter2",
+			"db.Password":                       "s3cret",
+			"http.request.header.authorization": "Bearer abc.def",
+			"user.name":                         "alice",
+			"tokens":                            "5",
+		},
+		ProducerProbeName: "p",
+	})
+	want := map[string]string{
+		"password":                          "***",
+		"db.Password":                       "***",
+		"http.request.header.authorization": "Bearer ***",
+		"user.name":                         "alice",
+		"tokens":                            "5",
+	}
+	if !reflect.DeepEqual(rec.Attributes, want) {
+		t.Fatalf("Attributes = %#v, want %#v", rec.Attributes, want)
+	}
+
+	setupRedactionTest(t)
+	if errs := ConfigureLogRedaction(false, nil); len(errs) != 0 {
+		t.Fatalf("ConfigureLogRedaction errors: %v", errs)
+	}
+	off := redactLogRecord(LogRecord{Attributes: map[string]string{"password": "hunter2"}, ProducerProbeName: "p"})
+	if off.Attributes["password"] != "hunter2" {
+		t.Fatalf("preset off must leave keyed attributes alone, got %q", off.Attributes["password"])
+	}
+}
