@@ -110,9 +110,13 @@ prints, review it, paste it into a DBA shell.
 For MySQL 8.0:
 ```sql
 CREATE USER 'senhub_monitor'@'%' IDENTIFIED BY 'STRONG-PASSWORD-HERE';
-GRANT PROCESS, REPLICATION CLIENT, SELECT ON *.* TO 'senhub_monitor'@'%';
+GRANT PROCESS, REPLICATION CLIENT, REPLICATION SLAVE, SELECT ON *.* TO 'senhub_monitor'@'%';
 FLUSH PRIVILEGES;
 ```
+
+`REPLICATION SLAVE` is what lets the probe count the replicas of a source
+(`SHOW REPLICAS`). It also allows the account to read the binary log. Without
+it, a source that has replicas is reported as standalone.
 
 For MariaDB 10.5.8+ add `SLAVE MONITOR ON *.*`.
 

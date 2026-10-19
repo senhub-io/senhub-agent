@@ -10,6 +10,7 @@ package configuration
 // wrapper over the same engine.
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -96,10 +97,8 @@ func MigrateToMultiFile(configPath string, log *logger.ModuleLogger) (result Mig
 		if migrateErr == nil {
 			return
 		}
-		for _, m := range movedAside {
-			if _, err := os.Stat(m[0]); os.IsNotExist(err) {
-				_ = os.Rename(m[1], m[0])
-			}
+		if err := restoreMovedAside(movedAside); err != nil {
+			migrateErr = errors.Join(migrateErr, fmt.Errorf("rollback incomplete: %w", err))
 		}
 	}()
 	for _, p := range defaults {
@@ -551,4 +550,16 @@ func warnRestore(log *logger.ModuleLogger, msg string) {
 		return
 	}
 	fmt.Fprintf(os.Stderr, "config migrate: %s\n", msg)
+}
+
+func restoreMovedAside(movedAside [][2]string) error {
+	var errs []error
+	for _, m := range movedAside {
+		if _, err := os.Stat(m[0]); os.IsNotExist(err) {
+			if err := os.Rename(m[1], m[0]); err != nil {
+				errs = append(errs, fmt.Errorf("restoring %s from %s: %w", m[0], m[1], err))
+			}
+		}
+	}
+	return errors.Join(errs...)
 }
