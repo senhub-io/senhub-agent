@@ -32,6 +32,19 @@
   .banner .err-list { margin: 4px 0 0; padding-left: 18px; }
   .banner .err-list a { color: inherit; text-decoration: underline; }
   .banner .close { margin-left: auto; background: none; border: none; color: inherit; cursor: pointer; font: inherit; font-size: 16px; line-height: 1; padding: 0 2px; }
+  .events { display: flex; flex-direction: column; gap: 8px; font-size: var(--fs-sm); }
+  .events .ev { display: flex; gap: var(--s2); align-items: flex-start; }
+  .events .ev .dot { margin-top: 6px; }
+  .events .ev .msg { min-width: 0; overflow-wrap: anywhere; }
+  .empty-line { color: var(--muted); font-size: var(--fs-sm); padding: var(--s2) 0; }
+  .tbl td.pname a { color: inherit; font-weight: 600; }
+  .tbl td.pname a:hover { color: var(--accent-ink); }
+  .tbl tbody tr.go { cursor: pointer; }
+  .tbl th.right { text-align: right; }
+  .vp-facts { display: flex; flex-wrap: wrap; gap: var(--s4); align-items: flex-start; }
+  .vp-facts .kv { flex: 1 1 280px; }
+  .vp-why { margin-top: var(--s3); overflow-wrap: anywhere; }
+  .vp-filter { margin-bottom: var(--s3); }
   @media (max-width: 720px) { .loc { grid-template-columns: 1fr 1fr; } }
 </style>
 </head>
@@ -92,6 +105,42 @@
         </div>
         <p class="small muted mt4" id="empty-more">Something else? <a href="?new=1#picker">Browse the probe types</a>.</p>
       </div>
+    </div>
+  </div>
+
+  <!-- ===================== PROBE VIEW ===================== -->
+  <div id="view-probe" class="hide">
+    <div id="vp-banner" class="mb3"></div>
+    <div id="vp-notfound" class="hide"></div>
+    <div id="vp-main" class="hide">
+      <div class="crumb"><a href="/web/{{.AgentKey}}/probes">Probes</a> &rsaquo; <span id="vp-crumb"></span></div>
+      <div class="page-h">
+        <div>
+          <h1 id="vp-title"></h1>
+          <p class="sub" id="vp-sub"></p>
+        </div>
+        <div class="btn-row" id="vp-actions"></div>
+      </div>
+      <div class="card mb4">
+        <div class="card-h"><h2>Status</h2></div>
+        <div id="vp-status"></div>
+      </div>
+      <div class="grid g2 mb4">
+        <div class="card">
+          <div class="card-h"><h2>Current metrics <span class="count" id="vp-metrics-count"></span></h2></div>
+          <input class="search vp-filter hide" id="vp-metrics-filter" placeholder="Filter the channels" autocomplete="off">
+          <div id="vp-metrics"><div class="loading">Loading the series.</div></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h2>Configuration</h2></div>
+          <dl class="kv left" id="vp-config"></dl>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>Recent events</h2></div>
+        <div class="events" id="vp-events"></div>
+      </div>
+      <p class="xs muted right mt3" id="vp-refresh"></p>
     </div>
   </div>
 
@@ -222,7 +271,7 @@
   const $ = (id) => document.getElementById(id);
   const esc = SchemaForm.esc;
   const q = new URLSearchParams(location.search);
-  const MODE = q.has('edit') ? 'edit' : (q.has('new') ? 'new' : 'list');
+  const MODE = q.has('view') ? 'view' : (q.has('edit') ? 'edit' : (q.has('new') ? 'new' : 'list'));
   const BANNER_KEY = 'senhub.probes.banner';
 
   async function getJSON(url) {
@@ -440,6 +489,370 @@
       else setBanner($('list-banner'), 'ok', '', created + ' host probe' + (created === 1 ? '' : 's') + ' created; the agent starts them on its own.');
       await List.load();
     },
+  };
+
+  // ===================== PROBE VIEW =====================
+  const View = {
+    types: {},
+    timer: null,
+    rows: [],
+  
+    url(path) {
+      return `${WEB.replace(/\/$/, '')}/${String(path).replace(/^\/+/, '')}`;
+    },
+  
+    async init() {
+      $('view-probe').classList.remove('hide');
+      try {
+        const data = await getJSON(API + '/catalog/probes');
+        View.types = {};
+        const list = data.probes || data || [];
+        list.forEach(p => { View.types[p.type] = p; });
+      } catch (e) {
+        View.types = {};
+      }
+      await View.load();
+      if (View.timer) clearInterval(View.timer);
+      View.timer = setInterval(View.load, 30000);
+    },
+  
+    async load() {
+      const name = q.get('view') || '';
+      const [probesRes, metricsRes, eventsRes] = await Promise.allSettled([
+        getJSON(API + '/config/probes'),
+        getJSON(API + '/prtg/metrics/' + encodeURIComponent(name)),
+        getJSON(API + '/info/events')
+      ]);
+  
+      if (probesRes.status === 'rejected') {
+        const err = probesRes.reason;
+        setBanner($('vp-banner'), 'err', 'Could not load the probe.', err && err.message ? err.message : String(err));
+        return;
+      }
+  
+      const probesData = probesRes.value;
+      const probes = probesData.probes || probesData || [];
+      const probe = probes.find(p => p.name === name);
+  
+      if (!probe) {
+        $('vp-main').classList.add('hide');
+        $('vp-notfound').innerHTML = `<div class="card"><div class="empty-line">No probe named <b>${esc(name)}</b>. <a href="${View.url('probes')}">Back to probes</a></div></div>`;
+        $('vp-notfound').classList.remove('hide');
+        document.title = 'SenHub Agent - ' + name;
+        return;
+      }
+  
+      $('vp-notfound').classList.add('hide');
+      $('vp-main').classList.remove('hide');
+      document.title = 'SenHub Agent - ' + name;
+  
+      const metricsOk = metricsRes.status === 'fulfilled';
+      View.rows = metricsOk
+        ? ((metricsRes.value.prtg && metricsRes.value.prtg.result) || []).slice().sort((a, b) => String(a.channel).localeCompare(String(b.channel)))
+        : [];
+  
+      View.renderHeader(probe);
+      View.renderActions(probe);
+      View.renderMetrics(probe, metricsOk);
+      View.renderConfig(probe);
+      View.renderEvents(eventsRes, name);
+      $('vp-refresh').textContent = 'Auto-refresh every 30 seconds, last ' + hhmmss(new Date());
+    },
+  
+    renderHeader(p) {
+      const state = List.stateOf(p);
+      const cat = View.types[p.type] && View.types[p.type].category;
+      const displayName = View.types[p.type] && View.types[p.type].display_name;
+  
+      $('vp-crumb').textContent = p.name || '';
+      $('vp-title').textContent = p.name || '';
+      $('vp-sub').innerHTML = `<span class="tcell">${glyphFor(cat || 'other')}<code>${esc(p.type || '')}</code></span>` + (displayName ? ' ' + esc(displayName) : '');
+  
+      let pill = '';
+      if (state === 'running') pill = `<span class="pill ok"><span class="dot ok"></span>running</span>`;
+      else if (state === 'failing') pill = `<span class="pill err"><span class="dot err"></span>failing</span>`;
+      else if (state === 'target-down') pill = `<span class="pill err"><span class="dot err"></span>target down</span>`;
+      else if (state === 'starting') pill = `<span class="pill warn"><span class="dot warn"></span>starting</span>`;
+      else if (state === 'disabled') pill = `<span class="pill off">disabled</span>`;
+      else if (state === 'locked') {
+        if (p.tier === 'pro') pill = `<span class="pill lock">&#128274; not licensed</span> <span class="pill pro">Pro</span>`;
+        else pill = `<span class="pill off">not on this platform</span>`;
+      }
+  
+      const rows = [];
+      rows.push(`<dt>Last collection</dt><dd>${p.last_update ? esc(hhmmss(p.last_update)) : '-'}</dd>`);
+      rows.push(`<dt>Interval</dt><dd>${p.interval ? `${esc(String(p.interval))} s` : '-'}</dd>`);
+      rows.push(`<dt>Metrics</dt><dd>${p.enabled ? esc(String(p.metrics_count || 0)) : '-'}</dd>`);
+  
+      if (!p.managed || (p.env_variables && p.env_variables.length)) {
+        const origin = (p.env_variables && p.env_variables.length)
+          ? `Environment variables: ${esc(p.env_variables.join(', '))}`
+          : 'File written by hand';
+        rows.push(`<dt>Origin</dt><dd>${origin}</dd>`);
+      }
+  
+      let bannerHtml = '';
+      if (state === 'failing' || state === 'target-down') {
+        const text = state === 'failing'
+          ? (p.last_error || p.reason || 'collection failed')
+          : `Collecting, and ${p.target_metric || 'its up metric'} reads 0.`;
+        bannerHtml = `<div class="banner err" style="overflow-wrap:anywhere">${esc(text)}</div>`;
+      } else if (state === 'locked') {
+        bannerHtml = `<div class="banner warn" style="overflow-wrap:anywhere">${esc(p.reason || 'Not authorized.')}</div>`;
+      } else if (state === 'starting' && p.reason) {
+        bannerHtml = `<div class="banner warn" style="overflow-wrap:anywhere">${esc(p.reason)}</div>`;
+      }
+  
+      $('vp-status').innerHTML = `<div class="vp-facts"><div>${pill}</div><dl class="kv left">${rows.join('')}</dl></div>${bannerHtml.replace('banner ', 'vp-why banner ')}`;
+    },
+  
+    renderActions(p) {
+      const name = q.get('view') || p.name || '';
+      const state = List.stateOf(p);
+      const envLocked = !!(p.env_variables && p.env_variables.length);
+      const editable = p.managed && p.has_schema && !envLocked;
+      const actions = [];
+  
+      if (editable) {
+        const primary = state === 'failing' || state === 'target-down';
+        actions.push(`<a class="btn${primary ? ' primary' : ''}" href="?edit=${encodeURIComponent(name)}">Edit</a>`);
+      } else {
+        let muted;
+        if (envLocked) muted = `Set by environment variables: ${p.env_variables.join(', ')}. Change them where the agent is started.`;
+        else if (!p.managed) muted = 'Declared in a file written by hand; edit the file.';
+        else muted = 'This probe type has no form in the console.';
+        actions.push(`<span class="small muted">${esc(muted)}</span>`);
+      }
+  
+      if (state !== 'disabled') {
+        actions.push(`<a class="btn" href="${View.url('outputs/http#urls&probe=' + encodeURIComponent(name))}">Sensor URL</a>`);
+      }
+  
+      if (p.managed && !envLocked) {
+        actions.push(`<button class="btn" id="vp-toggle">${p.enabled ? 'Disable' : 'Enable'}</button>`);
+        actions.push(`<button class="btn danger" id="vp-delete">Delete</button>`);
+      }
+  
+      actions.push(`<a class="btn ghost" href="${View.url('probes')}">Back to probes</a>`);
+      $('vp-actions').innerHTML = actions.join('');
+  
+      const toggle = $('vp-toggle');
+      if (toggle) {
+        toggle.onclick = async () => {
+          const body = {
+            name,
+            type: p.type,
+            enabled: !p.enabled,
+            params: stripRedacted(p.params || {})
+          };
+          if (p.governance && Object.keys(p.governance).length) body.governance = stripRedacted(p.governance);
+          if (p.custom_tags && Object.keys(p.custom_tags).length) body.custom_tags = stripRedacted(p.custom_tags);
+          try {
+            const d = await send('PUT', API + '/config/probes/' + encodeURIComponent(name), body);
+            setBanner($('vp-banner'), 'ok', '', d.applied || 'Saved.');
+            setTimeout(() => View.load(), 1200);
+          } catch (e) {
+            setBanner($('vp-banner'), 'err', `Could not change ${name}.`, e.message || 'Request failed');
+          }
+        };
+      }
+  
+      const del = $('vp-delete');
+      if (del) {
+        del.onclick = async () => {
+          const ok = await confirmDestructive({
+            title: `Delete the probe "${name}"?`,
+            body: 'Its settings and secrets are removed. Disabling keeps them.'
+          });
+          if (!ok) return;
+          try {
+            const d = await send('DELETE', API + '/config/probes/' + encodeURIComponent(name));
+            sessionStorage.setItem('senhub.probes.banner', JSON.stringify({ kind: 'ok', title: '', body: d.applied || 'Removed.' }));
+            location.href = View.url('probes');
+          } catch (e) {
+            setBanner($('vp-banner'), 'err', `Could not delete ${name}.`, e.message || 'Request failed');
+          }
+        };
+      }
+    },
+  
+    renderMetrics(p, metricsOk) {
+      const filter = $('vp-metrics-filter');
+      const container = $('vp-metrics');
+      const count = $('vp-metrics-count');
+  
+      if (filter) {
+        filter.oninput = () => View.renderMetricsTable();
+        filter.classList.add('hide');
+      }
+  
+      if (!p.enabled) {
+        count.textContent = '0';
+        container.innerHTML = `<div class="empty-line">Disabled: nothing is collected.</div>`;
+        return;
+      }
+  
+      if (!metricsOk) {
+        count.textContent = '0';
+        container.innerHTML = `<div class="empty-line">Current series unavailable.</div>`;
+        return;
+      }
+  
+      if (filter) filter.classList.toggle('hide', View.rows.length <= 20);
+      View.renderMetricsTable();
+    },
+  
+    renderMetricsTable() {
+      const filter = $('vp-metrics-filter');
+      const container = $('vp-metrics');
+      const count = $('vp-metrics-count');
+      const raw = filter ? filter.value.trim().toLowerCase() : '';
+  
+      if (!View.rows.length) {
+        count.textContent = '0';
+        container.innerHTML = `<div class="empty-line">No series currently held for this probe.</div>`;
+        return;
+      }
+  
+      const rows = raw
+        ? View.rows.filter(r => String(r.channel || '').toLowerCase().includes(raw))
+        : View.rows;
+  
+      if (!rows.length) {
+        count.textContent = `0/${View.rows.length}`;
+        container.innerHTML = `<div class="empty-line">No matching series.</div>`;
+        return;
+      }
+  
+      count.textContent = raw ? `${rows.length}/${View.rows.length}` : String(View.rows.length);
+      const trs = rows.map(m => {
+        const channel = esc(String(m.channel || ''));
+        let value;
+        let titleAttr = '';
+        if (m.valuelookup !== undefined && m.valuelookup !== null && m.valuelookup !== '') {
+          value = esc(String(m.value));
+          titleAttr = ` title="${esc(String(m.valuelookup))}"`;
+        } else {
+          const n = Number(m.value);
+          value = Number.isFinite(n) ? n.toLocaleString('en-US', { maximumFractionDigits: 3 }) : esc(String(m.value));
+        }
+        const unit = esc(String(m.customunit || m.unit || ''));
+        return `<tr><td>${channel}</td><td class="num"${titleAttr}>${value}</td><td>${unit}</td></tr>`;
+      }).join('');
+  
+      container.innerHTML = `<div style="overflow-x:auto"><table class="tbl compact"><thead><tr><th>Channel</th><th class="right">Value</th><th>Unit</th></tr></thead><tbody>${trs}</tbody></table></div>`;
+    },
+  
+    renderConfig(p) {
+      const rows = [];
+      rows.push(`<dt>Enabled</dt><dd>${p.enabled ? 'yes' : 'no'}</dd>`);
+      rows.push(`<dt>Interval</dt><dd>${p.interval ? `${esc(String(p.interval))} s` : '-'}</dd>`);
+  
+      const params = p.params || {};
+      const keys = Object.keys(params).sort();
+      const paramRows = [];
+      for (const key of keys) {
+        const v = params[key];
+        if (v === null || v === '' || key === 'interval') continue;
+        const label = esc(key);
+        if (SchemaForm.isStored(v) || (typeof v === 'string' && (v === '********' || v.includes('${secret:')))) {
+          paramRows.push(`<dt>${label}</dt><dd><span class="muted">stored secret</span></dd>`);
+        } else if (v && typeof v === 'object') {
+          paramRows.push(`<dt>${label}</dt><dd><code>${esc(JSON.stringify(v))}</code></dd>`);
+        } else {
+          paramRows.push(`<dt>${label}</dt><dd>${esc(String(v))}</dd>`);
+        }
+      }
+  
+      if (paramRows.length) {
+        rows.push(...paramRows);
+      } else {
+        rows.push(`<dt>Parameters</dt><dd>none</dd>`);
+      }
+  
+      if (p.custom_tags && Object.keys(p.custom_tags).length) {
+        const parts = Object.keys(p.custom_tags).sort()
+          .filter(k => p.custom_tags[k] !== null && p.custom_tags[k] !== '')
+          .map(k => `${esc(k)}=${esc(String(p.custom_tags[k]))}`);
+        if (parts.length) rows.push(`<dt>Tags</dt><dd>${parts.join(', ')}</dd>`);
+      }
+  
+      if (p.governance && Object.keys(p.governance).length) {
+        const g = p.governance;
+        const add = (label, value, raw) => {
+          if (value === undefined || value === null || value === '') return;
+          rows.push(`<dt>${esc(label)}</dt><dd>${raw ? value : esc(String(value))}</dd>`);
+        };
+        const owner = g.owner || {};
+        add('Owner team', owner.team);
+        add('Owner contact', owner.contact);
+        add('Criticality', g.criticality);
+        add('Lifecycle', g.lifecycle);
+  
+        if (g.location !== undefined && g.location !== null && g.location !== '') {
+          if (typeof g.location === 'object') {
+            const parts = Object.keys(g.location).sort()
+              .filter(k => g.location[k] !== undefined && g.location[k] !== null && g.location[k] !== '')
+              .map(k => `${esc(k)}=${esc(String(g.location[k]))}`);
+            if (parts.length) add('Location', parts.join(', '), true);
+          } else {
+            add('Location', g.location);
+          }
+        }
+  
+        if (g.labels !== undefined && g.labels !== null && g.labels !== '') {
+          if (typeof g.labels === 'object') {
+            const parts = Object.keys(g.labels).sort()
+              .filter(k => g.labels[k] !== undefined && g.labels[k] !== null && g.labels[k] !== '')
+              .map(k => `${esc(k)}=${esc(String(g.labels[k]))}`);
+            if (parts.length) add('Labels', parts.join(', '), true);
+          } else {
+            add('Labels', g.labels);
+          }
+        }
+      }
+  
+      $('vp-config').innerHTML = rows.join('');
+    },
+  
+    eventTime(t) {
+      return new Date(t && t < 1000000000000 ? t * 1000 : t);
+    },
+  
+    formatEventTime(t) {
+      const d = View.eventTime(t);
+      const now = new Date();
+      if (d.toDateString() === now.toDateString()) return hhmmss(d);
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return `${months[d.getMonth()]} ${d.getDate()}, ${hhmmss(d)}`;
+    },
+  
+    renderEvents(eventsRes, name) {
+      const container = $('vp-events');
+      if (eventsRes.status === 'rejected') {
+        container.innerHTML = `<div class="empty-line">Events unavailable.</div>`;
+        return;
+      }
+      const events = (eventsRes.value && eventsRes.value.events) || [];
+      const matching = events
+        .filter(e => e.kind === 'probe' && e.subject === name)
+        .sort((a, b) => View.eventTime(b.time) - View.eventTime(a.time))
+        .slice(0, 20);
+  
+      if (!matching.length) {
+        container.innerHTML = `<div class="empty-line">None yet</div>`;
+        return;
+      }
+  
+      const html = matching.map(e => {
+        const levelClass = e.level === 'error' ? 'err' : e.level === 'warn' ? 'warn' : 'ok';
+        const time = esc(View.formatEventTime(e.time));
+        const msg = esc(e.message || e.subject || '');
+        return `<div class="ev"><span class="dot ${levelClass}"></span><div class="msg">${msg}<div class="xs muted">${time}</div></div></div>`;
+      }).join('');
+  
+      container.innerHTML = html;
+    }
   };
 
   // ===================== EDITOR =====================
@@ -909,7 +1322,7 @@
     },
   };
 
-  if (MODE === 'list') List.init(); else Ed.init();
+  if (MODE === 'list') List.init(); else if (MODE === 'view') View.init(); else Ed.init();
 })();
 </script>
 </body>
