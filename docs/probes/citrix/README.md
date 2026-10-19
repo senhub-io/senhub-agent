@@ -83,13 +83,8 @@ A deprecation warning will be logged at startup. See [Configuration Examples](./
 - **[Debug Mode](./DEBUG-MODE.md)** - Identifier extraction and API analysis
 
 ### Architecture & Metrics
-- **[Session Metrics Reference](../../technical-reference/CITRIX-SESSION-METRICS.md)** - Detailed session metrics documentation
-- **[Complete Metrics Reference](../../CITRIX-METRICS-COMPLETE-REFERENCE.md)** - All available metrics with descriptions
 
 ### Troubleshooting & Analysis
-- **[Production Fixes](../../CITRIX-PRODUCTION-FIXES.md)** - Common issues and solutions
-- **[Session Analysis](../../CITRIX-SESSION-ANALYSIS.md)** - Session state analysis and debugging
-- **[Advanced Metrics](../../CITRIX-ADVANCED-METRICS.md)** - Performance optimization insights
 
 ## Key Metrics Collected
 
@@ -140,5 +135,5 @@ The probe supports automatic authentication method selection:
 
 For issues or questions:
 1. Check [troubleshooting documentation](../../troubleshooting/)
-2. Review [production fixes](../../CITRIX-PRODUCTION-FIXES.md)
+2. Review production fixes
 3. Enable debug logging: `--verbose --debug-modules probe.citrix`
