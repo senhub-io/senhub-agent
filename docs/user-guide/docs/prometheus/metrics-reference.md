@@ -27,6 +27,7 @@ the OTLP receiver counters once that probe has received traffic.
 | `senhub_agent_probe_count` | gauge | Configured probes currently running | – |
 | `senhub_agent_probes_healthy` | gauge | Probes reporting `IsHealthy() == true` | – |
 | `senhub_agent_collect_errors_total` | counter | Probe collection errors since start, per probe type and failure reason | `probe`, `reason` |
+| `senhub_agent_logs_redacted_total` | counter | Secrets masked in log records since start, per probe and masking rule (`credential_param`, `authorization_header` or a rule of `logs.redact.rules`); emitted once something has been masked | `probe`, `rule` |
 | `senhub_agent_transformer_fallback_total` | counter | Datapoints processed without a transformer definition (no unit injection or corrections) | – |
 | `senhub_agent_otlp_receiver_ingested_total` | counter | Items accepted by the OTLP receiver, per signal (metrics: emitted internal datapoints after family expansion — a summary counts as its count/sum/quantile points; logs: records; traces: spans) | `signal` |
 | `senhub_agent_otlp_receiver_received_total` | counter | Records relayed by the OTLP receiver, by signal, origin and sending service | `signal`, `origin`, `senhub_otlp_receiver_sender_service_name` |

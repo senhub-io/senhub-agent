@@ -42,6 +42,7 @@ alias LocalConfigurationData = senhub-agent.go/internal/agent/services/configura
   field ConfigVersion int `yaml:"config_version"`
   field Entities *senhub-agent.go/internal/agent/services/configuration.EntitiesConfig `yaml:"entities,omitempty"`
   field Governance map[string]interface{} `yaml:"governance,omitempty"`
+  field Logs *senhub-agent.go/internal/agent/services/configuration.LogsConfig `yaml:"logs,omitempty"`
   field Probes []senhub-agent.go/internal/agent/services/configuration.ProbeConfig `yaml:"probes"`
   field Storage []senhub-agent.go/internal/agent/services/configuration.StorageConfig `yaml:"storage"`
 alias ProbeConfig = senhub-agent.go/internal/agent/services/configuration.ProbeConfig
@@ -467,8 +468,18 @@ type senhub-agent.go/internal/agent/services/configuration.LocalConfigurationDat
   field ConfigVersion int `yaml:"config_version"`
   field Entities *senhub-agent.go/internal/agent/services/configuration.EntitiesConfig `yaml:"entities,omitempty"`
   field Governance map[string]interface{} `yaml:"governance,omitempty"`
+  field Logs *senhub-agent.go/internal/agent/services/configuration.LogsConfig `yaml:"logs,omitempty"`
   field Probes []senhub-agent.go/internal/agent/services/configuration.ProbeConfig `yaml:"probes"`
   field Storage []senhub-agent.go/internal/agent/services/configuration.StorageConfig `yaml:"storage"`
+type senhub-agent.go/internal/agent/services/configuration.LogsConfig struct
+  field Redact *senhub-agent.go/internal/agent/services/configuration.LogsRedactConfig `yaml:"redact,omitempty"`
+type senhub-agent.go/internal/agent/services/configuration.LogsRedactConfig struct
+  field Preset *bool `yaml:"preset,omitempty"`
+  field Rules []senhub-agent.go/internal/agent/services/configuration.LogsRedactRuleSpec `yaml:"rules,omitempty"`
+type senhub-agent.go/internal/agent/services/configuration.LogsRedactRuleSpec struct
+  field Name string `yaml:"name"`
+  field Pattern string `yaml:"pattern"`
+  field Replacement string `yaml:"replacement"`
 type senhub-agent.go/internal/agent/services/configuration.ProbeConfig struct
   field CustomTags map[string]string `json:"custom_tags,omitempty" yaml:"custom_tags,omitempty"`
   field Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
