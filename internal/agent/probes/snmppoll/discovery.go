@@ -448,7 +448,10 @@ func (p *snmppollProbe) pollDiscoveredDevice(ctx context.Context, d discoveredDe
 		routes = nil
 		partial = true
 	}
-	ifaces, err := collectInterfaces(client)
+	ifaces, skippedWalks, err := collectInterfaces(client)
+	if len(skippedWalks) > 0 {
+		p.moduleLogger.Debug().Str("target", d.MgmtIP).Strs("skipped_walks", skippedWalks).Msg("discovery topology: optional ifTable walks failed")
+	}
 	if err != nil {
 		p.moduleLogger.Debug().Err(err).Str("target", d.MgmtIP).Msg("discovery topology: ifTable walk failed")
 		ifaces = nil

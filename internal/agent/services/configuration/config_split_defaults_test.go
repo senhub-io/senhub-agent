@@ -230,3 +230,18 @@ probes:
 		t.Fatalf("after the split: %d otlp, %d http strategies, want 1 and 0 (as before)", otlp, http)
 	}
 }
+
+// A rollback that cannot put a default back must say so.
+func TestRestoreMovedAside_ReportsFailedRename(t *testing.T) {
+	dir := t.TempDir()
+	original := filepath.Join(dir, "00-host.yaml")
+	missingAside := filepath.Join(dir, "00-host.yaml.install-default")
+
+	err := restoreMovedAside([][2]string{{original, missingAside}})
+	if err == nil {
+		t.Fatal("a failed restore must be returned, not discarded")
+	}
+	if !strings.Contains(err.Error(), original) {
+		t.Errorf("error should name the file that was not restored: %v", err)
+	}
+}

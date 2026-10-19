@@ -43,18 +43,29 @@ type ifaceRow struct {
 // collectInterfaces walks the interface name/status/speed columns. ifName is
 // the only required walk (it carries the identity); status and speed are
 // best-effort so a device that omits ifXTable speed still yields named ports.
-func collectInterfaces(client snmpClient) ([]ifaceRow, error) {
+// The second result names the optional walks that failed, for the caller to
+// log.
+func collectInterfaces(client snmpClient) ([]ifaceRow, []string, error) {
 	nameBinds, err := client.WalkRaw(ifName)
 	if err != nil {
-		return nil, fmt.Errorf("ifName walk: %w", err)
+		return nil, nil, fmt.Errorf("ifName walk: %w", err)
 	}
-	speedBinds, _ := client.WalkRaw(ifHighSpeed)
-	operBinds, _ := client.WalkRaw(ifOperStatus)
-	typeBinds, _ := client.WalkRaw(ifType)
-	mtuBinds, _ := client.WalkRaw(ifMtu)
-	macBinds, _ := client.WalkRaw(ifPhysAddr)
-	duplexBinds, _ := client.WalkRaw(dot3Duplex)
-	return parseInterfaces(nameBinds, speedBinds, operBinds, typeBinds, mtuBinds, macBinds, duplexBinds), nil
+	var skipped []string
+	optional := func(name, oid string) []snmpRawBind {
+		binds, err := client.WalkRaw(oid)
+		if err != nil {
+			skipped = append(skipped, fmt.Sprintf("%s: %v", name, err))
+			return nil
+		}
+		return binds
+	}
+	speedBinds := optional("ifHighSpeed", ifHighSpeed)
+	operBinds := optional("ifOperStatus", ifOperStatus)
+	typeBinds := optional("ifType", ifType)
+	mtuBinds := optional("ifMtu", ifMtu)
+	macBinds := optional("ifPhysAddress", ifPhysAddr)
+	duplexBinds := optional("dot3StatsDuplexStatus", dot3Duplex)
+	return parseInterfaces(nameBinds, speedBinds, operBinds, typeBinds, mtuBinds, macBinds, duplexBinds), skipped, nil
 }
 
 func parseInterfaces(nameBinds, speedBinds, operBinds, typeBinds, mtuBinds, macBinds, duplexBinds []snmpRawBind) []ifaceRow {

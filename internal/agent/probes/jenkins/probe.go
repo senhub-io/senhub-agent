@@ -156,6 +156,9 @@ func hostPort(endpoint string) (string, string, error) {
 	if err != nil || u.Host == "" {
 		return "", "", fmt.Errorf("jenkins endpoint %q is not a valid URL: %w", endpoint, err)
 	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", "", fmt.Errorf("jenkins endpoint %q must use http or https, got scheme %q", endpoint, u.Scheme)
+	}
 	host := u.Hostname()
 	port := u.Port()
 	if port == "" {
