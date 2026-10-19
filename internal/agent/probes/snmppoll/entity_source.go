@@ -477,7 +477,11 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 		partial = true
 		routes = nil
 	}
-	ifaces, err := collectInterfaces(client)
+	ifaces, skippedWalks, err := collectInterfaces(client)
+	if len(skippedWalks) > 0 {
+		s.moduleLogger.Debug().Str("target", s.cfg.Target).Strs("skipped_walks", skippedWalks).
+			Msg("optional ifTable walks failed")
+	}
 	if err != nil {
 		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
 			Msg("ifTable walk failed; emitting device without interfaces")
