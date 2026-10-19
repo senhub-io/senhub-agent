@@ -297,6 +297,7 @@ storage:
 | `bind_address` | `127.0.0.1` | Network interface to bind to. Loopback by default — remote pollers (PRTG, Prometheus) require an explicit `"0.0.0.0"` or interface IP |
 | `endpoints` | none | Enabled endpoint types. There is no default: an endpoint answers only when it is listed. The installer writes `["prtg", "web", "nagios", "prometheus"]` |
 | `max_cache_size` | `50000` | Maximum number of distinct series the shared metric cache holds. Past it new series are refused and counted, rather than growing memory without bound — the cache is also fed by `otlp_receiver` and `prometheus_scrape`, whose series sets come from senders you do not control. `0` means unbounded |
+| `prtg.check_result_channel` | `false` | Adds the Check Result channel (`senhub.probe.check.result`) to PRTG sensors. Leave it off unless the SenHub lookup files are installed on the PRTG core: a channel naming a lookup the core does not have turns the whole sensor Warning (PE272). See [Installing PRTG value lookups](web-interface.md#installing-prtg-value-lookups) |
 
 ### Available Endpoint Types
 
@@ -681,18 +682,22 @@ sudo /usr/local/bin/senhub-agent license remove --force  # Remove without confir
 
 ## Auto-Update
 
-The agent can check for new versions and optionally install them automatically.
+The agent checks for new versions. Whether it installs them itself depends on the platform:
+
+- **Linux:** the running agent never installs a new version. It only reports that one is available. Install it yourself with `sudo senhub-agent update`; on a `.deb` or `.rpm` install, use the package manager instead (the command refuses there). This is deliberate: the service account cannot rewrite its own binary, so a compromised agent cannot make itself persistent.
+- **Windows, MSI install:** with `enabled: true` the agent downloads the signed MSI and applies it.
+- **Windows, ZIP install:** with `enabled: true` the agent replaces its binary.
 
 ```yaml
 auto_update:
-  enabled: false          # Automatic installation of new versions
+  enabled: false          # Install new versions (Windows only; Linux reports them)
   include_beta: false     # Include beta versions in update checks
   url: "https://eu-west-1.intake.senhub.io/"
 ```
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `enabled` | `false` | Automatically install new versions when available |
+| `enabled` | `false` | Install new versions when available. Applies to Windows only; on Linux the agent only reports the new version |
 | `include_beta` | `false` | Include beta versions in update checks |
 | `url` | SenHub releases | Update server URL. The **base** the agent appends to — a value carrying `/releases` or `/download` makes every derived URL double it |
 | `version` | `latest` | Target the periodic updater tracks. `latest` resolves the newest stable; an explicit version pins to it |

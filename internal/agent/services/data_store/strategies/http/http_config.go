@@ -34,6 +34,12 @@ type ConfigurationManager struct {
 	// Defaults: include_probe_tags=true, expose_host_metrics=true.
 	prometheusIncludeProbeTags  bool
 	prometheusExposeHostMetrics bool
+
+	// prtgCheckResultChannel adds the Check Result channel to PRTG
+	// sensors (params["prtg"]["check_result_channel"]). Off by default:
+	// the channel names a lookup a PRTG core does not ship, and a sensor
+	// whose channel references a missing lookup turns Warning (PE272).
+	prtgCheckResultChannel bool
 }
 
 // NewConfigurationManager creates a new configuration manager
@@ -134,6 +140,15 @@ func (cm *ConfigurationManager) loadConfiguration() {
 			}
 			if v, ok := promCfg["expose_host_metrics"].(bool); ok {
 				cm.prometheusExposeHostMetrics = v
+			}
+		}
+	}
+
+	cm.prtgCheckResultChannel = false
+	if prtgParam, exists := cm.params["prtg"]; exists {
+		if prtgCfg, ok := prtgParam.(map[string]interface{}); ok {
+			if v, ok := prtgCfg["check_result_channel"].(bool); ok {
+				cm.prtgCheckResultChannel = v
 			}
 		}
 	}
@@ -399,4 +414,10 @@ func (cm *ConfigurationManager) IsPrometheusIncludeProbeTags() bool {
 // host can avoid duplicate series. Default: true.
 func (cm *ConfigurationManager) IsPrometheusExposeHostMetrics() bool {
 	return cm.prometheusExposeHostMetrics
+}
+
+// IsPRTGCheckResultChannel reports whether PRTG sensors carry the Check
+// Result channel. Default: false.
+func (cm *ConfigurationManager) IsPRTGCheckResultChannel() bool {
+	return cm.prtgCheckResultChannel
 }

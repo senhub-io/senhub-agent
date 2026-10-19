@@ -1111,7 +1111,7 @@ func parseFloat(s string) (float64, bool) {
 	if s == "" {
 		return 0, false
 	}
-	v, err := strconv.ParseFloat(strings.TrimSpace(s), 32)
+	v, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
 	if err != nil {
 		return 0, false
 	}

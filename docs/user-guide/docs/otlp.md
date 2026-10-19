@@ -328,7 +328,9 @@ A rule applies to relayed spans whose resource attribute `key` equals
 
 Entity events (the infrastructure graph: hosts, interfaces, services and
 their relationships) ride the OTLP **log** signal, so this signal has no
-endpoint or batch knobs of its own — it reuses the log transport.
+endpoint or batch knobs of its own — it reuses the log transport. What the
+agent reports, what is off by default and how a consumer reads a deletion
+are on the [Topology](topology.md) page.
 
 When `entities.enabled` is off, the output logs one warning at start,
 `entity emission is off on this OTLP output`, so an empty topology can be
