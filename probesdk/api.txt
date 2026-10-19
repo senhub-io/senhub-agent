@@ -1,0 +1,557 @@
+== senhub-agent.go/app (package app) ==
+type ExtraCommand struct
+  field Name string
+  field ReadOnly bool
+  field Run func()
+func Main()
+func RegisterCommand(c senhub-agent.go/app.ExtraCommand)
+== senhub-agent.go/probesdk/cliargs (package cliArgs) ==
+alias ParsedArgs = senhub-agent.go/internal/agent/cliArgs.ParsedArgs
+  field AuthenticationKey string
+  field CertFile string
+  field CommitHash string
+  field ConfigPath string
+  field DebugLogShipperBuffer int
+  field DebugLogShipperTags map[string]string
+  field DebugLogShipperUrl string
+  field DebugModules []string
+  field DryRun bool
+  field EnableHttps bool
+  field Env string
+  field HttpBindAddress string
+  field HttpPort int
+  field HttpsHosts []string
+  field HttpsPort int
+  field KeyFile string
+  field LogFormat string
+  field MinTlsVersion string
+  field NoRestart bool
+  field ServiceUser string
+  field ShowOTLP bool
+  field UpdateRegistryUrl string
+  field Verbose bool
+  field Version string
+  field WantedVersion string
+  field Yes bool
+== senhub-agent.go/probesdk/config (package configuration) ==
+func LoadForShow(configPath string, mode senhub-agent.go/probesdk/config.ShowMode, log *senhub-agent.go/internal/agent/services/logger.ModuleLogger) (senhub-agent.go/probesdk/config.LocalConfigurationData, error)
+alias LocalConfigurationData = senhub-agent.go/internal/agent/services/configuration.LocalConfigurationData
+  field Agent senhub-agent.go/internal/agent/services/configuration.LocalAgentConfig `yaml:"agent"`
+  field AutoUpdate *senhub-agent.go/internal/agent/services/configuration.AutoUpdateConfig `yaml:"auto_update,omitempty"`
+  field Cache *senhub-agent.go/internal/agent/services/configuration.CacheConfig `yaml:"cache,omitempty"`
+  field ConfigVersion int `yaml:"config_version"`
+  field Entities *senhub-agent.go/internal/agent/services/configuration.EntitiesConfig `yaml:"entities,omitempty"`
+  field Governance map[string]interface{} `yaml:"governance,omitempty"`
+  field Probes []senhub-agent.go/internal/agent/services/configuration.ProbeConfig `yaml:"probes"`
+  field Storage []senhub-agent.go/internal/agent/services/configuration.StorageConfig `yaml:"storage"`
+alias ProbeConfig = senhub-agent.go/internal/agent/services/configuration.ProbeConfig
+  field CustomTags map[string]string `json:"custom_tags,omitempty" yaml:"custom_tags,omitempty"`
+  field Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+  field Governance map[string]interface{} `json:"governance,omitempty" yaml:"governance,omitempty"`
+  field LogStrategies []string `json:"log_strategies,omitempty" yaml:"log_strategies,omitempty"`
+  field Name string `json:"name"`
+  field Params senhub-agent.go/internal/agent/services/configuration.ProbeConfigParams `json:"params"`
+  field Type string `json:"type,omitempty"`
+  method ID() string
+  method IsEnabled() bool
+  method ParseGovernance() (senhub-agent.go/internal/agent/services/governance.Governance, error)
+alias ShowMode = senhub-agent.go/internal/agent/services/configuration.ShowMode
+  underlying int
+const ShowRaw senhub-agent.go/internal/agent/services/configuration.ShowMode = 1
+const ShowRedact senhub-agent.go/internal/agent/services/configuration.ShowMode = 2
+const ShowResolved senhub-agent.go/internal/agent/services/configuration.ShowMode = 0
+== senhub-agent.go/probesdk/configparser (package configParser) ==
+func ParseDuration(value any) (time.Duration, error)
+== senhub-agent.go/probesdk/datapoint (package datapoint) ==
+alias DataPoint = senhub-agent.go/internal/agent/types/datapoint.DataPoint
+  field Histogram *senhub-agent.go/internal/agent/types/datapoint.HistogramValue `json:"histogram,omitempty"`
+  field Name string `json:"name"`
+  field Tags []senhub-agent.go/internal/agent/tags.Tag `json:"tags,omitempty"`
+  field Timestamp time.Time `json:"timestamp"`
+  field Value float64 `json:"value"`
+== senhub-agent.go/probesdk/datastore (package data_store) ==
+func CreatePrtgMetricIdTag(metricID string) senhub-agent.go/internal/agent/tags.Tag
+alias DataPoint = senhub-agent.go/internal/agent/types/datapoint.DataPoint
+  field Histogram *senhub-agent.go/internal/agent/types/datapoint.HistogramValue `json:"histogram,omitempty"`
+  field Name string `json:"name"`
+  field Tags []senhub-agent.go/internal/agent/tags.Tag `json:"tags,omitempty"`
+  field Timestamp time.Time `json:"timestamp"`
+  field Value float64 `json:"value"`
+alias StrategyRouter = senhub-agent.go/internal/agent/services/data_store.StrategyRouter
+  imethod GetTargetStrategies() []string
+== senhub-agent.go/probesdk/dbcommon (package dbcommon) ==
+func DetectEnvironment(versionString string) senhub-agent.go/probesdk/dbcommon.Environment
+alias Environment = senhub-agent.go/internal/agent/probes/dbcommon.Environment
+  underlying string
+func IsSystemDatabase(name string) bool
+alias MetricType = senhub-agent.go/internal/agent/probes/dbcommon.MetricType
+  underlying string
+const MetricTypeArchiver senhub-agent.go/internal/agent/probes/dbcommon.MetricType = "archiver"
+const MetricTypeBloat senhub-agent.go/internal/agent/probes/dbcommon.MetricType = "bloat"
+const MetricTypeCache senhub-agent.go/internal/agent/probes/dbcommon.MetricType = "cache"
+const MetricTypeConnections senhub-agent.go/internal/agent/probes/dbcommon.MetricType = "connections"
+const MetricTypeIO senhub-agent.go/internal/agent/probes/dbcommon.MetricType = "io"
+const MetricTypeLocks senhub-agent.go/internal/agent/probes/dbcommon.MetricType = "locks"
+const MetricTypeOverview senhub-agent.go/internal/agent/probes/dbcommon.MetricType = "overview"
+const MetricTypePerDatabase senhub-agent.go/internal/agent/probes/dbcommon.MetricType = "per_database"
+const MetricTypePerTable senhub-agent.go/internal/agent/probes/dbcommon.MetricType = "per_table"
+const MetricTypeReplication senhub-agent.go/internal/agent/probes/dbcommon.MetricType = "replication"
+const MetricTypeStatStatements senhub-agent.go/internal/agent/probes/dbcommon.MetricType = "stat_statements"
+const MetricTypeStorage senhub-agent.go/internal/agent/probes/dbcommon.MetricType = "storage"
+const MetricTypeThroughput senhub-agent.go/internal/agent/probes/dbcommon.MetricType = "throughput"
+alias Role = senhub-agent.go/internal/agent/probes/dbcommon.Role
+  underlying int
+  method RoleValue() float64
+  method String() string
+const RolePrimary senhub-agent.go/internal/agent/probes/dbcommon.Role = 1
+const RoleReplica senhub-agent.go/internal/agent/probes/dbcommon.Role = 2
+const RoleStandalone senhub-agent.go/internal/agent/probes/dbcommon.Role = 0
+== senhub-agent.go/probesdk/docsparams (package docsparams) ==
+func DocsDir() (string, error)
+const End untyped string = "<!-- schema:params:end -->"
+func PageFor(docsDir string, probeType string) string
+func Render(p senhub-agent.go/probesdk/spec.Probe) string
+alias Result = senhub-agent.go/internal/docsparams.Result
+  field NoPage []string
+  field Stale []string
+  field Written []string
+const Start untyped string = "<!-- schema:params:start -->"
+func Sync(docsDir string, probes []senhub-agent.go/probesdk/spec.Probe, update bool) (senhub-agent.go/probesdk/docsparams.Result, error)
+== senhub-agent.go/probesdk/entity (package entity) ==
+func AgentInstanceID() string
+alias Entity = senhub-agent.go/internal/agent/services/entity.Entity
+  field Attributes map[string]any
+  field Cadence time.Duration
+  field ID map[string]any
+  field ObservedAt time.Time
+  field Relationships []senhub-agent.go/internal/agent/services/entity.Relationship
+  field Scope string
+  field Type string
+func HostID() string
+func IsLoopbackHost(serverAddress string) bool
+func LocalRunsOn(fromType string, fromID map[string]any, serverAddress string, hostID string) (senhub-agent.go/probesdk/entity.Relation, bool)
+alias Observation = senhub-agent.go/internal/agent/services/entity.Observation
+  field Entities []senhub-agent.go/internal/agent/services/entity.Entity
+  field Relations []senhub-agent.go/internal/agent/services/entity.Relation
+  method WithScope(scope string) senhub-agent.go/internal/agent/services/entity.Observation
+func RegisterSource(s senhub-agent.go/probesdk/entity.Source) (unregister func())
+alias Relation = senhub-agent.go/internal/agent/services/entity.Relation
+  field Attributes map[string]any
+  field FromID map[string]any
+  field FromType string
+  field ToID map[string]any
+  field ToType string
+  field Type string
+alias Source = senhub-agent.go/internal/agent/services/entity.Source
+  imethod Observe() (senhub-agent.go/internal/agent/services/entity.Observation, bool)
+== senhub-agent.go/probesdk/exporthook (package exporthook) ==
+func Authorized(feature string) bool
+func RegisterSelfRecordProvider(p senhub-agent.go/probesdk/exporthook.SelfRecordProvider)
+func RegisterSeriesObserver(o senhub-agent.go/probesdk/exporthook.SeriesObserver)
+alias SelfRecord = senhub-agent.go/internal/agent/services/exporthook.SelfRecord
+  field Attributes map[string]string
+  field Description string
+  field Name string
+  field Type string
+  field Unit string
+  field Value float64
+alias SelfRecordProvider = senhub-agent.go/internal/agent/services/exporthook.SelfRecordProvider
+  underlying func(now time.Time) []senhub-agent.go/internal/agent/services/exporthook.SelfRecord
+alias SeriesObserver = senhub-agent.go/internal/agent/services/exporthook.SeriesObserver
+  underlying func(output string, points []senhub-agent.go/internal/agent/services/exporthook.SeriesPoint, now time.Time)
+alias SeriesPoint = senhub-agent.go/internal/agent/services/exporthook.SeriesPoint
+  field Attributes map[string]string
+  field Name string
+  field Probe string
+== senhub-agent.go/probesdk/license (package license) ==
+func GetFreeTierProbes() []string
+func IsProbeAuthorizable(probeName string) bool
+func KnownPaidProbes() []string
+== senhub-agent.go/probesdk/logger (package logger) ==
+alias Logger = github.com/rs/zerolog.Logger
+  method (*github.com/rs/zerolog.Logger) Debug() *github.com/rs/zerolog.Event
+  method (*github.com/rs/zerolog.Logger) Err(err error) *github.com/rs/zerolog.Event
+  method (*github.com/rs/zerolog.Logger) Error() *github.com/rs/zerolog.Event
+  method (*github.com/rs/zerolog.Logger) Fatal() *github.com/rs/zerolog.Event
+  method GetLevel() github.com/rs/zerolog.Level
+  method Hook(hooks ...github.com/rs/zerolog.Hook) github.com/rs/zerolog.Logger
+  method (*github.com/rs/zerolog.Logger) Info() *github.com/rs/zerolog.Event
+  method Level(lvl github.com/rs/zerolog.Level) github.com/rs/zerolog.Logger
+  method (*github.com/rs/zerolog.Logger) Log() *github.com/rs/zerolog.Event
+  method Output(w io.Writer) github.com/rs/zerolog.Logger
+  method (*github.com/rs/zerolog.Logger) Panic() *github.com/rs/zerolog.Event
+  method (*github.com/rs/zerolog.Logger) Print(v ...interface{})
+  method (*github.com/rs/zerolog.Logger) Printf(format string, v ...interface{})
+  method (*github.com/rs/zerolog.Logger) Println(v ...interface{})
+  method Sample(s github.com/rs/zerolog.Sampler) github.com/rs/zerolog.Logger
+  method (*github.com/rs/zerolog.Logger) Trace() *github.com/rs/zerolog.Event
+  method (*github.com/rs/zerolog.Logger) UpdateContext(update func(c github.com/rs/zerolog.Context) github.com/rs/zerolog.Context)
+  method (*github.com/rs/zerolog.Logger) Warn() *github.com/rs/zerolog.Event
+  method With() github.com/rs/zerolog.Context
+  method WithContext(ctx context.Context) context.Context
+  method (*github.com/rs/zerolog.Logger) WithLevel(level github.com/rs/zerolog.Level) *github.com/rs/zerolog.Event
+  method Write(p []byte) (n int, err error)
+alias ModuleLogger = senhub-agent.go/internal/agent/services/logger.ModuleLogger
+  embedded *github.com/rs/zerolog.Logger
+  method (*senhub-agent.go/internal/agent/services/logger.ModuleLogger) Debug() *github.com/rs/zerolog.Event
+  method (*github.com/rs/zerolog.Logger) Err(err error) *github.com/rs/zerolog.Event
+  method (*senhub-agent.go/internal/agent/services/logger.ModuleLogger) Error() *github.com/rs/zerolog.Event
+  method (*github.com/rs/zerolog.Logger) Fatal() *github.com/rs/zerolog.Event
+  method GetLevel() github.com/rs/zerolog.Level
+  method Hook(hooks ...github.com/rs/zerolog.Hook) github.com/rs/zerolog.Logger
+  method (*senhub-agent.go/internal/agent/services/logger.ModuleLogger) Info() *github.com/rs/zerolog.Event
+  method Level(lvl github.com/rs/zerolog.Level) github.com/rs/zerolog.Logger
+  method (*github.com/rs/zerolog.Logger) Log() *github.com/rs/zerolog.Event
+  method Output(w io.Writer) github.com/rs/zerolog.Logger
+  method (*github.com/rs/zerolog.Logger) Panic() *github.com/rs/zerolog.Event
+  method (*github.com/rs/zerolog.Logger) Print(v ...interface{})
+  method (*github.com/rs/zerolog.Logger) Printf(format string, v ...interface{})
+  method (*github.com/rs/zerolog.Logger) Println(v ...interface{})
+  method Sample(s github.com/rs/zerolog.Sampler) github.com/rs/zerolog.Logger
+  method (*github.com/rs/zerolog.Logger) Trace() *github.com/rs/zerolog.Event
+  method (*github.com/rs/zerolog.Logger) UpdateContext(update func(c github.com/rs/zerolog.Context) github.com/rs/zerolog.Context)
+  method (*senhub-agent.go/internal/agent/services/logger.ModuleLogger) Warn() *github.com/rs/zerolog.Event
+  method With() github.com/rs/zerolog.Context
+  method WithContext(ctx context.Context) context.Context
+  method (*github.com/rs/zerolog.Logger) WithLevel(level github.com/rs/zerolog.Level) *github.com/rs/zerolog.Event
+  method Write(p []byte) (n int, err error)
+func NewLogger(args *senhub-agent.go/internal/agent/cliArgs.ParsedArgs) *senhub-agent.go/probesdk/logger.Logger
+func NewModuleLogger(base *senhub-agent.go/probesdk/logger.Logger, module string) *senhub-agent.go/probesdk/logger.ModuleLogger
+== senhub-agent.go/probesdk/logparse (package logparse) ==
+alias Assembler = senhub-agent.go/internal/agent/probes/logparse.Assembler
+  method (*senhub-agent.go/internal/agent/probes/logparse.Assembler) Append(line string) []string
+  method (*senhub-agent.go/internal/agent/probes/logparse.Assembler) Flush() []string
+  method (*senhub-agent.go/internal/agent/probes/logparse.Assembler) Pending() bool
+const DefaultMaxBytesPerLine untyped int = 1048576
+alias MultilineConfig = senhub-agent.go/internal/agent/probes/logparse.MultilineConfig
+  field Match string
+  field Negate bool
+  field Pattern string
+  method Enabled() bool
+func NewAssembler(cfg senhub-agent.go/probesdk/logparse.MultilineConfig, maxLen int) *senhub-agent.go/probesdk/logparse.Assembler
+var ParseLine func(pc senhub-agent.go/internal/agent/probes/logparse.ParserConfig, line string, readTime time.Time, probeName string, probeType string) (senhub-agent.go/internal/agent/services/agentstate.LogRecord, bool)
+func ParseMultiline(config map[string]interface{}, ml *senhub-agent.go/probesdk/logparse.MultilineConfig) error
+func ParseParser(config map[string]interface{}, pc *senhub-agent.go/probesdk/logparse.ParserConfig) error
+alias ParserConfig = senhub-agent.go/internal/agent/probes/logparse.ParserConfig
+  field Pattern string
+  field TimestampField string
+  field TimestampFormat string
+  field Type senhub-agent.go/internal/agent/probes/logparse.ParserType
+  method Compiled() bool
+const ParserJSON senhub-agent.go/internal/agent/probes/logparse.ParserType = "json"
+const ParserLogfmt senhub-agent.go/internal/agent/probes/logparse.ParserType = "logfmt"
+const ParserRaw senhub-agent.go/internal/agent/probes/logparse.ParserType = "raw"
+const ParserRegex senhub-agent.go/internal/agent/probes/logparse.ParserType = "regex"
+alias ParserType = senhub-agent.go/internal/agent/probes/logparse.ParserType
+  underlying string
+func Truncate(s string, max int) string
+== senhub-agent.go/probesdk/logs (package logs) ==
+func Publish(rec senhub-agent.go/probesdk/logs.Record)
+alias Record = senhub-agent.go/internal/agent/services/agentstate.LogRecord
+  field Attributes map[string]string
+  field Body string
+  field Fields map[string]any
+  field ProducerProbeName string
+  field ProducerProbeType string
+  field Severity senhub-agent.go/internal/agent/services/agentstate.LogSeverity
+  field SeverityText string
+  field TargetStrategies []string
+  field Timestamp time.Time
+alias Severity = senhub-agent.go/internal/agent/services/agentstate.LogSeverity
+  underlying uint8
+const SeverityDebug senhub-agent.go/internal/agent/services/agentstate.LogSeverity = 5
+const SeverityError senhub-agent.go/internal/agent/services/agentstate.LogSeverity = 17
+const SeverityFatal senhub-agent.go/internal/agent/services/agentstate.LogSeverity = 21
+const SeverityInfo senhub-agent.go/internal/agent/services/agentstate.LogSeverity = 9
+const SeverityTrace senhub-agent.go/internal/agent/services/agentstate.LogSeverity = 1
+const SeverityUnspecified senhub-agent.go/internal/agent/services/agentstate.LogSeverity = 0
+const SeverityWarn senhub-agent.go/internal/agent/services/agentstate.LogSeverity = 13
+== senhub-agent.go/probesdk/probes (package probes) ==
+func GetRegisteredProbeTypes() map[string]bool
+alias ProbeConstructor = senhub-agent.go/internal/agent/probes.ProbeConstructor
+  underlying func(map[string]interface{}, *senhub-agent.go/internal/agent/services/logger.Logger) (senhub-agent.go/internal/agent/probes/types.Probe, error)
+func RegisterProbe(name string, ctor senhub-agent.go/probesdk/probes.ProbeConstructor)
+func RegisteredProbeNames() []string
+== senhub-agent.go/probesdk/sanitize (package sanitize) ==
+func Bytes(v int64) (float64, bool)
+func CountInt32(v int64) (float64, bool)
+func Duration(t *time.Time, now time.Time) (float64, bool)
+func EnumValue(name string, mapping map[string]float64) (float64, bool)
+func IsFinite(v float64) bool
+const MaxInt32 float64 = 2147483647
+== senhub-agent.go/probesdk/spec (package spec) ==
+alias Condition = senhub-agent.go/internal/agent/probes/spec.Condition
+  field Key string `json:"key"`
+  field Values []string `json:"values"`
+func For(probeType string) (senhub-agent.go/probesdk/spec.Probe, bool)
+const KindBlock senhub-agent.go/internal/agent/probes/spec.ParamKind = "block"
+const KindBlockList senhub-agent.go/internal/agent/probes/spec.ParamKind = "block_list"
+const KindBool senhub-agent.go/internal/agent/probes/spec.ParamKind = "bool"
+const KindDuration senhub-agent.go/internal/agent/probes/spec.ParamKind = "duration"
+const KindFloat senhub-agent.go/internal/agent/probes/spec.ParamKind = "float"
+const KindInt senhub-agent.go/internal/agent/probes/spec.ParamKind = "int"
+const KindMap senhub-agent.go/internal/agent/probes/spec.ParamKind = "map"
+const KindString senhub-agent.go/internal/agent/probes/spec.ParamKind = "string"
+const KindStringList senhub-agent.go/internal/agent/probes/spec.ParamKind = "string_list"
+alias ParamKind = senhub-agent.go/internal/agent/probes/spec.ParamKind
+  underlying string
+alias ParamSpec = senhub-agent.go/internal/agent/probes/spec.ParamSpec
+  field Advanced bool `json:"advanced,omitempty"`
+  field AlsoAccepts []string `json:"also_accepts,omitempty"`
+  field Default interface{} `json:"default,omitempty"`
+  field Description string `json:"description,omitempty"`
+  field Enum []string `json:"enum,omitempty"`
+  field Essential bool `json:"essential,omitempty"`
+  field EssentialWhen []senhub-agent.go/internal/agent/probes/spec.Condition `json:"essential_when,omitempty"`
+  field Example string `json:"example,omitempty"`
+  field Fields []senhub-agent.go/internal/agent/probes/spec.ParamSpec `json:"fields,omitempty"`
+  field Group string `json:"group,omitempty"`
+  field Key string `json:"key"`
+  field Kind senhub-agent.go/internal/agent/probes/spec.ParamKind `json:"kind"`
+  field Required bool `json:"required,omitempty"`
+  field ScalarMeans string `json:"scalar_means,omitempty"`
+  field Secret bool `json:"secret,omitempty"`
+alias Probe = senhub-agent.go/internal/agent/probes/spec.Probe
+  field Category string `json:"category,omitempty"`
+  field DefaultInterval int `json:"default_interval,omitempty"`
+  field DisplayName string `json:"display_name"`
+  field DocsPath string `json:"docs_path,omitempty"`
+  field MultiInstance bool `json:"multi_instance"`
+  field Params []senhub-agent.go/internal/agent/probes/spec.ParamSpec `json:"params"`
+  field Platforms []string `json:"platforms,omitempty"`
+  field Summary string `json:"summary,omitempty"`
+  field Type string `json:"type"`
+  method CheckParams(params map[string]interface{}) []senhub-agent.go/internal/agent/probes/spec.SpecProblem
+  method DeclaredKeys() map[string]struct{}
+  method HasStartSet() bool
+  method RunsOn(goos string) bool
+  method SecretPaths() []string
+func Register(p senhub-agent.go/probesdk/spec.Probe)
+func Registered() []senhub-agent.go/probesdk/spec.Probe
+== senhub-agent.go/probesdk/state (package state) ==
+func Dir() string
+const EnvDir untyped string = "SENHUB_STATE_DIR"
+func Path(name string) string
+== senhub-agent.go/probesdk/tags (package tags) ==
+alias Tag = senhub-agent.go/internal/agent/tags.Tag
+  field Key string `json:"key"`
+  field Private bool `json:"-"`
+  field Value string `json:"value"`
+func UrlToTagKey(urlString string) (string, error)
+== senhub-agent.go/probesdk/types (package types) ==
+alias BaseProbe = senhub-agent.go/internal/agent/probes/types.BaseProbe
+  method (*senhub-agent.go/internal/agent/probes/types.BaseProbe) EnrichDataPointsWithProbeName(datapoints []senhub-agent.go/internal/agent/services/data_store.DataPoint, probeName string) []senhub-agent.go/internal/agent/services/data_store.DataPoint
+  method (*senhub-agent.go/internal/agent/probes/types.BaseProbe) EntitySource() senhub-agent.go/internal/agent/services/entity.Source
+  method (*senhub-agent.go/internal/agent/probes/types.BaseProbe) GetName() string
+  method (*senhub-agent.go/internal/agent/probes/types.BaseProbe) GetProbeType() string
+  method (*senhub-agent.go/internal/agent/probes/types.BaseProbe) GetTargetStrategies() []string
+  method (*senhub-agent.go/internal/agent/probes/types.BaseProbe) LogTargets() []string
+  method (*senhub-agent.go/internal/agent/probes/types.BaseProbe) SetEntitySource(src senhub-agent.go/internal/agent/services/entity.Source)
+  method (*senhub-agent.go/internal/agent/probes/types.BaseProbe) SetLogTargets(targets []string)
+  method (*senhub-agent.go/internal/agent/probes/types.BaseProbe) SetName(name string)
+  method (*senhub-agent.go/internal/agent/probes/types.BaseProbe) SetProbeType(probeType string)
+func BoolParam(m map[string]interface{}, key string) (bool, bool)
+func DurationParam(m map[string]interface{}, key string) (time.Duration, bool)
+var ErrCredentialsRejected error
+func FloatParam(m map[string]interface{}, key string) (float64, bool)
+func IntParam(m map[string]interface{}, key string) (int, bool)
+alias Probe = senhub-agent.go/internal/agent/probes/types.Probe
+  imethod Collect() ([]senhub-agent.go/internal/agent/types/datapoint.DataPoint, error)
+  imethod EntitySource() senhub-agent.go/internal/agent/services/entity.Source
+  imethod GetInterval() time.Duration
+  imethod GetName() string
+  imethod OnShutdown(ctx context.Context) error
+  imethod OnStart(quitChannel chan struct{}) error
+  imethod ShouldStart() bool
+alias ProbeWithCallback = senhub-agent.go/internal/agent/probes/types.ProbeWithCallback
+  imethod Collect() ([]senhub-agent.go/internal/agent/types/datapoint.DataPoint, error)
+  imethod EntitySource() senhub-agent.go/internal/agent/services/entity.Source
+  imethod GetInterval() time.Duration
+  imethod GetName() string
+  imethod OnShutdown(ctx context.Context) error
+  imethod OnStart(quitChannel chan struct{}) error
+  imethod SetCallback(func([]senhub-agent.go/internal/agent/types/datapoint.DataPoint) error)
+  imethod ShouldStart() bool
+  embedded senhub-agent.go/internal/agent/probes/types.Probe
+func StringParam(m map[string]interface{}, key string) (string, bool)
+func StringSlice(raw interface{}) []string
+func StringSliceParam(m map[string]interface{}, key string) ([]string, bool)
+== senhub-agent.go/probesdk/validators (package validators) ==
+func IsDuration(value any) bool
+func IsURL(urlStr string) bool
+== reachable types ==
+type senhub-agent.go/internal/agent/probes/dbcommon.Environment string
+  underlying string
+type senhub-agent.go/internal/agent/probes/logparse.ParserConfig struct
+  field Pattern string
+  field TimestampField string
+  field TimestampFormat string
+  field Type senhub-agent.go/internal/agent/probes/logparse.ParserType
+  method Compiled() bool
+type senhub-agent.go/internal/agent/probes/logparse.ParserType string
+  underlying string
+type senhub-agent.go/internal/agent/probes/spec.ParamKind string
+  underlying string
+type senhub-agent.go/internal/agent/probes/spec.Probe struct
+  field Category string `json:"category,omitempty"`
+  field DefaultInterval int `json:"default_interval,omitempty"`
+  field DisplayName string `json:"display_name"`
+  field DocsPath string `json:"docs_path,omitempty"`
+  field MultiInstance bool `json:"multi_instance"`
+  field Params []senhub-agent.go/internal/agent/probes/spec.ParamSpec `json:"params"`
+  field Platforms []string `json:"platforms,omitempty"`
+  field Summary string `json:"summary,omitempty"`
+  field Type string `json:"type"`
+  method CheckParams(params map[string]interface{}) []senhub-agent.go/internal/agent/probes/spec.SpecProblem
+  method DeclaredKeys() map[string]struct{}
+  method HasStartSet() bool
+  method RunsOn(goos string) bool
+  method SecretPaths() []string
+type senhub-agent.go/internal/agent/probes/spec.ProblemKind string
+  underlying string
+type senhub-agent.go/internal/agent/probes/spec.SpecProblem struct
+  field Key string
+  field Kind senhub-agent.go/internal/agent/probes/spec.ProblemKind
+  field Message string
+  method String() string
+type senhub-agent.go/internal/agent/probes/types.Probe interface
+  imethod Collect() ([]senhub-agent.go/internal/agent/types/datapoint.DataPoint, error)
+  imethod EntitySource() senhub-agent.go/internal/agent/services/entity.Source
+  imethod GetInterval() time.Duration
+  imethod GetName() string
+  imethod OnShutdown(ctx context.Context) error
+  imethod OnStart(quitChannel chan struct{}) error
+  imethod ShouldStart() bool
+type senhub-agent.go/internal/agent/services/agentstate.LogRecord struct
+  field Attributes map[string]string
+  field Body string
+  field Fields map[string]any
+  field ProducerProbeName string
+  field ProducerProbeType string
+  field Severity senhub-agent.go/internal/agent/services/agentstate.LogSeverity
+  field SeverityText string
+  field TargetStrategies []string
+  field Timestamp time.Time
+type senhub-agent.go/internal/agent/services/agentstate.LogSeverity uint8
+  underlying uint8
+type senhub-agent.go/internal/agent/services/configuration.AutoUpdateConfig struct
+  field Enabled bool `yaml:"enabled"`
+  field IncludeBeta bool `yaml:"include_beta"`
+  field URL string `yaml:"url"`
+  field Version string `yaml:"version"`
+type senhub-agent.go/internal/agent/services/configuration.CacheConfig struct
+  field RetentionMinutes int `yaml:"retention_minutes"`
+type senhub-agent.go/internal/agent/services/configuration.EntitiesAggregationConfig struct
+  field Enabled bool `yaml:"enabled"`
+type senhub-agent.go/internal/agent/services/configuration.EntitiesConfig struct
+  field Aggregation *senhub-agent.go/internal/agent/services/configuration.EntitiesAggregationConfig `yaml:"aggregation,omitempty"`
+  field DependsOn *senhub-agent.go/internal/agent/services/configuration.EntitiesDependsOnConfig `yaml:"depends_on,omitempty"`
+  field Enabled bool `yaml:"enabled"`
+  field Interval string `yaml:"interval,omitempty"`
+  field Neighbors *senhub-agent.go/internal/agent/services/configuration.EntitiesNeighborsConfig `yaml:"neighbors,omitempty"`
+type senhub-agent.go/internal/agent/services/configuration.EntitiesDependsOnConfig struct
+  field Debounce int `yaml:"debounce,omitempty"`
+  field Enabled bool `yaml:"enabled"`
+  field ExcludeCIDRs []string `yaml:"exclude_cidrs,omitempty"`
+type senhub-agent.go/internal/agent/services/configuration.EntitiesNeighborsConfig struct
+  field Enabled bool `yaml:"enabled"`
+  field ResolvesTo bool `yaml:"resolves_to,omitempty"`
+type senhub-agent.go/internal/agent/services/configuration.LocalAgentConfig struct
+  field GlobalTags map[string]string `yaml:"global_tags,omitempty"`
+  field Key string `yaml:"key"`
+  field License string `yaml:"license,omitempty"`
+type senhub-agent.go/internal/agent/services/configuration.LocalConfigurationData struct
+  field Agent senhub-agent.go/internal/agent/services/configuration.LocalAgentConfig `yaml:"agent"`
+  field AutoUpdate *senhub-agent.go/internal/agent/services/configuration.AutoUpdateConfig `yaml:"auto_update,omitempty"`
+  field Cache *senhub-agent.go/internal/agent/services/configuration.CacheConfig `yaml:"cache,omitempty"`
+  field ConfigVersion int `yaml:"config_version"`
+  field Entities *senhub-agent.go/internal/agent/services/configuration.EntitiesConfig `yaml:"entities,omitempty"`
+  field Governance map[string]interface{} `yaml:"governance,omitempty"`
+  field Probes []senhub-agent.go/internal/agent/services/configuration.ProbeConfig `yaml:"probes"`
+  field Storage []senhub-agent.go/internal/agent/services/configuration.StorageConfig `yaml:"storage"`
+type senhub-agent.go/internal/agent/services/configuration.ProbeConfig struct
+  field CustomTags map[string]string `json:"custom_tags,omitempty" yaml:"custom_tags,omitempty"`
+  field Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+  field Governance map[string]interface{} `json:"governance,omitempty" yaml:"governance,omitempty"`
+  field LogStrategies []string `json:"log_strategies,omitempty" yaml:"log_strategies,omitempty"`
+  field Name string `json:"name"`
+  field Params senhub-agent.go/internal/agent/services/configuration.ProbeConfigParams `json:"params"`
+  field Type string `json:"type,omitempty"`
+  method ID() string
+  method IsEnabled() bool
+  method ParseGovernance() (senhub-agent.go/internal/agent/services/governance.Governance, error)
+type senhub-agent.go/internal/agent/services/configuration.ShowMode int
+  underlying int
+type senhub-agent.go/internal/agent/services/configuration.StorageConfig struct
+  field Name string `json:"name"`
+  field Params senhub-agent.go/internal/agent/services/configuration.StorageConfigParams `json:"params"`
+type senhub-agent.go/internal/agent/services/entity.Relation struct
+  field Attributes map[string]any
+  field FromID map[string]any
+  field FromType string
+  field ToID map[string]any
+  field ToType string
+  field Type string
+type senhub-agent.go/internal/agent/services/entity.Relationship struct
+  field Attributes map[string]any
+  field TargetID map[string]any
+  field TargetType string
+  field Type string
+type senhub-agent.go/internal/agent/services/entity.Source interface
+  imethod Observe() (senhub-agent.go/internal/agent/services/entity.Observation, bool)
+type senhub-agent.go/internal/agent/services/exporthook.SelfRecordProvider func(now time.Time) []senhub-agent.go/internal/agent/services/exporthook.SelfRecord
+  underlying func(now time.Time) []senhub-agent.go/internal/agent/services/exporthook.SelfRecord
+type senhub-agent.go/internal/agent/services/exporthook.SeriesObserver func(output string, points []senhub-agent.go/internal/agent/services/exporthook.SeriesPoint, now time.Time)
+  underlying func(output string, points []senhub-agent.go/internal/agent/services/exporthook.SeriesPoint, now time.Time)
+type senhub-agent.go/internal/agent/services/exporthook.SeriesPoint struct
+  field Attributes map[string]string
+  field Name string
+  field Probe string
+type senhub-agent.go/internal/agent/services/governance.Governance struct
+  field Criticality string
+  field Datacenter string
+  field Labels map[string]string
+  field Lifecycle string
+  field OwnerContact string
+  field OwnerTeam string
+  field Rack string
+  field Room string
+  field Site string
+  method Attributes() map[string]any
+  method IsZero() bool
+  method MergeInto(dst map[string]any)
+type senhub-agent.go/internal/agent/services/logger.ModuleLogger struct
+  embedded *github.com/rs/zerolog.Logger
+  method (*senhub-agent.go/internal/agent/services/logger.ModuleLogger) Debug() *github.com/rs/zerolog.Event
+  method (*github.com/rs/zerolog.Logger) Err(err error) *github.com/rs/zerolog.Event
+  method (*senhub-agent.go/internal/agent/services/logger.ModuleLogger) Error() *github.com/rs/zerolog.Event
+  method (*github.com/rs/zerolog.Logger) Fatal() *github.com/rs/zerolog.Event
+  method GetLevel() github.com/rs/zerolog.Level
+  method Hook(hooks ...github.com/rs/zerolog.Hook) github.com/rs/zerolog.Logger
+  method (*senhub-agent.go/internal/agent/services/logger.ModuleLogger) Info() *github.com/rs/zerolog.Event
+  method Level(lvl github.com/rs/zerolog.Level) github.com/rs/zerolog.Logger
+  method (*github.com/rs/zerolog.Logger) Log() *github.com/rs/zerolog.Event
+  method Output(w io.Writer) github.com/rs/zerolog.Logger
+  method (*github.com/rs/zerolog.Logger) Panic() *github.com/rs/zerolog.Event
+  method (*github.com/rs/zerolog.Logger) Print(v ...interface{})
+  method (*github.com/rs/zerolog.Logger) Printf(format string, v ...interface{})
+  method (*github.com/rs/zerolog.Logger) Println(v ...interface{})
+  method Sample(s github.com/rs/zerolog.Sampler) github.com/rs/zerolog.Logger
+  method (*github.com/rs/zerolog.Logger) Trace() *github.com/rs/zerolog.Event
+  method (*github.com/rs/zerolog.Logger) UpdateContext(update func(c github.com/rs/zerolog.Context) github.com/rs/zerolog.Context)
+  method (*senhub-agent.go/internal/agent/services/logger.ModuleLogger) Warn() *github.com/rs/zerolog.Event
+  method With() github.com/rs/zerolog.Context
+  method WithContext(ctx context.Context) context.Context
+  method (*github.com/rs/zerolog.Logger) WithLevel(level github.com/rs/zerolog.Level) *github.com/rs/zerolog.Event
+  method Write(p []byte) (n int, err error)
+type senhub-agent.go/internal/agent/tags.Tag struct
+  field Key string `json:"key"`
+  field Private bool `json:"-"`
+  field Value string `json:"value"`
+type senhub-agent.go/internal/agent/types/datapoint.HistogramValue struct
+  field BucketCounts []uint64 `json:"bucket_counts,omitempty"`
+  field Count uint64 `json:"count"`
+  field ExplicitBounds []float64 `json:"explicit_bounds,omitempty"`
+  field Max *float64 `json:"max,omitempty"`
+  field Min *float64 `json:"min,omitempty"`
+  field Sum *float64 `json:"sum,omitempty"`

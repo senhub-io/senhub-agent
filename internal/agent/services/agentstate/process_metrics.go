@@ -72,6 +72,10 @@ var processMetricSamples = []metrics.Sample{
 // helpers are thread-safe individually, and we don't mutate any
 // shared state.
 func GetProcessSnapshot() ProcessSnapshot {
+	return processSnapshot(processCPUSeconds)
+}
+
+func processSnapshot(cpuSeconds func() (float64, bool)) ProcessSnapshot {
 	metrics.Read(processMetricSamples)
 
 	snap := ProcessSnapshot{
@@ -84,7 +88,7 @@ func GetProcessSnapshot() ProcessSnapshot {
 	// right field per known metric Name. If a metric is unsupported
 	// on this Go version (KindBad), the field stays at its zero
 	// value — graceful degradation.
-	if cpu, ok := processCPUSeconds(); ok {
+	if cpu, ok := cpuSeconds(); ok {
 		snap.CPUSecondsTotal = cpu
 	}
 	for _, s := range processMetricSamples {

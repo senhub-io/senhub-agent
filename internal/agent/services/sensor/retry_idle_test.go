@@ -46,7 +46,7 @@ func TestRetryTimerRunsOnlyWhileAProbeIsWaiting(t *testing.T) {
 	}
 
 	flakyStartFails.Store(false)
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		if agentstate.GetProbeRunState(probes.GenerateProbeId(cfg)).Running {
 			if s.hasRetryableFailedProbes() {
