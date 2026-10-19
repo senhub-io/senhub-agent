@@ -762,4 +762,4 @@ Error: invalid timestamp format
 
 - [Event Probe README](./README.md) - Overview and configuration
 - [Syslog Probe](./README.md) - Network syslog collection
-- [Windows Events](./WINEVENTS-README.md) - Windows Event Log collection
+- [Windows Events](../windows_eventlog/README.md) - Windows Event Log collection

@@ -185,7 +185,7 @@ The NetScaler probe includes **PRTG Value Lookups** for human-readable status va
 4. Extract `.ovl` files to PRTG Server: `C:\Program Files (x86)\PRTG Network Monitor\lookups\custom\`
 5. Refresh PRTG lookup files (Administration > System Administration > Administrative Tools)
 
-See [PRTG Integration Guide](../../admin-guide/HTTP-STRATEGY.md#prtg-lookups) for details.
+See [PRTG Integration Guide](../../admin-guide/HTTP-STRATEGY.md#prtg-value-lookups) for details.
 
 ## Performance Tuning
 
@@ -338,7 +338,7 @@ See [configuration-examples.yaml](./configuration-examples.yaml) for complete co
 - Application Firewall (AppFW) security events
 - Compression metrics
 
-See [internal roadmap](../../.internal/NETSCALER-ROADMAP.md) for detailed phase planning.
+See internal roadmap for detailed phase planning.
 
 ## References
 
