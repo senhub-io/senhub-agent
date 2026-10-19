@@ -1,6 +1,6 @@
 # SenHub Agent — Project Index
 
-Infrastructure monitoring agent (Go, ~72k LOC). Single binary, ships to PRTG / Nagios / Prometheus / OTLP / SenHub cloud. Universal Go/git/build/commit conventions live in `~/.claude/CLAUDE.md`; project-specific contracts live in `.claude/rules/` and load contextually by path.
+Infrastructure monitoring agent (Go, ~142k LOC of non-test code). Single binary, ships to PRTG / Nagios / Prometheus / OTLP / SenHub cloud. Universal Go/git/build/commit conventions live in `~/.claude/CLAUDE.md`; project-specific contracts live in `.claude/rules/` and load contextually by path.
 
 ## Where things are
 
@@ -24,7 +24,7 @@ Infrastructure monitoring agent (Go, ~72k LOC). Single binary, ships to PRTG / N
 
 ## Release workflow
 
-ALWAYS use the `release-manager` agent + PR merge to `master`. Direct push to `master` does NOT trigger `master-release.yml`. See memory `feedback_release_workflow.md`.
+ALWAYS use the `release-manager` agent + PR merge to `master`. Direct push to `master` does NOT trigger the enterprise repo's `master-release.yml`. See memory `feedback_release_workflow.md`.
 
 ## Configuration
 
@@ -33,9 +33,9 @@ Two layouts supported, auto-detected:
 - **Legacy monolithic** — single `agent-config.yaml` with `probes:` + `storage:` (existing installs).
 - **Multi-file** — `agent.yaml` + `probes.d/*.yaml` + `strategies.d/*.yaml` (added 0.1.93). Full details in `.claude/rules/configuration.md`.
 
-Value substitution: `${env:VAR}`, `${env:VAR:-default}`, `${file:/path}`, `${file:/path:-default}`, `$$` → literal `$`.
+Value substitution: `${env:VAR}`, `${env:VAR:-default}`, `${file:/path}`, `${file:/path:-default}`, `${secret:name}` (secret store), `$$` → literal `$`.
 
-`config show` CLI: `agent config show [--raw|--resolved|--redact]`.
+`config show` CLI: `agent config show [--raw|--resolved|--redact]` (`--redact`, the default, is resolved with secrets masked).
 
 ## License system
 
@@ -51,6 +51,8 @@ Full reference: `docs/LICENSE-SYSTEM.md`.
 | Touching the data store / mapper / transformers | `.claude/rules/data-store.md` |
 | Configuration loader, substitution, schema bump | `.claude/rules/configuration.md` |
 | Writing tests | `.claude/rules/tests.md` |
+| Adding work to the idle agent (goroutines, timers, polling) | `.claude/rules/footprint.md` |
+| Filing follow-ups | `.claude/rules/follow-ups.md` |
 | Editing documentation | `.claude/rules/docs.md` |
 
 Rules under `.claude/rules/` auto-load when their `paths:` glob matches the files you're touching.

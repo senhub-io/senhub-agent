@@ -63,7 +63,7 @@ tail -f /var/log/senhub/agent.log
 
 If you can't find a solution here:
 
-1. Check the [documentation index](../../DOCUMENTATION-INDEX.md)
+1. Check the [documentation index](../DOCUMENTATION-INDEX.md)
 2. Review configuration examples in the [examples directory](../../examples/)
 3. Enable debug logging and review detailed error messages
 4. Check for known issues in the project repository
