@@ -16,7 +16,13 @@
         .kv dd .btn { vertical-align: middle; margin-left: 6px; }
         .card .loading { color: var(--muted); font-size: var(--fs-sm); padding: var(--s2) 0; }
         .card .empty-line { color: var(--muted); font-size: var(--fs-sm); padding: var(--s2) 0; }
-        .tbl td .reason { color: var(--err); font-family: inherit; font-size: var(--fs-xs); white-space: normal; }
+        .tbl td .reason { color: var(--err); font-family: inherit; font-size: var(--fs-xs); }
+        .tbl td.last { width: 34%; min-width: 80px; max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .tbl td.name { min-width: 120px; overflow-wrap: normal; word-break: normal; }
+        .tbl td.name a { color: inherit; }
+        .tbl td.name a:hover { color: var(--accent-ink); }
+        .tbl tr.go, .orow.go { cursor: pointer; }
+        .orow.go:hover { background: var(--well); }
         .orow .d .bad { color: var(--err); }
         .orow .d .warn { color: var(--warn); }
         #agent-watch { margin-top: var(--s3); font-size: var(--fs-xs); color: var(--warn); }
