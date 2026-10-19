@@ -415,9 +415,18 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"proxmox.vmid",      // VM/LXC numeric ID (unique per cluster)
 		"proxmox.vm.name",   // VM/LXC display name (redundant with vmid but declared in multi_instance_labels)
 		"proxmox.storage",   // Storage pool name
-		"proxmox.disk",      // Physical disk device path
-		"proxmox.zfs.pool",  // ZFS pool name
 		"proxmox.task.type", // Failed task type (vzdump, qmstart, ...)
+		// Disks and ZFS pools follow the hw.* convention: hw.id is the disk
+		// serial or the pool name, and each hw.state / *.state value is its
+		// own series. hw.name (device path) is contextual but a declared label.
+		"hw.id",
+		"hw.name",
+		"hw.state",
+		"hw.physical_disk.state",
+		"hw.logical_disk.state",
+		"proxmox.vm.backup.state",
+		"proxmox.storage.state",
+		"proxmox.task.state",
 	},
 
 	// Kubernetes — one series per resource instance; the discriminant

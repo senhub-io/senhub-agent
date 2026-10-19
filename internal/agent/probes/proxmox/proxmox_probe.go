@@ -210,6 +210,18 @@ func (p *ProxmoxProbe) Collect() ([]data_store.DataPoint, error) {
 		}
 		points = append(points, p.collectNode(n, guests, guestsOK, now)...)
 	}
+	if guestsOK {
+		scoped := guests
+		if p.cfg.Node != "" {
+			scoped = nil
+			for _, g := range guests {
+				if g.Node == p.cfg.Node {
+					scoped = append(scoped, g)
+				}
+			}
+		}
+		points = append(points, p.collectBackupCoverage(scoped, now)...)
+	}
 
 	// Refresh entity snapshot so the topology rail stays current.
 	// fetchClusterName is best-effort: a standalone install or a failing
@@ -308,7 +320,7 @@ func (p *ProxmoxProbe) collectNode(n pveNode, guests []pveGuest, guestsOK bool, 
 			data_store.DataPoint{Name: "proxmox.storage.total", Value: float64(st.Total), Timestamp: now, Tags: stTags},
 		)
 		if st.Active != nil {
-			points = append(points, data_store.DataPoint{Name: "proxmox.storage.active", Value: float64(*st.Active), Timestamp: now, Tags: stTags})
+			points = append(points, stateSeries("proxmox.storage.status", "proxmox.storage.state", []string{"active", "inactive"}, boolState(*st.Active != 0, "active", "inactive"), stTags, now)...)
 		}
 	}
 
@@ -483,6 +495,7 @@ type pveVMListItem struct {
 
 // pveGuest is one entry of /cluster/resources?type=vm.
 type pveGuest struct {
+	Pool string `json:"pool"`
 	pveVMListItem
 	Node string `json:"node"`
 	Type string `json:"type"`

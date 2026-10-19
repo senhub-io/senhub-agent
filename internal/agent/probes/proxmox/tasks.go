@@ -129,12 +129,13 @@ func (p *ProxmoxProbe) collectFailedTasks(node string, now time.Time) []data_sto
 	var points []data_store.DataPoint
 	for _, ty := range p.tasks.typesFor(node, fresh) {
 		points = append(points, data_store.DataPoint{
-			Name:      "proxmox.tasks.failed",
+			Name:      "proxmox.task.count",
 			Value:     float64(counts[ty]),
 			Timestamp: now,
 			Tags: []tags.Tag{
 				{Key: "proxmox.node", Value: node},
 				{Key: "proxmox.task.type", Value: ty},
+				{Key: "proxmox.task.state", Value: "failed"},
 				{Key: "metric_type", Value: "tasks"},
 			},
 		})
