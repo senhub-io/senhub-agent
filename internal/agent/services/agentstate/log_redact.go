@@ -161,7 +161,7 @@ func compileCustomRules(rules []LogRedactRule) ([]redactRule, []error) {
 		seen[r.Name] = struct{}{}
 		re, err := regexp.Compile(r.Pattern)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("log redaction rule %q: pattern %q: %v", r.Name, r.Pattern, err))
+			errs = append(errs, fmt.Errorf("log redaction rule %q: pattern %q: %w", r.Name, r.Pattern, err))
 			continue
 		}
 		valid = append(valid, redactRule{
