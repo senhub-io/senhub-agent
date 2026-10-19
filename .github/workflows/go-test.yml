@@ -45,6 +45,10 @@ jobs:
         run: go vet ./...
       - name: Test
         run: make test
+      # Tests share process-wide registries and counters; a test that only
+      # passes in source order shows up here, with the seed in the log.
+      - name: Test in random order
+        run: go test -shuffle=on -count=1 ./...
 
   # Race detector runs on linux only. The configuration package was
   # excluded here while it carried 4 documented race flakes; their
