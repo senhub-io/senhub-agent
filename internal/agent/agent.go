@@ -100,6 +100,14 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		logger,
 	)
 
+	logRedactionWarnings := func() {
+		for _, err := range localConfiguration.ApplyLogRedaction() {
+			logger.Error().Err(err).Msg("Log masking rule skipped; the other rules still apply")
+		}
+	}
+	logRedactionWarnings()
+	localConfiguration.OnConfigChanged(func(string) { logRedactionWarnings() })
+
 	sensors := sensor.NewSensor(
 		store.GetCallback(),
 		localConfiguration,
