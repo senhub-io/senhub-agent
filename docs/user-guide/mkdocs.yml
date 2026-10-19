@@ -160,6 +160,9 @@ nav:
       - Exchange Online: probes/exchange_online.md
       - Azure Container Apps: probes/azure_container_apps.md
       - Azure Container App Jobs: probes/azure_container_app_jobs.md
+      - Azure Monitor: probes/azure_monitor.md
+      - Azure Log Query: probes/azure_log_query.md
+      - Microsoft Entra ID: probes/entra_id.md
       - Syslog: probes/syslog.md
       - Event: probes/event.md
       - Ping WebApp: probes/ping-webapp.md
