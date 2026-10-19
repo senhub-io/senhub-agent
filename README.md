@@ -24,7 +24,8 @@ PRTG, Nagios, Zabbix, Prometheus or any OpenTelemetry backend.
   connect, DNS resolution. A failing target is a measurement, never a
   probe failure.
 - **Network devices** (free): SNMP v2c/v3 polling (MIB-II, IF-MIB, custom
-  OIDs), SNMP trap receiver with your MIBs, LLDP and routing topology.
+  OIDs), SNMP trap receiver with your MIBs, and, with a `discovery` block,
+  the devices around the host mapped from their LLDP neighbours and routes.
 - **Universal collection** (free): embedded OTLP receiver, Prometheus
   scraping, syslog receiver, and an exec probe that runs your Nagios
   plugins unchanged.
@@ -32,7 +33,9 @@ PRTG, Nagios, Zabbix, Prometheus or any OpenTelemetry backend.
   interfaces, routes) with their relationships, sharing identity keys with
   the metrics and logs. [Toise](https://github.com/toise-dev/toise)
   consumes them to build an infrastructure graph you can query at any
-  point in time.
+  point in time. Off by default (the container image and the Helm chart
+  turn it on) and carried by the OTLP output only. See
+  [Topology](docs/user-guide/docs/topology.md).
 - **Paid probes** (Pro/Enterprise licence): Citrix, NetScaler, Veeam,
   Redfish, IBM i, Dell PowerStore, SQL Server and Oracle high availability,
   vSphere and Hyper-V HA, Active Directory hybrid, Exchange Online, Azure
@@ -109,6 +112,7 @@ in this repository:
   [Prometheus](docs/user-guide/docs/prometheus/index.md) ·
   [OTLP](docs/user-guide/docs/otlp.md) ·
   [Nagios](docs/user-guide/docs/nagios.md)
+- [Topology](docs/user-guide/docs/topology.md)
 - [CLI reference](docs/user-guide/docs/cli.md)
 - [What's new](docs/user-guide/docs/whats-new/index.md)
 

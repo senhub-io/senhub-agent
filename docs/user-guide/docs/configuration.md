@@ -681,18 +681,22 @@ sudo /usr/local/bin/senhub-agent license remove --force  # Remove without confir
 
 ## Auto-Update
 
-The agent can check for new versions and optionally install them automatically.
+The agent checks for new versions. Whether it installs them itself depends on the platform:
+
+- **Linux:** the running agent never installs a new version. It only reports that one is available. Install it yourself with `sudo senhub-agent update`; on a `.deb` or `.rpm` install, use the package manager instead (the command refuses there). This is deliberate: the service account cannot rewrite its own binary, so a compromised agent cannot make itself persistent.
+- **Windows, MSI install:** with `enabled: true` the agent downloads the signed MSI and applies it.
+- **Windows, ZIP install:** with `enabled: true` the agent replaces its binary.
 
 ```yaml
 auto_update:
-  enabled: false          # Automatic installation of new versions
+  enabled: false          # Install new versions (Windows only; Linux reports them)
   include_beta: false     # Include beta versions in update checks
   url: "https://eu-west-1.intake.senhub.io/"
 ```
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `enabled` | `false` | Automatically install new versions when available |
+| `enabled` | `false` | Install new versions when available. Applies to Windows only; on Linux the agent only reports the new version |
 | `include_beta` | `false` | Include beta versions in update checks |
 | `url` | SenHub releases | Update server URL. The **base** the agent appends to — a value carrying `/releases` or `/download` makes every derived URL double it |
 | `version` | `latest` | Target the periodic updater tracks. `latest` resolves the newest stable; an explicit version pins to it |
