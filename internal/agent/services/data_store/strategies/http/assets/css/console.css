@@ -74,11 +74,15 @@ p { margin: 0; }
    whatever scroller the table itself had. .g-editor already had it. */
 .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* Three cards of key/value rows need room: a 1366 px screen at 125 % scaling
+   gives about 1090 px, where long values overran the next card. */
+@media (max-width: 1200px) { .g3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .g-editor { grid-template-columns: minmax(0, 1fr) 360px; align-items: start; }
 @media (max-width: 960px) { .g2, .g3, .g-editor { grid-template-columns: minmax(0, 1fr); } }
 
 /* Cards */
-.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow); padding: var(--s4) var(--s5); }
+.grid > * { min-width: 0; }
+.card { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow); padding: var(--s4) var(--s5); }
 .card.tight { padding: var(--s3) var(--s4); }
 .card-h { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); margin-bottom: var(--s3); }
 .card-h h2 { display: flex; align-items: center; gap: var(--s2); }
@@ -158,8 +162,8 @@ p { margin: 0; }
 .lic-cover .why { color: var(--muted); font-size: var(--fs-xs); display: block; }
 
 /* KV rows */
-.kv { display: grid; grid-template-columns: max-content 1fr; column-gap: var(--s4); row-gap: 6px; font-size: var(--fs-sm); }
-.kv dt { color: var(--muted); } .kv dd { margin: 0; font-family: var(--mono); text-align: right; }
+.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: var(--s4); row-gap: 6px; font-size: var(--fs-sm); }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; min-width: 0; font-family: var(--mono); text-align: right; overflow-wrap: anywhere; }
 .kv.left dd { text-align: left; font-family: inherit; }
 
 /* Banner */
@@ -313,7 +317,7 @@ pre.yaml .k { color: #0b6b7a; } pre.yaml .c { color: var(--muted-2); } pre.yaml 
 .hdr-status .dot { width: 8px; height: 8px; }
 .tbl td .why { display: block; font-size: var(--fs-xs); color: var(--err); margin-top: 2px; }
 .tbl tr.bad .acts .btn { visibility: visible; }
-.kv-list { display: grid; grid-template-columns: max-content 1fr; column-gap: var(--s4); row-gap: 6px; font-size: var(--fs-sm); }
+.kv-list { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: var(--s4); row-gap: 6px; font-size: var(--fs-sm); }
 .kv-list dt { color: var(--muted); } .kv-list dd { margin: 0; font-family: var(--mono); text-align: right; overflow-wrap: anywhere; }
 .pill.pending { background: var(--warn-soft); color: var(--warn); }
 .link-btn { background: none; border: none; padding: 0; color: var(--accent-ink); font: inherit; cursor: pointer; }
