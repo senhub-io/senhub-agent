@@ -383,6 +383,6 @@ alerts:
 ## Related Documentation
 
 - [METRICS.md](./METRICS.md) - Complete metrics reference
-- [Gateway Ping Probe](../README.md) - Network latency monitoring
-- [Network Probe](../../system/network/) - Interface metrics
+- [Gateway Ping Probe](../ping_gateway/README.md) - Network latency monitoring
+- [Network Probe](../system/network/README.md) - Interface metrics
 - [WebApp Ping](../ping_webapp/README.md) - Internet connectivity

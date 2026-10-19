@@ -5,11 +5,11 @@ Welcome to the SenHub Agent Developer Guide. This documentation provides compreh
 ## Quick Navigation
 
 ### Core Documentation
-- **[Architecture](./architecture.md)** - System design, patterns, and component architecture
+- **[Architecture](./architecture.md)** - Packages, probe lifecycle, data and entity flow, configuration, editions
 - **[Development Workflow](./development-workflow.md)** - Git workflow, branching strategy, and release process
 - **[Build System](./build-system.md)** - Makefile commands, compilation, and packaging
 - **[Design Patterns](./design-patterns.md)** - Code patterns, best practices, and compliance checklist
-- **[Current Development](./current-development.md)** - Active work, roadmap, and feature status
+- **[Current Development](./current-development.md)** - Where the line stands and where to find release content
 
 ### Specialized Topics
 - **[Engineering Documentation](./engineering/)** - Technical deep-dives and implementation details
@@ -19,13 +19,13 @@ Welcome to the SenHub Agent Developer Guide. This documentation provides compreh
 - **[OTel semantic conventions](./otel/senhub-semantic-conventions.md)** - Cross-sink metric naming, attribute mapping, ratio/unit conversions
 - **[OTLP implementation plan](./otlp/IMPLEMENTATION-PLAN.md)** - Phase 0-5 design history for the OTLP/gRPC push strategy
 - **[Prometheus implementation plan](./prometheus/IMPLEMENTATION-PLAN.md)** - Phase history for the `/metrics` exposition endpoint
-- **[Zabbix integration audit](./zabbix/AUDIT-Phase0.md)** - Phase 0 spec-vs-code audit (implementation paused)
+- **[Zabbix integration study](./zabbix/INTEGRATION-STUDY.md)** - Design study behind the native Zabbix output (shipped in 0.6.0)
 - **Grafana catalog research** — kept in the private companion repo `senhub-io/senhub-internal-docs` (`grafana-research/`)
 
 ### Code Quality
-- **[Code Review Guidelines](./development-workflow.md#code-review-guidelines)** - Mandatory checklist for reviewers
+- **[Code Review Guidelines](./development-workflow.md#code-review-guidelines-mandatory-for-code-reviewer-agent)** - Mandatory checklist for reviewers
 - **[Testing Best Practices](./build-system.md#testing-best-practices)** - Test execution and coverage
-- **[Code Style Guidelines](./architecture.md#code-style-guidelines)** - Formatting and naming conventions
+- **[Code Organization Rules](./design-patterns.md#code-organization-rules)** - File naming, ordering, imports
 
 ## Getting Started
 
@@ -36,7 +36,7 @@ Welcome to the SenHub Agent Developer Guide. This documentation provides compreh
 4. Study [Design Patterns](./design-patterns.md) before writing code
 
 ### For Code Reviewers
-1. Review the [Code Review Guidelines](./development-workflow.md#code-review-guidelines)
+1. Review the [Code Review Guidelines](./development-workflow.md#code-review-guidelines-mandatory-for-code-reviewer-agent)
 2. Understand the [Pattern Compliance Checklist](./design-patterns.md#pattern-compliance-checklist)
 3. Verify [Testing Requirements](./build-system.md#testing-best-practices)
 
@@ -83,4 +83,4 @@ For questions about development:
 
 ---
 
-Last updated: 2025-12-09
+Last updated: 2026-10-17
