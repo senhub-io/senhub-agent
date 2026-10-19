@@ -320,3 +320,26 @@ func TestCollectCgroupFallbackEnrichesIdentityTags(t *testing.T) {
 		}
 	}
 }
+
+func TestCgroupReportsUnreadOptionalFiles(t *testing.T) {
+	root := writeCgroupFixture(t)
+	dir := filepath.Join(root, "system.slice", "docker-"+fixtureID+".scope")
+	if err := os.Remove(filepath.Join(dir, "pids.current")); err != nil {
+		t.Fatal(err)
+	}
+	var skipped []string
+	r := newCgroupReader(root)
+	r.onSkip = func(path string, _ error) { skipped = append(skipped, filepath.Base(path)) }
+	if _, err := r.stats(dir); err != nil {
+		t.Fatalf("stats: %v", err)
+	}
+	found := false
+	for _, f := range skipped {
+		if f == "pids.current" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("skipped = %v, want pids.current reported", skipped)
+	}
+}

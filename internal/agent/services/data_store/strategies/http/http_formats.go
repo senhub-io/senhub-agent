@@ -17,7 +17,12 @@ type FormatConverter struct {
 	transformerRegistry *transformers.TransformerRegistry
 	logger              *logger.ModuleLogger
 	cache               *MetricCache
+	// checkResultChannel reports whether PRTG output carries the Check
+	// Result channel; nil means it does not.
+	checkResultChannel func() bool
 }
+
+const checkResultMetric = "senhub.probe.check.result"
 
 // NewFormatConverter creates a new format converter
 func NewFormatConverter(transformerRegistry *transformers.TransformerRegistry, logger *logger.ModuleLogger, cache *MetricCache) *FormatConverter {
@@ -123,6 +128,9 @@ func (f *FormatConverter) GetMetricsForProbeWithFilter(probeName string, filter 
 
 	for _, metric := range filteredMetrics {
 		if !f.cache.IsLive(metric, now) {
+			continue
+		}
+		if metric.MetricName == checkResultMetric && (f.checkResultChannel == nil || !f.checkResultChannel()) {
 			continue
 		}
 		if t, err := f.transformerRegistry.LoadTransformer(probeTypeOf(metric), "friendly"); err == nil && t != nil && transformers.SkipsPRTG(t, metric.MetricName) {

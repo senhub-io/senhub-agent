@@ -84,13 +84,14 @@ func init() {
 
 	data_store.RegisterKnownParams("http", []string{
 		"active_probe_count", "admin_key", "agentkey", "bind_address", "cert_file", "check",
+		"check_result_channel",
 		"component", "connectivity", "css", "dashboard", "docs", "enabled",
 		"endpoint", "endpoints", "exclude_tags", "expose_host_metrics",
 		"guide", "html", "include_probe_tags", "instance", "interval", "js",
 		"key_file", "le", "lookup_id", "max_cache_size", "metrics",
 		"min_tls_version", "nagios_checks_count", "nagios_version", "name",
 		"port", "probe", "probe_name", "probe_type", "probes", "prometheus", "protocol",
-		"schema", "server_configured", "settings", "tags", "target", "tls",
+		"prtg", "schema", "server_configured", "settings", "tags", "target", "tls",
 		"tls_min_version", "total_metrics", "unit", "url",
 	}, nil)
 

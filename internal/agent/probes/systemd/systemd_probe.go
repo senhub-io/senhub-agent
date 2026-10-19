@@ -123,6 +123,7 @@ func (p *SystemdProbe) Collect() ([]data_store.DataPoint, error) {
 			if err != nil {
 				// Unreadable UnitFileState means the unit cannot be
 				// selected by the default enabled-only policy.
+				p.moduleLogger.Debug().Err(err).Str("unit", u.Name).Msg("systemd: UnitFileState unreadable, unit left out of the default selection")
 				continue
 			}
 			if v, ok := prop.Value.Value().(string); ok {
@@ -142,6 +143,7 @@ func (p *SystemdProbe) Collect() ([]data_store.DataPoint, error) {
 		}
 		prop, err := conn.GetUnitProperty(u.Name, "UnitFileState")
 		if err != nil {
+			p.moduleLogger.Debug().Err(err).Str("unit", u.Name).Msg("systemd: UnitFileState unreadable, start mode left unset")
 			continue
 		}
 		if v, ok := prop.Value.Value().(string); ok {
@@ -180,6 +182,8 @@ func (p *SystemdProbe) Collect() ([]data_store.DataPoint, error) {
 					r := float64(v)
 					nRestarts = &r
 				}
+			} else {
+				p.moduleLogger.Debug().Err(err).Str("unit", u.Name).Msg("systemd: NRestarts unreadable, restart count left out")
 			}
 		}
 

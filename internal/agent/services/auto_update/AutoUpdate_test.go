@@ -10,7 +10,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/ybbus/httpretry"
 	"senhub-agent.go/internal/agent/cliArgs"
-	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/testUtils"
 )
@@ -29,7 +28,7 @@ func createTestModuleLogger() *logger.ModuleLogger {
 func TestAutoUpdate_GetName(t *testing.T) {
 	baseLogger := createTestLogger()
 
-	remoteConfig := configuration.NewMockConfiguration("http://localhost:8080", "")
+	remoteConfig := newMockConfiguration("http://localhost:8080", "")
 
 	au := NewAutoUpdate(AutoUpdateConfig{
 		ConfigSource: remoteConfig,
@@ -142,7 +141,7 @@ func TestAutoUpdate_ShouldUpdate(t *testing.T) {
 					}
 				}`
 			}
-			remoteConfig := configuration.NewMockConfiguration(
+			remoteConfig := newMockConfiguration(
 				"http://localhost:8000", configString)
 
 			httpClient := httpretry.NewDefaultClient()
@@ -206,7 +205,7 @@ func TestAutoUpdate_getExpectedVersion_WithFailingServer(t *testing.T) {
 					"registry_url": "` + versionServer.URL + `"
 				}
 			}`
-			remoteConfig := configuration.NewMockConfiguration(
+			remoteConfig := newMockConfiguration(
 				"http://localhost:8000", configString)
 
 			httpClient := httpretry.NewDefaultClient()
@@ -266,7 +265,7 @@ func TestAutoUpdate_getExpectedVersion_LatestIncludeBeta(t *testing.T) {
 					"include_beta": %t
 				}
 			}`, versionServer.URL, tc.includeBeta)
-			remoteConfig := configuration.NewMockConfiguration(
+			remoteConfig := newMockConfiguration(
 				"http://localhost:8000", configString)
 
 			httpClient := httpretry.NewDefaultClient()
@@ -423,7 +422,7 @@ func TestAutoUpdate_GetBinaryUrl(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			remoteConfig := configuration.NewMockConfiguration(
+			remoteConfig := newMockConfiguration(
 				"http://localhost:8000", "")
 
 			httpClient := httpretry.NewDefaultClient()
@@ -479,7 +478,7 @@ func TestAutoUpdate_GetBinaryName(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			remoteConfig := configuration.NewMockConfiguration(
+			remoteConfig := newMockConfiguration(
 				"http://localhost:8000", "")
 
 			httpClient := httpretry.NewDefaultClient()
@@ -529,7 +528,7 @@ func TestAutoUpdate_GetUpdateCheckInterval(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			configInterval, _ := json.Marshal(tc.interval)
-			remoteConfig := configuration.NewMockConfiguration(
+			remoteConfig := newMockConfiguration(
 				"http://localhost:8000", `
 				{
 					"agent": {

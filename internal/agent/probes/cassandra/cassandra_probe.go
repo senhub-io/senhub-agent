@@ -208,6 +208,8 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 	if ver, err := p.client.readString(ctx,
 		"org.apache.cassandra.db:type=StorageService", "ReleaseVersion"); err == nil {
 		cassandraVersion = ver
+	} else {
+		p.moduleLogger.Debug().Err(err).Msg("cassandra: could not read ReleaseVersion")
 	}
 
 	// Fetch the stable node host_id from system.local via JMX StorageService.
@@ -218,6 +220,8 @@ func (p *cassandraProbe) collect(ctx context.Context, now time.Time) ([]data_sto
 	if id, err := p.client.readString(ctx,
 		"org.apache.cassandra.db:type=StorageService", "LocalHostId"); err == nil {
 		hostID = id
+	} else {
+		p.moduleLogger.Debug().Err(err).Msg("cassandra: could not read LocalHostId, entity identity not pinned")
 	}
 
 	// cassandra.client.connections — connectedNativeClients
