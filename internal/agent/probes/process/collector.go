@@ -30,6 +30,12 @@ type processSnapshot struct {
 	threads    int32
 	fds        int32 // -1 on Windows / unsupported
 	createTime int64 // Unix ms
+
+	// A reading the OS refused is zero in the field above; these flags keep
+	// that zero from being published as a measurement.
+	cpuUnread     bool
+	memoryUnread  bool
+	threadsUnread bool
 }
 
 // getHostID returns the same host id the entity source uses, or "" when the
@@ -279,19 +285,29 @@ func snapshotProcess(p *gops.Process, cfg config, log *logger.ModuleLogger) (pro
 		return processSnapshot{}, true
 	}
 
+	var cpuUnread, memoryUnread, threadsUnread bool
+
 	cpuPct, err := p.CPUPercent()
 	if err != nil {
 		log.Debug().Int32("pid", p.Pid).Err(err).Msg("CPUPercent unavailable")
 		cpuPct = 0
+		cpuUnread = true
 	}
 
 	var rss, vms uint64
 	if mem, err := p.MemoryInfo(); err == nil && mem != nil {
 		rss = mem.RSS
 		vms = mem.VMS
+	} else {
+		log.Debug().Int32("pid", p.Pid).Err(err).Msg("MemoryInfo unavailable")
+		memoryUnread = true
 	}
 
-	threads, _ := p.NumThreads()
+	threads, err := p.NumThreads()
+	if err != nil {
+		log.Debug().Int32("pid", p.Pid).Err(err).Msg("NumThreads unavailable")
+		threadsUnread = true
+	}
 
 	fds := int32(-1)
 	if runtime.GOOS != "windows" {
@@ -312,6 +328,10 @@ func snapshotProcess(p *gops.Process, cfg config, log *logger.ModuleLogger) (pro
 		threads:    threads,
 		fds:        fds,
 		createTime: createTime,
+
+		cpuUnread:     cpuUnread,
+		memoryUnread:  memoryUnread,
+		threadsUnread: threadsUnread,
 	}, false
 }
 
@@ -355,36 +375,41 @@ func appendProcessPoints(
 ) []data_store.DataPoint {
 	// process.cpu.utilization — 0-100 percent; the OTel mapper derives
 	// the 0-1 ratio from the "%" unit declared in process.yaml
-	points = append(points, data_store.DataPoint{
-		Name:      "process.cpu.utilization",
-		Timestamp: ts,
-		Value:     float64(snap.cpuPct),
-		Tags:      pt,
-	})
+	if !snap.cpuUnread {
+		points = append(points, data_store.DataPoint{
+			Name:      "process.cpu.utilization",
+			Timestamp: ts,
+			Value:     float64(snap.cpuPct),
+			Tags:      pt,
+		})
+	}
 
-	// process.memory.usage — RSS bytes
-	points = append(points, data_store.DataPoint{
-		Name:      "process.memory.usage",
-		Timestamp: ts,
-		Value:     float64(snap.rss),
-		Tags:      pt,
-	})
-
-	// process.memory.virtual_memory_usage — VMS bytes
-	points = append(points, data_store.DataPoint{
-		Name:      "process.memory.virtual_memory_usage",
-		Timestamp: ts,
-		Value:     float64(snap.vms),
-		Tags:      pt,
-	})
+	// process.memory.usage — RSS bytes, process.memory.virtual_memory_usage — VMS bytes
+	if !snap.memoryUnread {
+		points = append(points,
+			data_store.DataPoint{
+				Name:      "process.memory.usage",
+				Timestamp: ts,
+				Value:     float64(snap.rss),
+				Tags:      pt,
+			},
+			data_store.DataPoint{
+				Name:      "process.memory.virtual_memory_usage",
+				Timestamp: ts,
+				Value:     float64(snap.vms),
+				Tags:      pt,
+			})
+	}
 
 	// process.threads
-	points = append(points, data_store.DataPoint{
-		Name:      "process.threads",
-		Timestamp: ts,
-		Value:     float64(snap.threads),
-		Tags:      pt,
-	})
+	if !snap.threadsUnread {
+		points = append(points, data_store.DataPoint{
+			Name:      "process.threads",
+			Timestamp: ts,
+			Value:     float64(snap.threads),
+			Tags:      pt,
+		})
+	}
 
 	// process.open_file_descriptors — Linux only; skip on Windows (fds == -1)
 	if snap.fds >= 0 {

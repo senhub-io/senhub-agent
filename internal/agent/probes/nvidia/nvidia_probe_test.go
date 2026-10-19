@@ -102,8 +102,8 @@ func TestParseSmiOutput_TwoGPUs(t *testing.T) {
 	if g1.powerLimit != -1 {
 		t.Errorf("T4 powerLimit: got %v, want -1 (N/A)", g1.powerLimit)
 	}
-	if g1.fanSpeed != 0 {
-		t.Errorf("T4 fanSpeed: got %v, want 0", g1.fanSpeed)
+	if g1.fanSpeed != -1 {
+		t.Errorf("T4 fanSpeed: got %v, want -1 (N/A)", g1.fanSpeed)
 	}
 }
 
@@ -263,5 +263,31 @@ func TestCollect_TwoGPUs(t *testing.T) {
 	}
 	if upCount != 2 {
 		t.Errorf("expected 2 senhub.nvidia.up=1 points (one per GPU), got %d", upCount)
+	}
+}
+
+func TestParseSmiOutput_UnreadableFieldsAreNotZero(t *testing.T) {
+	const row = `0, NVIDIA A100, GPU-mig, [Not Supported], [N/A], 512, 40960, 35, 60, 400, [N/A], 0, [N/A], 0`
+	gpus, err := parseSmiOutput([]byte(row))
+	if err != nil || len(gpus) != 1 {
+		t.Fatalf("parse: gpus=%d err=%v", len(gpus), err)
+	}
+	pts := buildDatapoints(gpus[0], nil, time.Now())
+	have := map[string]float64{}
+	for _, p := range pts {
+		have[p.Name] = p.Value
+	}
+	for _, name := range []string{"gpu.utilization", "gpu.memory.utilization", "gpu.fan.speed", "gpu.encoder.utilization"} {
+		if v, ok := have[name]; ok {
+			t.Errorf("%s published as %v although nvidia-smi reported it unavailable", name, v)
+		}
+	}
+	for _, name := range []string{"gpu.memory.used", "gpu.temperature", "gpu.decoder.utilization", "gpu.power.usage"} {
+		if _, ok := have[name]; !ok {
+			t.Errorf("%s missing although nvidia-smi reported it", name)
+		}
+	}
+	if v := have["gpu.decoder.utilization"]; v != 0 {
+		t.Errorf("a genuine zero reading must still be published, got %v", v)
 	}
 }
