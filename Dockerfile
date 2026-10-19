@@ -16,21 +16,26 @@ ARG ALPINE_VERSION=3.22
 FROM alpine:${ALPINE_VERSION} AS fetch
 ARG VERSION
 ARG VARIANT=""
+# The release public key, the same one verify-release.sh checks with.
+# entrypoint_test.sh fails if the two drift apart.
+ARG RELEASE_PUBKEY="RWRlfkyeLpjI0MjTSfuvT/bDNHHaVJhRirQN8Z8LTAM+n4LKVbpjrlRh"
 ARG TARGETARCH
 RUN test -n "$VERSION" || (echo "VERSION build-arg is required" >&2; exit 1)
 # buildx sets TARGETARCH on its own. A builder that does not (the classic
 # docker builder, az acr build) needs it passed, and the message says so.
 RUN test -n "$TARGETARCH" || (echo "TARGETARCH build-arg is required: build with buildx, or pass --build-arg TARGETARCH=amd64" >&2; exit 1)
-RUN apk add --no-cache curl unzip
+RUN apk add --no-cache curl unzip minisign
 WORKDIR /out
 # The release publishes senhub-agent-linux-<arch>.zip and the oss variant
-# beside it, each with a detached minisign signature. The signature is
-# verified by whoever publishes the image, not here: this stage only
-# fetches, so the build stays reproducible from a tag.
+# beside it, each with a detached minisign signature. The archive is
+# verified against the release key before it is unzipped, and a missing
+# or invalid signature fails the build. minisign lives in this stage only.
 RUN set -eu; \
     name="senhub-agent${VARIANT:+-$VARIANT}-linux-${TARGETARCH}.zip"; \
-    curl -fsSL -o agent.zip \
-      "https://github.com/senhub-io/senhub-agent/releases/download/${VERSION}/${name}"; \
+    base="https://github.com/senhub-io/senhub-agent/releases/download/${VERSION}"; \
+    curl -fsSL -o agent.zip "${base}/${name}"; \
+    curl -fsSL -o agent.zip.minisig "${base}/${name}.minisig"; \
+    minisign -V -P "${RELEASE_PUBKEY}" -m agent.zip -x agent.zip.minisig; \
     unzip -q agent.zip; \
     chmod +x senhub-agent
 

@@ -247,4 +247,11 @@ otlp_fragment_extras "$frag" 2>/dev/null
 check "SENHUB_ENTITIES=false leaves them off" "$(grep -c 'entities:' "$frag")" "0"
 unset SENHUB_ENTITIES
 
+# 13. The key the image build verifies the release archive with is the one
+#     the release verification script uses.
+image_key=$(sed -n 's/^ARG RELEASE_PUBKEY="\(.*\)"$/\1/p' "$here/../../Dockerfile")
+script_key=$(sed -n 's/^RELEASE_PUBKEY="\(.*\)"$/\1/p' "$here/../release/verify-release.sh")
+check "Dockerfile and verify-release.sh share the release key" "$image_key" "$script_key"
+check "the release key is not empty" "$([ -n "$image_key" ] && echo set)" "set"
+
 exit "$fail"

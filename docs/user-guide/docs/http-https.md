@@ -20,7 +20,7 @@ http:
   admin_key: "..."
 ```
 
-Without `--enable-https`, the installer binds to loopback. With `--enable-https`, it writes `bind_address: "0.0.0.0"` and the HTTPS port. A remote poller on a plain HTTP installation needs an explicit `bind_address: "0.0.0.0"` or an interface IP.
+The installer binds to loopback, with or without `--enable-https`; `--enable-https` only switches on TLS and the HTTPS port. A remote poller needs an explicit `bind_address: "0.0.0.0"` or an interface IP.
 
 An installation that still uses the legacy monolithic `agent-config.yaml` holds the same parameters under `storage:`, in the `params` of the entry named `http`.
 

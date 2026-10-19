@@ -254,3 +254,22 @@ func TestCollectRoutes_BothTablesFail(t *testing.T) {
 		}
 	}
 }
+
+func TestCollectInterfaces_ReportsSkippedOptionalWalks(t *testing.T) {
+	c := &routeWalkClient{
+		responses: map[string][]snmpRawBind{
+			ifName: {{OID: ifName + ".1", Value: []byte("Gi0/1")}},
+		},
+		failures: map[string]error{ifMtu: errors.New("timeout"), dot3Duplex: errors.New("no such object")},
+	}
+	rows, skipped, err := collectInterfaces(c)
+	if err != nil {
+		t.Fatalf("collectInterfaces: %v", err)
+	}
+	if len(rows) != 1 || rows[0].Name != "Gi0/1" {
+		t.Fatalf("rows = %+v, want the named port still emitted", rows)
+	}
+	if len(skipped) != 2 || !strings.HasPrefix(skipped[0], "ifMtu") || !strings.HasPrefix(skipped[1], "dot3StatsDuplexStatus") {
+		t.Errorf("skipped = %v, want ifMtu and dot3StatsDuplexStatus", skipped)
+	}
+}
