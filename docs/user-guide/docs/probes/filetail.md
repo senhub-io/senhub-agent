@@ -113,6 +113,35 @@ With `regex`, each named capture group becomes a log attribute. With
 line is the record body, unparsed. `timestamp_field` names a capture group
 or a JSON/logfmt key.
 
+### Severity
+
+The same rules apply to `filetail` and [`kubernetes_logs`](kubernetes_logs.md).
+When `json`, `logfmt` or `regex` yields a `level`, `severity` or `lvl`
+field, it sets the severity. Otherwise the agent looks for a level in
+the first 160 bytes of the line:
+
+| Form | Example | Result |
+|---|---|---|
+| klog prefix | `E1017 10:02:11.123456 ...` | `I` info, `W` warn, `E` error, `F` fatal |
+| JSON level key | `{"level":"warn", ...}` | the value of `level`, `severity` or `lvl` |
+| Bracketed word | `[Warning]`, `[Note]`, `[ERROR]` (MySQL, many daemons) | that level |
+| Apache module and level | `[core:error]` | the level after the colon |
+| java.util.logging | `SEVERE:`, `WARNING:`, `FINE:` | error, warn, debug |
+| PostgreSQL | `ERROR:`, `FATAL:`, `PANIC:`, `LOG:` | the level; `LOG` is info |
+| Bare word | `ERROR ...`, `2026-10-17 INFO ...` | that level |
+| logfmt pair | `level=error msg=...` | that level |
+
+Recognised words include `trace`, `debug`, `info`, `notice`, `warn`,
+`warning`, `error`, `err`, `fatal`, `critical`, `crit`, `panic` and short
+forms such as `inf`, `wrn` and `dbg`. A level stated in the line always
+wins over the access-log rule below.
+
+A line with no level that has the shape of an nginx or Apache access
+log takes its severity from the HTTP status: 5xx is `ERROR`, 4xx is
+`WARN`, anything else is `INFO`. Prose without a level stays
+unclassified (no severity), so a filter on severity does not hide it by
+mistake.
+
 ## Operational notes
 
 - **Rotation-safe.** Each file is fingerprinted (hash of its first
