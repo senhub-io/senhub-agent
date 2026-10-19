@@ -848,3 +848,16 @@ func TestCollectNodes_EmitsK8sNodeAndSameAs(t *testing.T) {
 		t.Fatalf("host=%v k8s.node=%v same_as=%d, want true/true/1", host, k8sNode, sameAs)
 	}
 }
+
+func TestPodCount(t *testing.T) {
+	list := corev1.ResourceList{corev1.ResourcePods: resource.MustParse("110")}
+	if v, ok := podCount(list); !ok || v != 110 {
+		t.Fatalf("podCount = %v, %v; want 110, true", v, ok)
+	}
+	if _, ok := podCount(corev1.ResourceList{}); ok {
+		t.Fatal("a node that does not report pods must not publish a ceiling of 0")
+	}
+	if _, ok := podCount(corev1.ResourceList{corev1.ResourcePods: resource.MustParse("1500m")}); ok {
+		t.Fatal("a fractional pod count is not a count")
+	}
+}
