@@ -77,6 +77,8 @@ p { margin: 0; }
 /* Three cards of key/value rows need room: a 1366 px screen at 125 % scaling
    gives about 1090 px, where long values overran the next card. */
 @media (max-width: 1200px) { .g3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* The Overview probes table needs the full width before the cards beside it. */
+@media (max-width: 1280px) { .g2.ov-top { grid-template-columns: minmax(0, 1fr); } }
 .g-editor { grid-template-columns: minmax(0, 1fr) 360px; align-items: start; }
 @media (max-width: 960px) { .g2, .g3, .g-editor { grid-template-columns: minmax(0, 1fr); } }
 
