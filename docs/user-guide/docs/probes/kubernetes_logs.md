@@ -70,22 +70,27 @@ The agent's own pod is excluded from collection.
 
 <!-- schema:params:end -->
 
-| Parameter | Must set | Default | Description |
-|---|---|---|---|
-| `root` | No | `/var/log/pods` | Root directory containing the pod log directory structure |
-| `include_namespaces` | No | - | Follow only pods in namespaces matching one of these glob patterns |
-| `exclude_namespaces` | No | - | Never follow pods in namespaces matching one of these glob patterns |
-| `include_pods` | No | - | Follow only pods whose name matches one of these glob patterns |
-| `exclude_pods` | No | - | Never follow pods whose name matches one of these glob patterns |
-| `scan_interval` | No | `5s` | How often the node log directory is rescanned; minimum `1s` |
-| `from_beginning` | No | `false` | Read existing content the first time a file is seen |
-| `max_line_bytes` | No | `262144` | Cap on one CRI message after partial reassembly, in bytes |
-| `bookmark_path` | No | `<agent state>/<probe name>.bookmarks.json` | File persisting read offsets across restarts |
-| `parser` | No | - | Structured parsing of each CRI message |
-| `parser.type` | No | `raw` | Message format. One of `raw`, `regex`, `json`, `logfmt` |
-| `parser.pattern` | No | - | Regular expression with named groups; required for `regex` |
-| `parser.timestamp_field` | No | - | Field carrying the message timestamp |
-| `parser.timestamp_format` | No | - | Go reference-time layout of that field |
+## How files are followed
+
+- **Discovery.** The probe rescans `root` every `scan_interval` and
+  follows every container log file of every pod on the node, so a new pod
+  is picked up without a restart. The `include_*` and `exclude_*` lists
+  are glob patterns; the agent's own pod is always left out.
+- **CRI partial lines.** The runtime splits a long line into chunks.
+  The probe joins them back into one message before it is sent, up to
+  `max_line_bytes`. A longer message is cut there and counted in
+  `senhub.kubernetes_logs.records_truncated`.
+- **Rotation.** Offsets are kept per file and tied to its inode. When the
+  runtime rotates a file, the probe finishes the old one and starts the
+  new one, and after a restart it resumes from the saved offset
+  (`bookmark_path`) instead of re-reading or skipping lines. Compressed
+  rotated files are not read.
+- **Multiline.** With `multiline` set, continuation lines such as a stack
+  trace are folded into the record that opened them. Folding is done
+  separately for the stdout and stderr stream of each container, so the
+  two never mix.
+- **Severity.** Derived from the message as described in
+  [File tail](filetail.md#severity).
 
 ## Attributes on records
 
