@@ -143,7 +143,6 @@
     function probeHref(name) { return WEB + 'probes?view=' + encodeURIComponent(name); }
     function outputHref(name) { return WEB + 'outputs/' + encodeURIComponent(name === 'http' ? 'http' : name); }
     // The full text stays in the tooltip; the cell shows one line.
-    function reasonText(t) { return '<span title="' + esc(t) + '">' + esc(t) + '</span>'; }
     // A row opens its target; links and buttons inside it keep their own.
     function wireRows(root) {
         if (!root) return;
@@ -177,33 +176,22 @@
             let html = '<div style="overflow-x:auto"><table class="tbl compact" id="probes-tbl"><thead><tr><th>Name</th><th>Type</th><th>State</th><th class="right">Metrics</th><th class="right">Last run</th></tr></thead><tbody>';
             rows.forEach(p => {
                 const s = probeState(p);
-                let state, last;
-                if (s === 'failing') {
-                    state = pill('err', 'failing');
-                    last = '<span class="reason">' + reasonText(p.last_error || p.reason || 'collection failed') + '</span>';
-                } else if (s === 'target-down') {
-                    state = pill('err', 'target down');
-                    last = '<span class="reason">' + reasonText('collecting, and ' + (p.target_metric || 'its up metric') + ' reads 0') + '</span>';
-                } else if (s === 'running') {
-                    state = pill('ok', 'running');
-                    last = p.last_update ? esc(rel(p.last_update)) : '-';
-                } else if (s === 'disabled') {
-                    state = pill('off', 'disabled');
-                    last = '-';
-                } else if (s === 'locked') {
-                    state = pill('pro', 'license needed');
-                    last = '<span class="reason">' + reasonText(p.reason || 'not authorized') + '</span>';
-                } else if (s === 'unsupported') {
-                    state = pill('off', 'not on this platform');
-                    last = '<span class="reason">' + reasonText(p.reason || 'another platform') + '</span>';
-                } else {
-                    state = pill('warn', 'stopped');
-                    last = p.reason ? '<span class="reason">' + reasonText(p.reason) + '</span>' : '-';
-                }
+                // The reason sits under the state, where it can wrap, as on the
+                // Probes page; the last column keeps the time of the last run.
+                const why = (t) => '<span class="why">' + short(t, 160) + '</span>';
+                let state;
+                if (s === 'failing') state = pill('err', 'failing') + why(p.last_error || p.reason || 'collection failed');
+                else if (s === 'target-down') state = pill('err', 'target down') + why('collecting, and ' + (p.target_metric || 'its up metric') + ' reads 0');
+                else if (s === 'running') state = pill('ok', 'running');
+                else if (s === 'disabled') state = pill('off', 'disabled');
+                else if (s === 'locked') state = pill('pro', 'license needed') + why(p.reason || 'not authorized');
+                else if (s === 'unsupported') state = pill('off', 'not on this platform') + why(p.reason || 'another platform');
+                else state = pill('warn', 'stopped') + (p.reason ? why(p.reason) : '');
+                const last = s !== 'disabled' && p.last_update ? esc(rel(p.last_update)) : '-';
                 const metrics = s === 'disabled' ? '-' : num(p.metrics_count);
                 const cat = (types[p.type] && types[p.type].category) || 'other';
                 html += '<tr class="go" data-href="' + esc(probeHref(p.name)) + '"><td class="name"><a href="' + esc(probeHref(p.name)) + '">' + esc(p.name) + '</a></td><td><span class="tcell">' + glyphFor(cat) + '<code>' + esc(p.type) + '</code></span></td><td>' + state +
-                    '</td><td class="num">' + metrics + '</td><td class="num last">' + last + '</td></tr>';
+                    '</td><td class="num">' + metrics + '</td><td class="num">' + last + '</td></tr>';
             });
             html += '</tbody></table></div>';
             $('probes-body').innerHTML = html;

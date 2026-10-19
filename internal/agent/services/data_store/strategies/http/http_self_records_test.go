@@ -9,18 +9,20 @@ import (
 	"senhub-agent.go/internal/agent/services/exporthook"
 )
 
-// exporthook has no way to unregister a provider, so the empty-registry
-// check holds only until the first registration of the process.
 var registerSelfRecords sync.Once
 
 func TestSelfRecordsEndpoint(t *testing.T) {
 	router, _ := newOutputsTestRouter(t)
 	url := "/api/" + testAdminKey + "/info/self-records"
 
-	code, resp := doJSON(t, router, "GET", url, nil)
-	recs, _ := resp["records"].([]interface{})
-	if code != 200 || recs == nil || len(recs) != 0 {
-		t.Fatalf("an empty registry must answer an empty list, got %d %v", code, resp)
+	// Once a provider is registered, it stays for the process: the empty
+	// case can only be checked on the first run.
+	if len(exporthook.SelfRecords(time.Now())) == 0 {
+		code, resp := doJSON(t, router, "GET", url, nil)
+		recs, _ := resp["records"].([]interface{})
+		if code != 200 || recs == nil || len(recs) != 0 {
+			t.Fatalf("an empty registry must answer an empty list, got %d %v", code, resp)
+		}
 	}
 
 	registerSelfRecords.Do(func() {
@@ -32,8 +34,8 @@ func TestSelfRecordsEndpoint(t *testing.T) {
 		})
 	})
 
-	code, resp = doJSON(t, router, "GET", url, nil)
-	recs, _ = resp["records"].([]interface{})
+	code, resp := doJSON(t, router, "GET", url, nil)
+	recs, _ := resp["records"].([]interface{})
 	if code != 200 || len(recs) != 2 {
 		t.Fatalf("want both records, got %d %v", code, resp)
 	}
