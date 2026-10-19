@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -38,6 +39,12 @@ type snapshotBuilder struct {
 }
 
 func TestAPISnapshot(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// The importer drops packages whose export data comes from a
+		// cross-compiled build on the Windows runner; the surface is one
+		// file for every platform and the Linux job checks it.
+		t.Skip("the API snapshot is checked on Linux")
+	}
 	got, err := renderSnapshot()
 	if err != nil {
 		t.Fatalf("render API snapshot: %v", err)
