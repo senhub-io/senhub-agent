@@ -140,6 +140,18 @@
         return out;
     }
 
+    function probeHref(name) { return WEB + 'probes?view=' + encodeURIComponent(name); }
+    function outputHref(name) { return WEB + 'outputs/' + encodeURIComponent(name === 'http' ? 'http' : name); }
+    // The full text stays in the tooltip; the cell shows one line.
+    // A row opens its target; links and buttons inside it keep their own.
+    function wireRows(root) {
+        if (!root) return;
+        root.querySelectorAll('[data-href]').forEach(el => el.addEventListener('click', (e) => {
+            if (e.target.closest('a, button')) return;
+            location.href = el.dataset.href;
+        }));
+    }
+
     function renderProbes(data, system, catalog) {
         const types = byType(catalog);
         const list = (data && data.probes) || [];
@@ -161,39 +173,29 @@
             // Same wrapper as the Probes page: this table is wider than a
             // phone, and without its own scroller it pushes the whole
             // document sideways instead of scrolling inside its card.
-            let html = '<div style="overflow-x:auto"><table class="tbl compact"><thead><tr><th>Name</th><th>Type</th><th>State</th><th class="right">Metrics</th><th class="right">Last run</th></tr></thead><tbody>';
+            let html = '<div style="overflow-x:auto"><table class="tbl compact" id="probes-tbl"><thead><tr><th>Name</th><th>Type</th><th>State</th><th class="right">Metrics</th><th class="right">Last run</th></tr></thead><tbody>';
             rows.forEach(p => {
                 const s = probeState(p);
-                let state, last;
-                if (s === 'failing') {
-                    state = pill('err', 'failing');
-                    last = '<span class="reason">' + short(p.last_error || p.reason || 'collection failed', 80) + '</span>';
-                } else if (s === 'target-down') {
-                    state = pill('err', 'target down');
-                    last = '<span class="reason">' + short('collecting, and ' + (p.target_metric || 'its up metric') + ' reads 0', 80) + '</span>';
-                } else if (s === 'running') {
-                    state = pill('ok', 'running');
-                    last = p.last_update ? esc(rel(p.last_update)) : '-';
-                } else if (s === 'disabled') {
-                    state = pill('off', 'disabled');
-                    last = '-';
-                } else if (s === 'locked') {
-                    state = pill('pro', 'license needed');
-                    last = '<span class="reason">' + short(p.reason || 'not authorized', 80) + '</span>';
-                } else if (s === 'unsupported') {
-                    state = pill('off', 'not on this platform');
-                    last = '<span class="reason">' + short(p.reason || 'another platform', 80) + '</span>';
-                } else {
-                    state = pill('warn', 'stopped');
-                    last = p.reason ? '<span class="reason">' + short(p.reason, 80) + '</span>' : '-';
-                }
+                // The reason sits under the state, where it can wrap, as on the
+                // Probes page; the last column keeps the time of the last run.
+                const why = (t) => '<span class="why">' + short(t, 160) + '</span>';
+                let state;
+                if (s === 'failing') state = pill('err', 'failing') + why(p.last_error || p.reason || 'collection failed');
+                else if (s === 'target-down') state = pill('err', 'target down') + why('collecting, and ' + (p.target_metric || 'its up metric') + ' reads 0');
+                else if (s === 'running') state = pill('ok', 'running');
+                else if (s === 'disabled') state = pill('off', 'disabled');
+                else if (s === 'locked') state = pill('pro', 'license needed') + why(p.reason || 'not authorized');
+                else if (s === 'unsupported') state = pill('off', 'not on this platform') + why(p.reason || 'another platform');
+                else state = pill('warn', 'stopped') + (p.reason ? why(p.reason) : '');
+                const last = s !== 'disabled' && p.last_update ? esc(rel(p.last_update)) : '-';
                 const metrics = s === 'disabled' ? '-' : num(p.metrics_count);
                 const cat = (types[p.type] && types[p.type].category) || 'other';
-                html += '<tr><td class="name">' + esc(p.name) + '</td><td><span class="tcell">' + glyphFor(cat) + '<code>' + esc(p.type) + '</code></span></td><td>' + state +
+                html += '<tr class="go" data-href="' + esc(probeHref(p.name)) + '"><td class="name"><a href="' + esc(probeHref(p.name)) + '">' + esc(p.name) + '</a></td><td><span class="tcell">' + glyphFor(cat) + '<code>' + esc(p.type) + '</code></span></td><td>' + state +
                     '</td><td class="num">' + metrics + '</td><td class="num">' + last + '</td></tr>';
             });
             html += '</tbody></table></div>';
             $('probes-body').innerHTML = html;
+            wireRows($('probes-tbl'));
         }
 
         const total = system && system.cache ? system.cache.total_metrics : null;
@@ -283,11 +285,12 @@
                 if (o.type === 'http') action = '<a class="btn sm" href="' + WEB + 'outputs/http#urls">Sensor URLs</a>';
                 else if (off) action = '<button type="button" class="btn sm" data-enable="' + esc(o.name) + '">Enable</button>';
                 else action = '<a class="btn sm" href="' + WEB + 'outputs/' + encodeURIComponent(o.name) + '">Edit</a>';
-                html += '<div class="orow"><div class="oicon' + (off ? ' off' : '') + '">' + esc(String(o.type).toUpperCase().slice(0, 6)) + '</div>' +
+                html += '<div class="orow go" data-href="' + esc(outputHref(o.name)) + '"><div class="oicon' + (off ? ' off' : '') + '">' + esc(String(o.type).toUpperCase().slice(0, 6)) + '</div>' +
                     '<div><div class="t">' + esc(title) + ' ' + outputPill(o) + '</div>' +
                     '<div class="d">' + (o.type === 'http' ? httpLine(o) : pushLine(o)) + '</div></div>' + action + '</div>';
             });
             $('outputs-body').innerHTML = html;
+            wireRows($('outputs-body'));
             $('outputs-body').querySelectorAll('button[data-enable]').forEach(b => b.addEventListener('click', () => enableOutput(b.dataset.enable, list, b)));
         }
         const paths = list.filter(o => o.enabled && (o.state === 'exporting' || (o.state === 'listening' && pollers(o).some(r => r.total > 0)))).length;
@@ -479,10 +482,94 @@
         }
         $('events-body').innerHTML = list.map(e => {
             const lvl = e.level === 'error' ? 'err' : (e.level === 'warn' ? 'warn' : 'ok');
-            return '<div class="ev"><span class="dot ' + lvl + '"></span><div class="msg">' +
-                (e.subject ? '<b>' + esc(e.subject) + '</b> ' : '') + short(e.message, 160) +
+            const href = e.subject && e.kind === 'probe' ? probeHref(e.subject) : (e.subject && e.kind === 'output' ? outputHref(e.subject) : '');
+            const subject = e.subject ? (href ? '<a href="' + esc(href) + '"><b>' + esc(e.subject) + '</b></a> ' : '<b>' + esc(e.subject) + '</b> ') : '';
+            return '<div class="ev"><span class="dot ' + lvl + '"></span><div class="msg">' + subject + short(e.message, 160) +
                 '<div class="xs muted">' + esc(when(e.time)) + (e.kind ? ' &middot; ' + esc(e.kind) : '') + '</div></div></div>';
         }).join('');
+    }
+
+    // ---- Series -----------------------------------------------------------
+
+    function renderSeries(data, system) {
+      const pill = $('series-pill');
+      const body = $('series-body');
+      const records = data && Array.isArray(data.records) ? data.records : [];
+      const active = records.filter(record => record && record.name === 'senhub.agent.series.active');
+
+      if (active.length === 0) {
+        const totalMetrics = system && system.cache ? system.cache.total_metrics : null;
+        let text = 'Series metering is part of the Enterprise edition.';
+        if (totalMetrics != null) {
+          text += ' The cache holds ' + num(totalMetrics) + ' series.';
+        }
+        pill.innerHTML = '';
+        body.innerHTML = `<div class="empty-line">${text}</div>`;
+        return;
+      }
+
+      const asNumber = value => Number(value) || 0;
+      const outputTotals = new Map();
+      const probeTotals = new Map();
+      let totalActive = 0;
+
+      active.forEach(record => {
+        const value = asNumber(record.value);
+        const attributes = record.attributes || {};
+        const output = attributes.output != null && attributes.output !== '' ? String(attributes.output) : '-';
+        const probe = attributes.probe != null && attributes.probe !== '' ? String(attributes.probe) : '-';
+
+        outputTotals.set(output, (outputTotals.get(output) || 0) + value);
+        probeTotals.set(probe, (probeTotals.get(probe) || 0) + value);
+        totalActive += value;
+      });
+
+      const outputs = Array.from(outputTotals.entries()).sort((a, b) =>
+        b[1] - a[1] || a[0].localeCompare(b[0])
+      );
+
+      const outputRows = outputs.map(([name, total]) =>
+        `<dt>${esc(name)}</dt><dd>${num(total)}</dd>`
+      );
+
+      if (outputs.length > 1) {
+        outputRows.push(`<dt>Total</dt><dd>${num(totalActive)}</dd>`);
+      }
+
+      const probes = Array.from(probeTotals.entries()).sort((a, b) =>
+        b[1] - a[1] || a[0].localeCompare(b[0])
+      ).slice(0, 10);
+
+      const maxProbe = probes.length ? Math.max(...probes.map(entry => entry[1])) : 0;
+      const probeRows = probes.map(([name, total]) => {
+        const href = '/web/' + window.AGENT_KEY + '/probes?view=' + encodeURIComponent(name);
+        const width = maxProbe > 0 ? Math.max(2, Math.round(100 * total / maxProbe)) : 2;
+        const label = name === '-' ? '-' : `<a href="${href}">${esc(name)}</a>`;
+        return `<tr><td>${label}</td><td class="num">${num(total)}</td><td><div style="background:var(--well);border-radius:3px;min-width:80px"><div style="height:6px;border-radius:3px;background:var(--accent);width:${width}%"></div></div></td></tr>`;
+      });
+
+      const bodyParts = [
+        '<p class="xs muted">Series exported within the last hour: what a time-series backend sizes and bills on.</p>',
+        '<div class="small muted" style="margin:12px 0 4px;font-weight:600">Per output</div>',
+        `<dl class="kv">${outputRows.join('')}</dl>`,
+        '<div class="small muted" style="margin:12px 0 4px;font-weight:600">Top probes</div>',
+        `<table class="tbl compact"><thead><tr><th>Probe</th><th class="right">Series</th><th></th></tr></thead><tbody>${probeRows.join('')}</tbody></table>`
+      ];
+
+      const created = records.filter(record => record && record.name === 'senhub.agent.series.created');
+      if (created.length > 0) {
+        const createdTotal = created.reduce((sum, record) => sum + asNumber(record.value), 0);
+        bodyParts.push(`<div class="small mt3">Created since start: <b>${num(createdTotal)}</b></div>`);
+      }
+
+      const untracked = records.filter(record => record && record.name === 'senhub.agent.series.untracked');
+      const untrackedTotal = untracked.reduce((sum, record) => sum + asNumber(record.value), 0);
+      if (untracked.length > 0 && untrackedTotal > 0) {
+        bodyParts.push(`<div class="banner warn mt3">The counts are a floor: the tracker reached its memory bound. (${num(untrackedTotal)} not counted)</div>`);
+      }
+
+      pill.innerHTML = `<span class="pill ok">${num(totalActive)} active</span>`;
+      body.innerHTML = bodyParts.join('');
     }
 
     // ---- Page -------------------------------------------------------------
@@ -498,11 +585,12 @@
     function hideBanner() { $('banner').className = 'banner err hide'; }
 
     async function refresh() {
-        const names = ['info/system', 'config/probes', 'config/outputs', 'license/status', 'catalog/probes', 'info/events'];
+        const names = ['info/system', 'config/probes', 'config/outputs', 'license/status', 'catalog/probes', 'info/events', 'info/self-records'];
         const res = await Promise.allSettled(names.map(get));
         const val = (i) => res[i].status === 'fulfilled' ? res[i].value : null;
-        const failed = names.filter((n, i) => res[i].status === 'rejected');
-        const system = val(0), probes = val(1), outputs = val(2), lic = val(3), catalog = val(4), events = val(5);
+        // The records endpoint is absent on older agents: not a failure to report.
+        const failed = names.filter((n, i) => res[i].status === 'rejected' && n !== 'info/self-records');
+        const system = val(0), probes = val(1), outputs = val(2), lic = val(3), catalog = val(4), events = val(5), selfRecords = val(6);
 
         let probeSt = null, outputList = null;
         if (system) renderAgent(system, outputs);
@@ -515,6 +603,7 @@
         else $('lic-kv').innerHTML = '';
         if (events) renderEvents(events);
         else $('events-body').innerHTML = '<div class="empty-line">Events unavailable.</div>';
+        renderSeries(selfRecords, system);
         if (system && probeSt && outputList) renderGettingStarted(system, probeSt, outputList);
         else $('gs-card').classList.add('hide');
 

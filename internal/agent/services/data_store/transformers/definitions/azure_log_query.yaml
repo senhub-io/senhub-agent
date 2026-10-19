@@ -1,0 +1,21 @@
+probe_name: "azure_log_query"
+friendly_name: "Azure Log Analytics Query"
+version: "1.0.0"
+host_level: false
+
+# azure_log_query runs one KQL query on a Log Analytics workspace and
+# publishes each result row as azure.log_query.<channel>, named by the
+# query itself, so those series carry their type and unit and need no
+# definition. What is defined here is the probe's own count of rows.
+
+metrics:
+  - name: "senhub.azure_log_query.rows"
+    channel: "rows"
+    display_name: "Rows Returned"
+    unit: "#"
+    category: "status"
+    description: "Rows the last query returned, before the max_rows cap; 0 when the query matched nothing"
+    otel:
+      name: senhub.azure_log_query.rows
+      unit: "{row}"
+      type: gauge
