@@ -378,6 +378,36 @@ cache:
 
 Monitoring systems (PRTG, Nagios, etc.) read metrics from the cache. Set the retention period longer than the longest polling interval of your monitoring system.
 
+## Logs Section
+
+The `logs` section controls the log rail. Its `redact` block masks secrets in every log record before any output receives it, whichever probe produced the record (`filetail`, journald, syslog, Windows Event Log, OTLP receiver, and so on).
+
+```yaml
+logs:
+  redact:
+    preset: true            # default; false turns the built-in rules off
+    rules:                  # optional, applied after the preset
+      - name: card          # required, lowercase letters, digits and underscore
+        pattern: '(\b\d{4})\d{8}(\d{4}\b)'   # RE2 regular expression
+        replacement: '$1********$2'           # $1, $2... refer to capture groups
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `redact.preset` | `true` | Applies the two built-in rules described below. |
+| `redact.rules` | none | Your own rules, applied in order after the preset. Each needs a `name` (used as the `rule` label of the counter), a `pattern` (RE2 syntax) and a `replacement` (`$1`, `${name}` expansions). |
+
+The preset has two rules:
+
+- `credential_param` replaces the value of `password`, `passwd`, `pwd`, `passhash`, `apikey`, `api_key`, `token`, `access_token` and `secret` (case-insensitive, whole key) with `***`. It reads query strings (`?passhash=123&x=1` becomes `?passhash=***&x=1`), form bodies, `key=value` logs, `key: value` lines and JSON (`"secret":"abc"` becomes `"secret":"***"`). The key, the separator and the quotes stay; the value ends at `&`, a space, a quote, `,` or `;`. `tokens=5` and `mytoken=1` are left alone.
+- `authorization_header` keeps the scheme of an `Authorization:` header (`Bearer`, `Basic`, `Digest`, `Negotiate`, `NTLM`) and masks the credential: `Authorization: Basic ***`. For `Digest`, the rest of the line is masked.
+
+The text of the record body and every string attribute (and every string inside structured fields) is masked; attribute names are not. Masking happens once, before the record is handed to the outputs, so PRTG, OTLP and the other outputs all receive the masked text.
+
+Each masked occurrence is counted in `senhub.agent.logs.redacted` (Prometheus: `senhub_agent_logs_redacted_total`), with the labels `probe` and `rule` (`credential_param`, `authorization_header`, or the name of your rule). The agent never logs the masked value or the original line.
+
+A rule whose name or pattern is invalid is reported by `config check` as an error naming the rule. At run time the agent skips that rule, logs one error, and keeps applying the others. Changes to the `logs` block are applied when the configuration is reloaded; no restart is needed.
+
 ## Configuration Examples
 
 ### Minimal Configuration
