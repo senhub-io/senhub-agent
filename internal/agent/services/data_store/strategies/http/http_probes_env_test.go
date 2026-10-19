@@ -11,7 +11,7 @@ import (
 // A probe the environment declares or adjusts is read-only in the
 // console: a file written from here would be overridden at the next start.
 func TestProbesSetByEnvironmentAreReadOnly(t *testing.T) {
-	registerProbeSpecOnce(spec.Probe{Type: "envlock", DisplayName: "Env lock", Params: []spec.ParamSpec{
+	registerTestSpec(spec.Probe{Type: "envlock", DisplayName: "Env lock", Params: []spec.ParamSpec{
 		{Key: "host", Kind: spec.KindString, Required: true},
 	}})
 	router, _ := newOutputsTestRouter(t)

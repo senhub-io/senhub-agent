@@ -26,6 +26,9 @@ func init() {
 				{Key: "include_probe_tags", Kind: spec.KindBool, Default: true, Description: "Emit probe tags as labels"},
 				{Key: "expose_host_metrics", Kind: spec.KindBool, Default: true, Description: "Include the host probes in /metrics"},
 			}},
+			{Key: "prtg", Kind: spec.KindBlock, Group: "prtg", Fields: []spec.ParamSpec{
+				{Key: "check_result_channel", Kind: spec.KindBool, Default: false, Description: "Add the Check Result channel; it shows its text only once the senhub.probe.check.result lookup file is installed on the PRTG core"},
+			}},
 		},
 	})
 }

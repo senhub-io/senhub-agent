@@ -479,3 +479,11 @@ func hasTag(ts []tags.Tag, key, value string) bool {
 	}
 	return false
 }
+
+func TestNewJenkinsProbe_RejectsNonHTTPScheme(t *testing.T) {
+	for _, ep := range []string{"ftp://jenkins.example.com", "jenkins.example.com:8080", "file:///tmp/x"} {
+		if _, err := NewJenkinsProbe(map[string]interface{}{"endpoint": ep}, testBaseLogger()); err == nil {
+			t.Errorf("endpoint %q should be refused", ep)
+		}
+	}
+}
