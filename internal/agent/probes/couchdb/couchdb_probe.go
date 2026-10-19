@@ -240,6 +240,8 @@ func (p *CouchDBProbe) Collect() ([]data_store.DataPoint, error) {
 	if root, err := p.fetchRoot(); err == nil {
 		p.entitySrc.pinServerUUID(root.UUID)
 		p.entitySrc.updateVersion(root.Version)
+	} else {
+		p.moduleLogger.Debug().Err(err).Msg("couchdb: GET / failed, server uuid and version not refreshed")
 	}
 
 	p.entitySrc.setReachable(true)

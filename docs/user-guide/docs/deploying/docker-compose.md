@@ -13,7 +13,7 @@ reference for every variable.
 ```yaml
 services:
   senhub-agent:
-    image: ghcr.io/senhub-io/senhub-agent-oss:0.6.3
+    image: ghcr.io/senhub-io/senhub-agent-oss:0.6.4
     container_name: senhub-agent
     hostname: docker01
     restart: unless-stopped
@@ -92,12 +92,12 @@ What each part is for:
 
 ## Pinning
 
-The tag is the pin: `0.6.3`. Tags are exact versions; there is no `latest`
+The tag is the pin: `0.6.4`. Tags are exact versions; there is no `latest`
 and no minor tag. For a pin that survives a re-publication of the tag, use
 the digest:
 
 ```bash
-docker buildx imagetools inspect ghcr.io/senhub-io/senhub-agent-oss:0.6.3 | grep Digest
+docker buildx imagetools inspect ghcr.io/senhub-io/senhub-agent-oss:0.6.4 | grep Digest
 ```
 
 ```yaml
