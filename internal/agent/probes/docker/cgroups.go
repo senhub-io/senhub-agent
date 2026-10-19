@@ -43,6 +43,8 @@ var containerIDPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 // reader that can only be exercised on Linux is a reader nobody exercises.
 type cgroupReader struct {
 	root string
+	// onSkip, when set, is told which optional file could not be read.
+	onSkip func(path string, err error)
 }
 
 func newCgroupReader(root string) *cgroupReader {
@@ -133,22 +135,32 @@ func (r *cgroupReader) stats(dir string) (*containerStats, error) {
 
 	if v, err := readUintFile(filepath.Join(dir, "memory.current")); err == nil {
 		s.MemoryStats.Usage = v
+	} else {
+		r.skipped(filepath.Join(dir, "memory.current"), err)
 	}
 	// memory.max is the literal string "max" when unlimited. Docker reports the
 	// host's total in that case; publishing 0 would read as "limited to
 	// nothing", so leave it unset and let the metric be absent instead.
 	if v, err := readUintFile(filepath.Join(dir, "memory.max")); err == nil {
 		s.MemoryStats.Limit = v
+	} else {
+		r.skipped(filepath.Join(dir, "memory.max"), err)
 	}
 	if mem, err := readKeyedFile(filepath.Join(dir, "memory.stat")); err == nil {
 		s.MemoryStats.Stats = mem
+	} else {
+		r.skipped(filepath.Join(dir, "memory.stat"), err)
 	}
 
 	if v, err := readUintFile(filepath.Join(dir, "pids.current")); err == nil {
 		s.PidsStats.Current = v
+	} else {
+		r.skipped(filepath.Join(dir, "pids.current"), err)
 	}
 	if v, err := readUintFile(filepath.Join(dir, "pids.max")); err == nil {
 		s.PidsStats.Limit = v
+	} else {
+		r.skipped(filepath.Join(dir, "pids.max"), err)
 	}
 
 	if read, write, err := readIOStat(filepath.Join(dir, "io.stat")); err == nil {
@@ -156,9 +168,17 @@ func (r *cgroupReader) stats(dir string) (*containerStats, error) {
 			{Op: "read", Value: read},
 			{Op: "write", Value: write},
 		}
+	} else {
+		r.skipped(filepath.Join(dir, "io.stat"), err)
 	}
 
 	return &s, nil
+}
+
+func (r *cgroupReader) skipped(path string, err error) {
+	if r.onSkip != nil {
+		r.onSkip(path, err)
+	}
 }
 
 // readKeyedFile parses the "key value" per line format used by cpu.stat and
