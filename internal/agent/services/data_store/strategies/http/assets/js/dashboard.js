@@ -501,6 +501,89 @@
         }).join('');
     }
 
+    // ---- Series -----------------------------------------------------------
+
+    function renderSeries(data, system) {
+      const pill = $('series-pill');
+      const body = $('series-body');
+      const records = data && Array.isArray(data.records) ? data.records : [];
+      const active = records.filter(record => record && record.name === 'senhub.agent.series.active');
+
+      if (active.length === 0) {
+        const totalMetrics = system && system.cache ? system.cache.total_metrics : null;
+        let text = 'Series metering is part of the Enterprise edition.';
+        if (totalMetrics != null) {
+          text += ' The cache holds ' + num(totalMetrics) + ' series.';
+        }
+        pill.innerHTML = '';
+        body.innerHTML = `<div class="empty-line">${text}</div>`;
+        return;
+      }
+
+      const asNumber = value => Number(value) || 0;
+      const outputTotals = new Map();
+      const probeTotals = new Map();
+      let totalActive = 0;
+
+      active.forEach(record => {
+        const value = asNumber(record.value);
+        const attributes = record.attributes || {};
+        const output = attributes.output != null && attributes.output !== '' ? String(attributes.output) : '-';
+        const probe = attributes.probe != null && attributes.probe !== '' ? String(attributes.probe) : '-';
+
+        outputTotals.set(output, (outputTotals.get(output) || 0) + value);
+        probeTotals.set(probe, (probeTotals.get(probe) || 0) + value);
+        totalActive += value;
+      });
+
+      const outputs = Array.from(outputTotals.entries()).sort((a, b) =>
+        b[1] - a[1] || a[0].localeCompare(b[0])
+      );
+
+      const outputRows = outputs.map(([name, total]) =>
+        `<dt>${esc(name)}</dt><dd>${num(total)}</dd>`
+      );
+
+      if (outputs.length > 1) {
+        outputRows.push(`<dt>Total</dt><dd>${num(totalActive)}</dd>`);
+      }
+
+      const probes = Array.from(probeTotals.entries()).sort((a, b) =>
+        b[1] - a[1] || a[0].localeCompare(b[0])
+      ).slice(0, 10);
+
+      const maxProbe = probes.length ? Math.max(...probes.map(entry => entry[1])) : 0;
+      const probeRows = probes.map(([name, total]) => {
+        const href = '/web/' + window.AGENT_KEY + '/probes?view=' + encodeURIComponent(name);
+        const width = maxProbe > 0 ? Math.max(2, Math.round(100 * total / maxProbe)) : 2;
+        const label = name === '-' ? '-' : `<a href="${href}">${esc(name)}</a>`;
+        return `<tr><td>${label}</td><td class="num">${num(total)}</td><td><div style="background:var(--well);border-radius:3px;min-width:80px"><div style="height:6px;border-radius:3px;background:var(--accent);width:${width}%"></div></div></td></tr>`;
+      });
+
+      const bodyParts = [
+        '<p class="xs muted">Series exported within the last hour: what a time-series backend sizes and bills on.</p>',
+        '<div class="small muted" style="margin:12px 0 4px;font-weight:600">Per output</div>',
+        `<dl class="kv">${outputRows.join('')}</dl>`,
+        '<div class="small muted" style="margin:12px 0 4px;font-weight:600">Top probes</div>',
+        `<table class="tbl compact"><thead><tr><th>Probe</th><th class="right">Series</th><th></th></tr></thead><tbody>${probeRows.join('')}</tbody></table>`
+      ];
+
+      const created = records.filter(record => record && record.name === 'senhub.agent.series.created');
+      if (created.length > 0) {
+        const createdTotal = created.reduce((sum, record) => sum + asNumber(record.value), 0);
+        bodyParts.push(`<div class="small mt3">Created since start: <b>${num(createdTotal)}</b></div>`);
+      }
+
+      const untracked = records.filter(record => record && record.name === 'senhub.agent.series.untracked');
+      const untrackedTotal = untracked.reduce((sum, record) => sum + asNumber(record.value), 0);
+      if (untracked.length > 0 && untrackedTotal > 0) {
+        bodyParts.push(`<div class="banner warn mt3">The counts are a floor: the tracker reached its memory bound. (${num(untrackedTotal)} not counted)</div>`);
+      }
+
+      pill.innerHTML = `<span class="pill ok">${num(totalActive)} active</span>`;
+      body.innerHTML = bodyParts.join('');
+    }
+
     // ---- Page -------------------------------------------------------------
 
     let bannerTimer = null;
@@ -514,11 +597,12 @@
     function hideBanner() { $('banner').className = 'banner err hide'; }
 
     async function refresh() {
-        const names = ['info/system', 'config/probes', 'config/outputs', 'license/status', 'catalog/probes', 'info/events'];
+        const names = ['info/system', 'config/probes', 'config/outputs', 'license/status', 'catalog/probes', 'info/events', 'info/self-records'];
         const res = await Promise.allSettled(names.map(get));
         const val = (i) => res[i].status === 'fulfilled' ? res[i].value : null;
-        const failed = names.filter((n, i) => res[i].status === 'rejected');
-        const system = val(0), probes = val(1), outputs = val(2), lic = val(3), catalog = val(4), events = val(5);
+        // The records endpoint is absent on older agents: not a failure to report.
+        const failed = names.filter((n, i) => res[i].status === 'rejected' && n !== 'info/self-records');
+        const system = val(0), probes = val(1), outputs = val(2), lic = val(3), catalog = val(4), events = val(5), selfRecords = val(6);
 
         let probeSt = null, outputList = null;
         if (system) renderAgent(system, outputs);
@@ -531,6 +615,7 @@
         else $('lic-kv').innerHTML = '';
         if (events) renderEvents(events);
         else $('events-body').innerHTML = '<div class="empty-line">Events unavailable.</div>';
+        renderSeries(selfRecords, system);
         if (system && probeSt && outputList) renderGettingStarted(system, probeSt, outputList);
         else $('gs-card').classList.add('hide');
 
