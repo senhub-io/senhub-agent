@@ -2,6 +2,7 @@ package mongodb
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -393,7 +394,7 @@ func TestUnreachableServerWarnsOncePerOutage(t *testing.T) {
 	if err := p.OnStart(nil); err != nil {
 		t.Fatalf("OnStart: %v", err)
 	}
-	defer func() { _ = p.OnShutdown(nil) }()
+	defer func() { _ = p.OnShutdown(context.Background()) }()
 
 	for i := 0; i < 10; i++ {
 		if _, err := p.Collect(); err != nil {
