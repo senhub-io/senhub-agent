@@ -276,7 +276,7 @@ SenHub Agent provides custom PRTG lookup files that translate numeric status val
 
 After loading the lookups, PRTG sensors display human-readable status values instead of raw numbers.
 
-A channel that names a lookup the PRTG core does not have turns the whole sensor Warning (PE272). This is why the Check Result channel, which every database, application and active-check probe can report, is off by default. Install the lookups first, then turn it on in the `http` output. With the multi-file layout (the default since 0.1.93, and what the MSI and the packages install), add it in `strategies.d/00-http.yaml`, at the same level as `port`:
+A channel that names a lookup the PRTG core does not have turns the whole sensor Warning (PE272). This is why the Check Result channel, which every database, application and active-check probe can report, and the unresolved-target channel of `http_check` and `tcp_dial` are off by default, and why service channels (`systemd`, `winservices`) show a plain value by default: 1 when the service runs, 0 when it does not, with an error limit below 1 so a stopped service turns the sensor Error. Install the lookups first, then turn it on in the `http` output. With the multi-file layout (the default since 0.1.93, and what the MSI and the packages install), add it in `strategies.d/00-http.yaml`, at the same level as `port`:
 
 ```yaml
 http:
@@ -297,7 +297,7 @@ storage:
 
 Before 0.6.5 the agent ignores the key, so it can be added ahead of an automatic update. Only `config check` on 0.6.4 or earlier reports it, as a parameter the `http` output does not read.
 
-The channel then references the `senhub.probe.check.result` lookup. The ZIP file contains lookup files in the PRTG `.ovl` format:
+The Check Result channel then references the `senhub.probe.check.result` lookup, the unresolved-target channel `senhub.probe.check.target.unresolved`, and service channels `host.service.running`. PRTG applies a channel's limits only when it creates the channel: a service channel created by 0.6.4 with its lookup keeps no limit after the option is turned off, so delete it or re-add the sensor. The ZIP file contains lookup files in the PRTG `.ovl` format:
 
 ```
 senhub-prtg-lookups.zip
