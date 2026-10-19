@@ -3,7 +3,6 @@
 package app
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"os"
@@ -87,13 +86,11 @@ func runRefreshUnit() {
 
 	if !*yes {
 		fmt.Print("Apply changes? [y/N] ")
-		scanner := bufio.NewScanner(os.Stdin)
-		if !scanner.Scan() {
-			fmt.Println("aborted")
-			return
+		ok, interactive := confirmFrom(os.Stdin, os.Stderr)
+		if !interactive {
+			os.Exit(cliexit.Failure)
 		}
-		answer := strings.TrimSpace(scanner.Text())
-		if answer != "y" && answer != "Y" {
+		if !ok {
 			fmt.Println("aborted")
 			return
 		}
