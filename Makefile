@@ -419,6 +419,11 @@ docs-params: ## Regenerate the parameter tables of the probe pages from their sc
 	@echo "Done. Review the diff before committing."
 	@echo "Commercial probe pages are generated from senhub-agent-enterprise; see the comment above this target."
 
+probesdk-api: ## Regenerate the committed snapshot of the probesdk API (probesdk/api.txt)
+	@echo "Regenerating the probesdk API snapshot..."
+	@UPDATE_GOLDEN=1 go test ./probesdk/ -run TestAPISnapshot -count=1
+	@echo "Done. Review the diff before committing: the enterprise repository builds against this surface."
+
 # Pinned: the promtool shipped in this image is what the rules are validated with.
 PROMTOOL_IMAGE ?= prom/prometheus:v2.55.1
 
@@ -569,4 +574,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build helm-lint build-windows verify-windows-version build-linux build-darwin package package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics check-alerts test-oracle test-mysql test-postgresql test-database test-zabbix-import help package-version test-release-manifest
+.PHONY: all build helm-lint build-windows verify-windows-version build-linux build-darwin package package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics probesdk-api check-alerts test-oracle test-mysql test-postgresql test-database test-zabbix-import help package-version test-release-manifest
