@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -69,6 +71,9 @@ func DefaultConfig() *Config {
 func NewDebugLogShipper(config *Config) (*DebugLogShipper, error) {
 	if config.Endpoint == "" {
 		return nil, ErrMissingEndpoint
+	}
+	if err := validateEndpoint(config.Endpoint); err != nil {
+		return nil, err
 	}
 
 	// Apply defaults for missing values
@@ -308,4 +313,32 @@ func (s *DebugLogShipper) Close() error {
 	s.flushTimer.Stop()
 	s.triggerFlush() // Final flush
 	return nil
+}
+
+// validateEndpoint refuses to ship logs over clear text to anything but
+// the local machine: the entries carry host names and operational detail.
+func validateEndpoint(endpoint string) error {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidEndpoint, err)
+	}
+	switch u.Scheme {
+	case "https":
+		return nil
+	case "http":
+		if isLoopbackHost(u.Hostname()) {
+			return nil
+		}
+		return fmt.Errorf("%w: %q is not a loopback address", ErrInsecureEndpoint, u.Hostname())
+	default:
+		return fmt.Errorf("%w: unsupported scheme %q", ErrInvalidEndpoint, u.Scheme)
+	}
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
