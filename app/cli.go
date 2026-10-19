@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"golang.org/x/term"
+	"io"
 	"os"
 	"os/user"
 	"runtime"
@@ -165,17 +167,29 @@ func fatalf(format string, args ...any) {
 }
 
 // readYesConfirmation reads a single interactive answer from stdin and
-// reports whether it is an affirmative ("y"/"Y"). An empty line — which
-// is what fmt.Scanln returns on EOF or a non-TTY stdin — resolves to
-// false, so a destructive command run non-interactively without a
-// bypass flag aborts (safe default) rather than proceeding.
+// reports whether it is an affirmative ("y"/"Y"). Anything else aborts,
+// the safe outcome for a destructive command.
 func readYesConfirmation() bool {
+	ok, _ := confirmFrom(os.Stdin, os.Stderr)
+	return ok
+}
+
+// confirmFrom reads the answer from in only when in is a terminal. A
+// script piped into a shell (`bash -s`, a heredoc) is the process's
+// stdin: reading a line there would swallow the script's next command
+// as the answer. A non-terminal stdin therefore reads nothing, says how
+// to confirm without a prompt, and reports interactive == false so the
+// caller can fail loudly instead of looking like a user's "no".
+func confirmFrom(in *os.File, errOut io.Writer) (ok, interactive bool) {
+	if !term.IsTerminal(int(in.Fd())) {
+		fmt.Fprintln(errOut, "\nstdin is not a terminal, so nothing was read; pass --yes to confirm without a prompt.")
+		return false, false
+	}
 	var answer string
 	// A scan error (EOF, empty input) leaves answer == "" and
-	// answerIsYes returns false: the caller aborts, which is the safe
-	// outcome for a destructive action.
-	_, _ = fmt.Scanln(&answer)
-	return answerIsYes(answer)
+	// answerIsYes returns false: the caller aborts.
+	_, _ = fmt.Fscanln(in, &answer)
+	return answerIsYes(answer), true
 }
 
 // answerIsYes is the pure decision behind readYesConfirmation: only an

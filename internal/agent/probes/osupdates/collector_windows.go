@@ -82,7 +82,8 @@ func (c *wuaCollector) collect(_ context.Context) (updatesStatus, error) {
 	// Reboot detection is best-effort: a failure here must not discard the
 	// pending/security counts already collected (the probe stays up=1).
 	if reboot, rerrr := c.rebootRequired(); rerrr != nil {
-		c.logger.Warn().Err(rerrr).Msg("reboot-required check failed; reporting reboot_required=0")
+		c.logger.Warn().Err(rerrr).Msg("reboot-required check failed; leaving reboot_required out")
+		status.rebootRequiredUnknown = true
 	} else {
 		status.rebootRequired = reboot
 	}
