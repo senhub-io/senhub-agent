@@ -148,6 +148,7 @@ func findModuleRoot() (string, error) {
 func loadExportMap(root string) (map[string]string, error) {
 	cmd := exec.Command("go", "list", "-export", "-deps", "-f", "{{.ImportPath}}={{.Export}}", "./probesdk/...", "./app")
 	cmd.Dir = root
+	cmd.Env = snapshotEnv()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("go list -export -deps ./probesdk/...: %w\n%s", err, strings.TrimSpace(string(out)))
@@ -180,6 +181,7 @@ func loadExportMap(root string) (map[string]string, error) {
 func loadPackageList(root string) ([]string, error) {
 	cmd := exec.Command("go", "list", "-f", "{{.ImportPath}}", "./probesdk/...")
 	cmd.Dir = root
+	cmd.Env = snapshotEnv()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("go list ./probesdk/...: %w\n%s", err, strings.TrimSpace(string(out)))
@@ -756,4 +758,11 @@ func diffOps(a, b []string) []string {
 	}
 
 	return ops
+}
+
+// snapshotEnv renders the surface for linux/amd64 whatever the host: files
+// behind build constraints change it, and api.txt is one file for every
+// runner.
+func snapshotEnv() []string {
+	return append(os.Environ(), "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0")
 }
