@@ -73,6 +73,7 @@ The Overview is the landing page.
 - **Agent** merges the former status, health and resources cards: version, host, instance ID, uptime, port, configuration path, memory, CPU, goroutines and cache size. Memory is the resident set the operating system charges to the agent, CPU its share of the whole machine over the last interval; both are asked of the operating system at each refresh. A warning appears when the configuration watch is off, because edits made by hand then need a restart.
 - **Licence** shows the tier, the expiry date, how many probe types are available and how many need a licence, and the agent key with a copy button. The Settings page gathers the identifiers and the licence in full.
 - **Recent events** shows the last transitions: a probe that started failing or recovered, an output that could not start, a save made from the console, a configuration reloaded from disk. The agent keeps the last fifty in memory; they do not survive a restart.
+- **Series exported** appears with a build that meters series. It gives the series exported within the last hour, which is what a time-series backend sizes and bills on: the total per output, the ten probes holding the most, and the series created since the agent started. When the tracker has reached its memory bound the counts are a floor, and a warning says so. A build without metering shows one line and the number of series in the cache.
 
 The page refreshes every thirty seconds.
 
@@ -89,6 +90,10 @@ Each row shows the probe's name, its type, its state (running, target down, fail
 Probes declared in files written by hand carry a `file` pill: they are listed but left to the file. Only the fragments the console wrote, one file per instance under `probes.d` with a header comment, are edited from the page.
 
 On a fresh install the page shows four starters instead of an empty table: **This host** creates the CPU, memory, disk and network probes in one click; **A database**, **A network device** and **A web endpoint** open the editor on the matching type.
+
+### The probe page
+
+Click a probe name, or anywhere on its row on the Overview or the Probes list, to open `probes?view={name}`. The page gathers what is needed to run one probe: its state with the full reason when it fails, its target is down, or it is locked or unsupported; the last collection, interval and number of series; the current series with their values and units (filtered by name when there are more than twenty); its configuration, read-only, with secrets shown as stored; and its recent events. Edit, Sensor URL, Enable or Disable and Delete are in the page header. A probe declared in a file or set by environment variables says where to change it instead of offering Edit. The page refreshes every thirty seconds.
 
 ### The editor
 
