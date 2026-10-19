@@ -118,6 +118,7 @@ nav:
   - Alert rules and dashboards: packs.md
   - CLI reference: cli.md
   - OTLP / OpenTelemetry: otlp.md
+  - Topology: topology.md
   - Probes:
       - Overview: probes/index.md
       - CPU: probes/cpu.md
@@ -209,6 +210,7 @@ nav:
   - What's new:
       - Overview: whats-new/index.md
       - Next (unreleased): whats-new/next.md
+      - 0.6.4: whats-new/0.6.4.md
       - 0.6.3: whats-new/0.6.3.md
       - 0.6.2: whats-new/0.6.2.md
       - 0.6.1: whats-new/0.6.1.md
