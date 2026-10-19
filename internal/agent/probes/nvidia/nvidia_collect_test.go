@@ -201,7 +201,9 @@ func TestCollect_NAFieldsAreParsedAndReported(t *testing.T) {
 		"gpu.temperature":         35,
 		"gpu.encoder.utilization": 0,
 		"gpu.decoder.utilization": 0,
-		"gpu.fan.speed":           0,
+	}
+	if values := got["gpu.fan.speed"]; len(values) != 0 {
+		t.Errorf("gpu.fan.speed reported as N/A must be left out, got %v", values)
 	}
 	for metric, wantValue := range want {
 		values := got[metric]
