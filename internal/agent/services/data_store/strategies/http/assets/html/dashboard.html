@@ -21,6 +21,8 @@
         .tbl td.name { min-width: 120px; overflow-wrap: normal; word-break: normal; }
         .tbl td.name a { color: inherit; }
         .tbl td.name a:hover { color: var(--accent-ink); }
+        .series-card { grid-column: 1 / -1; }
+        .series-card .kv, .series-card .tbl { max-width: 560px; }
         .tbl tr.go, .orow.go { cursor: pointer; }
         .orow.go:hover { background: var(--well); }
         .orow .d .bad { color: var(--err); }
@@ -103,6 +105,11 @@
             <div class="card">
                 <div class="card-h"><h2>Recent events</h2><span class="count small" id="events-count"></span></div>
                 <div class="events" id="events-body"><div class="loading">Loading events...</div></div>
+            </div>
+
+            <div class="card series-card">
+                <div class="card-h"><h2>Series exported</h2><span id="series-pill"></span></div>
+                <div id="series-body"><div class="loading">Loading series...</div></div>
             </div>
         </div>
 
