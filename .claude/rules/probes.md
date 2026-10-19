@@ -273,5 +273,5 @@ service does not control it, and a container loses it. The path stays overridabl
 ## Tests
 
 - Unit tests use synthetic input maps (stub `SHOW GLOBAL STATUS` etc.) — no real connection required for the per-family build* helpers.
-- Integration tests live under `*_integration_test.go` with a `//go:build integration` tag (run via `make test-database` in senhub-agent-enterprise, where the database probes live).
+- Integration tests live under `*_integration_test.go` with a `//go:build integration` tag (run via `make test-mysql`, `make test-postgresql` or `make test-database` for both; the scripts live in each probe's `testdata/run-integration.sh`).
 - Test assertions reference **OTel-canonical** metric names, not the legacy `db_*` form.
