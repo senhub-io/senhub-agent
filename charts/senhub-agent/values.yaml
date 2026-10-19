@@ -27,7 +27,7 @@ image:
   # -- Image repository. Empty picks ghcr.io/senhub-io/senhub-agent
   # (edition full) or ghcr.io/senhub-io/senhub-agent-oss (edition oss).
   repository: ""
-  # -- Image tag. Empty uses the chart appVersion (0.6.1). There is no `latest`.
+  # -- Image tag. Empty uses the chart appVersion (0.6.4). There is no `latest`.
   tag: ""
   pullPolicy: IfNotPresent
 
