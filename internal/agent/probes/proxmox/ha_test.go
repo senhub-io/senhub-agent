@@ -255,3 +255,30 @@ func TestCollect_HAStatusForbidden(t *testing.T) {
 		}
 	}
 }
+
+// The reply of a standalone PVE 9.2 node, as captured on a recette host: a
+// quorum entry and a fencing entry, no service. quorate is an integer and
+// the entries carry id and status, no sid or state.
+func TestCollect_HAStandaloneNodeReply(t *testing.T) {
+	srv := newPVE9Server(t, resourcesReply(t), func(mux *http.ServeMux) {
+		mux.HandleFunc("/api2/json/cluster/ha/status/current", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(t, w, []map[string]interface{}{
+				{"id": "quorum", "node": "pve1", "quorate": 1, "status": "OK", "type": "quorum"},
+				{"id": "fencing", "node": "pve1", "type": "fencing", "armed-state": "standby", "status": "standby (CRM watchdog standby)"},
+			})
+		})
+	})
+	p := newGuestProbe(t, srv.URL, "")
+
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	got := haTestQuorumStates(points)
+	if got["ok"] != 1 || got["lost"] != 0 || len(got) != 2 {
+		t.Errorf("quorum states = %v, want ok=1 lost=0", got)
+	}
+	if res := haTestResourceStates(points); len(res) != 0 {
+		t.Errorf("a fencing entry must not become an HA resource: %v", res)
+	}
+}
