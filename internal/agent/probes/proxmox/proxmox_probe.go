@@ -222,6 +222,7 @@ func (p *ProxmoxProbe) Collect() ([]data_store.DataPoint, error) {
 		}
 		points = append(points, p.collectBackupCoverage(scoped, now)...)
 	}
+	points = append(points, p.collectHA(now)...)
 
 	// Refresh entity snapshot so the topology rail stays current.
 	// fetchClusterName is best-effort: a standalone install or a failing
@@ -309,6 +310,7 @@ func (p *ProxmoxProbe) collectNode(n pveNode, guests []pveGuest, guestsOK bool, 
 	}
 	points = append(points, p.collectBackups(n.Node, known, storages, now)...)
 	points = append(points, p.collectFailedTasks(n.Node, now)...)
+	points = append(points, p.collectReplication(n.Node, now)...)
 	for _, st := range storages {
 		stTags := []tags.Tag{
 			{Key: "proxmox.node", Value: n.Node},

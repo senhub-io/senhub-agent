@@ -427,6 +427,11 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"proxmox.vm.backup.state",
 		"proxmox.storage.state",
 		"proxmox.task.state",
+		"proxmox.ha.resource",
+		"proxmox.ha.resource.state",
+		"proxmox.ha.quorum.state",
+		"proxmox.replication.job",
+		"proxmox.replication.job.state",
 	},
 
 	// Kubernetes — one series per resource instance; the discriminant
