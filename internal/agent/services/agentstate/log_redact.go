@@ -241,7 +241,10 @@ func maskStringMap(rs *redactionRuleset, attrs map[string]string, probe string) 
 	}
 	var out map[string]string
 	for k, v := range attrs {
-		mv := maskString(rs, v, probe)
+		mv, keyed := maskByKey(rs, k, v, probe)
+		if !keyed {
+			mv = maskString(rs, v, probe)
+		}
 		if mv == v {
 			continue
 		}
@@ -392,4 +395,52 @@ func asciiLower(c byte) byte {
 // clears the counters, for tests of packages that read them.
 func ResetLogRedactionForTest() {
 	resetLogRedactionForTest()
+}
+
+// credentialKeys are the attribute names whose whole value is a secret.
+// A value under such a key carries no "key=" form for the patterns to
+// find, so the preset masks it by its key: "password", "db.password",
+// "http.request.header.authorization".
+var credentialKeys = map[string]string{
+	"password": "credential_param", "passwd": "credential_param", "pwd": "credential_param",
+	"passhash": "credential_param", "apikey": "credential_param", "api_key": "credential_param",
+	"token": "credential_param", "access_token": "credential_param", "secret": "credential_param",
+	"authorization": "authorization_header", "proxy-authorization": "authorization_header",
+}
+
+// maskByKey masks the whole value of an attribute whose last name segment
+// is a credential key, when the preset is on. An Authorization value keeps
+// its scheme.
+func maskByKey(rs *redactionRuleset, key, v, probe string) (string, bool) {
+	if v == "" || !presetOn(rs) {
+		return v, false
+	}
+	last := strings.ToLower(key)
+	if i := strings.LastIndexByte(last, '.'); i >= 0 {
+		last = last[i+1:]
+	}
+	rule, ok := credentialKeys[last]
+	if !ok {
+		return v, false
+	}
+	masked := "***"
+	if rule == "authorization_header" {
+		if sp := strings.IndexByte(strings.TrimSpace(v), ' '); sp > 0 {
+			masked = strings.TrimSpace(v)[:sp+1] + "***"
+		}
+	}
+	if masked == v {
+		return v, true
+	}
+	recordRedaction(probe, rule)
+	return masked, true
+}
+
+func presetOn(rs *redactionRuleset) bool {
+	for i := range rs.rules {
+		if rs.rules[i].name == "credential_param" {
+			return true
+		}
+	}
+	return false
 }
