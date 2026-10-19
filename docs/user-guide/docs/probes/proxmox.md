@@ -71,6 +71,10 @@ usage.
 | `proxmox.vm.backup.status` | 1 | Outcome of the last backup task naming the guest, one series per `proxmox.vm.backup.state` (`ok`, `failed`) |
 | `proxmox.vm.backup.unprotected.count` | {vm} | Guests covered by no enabled backup job |
 | `proxmox.backup.job.count` | {job} | Enabled backup jobs |
+| `proxmox.ha.resource.status` | 1 | State of an HA-managed guest (`proxmox.ha.resource` = service id such as `vm:100`, plus `proxmox.vmid`), one series per `proxmox.ha.resource.state` (`started`, `stopped`, `disabled`, `ignored`, `error`, `fence`, `freeze`, `migrate`, `relocate`, `recovery`, `request_stop`): 1 for the current state, 0 for the others |
+| `proxmox.ha.quorum.status` | 1 | Cluster quorum, one series per `proxmox.ha.quorum.state` (`ok`, `lost`) |
+| `proxmox.replication.job.status` | 1 | Storage replication job (`proxmox.replication.job`, `proxmox.vmid`, `proxmox.replication.target`), one series per `proxmox.replication.job.state` (`ok`, `failed`); failed when the job has a non-zero fail count or an error |
+| `proxmox.replication.job.age` | s | Seconds since the last successful synchronisation of a replication job; absent when it never synced |
 | `proxmox.task.count` | {task} | Tasks that failed since the previous collection, per node and `proxmox.task.type` (`proxmox.task.state` = `failed`); each also becomes an ERROR log record |
 
 ## Operational notes
@@ -79,6 +83,7 @@ usage.
 - The `endpoint` must use `https://`. The API certificate is verified by default; a self-signed Proxmox certificate needs `verify_tls: false`, or better, a proper certificate for production.
 - Both QEMU VMs and LXC containers are monitored; they are distinguished by the `proxmox.vmid` tag.
 - Disk, ZFS, backup and task series need `Sys.Audit` on `/nodes/<node>` (`PVEAuditor` on `/` covers it); a token without it simply contributes nothing for that endpoint. Backup job coverage reads `/cluster/backup`: a job with `all` covers every guest except its exclude list, otherwise its VM list and pool members, and a disabled job covers nothing.
+- HA series read `/cluster/ha/status/current` and need `Sys.Audit` on `/`; replication series read `/nodes/<node>/replication` and need `Sys.Audit` on `/nodes/<node>` (both covered by `PVEAuditor` on `/`). A cluster without HA resources or replication jobs emits no HA resource or replication series and logs no warning. An HA resource in a state PVE does not document is skipped.
 
 ## Metric reference
 
@@ -121,6 +126,10 @@ series' tags.
 | `proxmox.vm.backup.unprotected.count` | `proxmox.vm.backup.unprotected.count` | Proxmox Guests Without Backup | # | Guests covered by no enabled backup job of /cluster/backup: a job with all set covers every guest except its exclude list, otherwise its vmid list and its pool members; a disabled job covers nothing |
 | `proxmox.backup.job.count` | `proxmox.backup.job.count` | Proxmox Backup Jobs | # | Number of enabled backup jobs in /cluster/backup |
 | `proxmox.task.count` | `proxmox.task.count` | Proxmox Failed Tasks {proxmox.task.type} | # | Tasks of this type that ended with a status other than OK since the previous collection (the first cycle counts the last interval only), per node; each one is also published as an ERROR log record carrying the tail of its task log |
+| `proxmox.ha.resource.status` | `proxmox.ha.resource.status` | Proxmox HA Resource {proxmox.ha.resource} {proxmox.ha.resource.state} | # | State of an HA-managed guest from /cluster/ha/status/current, one series per proxmox.ha.resource.state (started, stopped, disabled, ignored, error, fence, freeze, migrate, relocate, recovery, request_stop): 1 for the current state, 0 for the others. A resource in a state PVE does not document produces nothing; absent when HA is not configured |
+| `proxmox.ha.quorum.status` | `proxmox.ha.quorum.status` | Proxmox HA Quorum {proxmox.ha.quorum.state} | # | Cluster quorum as reported by /cluster/ha/status/current, one series per proxmox.ha.quorum.state (ok, lost): 1 for the current state, 0 for the other |
+| `proxmox.replication.job.status` | `proxmox.replication.job.status` | Proxmox Replication Job {proxmox.replication.job} {proxmox.replication.job.state} | # | Outcome of a storage replication job of the node, one series per proxmox.replication.job.state (ok, failed): failed when the job has a non-zero fail count or an error, 1 for the current state, 0 for the other. Absent when no replication is configured |
+| `proxmox.replication.job.age` | `proxmox.replication.job.age` | Proxmox Replication Job {proxmox.replication.job} Last Sync Age | s | Seconds since the last successful synchronisation of the replication job; absent when the job has never synced |
 | `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->
