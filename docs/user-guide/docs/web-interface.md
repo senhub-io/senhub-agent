@@ -269,7 +269,19 @@ SenHub Agent provides custom PRTG lookup files that translate numeric status val
 
 3. In the PRTG web interface, go to **Administration > Administrative Tools** and click **Load Lookups and File Lists**.
 
-After loading the lookups, PRTG sensors display human-readable status values instead of raw numbers. The ZIP file contains lookup files in the PRTG `.ovl` format:
+After loading the lookups, PRTG sensors display human-readable status values instead of raw numbers.
+
+A channel that names a lookup the PRTG core does not have turns the whole sensor Warning (PE272). This is why the Check Result channel, which every database, application and active-check probe can report, is off by default. Install the lookups first, then turn it on in the `http` output:
+
+```yaml
+storage:
+  - name: http
+    params:
+      prtg:
+        check_result_channel: true
+```
+
+The channel then references the `senhub.probe.check.result` lookup. The ZIP file contains lookup files in the PRTG `.ovl` format:
 
 ```
 senhub-prtg-lookups.zip

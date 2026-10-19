@@ -430,9 +430,13 @@ check-alerts: ## Validate the vmalert starter rules with promtool (needs docker)
 			|| { echo "FAIL $$f"; echo "$$out"; exit 1; }; \
 	done
 
-# Database probes (mysql, postgresql) moved to senhub-agent-enterprise
-# with the OSS split; their integration tier runs there. See the
-# senhub-agent-enterprise Makefile (`make test-database`).
+test-mysql: ## Run the mysql probe integration suite against throwaway MySQL and MariaDB containers (needs docker; MYSQL_IMAGES selects the images)
+	@bash internal/agent/probes/mysql/testdata/run-integration.sh
+
+test-postgresql: ## Run the postgresql probe integration suite against a throwaway PostgreSQL container (needs docker; POSTGRESQL_IMAGE selects the release)
+	@bash internal/agent/probes/postgresql/testdata/run-integration.sh
+
+test-database: test-mysql test-postgresql ## Run every database probe integration suite (mysql, postgresql)
 
 # Boot smoke tests — build the agent binary, exec it against shipped
 # example configs to catch bring-up regressions (linker errors, config
@@ -565,4 +569,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build helm-lint build-windows verify-windows-version build-linux build-darwin package package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics check-alerts test-oracle test-zabbix-import help package-version test-release-manifest
+.PHONY: all build helm-lint build-windows verify-windows-version build-linux build-darwin package package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics check-alerts test-oracle test-mysql test-postgresql test-database test-zabbix-import help package-version test-release-manifest
