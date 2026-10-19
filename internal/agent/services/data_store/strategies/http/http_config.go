@@ -35,10 +35,11 @@ type ConfigurationManager struct {
 	prometheusIncludeProbeTags  bool
 	prometheusExposeHostMetrics bool
 
-	// prtgCheckResultChannel adds the Check Result channel to PRTG
-	// sensors (params["prtg"]["check_result_channel"]). Off by default:
-	// the channel names a lookup a PRTG core does not ship, and a sensor
-	// whose channel references a missing lookup turns Warning (PE272).
+	// prtgCheckResultChannel adds the Check Result and unresolved-target
+	// channels to PRTG sensors and gives service channels their lookup
+	// (params["prtg"]["check_result_channel"]). Off by default: those
+	// lookups are not on a PRTG core, and a sensor whose channel
+	// references a missing lookup turns Warning (PE272).
 	prtgCheckResultChannel bool
 }
 

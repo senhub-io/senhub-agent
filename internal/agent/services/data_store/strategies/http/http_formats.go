@@ -18,11 +18,28 @@ type FormatConverter struct {
 	logger              *logger.ModuleLogger
 	cache               *MetricCache
 	// checkResultChannel reports whether PRTG output carries the Check
-	// Result channel; nil means it does not.
+	// Result channel and the status lookups added after 0.6.3; nil means
+	// it does not.
 	checkResultChannel func() bool
 }
 
-const checkResultMetric = "senhub.probe.check.result"
+const (
+	checkResultMetric      = "senhub.probe.check.result"
+	unresolvedTargetMetric = "senhub.probe.check.target.unresolved"
+	serviceRunningMetric   = "host.service.running"
+)
+
+// optionalChannels are served to PRTG only with prtg.check_result_channel:
+// each needs a lookup a customer core may lack, and a channel naming a
+// missing lookup turns the whole sensor Warning (PE272).
+var optionalChannels = map[string]bool{
+	checkResultMetric:      true,
+	unresolvedTargetMetric: true,
+}
+
+func (f *FormatConverter) prtgLookupsEnabled() bool {
+	return f.checkResultChannel != nil && f.checkResultChannel()
+}
 
 // NewFormatConverter creates a new format converter
 func NewFormatConverter(transformerRegistry *transformers.TransformerRegistry, logger *logger.ModuleLogger, cache *MetricCache) *FormatConverter {
@@ -130,7 +147,7 @@ func (f *FormatConverter) GetMetricsForProbeWithFilter(probeName string, filter 
 		if !f.cache.IsLive(metric, now) {
 			continue
 		}
-		if metric.MetricName == checkResultMetric && (f.checkResultChannel == nil || !f.checkResultChannel()) {
+		if optionalChannels[metric.MetricName] && !f.prtgLookupsEnabled() {
 			continue
 		}
 		if t, err := f.transformerRegistry.LoadTransformer(probeTypeOf(metric), "friendly"); err == nil && t != nil && transformers.SkipsPRTG(t, metric.MetricName) {
@@ -197,6 +214,15 @@ func (f *FormatConverter) transformToPRTGChannelWithFilter(key string, metric Ca
 	channel := &PRTGChannel{
 		Channel: channelName,
 		Value:   value,
+	}
+
+	// Without the option, a service channel keeps its 0/1 value and
+	// carries its error state as a PRTG limit instead of a lookup.
+	if metric.MetricName == serviceRunningMetric && valueLookup != "" && !f.prtgLookupsEnabled() {
+		channel.LimitMode = 1
+		channel.LimitMinError = 0.5
+		channel.LimitErrorMsg = "Service not running"
+		valueLookup = ""
 	}
 
 	// Configure channel based on whether it uses lookup or not
