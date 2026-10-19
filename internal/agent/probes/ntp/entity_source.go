@@ -88,7 +88,7 @@ func buildNTPTarget(server, hostID string) ntpTarget {
 	// canonical IP literal -- never the resolved IP, which changes. The SDK
 	// helper canonicalises IP literals and adds host.id only for host-scoped
 	// link-local/loopback addresses; loopback was already handled above.
-	addr := host
+	var addr string
 	if isIP {
 		addr = ip.String()
 	} else {
