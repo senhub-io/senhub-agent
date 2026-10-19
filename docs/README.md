@@ -6,7 +6,7 @@ Welcome to the SenHub Agent documentation. This documentation is organized into 
 
 ### 👤 [User Guide](./user-guide/)
 Documentation for end users and basic configuration:
-- [Probe Configuration](./user-guide/PROBE-CONFIGURATION.md) - Configure monitoring probes
+- [Probe Configuration](./user-guide/docs/configuration.md) - Configure monitoring probes
 
 ### ⚙️ [Admin Guide](./admin-guide/)
 Documentation for system administrators and advanced configuration:
@@ -17,63 +17,16 @@ Documentation for system administrators and advanced configuration:
 - [Universal Configuration API](./admin-guide/UNIVERSAL-CONFIGURATION.md) - Configuration validation API
 - [Config Version Changelog](./admin-guide/CONFIG-VERSION-CHANGELOG.md) - Configuration format changes
 
-### 📊 [Probe Documentation](./probes/)
-Specific documentation for monitoring probes:
+### Probe Documentation
+The current probe pages (parameters, metrics, examples for every probe) are
+part of the [User Guide](./user-guide/docs/probes/index.md). The pages below are
+older, longer reference documents kept for the probes they cover:
 
-- **[System Probes](./probes/system/)** - System resource monitoring (CPU, Memory, Network, Disk)
-  - **[CPU](./probes/system/cpu/)** - Processor monitoring
-    - [README](./probes/system/cpu/README.md) - Overview and configuration
-    - [Metrics](./probes/system/cpu/METRICS.md) - Complete metrics reference
-  - **[Memory](./probes/system/memory/)** - RAM and swap monitoring
-    - [README](./probes/system/memory/README.md) - Overview and configuration
-    - [Metrics](./probes/system/memory/METRICS.md) - Complete metrics reference
-  - **[Network](./probes/system/network/)** - Network interface monitoring
-    - [README](./probes/system/network/README.md) - Overview and configuration
-    - [Metrics](./probes/system/network/METRICS.md) - Complete metrics reference
-  - **[LogicalDisk](./probes/system/logicaldisk/)** - Disk and filesystem monitoring
-    - [README](./probes/system/logicaldisk/README.md) - Overview and configuration
-    - [Metrics](./probes/system/logicaldisk/METRICS.md) - Complete metrics reference
-
-- **[Network Probes](./probes/network/)** - Network connectivity and quality monitoring
-  - **[Gateway Ping](./probes/network/)** - Default gateway connectivity
-    - [README](./probes/network/README.md) - Overview and configuration
-    - [Metrics](./probes/network/METRICS.md) - Complete metrics reference
-  - **[WiFi Signal Strength](./probes/network/wifi/)** - WiFi signal quality monitoring
-    - [README](./probes/network/wifi/README.md) - Overview and configuration
-    - [Metrics](./probes/network/wifi/METRICS.md) - Complete metrics reference
-
-- **[WebApp Probes](./probes/webapp/)** - Web application monitoring
-  - **[Ping](./probes/webapp/)** - HTTP/HTTPS availability monitoring
-    - [README](./probes/webapp/PING-README.md) - Overview and configuration
-    - [Metrics](./probes/webapp/PING-METRICS.md) - Complete metrics reference
-  - **[Load](./probes/webapp/)** - Web application performance monitoring
-    - [README](./probes/webapp/LOAD-README.md) - Overview and configuration
-    - [Metrics](./probes/webapp/LOAD-METRICS.md) - Complete metrics reference
-
-- **[Event Probes](./probes/events/)** - Event collection and log aggregation
-  - **[Syslog](./probes/events/)** - Syslog server (RFC 3164/5424)
-    - [README](./probes/events/README.md) - Overview and configuration
-    - [Metrics](./probes/events/METRICS.md) - Complete event reference
-  - **[Event](./probes/events/)** - Custom HTTP event endpoint
-    - [README](./probes/events/EVENT-README.md) - Overview and configuration
-    - [Metrics](./probes/events/EVENT-METRICS.md) - Complete event reference
-
-- **[Citrix CVAD](./probes/citrix/)** - Citrix Virtual Apps and Desktops monitoring
-  - [README](./probes/citrix/README.md) - Overview and setup
-  - [Metrics](./probes/citrix/METRICS.md) - Complete metrics reference
-  - [Debug Mode](./probes/citrix/DEBUG-MODE.md) - Debugging guide
-  - [Site Filtering](./probes/citrix/SITE_FILTERING_PLAN.md) - Multi-site filtering
-
-- **[NetScaler ADC](./probes/netscaler/)** - Citrix NetScaler Application Delivery Controller monitoring
-  - [README](./probes/netscaler/README.md) - Overview and configuration
-  - [Metrics](./probes/netscaler/METRICS.md) - Complete metrics reference
-  - [Configuration Examples](./probes/netscaler/configuration-examples.yaml) - YAML configuration examples
-
-- **[Redfish](./probes/redfish/)** - Hardware monitoring via Redfish API
-  - [README](./probes/redfish/README.md) - Redfish probe overview
-  - [Metrics](./probes/redfish/METRICS.md) - Complete metrics reference
-  - [Tags](./probes/redfish/REDFISH-TAGS.md) - Redfish tagging system
-  - [Tag Enhancement](./probes/redfish/REDFISH-TAG-ENHANCEMENT.md) - Advanced tagging
+- System: [CPU](./probes/system/cpu/README.md), [Memory](./probes/system/memory/README.md), [Network](./probes/system/network/README.md), [LogicalDisk](./probes/system/logicaldisk/README.md)
+- Network: [Gateway ping](./probes/ping_gateway/README.md), [WiFi signal strength](./probes/wifi_signal_strength/README.md)
+- Web applications: [Ping](./probes/ping_webapp/README.md), [Load](./probes/load_webapp/README.md)
+- Events: [Syslog](./probes/syslog/README.md), [Event](./probes/event/README.md), [Windows event log](./probes/windows_eventlog/README.md)
+- [Citrix CVAD](./probes/citrix/README.md), [NetScaler ADC](./probes/netscaler/README.md), [Redfish](./probes/redfish/README.md)
 
 ### 👨‍💻 [Developer Guide](./developer-guide/)
 Documentation for contributors and developers:
@@ -82,13 +35,13 @@ Documentation for contributors and developers:
 - [Development Workflow](./developer-guide/development-workflow.md) - Git workflow and branching
 - [Build System](./developer-guide/build-system.md) - Compilation and testing
 - [Design Patterns](./developer-guide/design-patterns.md) - Code patterns and best practices
-- [Current Development](./developer-guide/current-development.md) - Active work and roadmap
+- [Current Development](./developer-guide/current-development.md) - Where the line stands
 - [Engineering](./developer-guide/engineering/) - Technical deep-dives
 
 ### 📦 [Releases](./releases/)
 Release notes and version history:
 - [All Releases](./releases/README.md) - Release index and guidelines
-- [Latest Beta (0.1.66)](./releases/0.1.70-beta.md) - Current development version
+- [Release notes](./user-guide/docs/whats-new/index.md) - Current release notes (this directory archives up to 0.3.2)
 
 ### 📽️ [Presentations](./presentations/)
 Technical presentations and demos:
@@ -103,7 +56,7 @@ Historical documentation and development notes (for reference only)
 
 ## 📖 Additional Resources
 
-- [Main README](../README.markdown) - Project overview and basic setup
+- [Main README](../README.md) - Project overview and basic setup
 - [Documentation Index](./DOCUMENTATION-INDEX.md) - Complete documentation index
 - [License System](./LICENSE-SYSTEM.md) - JWT-based license validation and management
 
@@ -111,11 +64,11 @@ Historical documentation and development notes (for reference only)
 
 | I want to... | Go to... |
 |--------------|----------|
-| Configure probes | [Probe Configuration](./user-guide/PROBE-CONFIGURATION.md) |
+| Configure probes | [Probe Configuration](./user-guide/docs/configuration.md) |
 | Monitor system resources (CPU, RAM, Network, Disk) | [System Probes](./probes/system/) |
-| Monitor network connectivity (Gateway, WiFi) | [Network Probes](./probes/network/) |
-| Monitor web applications (Ping, Load) | [WebApp Probes](./probes/webapp/) |
-| Collect events and logs (Syslog, Custom) | [Event Probes](./probes/events/) |
+| Monitor network connectivity (Gateway, WiFi) | [Gateway ping](./probes/ping_gateway/README.md) |
+| Monitor web applications (Ping, Load) | [WebApp ping](./probes/ping_webapp/README.md) |
+| Collect events and logs (Syslog, Custom) | [Syslog](./probes/syslog/README.md) |
 | Monitor Citrix CVAD | [Citrix Documentation](./probes/citrix/) |
 | Monitor NetScaler ADC (load balancers) | [NetScaler Documentation](./probes/netscaler/) |
 | Monitor hardware (servers) | [Redfish Documentation](./probes/redfish/) |

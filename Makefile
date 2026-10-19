@@ -424,6 +424,17 @@ probesdk-api: ## Regenerate the committed snapshot of the probesdk API (probesdk
 	@UPDATE_GOLDEN=1 go test ./probesdk/ -run TestAPISnapshot -count=1
 	@echo "Done. Review the diff before committing: the enterprise repository builds against this surface."
 
+# Pinned: the promtool shipped in this image is what the rules are validated with.
+PROMTOOL_IMAGE ?= prom/prometheus:v2.55.1
+
+check-alerts: ## Validate the vmalert starter rules with promtool (needs docker)
+	@command -v docker >/dev/null || { echo "docker is required"; exit 1; }
+	@for f in packs/alerts/vmalert/*.rules.yml; do \
+		out=$$(docker run --rm -i --entrypoint promtool $(PROMTOOL_IMAGE) check rules /dev/stdin < $$f 2>&1) \
+			&& echo "ok   $$f: $$(echo "$$out" | grep -o '[0-9]* rules found')" \
+			|| { echo "FAIL $$f"; echo "$$out"; exit 1; }; \
+	done
+
 test-mysql: ## Run the mysql probe integration suite against throwaway MySQL and MariaDB containers (needs docker; MYSQL_IMAGES selects the images)
 	@bash internal/agent/probes/mysql/testdata/run-integration.sh
 
@@ -563,4 +574,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build helm-lint build-windows verify-windows-version build-linux build-darwin package package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics probesdk-api test-oracle test-mysql test-postgresql test-database test-zabbix-import help package-version test-release-manifest
+.PHONY: all build helm-lint build-windows verify-windows-version build-linux build-darwin package package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics probesdk-api check-alerts test-oracle test-mysql test-postgresql test-database test-zabbix-import help package-version test-release-manifest
