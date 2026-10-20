@@ -40,3 +40,34 @@ jobs:
       - name: Build user guide (strict)
         run: mkdocs build --strict
         working-directory: docs/user-guide
+
+  commit-hygiene:
+    # Commit messages, the PR description and the tree carry no assistant
+    # attribution or assistant configuration files. The patterns are
+    # base64-encoded so that this file does not match them itself.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Refuse attribution lines and assistant files
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          MSG_PATTERN: KGNvLWF1dGhvcmVkLWJ5OltePF0qKGNsYXVkZXxhbnRocm9waWMpfG5vcmVwbHlAYW50aHJvcGljfGNsYXVkZS1zZXNzaW9uOnxnZW5lcmF0ZWQgd2l0aCBcWz9jbGF1ZGV8Y2xhdWRlXC5haS9jb2RlKQ==
+          PATH_PATTERN: KF58LykoXC5jbGF1ZGUvfGNsYXVkZShcLmxvY2FsKT9cLm1kJCk=
+        run: |
+          msg=$(printf '%s' "$MSG_PATTERN" | base64 -d)
+          pathre=$(printf '%s' "$PATH_PATTERN" | base64 -d)
+          fail=0
+          if git log --format='%H %B' "$BASE..$HEAD" | grep -iE "$msg"; then
+            echo '::error::A commit message carries an attribution line'; fail=1
+          fi
+          if printf '%s' "$PR_BODY" | grep -iE "$msg"; then
+            echo '::error::The PR description carries an attribution line'; fail=1
+          fi
+          if git ls-tree -r --name-only "$HEAD" | grep -iE "$pathre"; then
+            echo '::error::Assistant configuration files are tracked'; fail=1
+          fi
+          exit $fail
