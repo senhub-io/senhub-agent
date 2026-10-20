@@ -5,7 +5,7 @@ import (
 	"io/fs"
 	"strings"
 
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 // DefaultNagiosConfigYAML returns the raw bytes of the curated Nagios

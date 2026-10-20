@@ -1,0 +1,169 @@
+ListStrategyFragments err=<nil>
+[]configuration.StrategyFragment[
+  configuration.StrategyFragment{
+    Name: string("http")
+    Path: string("<DIR>/strategies.d/10-http.yaml")
+    Enabled: bool(true)
+    Managed: bool(false)
+    Params: map[string]interface {}{
+      string("endpoints")
+      =>[]interface {}[
+        string("prtg")
+        string("web")
+      ]
+      string("port")
+      =>int(8080)
+      string("tls")
+      =>map[string]interface {}{
+        string("clients")
+        =>map[string]interface {}{
+          string("a")
+          =>bool(true)
+        }
+        string("enabled")
+        =>bool(true)
+      }
+    }
+    Error: string("")
+  }
+  configuration.StrategyFragment{
+    Name: string("http")
+    Path: string("<DIR>/strategies.d/20-http-dup.yaml")
+    Enabled: bool(true)
+    Managed: bool(false)
+    Params: map[string]interface {}{
+      string("endpoints")
+      =>[]interface {}[
+        string("nagios")
+      ]
+      string("port")
+      =>int(9090)
+    }
+    Error: string("")
+  }
+  configuration.StrategyFragment{
+    Name: string("otlp")
+    Path: string("<DIR>/strategies.d/30-otlp.yaml")
+    Enabled: bool(true)
+    Managed: bool(false)
+    Params: map[string]interface {}{
+      string("endpoint")
+      =>string("collector:4317")
+      string("headers")
+      =>map[string]interface {}{
+        string("x")
+        =>int(2)
+      }
+      string("insecure")
+      =>bool(true)
+    }
+    Error: string("")
+  }
+]
+StrategyFragmentParams(http) err=<nil>
+map[string]interface {}{
+  string("endpoints")
+  =>[]interface {}[
+    string("prtg")
+    string("web")
+  ]
+  string("port")
+  =>int(8080)
+  string("tls")
+  =>map[string]interface {}{
+    string("clients")
+    =>map[string]interface {}{
+      string("a")
+      =>bool(true)
+    }
+    string("enabled")
+    =>bool(true)
+  }
+}
+StrategyFragmentParams(otlp) err=<nil>
+map[string]interface {}{
+  string("endpoint")
+  =>string("collector:4317")
+  string("headers")
+  =>map[string]interface {}{
+    string("x")
+    =>int(2)
+  }
+  string("insecure")
+  =>bool(true)
+}
+ReadProbeFragment(web) ok=false err=<nil>
+configuration.ProbeConfig{
+  Name: string("")
+  Type: string("")
+  Params: nil(map[string]interface {})
+  CustomTags: nil(map[string]string)
+  Governance: nil(map[string]interface {})
+  Enabled: nil(*bool)
+  LogStrategies: nil([]string)
+}
+ReadProbeFragmentParams(web) err=<nil>
+nil(map[string]interface {})
+ReadProbeFragment(other) ok=false err=<nil>
+configuration.ProbeConfig{
+  Name: string("")
+  Type: string("")
+  Params: nil(map[string]interface {})
+  CustomTags: nil(map[string]string)
+  Governance: nil(map[string]interface {})
+  Enabled: nil(*bool)
+  LogStrategies: nil([]string)
+}
+ReadProbeFragmentParams(other) err=<nil>
+nil(map[string]interface {})
+ReadProbeFragment(dup) ok=false err=<nil>
+configuration.ProbeConfig{
+  Name: string("")
+  Type: string("")
+  Params: nil(map[string]interface {})
+  CustomTags: nil(map[string]string)
+  Governance: nil(map[string]interface {})
+  Enabled: nil(*bool)
+  LogStrategies: nil([]string)
+}
+ReadProbeFragmentParams(dup) err=<nil>
+nil(map[string]interface {})
+ReadProbeFragment(absent) ok=false err=<nil>
+configuration.ProbeConfig{
+  Name: string("")
+  Type: string("")
+  Params: nil(map[string]interface {})
+  CustomTags: nil(map[string]string)
+  Governance: nil(map[string]interface {})
+  Enabled: nil(*bool)
+  LogStrategies: nil([]string)
+}
+ReadProbeFragmentParams(absent) err=<nil>
+nil(map[string]interface {})
+probeTypesConfigured err=<nil>
+map[string]bool{
+  string("demo")
+  =>bool(true)
+}
+HasMonolithicMarkers(examples/example-config-enterprise-license.yaml)=true
+HasMonolithicMarkers(examples/example-config-free-tier.yaml)=true
+HasMonolithicMarkers(examples/example-config-grace-period.yaml)=true
+HasMonolithicMarkers(examples/example-config-pro-license.yaml)=true
+HasMonolithicMarkers(docs/probes/citrix/configuration-examples.yaml)=true
+HasMonolithicMarkers(docs/probes/netscaler/configuration-examples.yaml)=true
+HasMonolithicMarkers(testdata/yaml-corpus/coercions.yaml)=true
+HasMonolithicMarkers(testdata/yaml-corpus/comments-only.yaml)=false
+HasMonolithicMarkers(testdata/yaml-corpus/dup-keys-in-params.yaml)=true
+HasMonolithicMarkers(testdata/yaml-corpus/dup-keys-in-struct.yaml)=true
+HasMonolithicMarkers(testdata/yaml-corpus/dup-keys-toplevel.yaml)=true
+HasMonolithicMarkers(testdata/yaml-corpus/empty-sections.yaml)=true
+HasMonolithicMarkers(testdata/yaml-corpus/empty.yaml)=false
+HasMonolithicMarkers(testdata/yaml-corpus/err-quoted-bool-enabled.yaml)=true
+HasMonolithicMarkers(testdata/yaml-corpus/err-syntax.yaml)=true
+HasMonolithicMarkers(testdata/yaml-corpus/err-type-mismatch.yaml)=true
+HasMonolithicMarkers(testdata/yaml-corpus/null-document.yaml)=false
+HasMonolithicMarkers(testdata/yaml-corpus/scalar-document.yaml)=true
+HasMonolithicMarkers(testdata/yaml-corpus/tricky-monolithic.yaml)=true
+HasMonolithicMarkers(examples/example-config-multi-file)=false
+HasMonolithicMarkers(packaging/nfpm/conf)=false
+HasMonolithicMarkers(testdata/yaml-corpus/tricky-multi)=false

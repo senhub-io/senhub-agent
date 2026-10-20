@@ -1,0 +1,5 @@
+config_version: 3
+agent:
+  key: k
+storage: []
+probes: []

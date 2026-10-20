@@ -10,12 +10,12 @@ import (
 
 	"github.com/alexflint/go-arg"
 	"golang.org/x/term"
-	"gopkg.in/yaml.v2"
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/license"
 	"senhub-agent.go/internal/cliexit"
+	"senhub-agent.go/internal/yamlcompat"
 )
 
 // handleLicenseCommand handles the license subcommand
@@ -179,7 +179,7 @@ func handleLicenseShow(args *cliArgs.LicenseShowArgs) {
 	}
 
 	var config configuration.LocalConfigurationData
-	if err := yaml.Unmarshal(data, &config); err != nil {
+	if err := yamlcompat.Unmarshal(data, &config); err != nil {
 		fatalf("failed to parse config file: %v", err)
 	}
 
