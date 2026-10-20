@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/httpclient"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -80,11 +81,15 @@ func NewElasticsearchProbe(config map[string]interface{}, baseLogger *logger.Log
 	}
 
 	host, port := hostPortFromEndpoint(cfg.Endpoint)
+	httpClient, err := httpclient.NewClient(httpclient.Options{Timeout: cfg.Timeout})
+	if err != nil {
+		return nil, fmt.Errorf("building HTTP client: %w", err)
+	}
 	probe := &elasticsearchProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
 		moduleLogger: moduleLogger,
-		client:       &http.Client{Timeout: cfg.Timeout},
+		client:       httpClient,
 	}
 	probe.SetProbeType(ProbeType)
 	probe.entitySrc = newElasticsearchEntitySource(cfg.InstanceName, host, port)

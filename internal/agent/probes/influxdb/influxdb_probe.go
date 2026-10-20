@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/httpclient"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -64,14 +65,16 @@ func NewInfluxDBProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 		return nil, err
 	}
 
+	httpClient, err := httpclient.NewClient(httpclient.Options{Timeout: cfg.Timeout})
+	if err != nil {
+		return nil, fmt.Errorf("building HTTP client: %w", err)
+	}
 	probe := &InfluxDBProbe{
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
 		moduleLogger: moduleLogger,
-		client: &http.Client{
-			Timeout: cfg.Timeout,
-		},
-		entitySrc: newInfluxdbEntitySource(cfg),
+		client:       httpClient,
+		entitySrc:    newInfluxdbEntitySource(cfg),
 	}
 	probe.SetProbeType(ProbeType)
 	probe.SetEntitySource(probe.entitySrc)

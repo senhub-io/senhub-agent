@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/httpclient"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -96,11 +97,9 @@ func NewNATSProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger) (
 		return nil, err
 	}
 
-	client := &http.Client{
-		Timeout: defaultTimeout,
-		Transport: &http.Transport{
-			DisableKeepAlives: true,
-		},
+	client, err := httpclient.NewClient(httpclient.Options{Timeout: defaultTimeout, DisableProxy: true, DisableKeepAlives: true})
+	if err != nil {
+		return nil, fmt.Errorf("building HTTP client: %w", err)
 	}
 
 	p := &NATSProbe{
