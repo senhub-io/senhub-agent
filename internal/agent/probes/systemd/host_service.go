@@ -1,9 +1,8 @@
 package systemd
 
-import "senhub-agent.go/internal/agent/services/entity"
-
-const (
-	systemdManager = "systemd"
+import (
+	"senhub-agent.go/internal/agent/probes/hostservice"
+	"senhub-agent.go/internal/agent/services/entity"
 )
 
 // hostServiceUnit is the subset of a systemd unit needed to build its
@@ -20,16 +19,16 @@ type hostServiceUnit struct {
 func buildHostServiceEntity(hostID, hostName string, u hostServiceUnit) (entity.Entity, entity.Relation) {
 	id := map[string]any{
 		"host.id":           hostID,
-		"host.service.name": u.Name,
+		hostservice.KeyName: u.Name,
 	}
 
 	return entity.Entity{
 			Type: entity.TypeHostService,
 			ID:   id,
 			Attributes: map[string]any{
-				"host.service.manager":    systemdManager,
-				"host.service.start_mode": u.UnitFileState,
-				"host.name":               hostName,
+				hostservice.KeyManager:   hostservice.ManagerSystemd,
+				hostservice.KeyStartMode: u.UnitFileState,
+				"host.name":              hostName,
 			},
 		}, entity.Relation{
 			Type:     "runs_on",

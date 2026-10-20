@@ -20,10 +20,10 @@ func TestBuildObservation_HostRoute(t *testing.T) {
 		t.Errorf("host counters wrong: %+v", host)
 	}
 	route, ok := entityOfType(obs.Entities, entityTypeNetworkRoute)
-	if !ok || route.ID[idKeyHost] != "h1" || route.ID[idKeyRouteDestination] != "0.0.0.0/0" {
+	if !ok || route.ID[idKeyHost] != "h1" || route.ID["route.destination"] != "0.0.0.0/0" {
 		t.Errorf("route entity wrong: %+v", route)
 	}
-	if route.ID[idKeyNextHopIP] != "192.168.1.1" || route.Attributes[attrMetric] != int64(100) || route.Attributes[attrRouteType] != routeTypeRemote {
+	if route.ID["next_hop.ip"] != "192.168.1.1" || route.Attributes[attrMetric] != int64(100) || route.Attributes[attrRouteType] != routeTypeRemote {
 		t.Errorf("route attrs wrong: %+v", route.Attributes)
 	}
 	addr, ok := entityOfType(obs.Entities, entityTypeNetworkAddress)
@@ -36,7 +36,7 @@ func TestBuildObservation_HostRoute(t *testing.T) {
 	}
 	hr, ok := relationOfType(obs.Relations, relHasRoute)
 	if !ok || hr.FromType != entityTypeHost || hr.FromID[idKeyHost] != "h1" ||
-		hr.ToType != entityTypeNetworkRoute || hr.ToID[idKeyRouteDestination] != "0.0.0.0/0" || len(hr.Attributes) != 0 {
+		hr.ToType != entityTypeNetworkRoute || hr.ToID["route.destination"] != "0.0.0.0/0" || len(hr.Attributes) != 0 {
 		t.Errorf("has_route relation wrong: %+v", hr)
 	}
 	nhv, ok := relationOfType(obs.Relations, relNextHopVia)
@@ -58,8 +58,8 @@ func TestBuildObservation_ConnectedRoute(t *testing.T) {
 	if !ok {
 		t.Fatalf("route entity not found: %+v", obs.Entities)
 	}
-	if route.ID[idKeyNextHopIP] != "0.0.0.0" {
-		t.Errorf("connected next_hop.ip = %v, want 0.0.0.0", route.ID[idKeyNextHopIP])
+	if route.ID["next_hop.ip"] != "0.0.0.0" {
+		t.Errorf("connected next_hop.ip = %v, want 0.0.0.0", route.ID["next_hop.ip"])
 	}
 	if route.Attributes[attrEgressInterface] != "eth0" || route.Attributes[attrRouteType] != routeTypeLocal {
 		t.Errorf("connected route attrs wrong: %+v", route.Attributes)
@@ -112,8 +112,8 @@ func TestObserve_InjectedReader(t *testing.T) {
 		t.Fatalf("observe = %+v", obs)
 	}
 	route, ok := entityOfType(obs.Entities, entityTypeNetworkRoute)
-	if !ok || route.ID[idKeyRouteDestination] != "0.0.0.0/0" ||
-		route.ID[idKeyNextHopIP] != "192.168.1.1" {
+	if !ok || route.ID["route.destination"] != "0.0.0.0/0" ||
+		route.ID["next_hop.ip"] != "192.168.1.1" {
 		t.Errorf("unexpected route entity: %+v", route)
 	}
 	if addr, ok := entityOfType(obs.Entities, entityTypeNetworkAddress); !ok ||
@@ -141,7 +141,7 @@ func TestBuildObservation_ECMP(t *testing.T) {
 	if nextHopVias != 2 {
 		t.Errorf("want two next_hop_via edges, got %d", nextHopVias)
 	}
-	if routes[0].ID[idKeyRouteDestination] != "0.0.0.0/0" || routes[1].ID[idKeyRouteDestination] != "0.0.0.0/0" {
+	if routes[0].ID["route.destination"] != "0.0.0.0/0" || routes[1].ID["route.destination"] != "0.0.0.0/0" {
 		t.Errorf("ECMP destinations wrong: %+v", routes)
 	}
 }
@@ -176,10 +176,10 @@ func TestBuildObservation_Bound(t *testing.T) {
 	}
 	var foundDefault, foundLocal bool
 	for _, r := range routes {
-		if r.ID[idKeyRouteDestination] == "0.0.0.0/0" {
+		if r.ID["route.destination"] == "0.0.0.0/0" {
 			foundDefault = true
 		}
-		if r.ID[idKeyRouteDestination] == "10.1.0.0/24" {
+		if r.ID["route.destination"] == "10.1.0.0/24" {
 			foundLocal = true
 		}
 	}
@@ -318,7 +318,7 @@ func TestParseForwardTable_TwoGatewaysAreTwoRoutes(t *testing.T) {
 	}
 	ids := map[string]bool{}
 	for _, e := range routes {
-		ids[e.ID[idKeyNextHopIP].(string)] = true
+		ids[e.ID["next_hop.ip"].(string)] = true
 	}
 	if !ids["10.0.0.1"] || !ids["10.0.0.2"] {
 		t.Errorf("route identities = %v", ids)
@@ -403,7 +403,7 @@ func TestBuildObservation_DropRouteHasNoEgressAndInvalidRowsCount(t *testing.T) 
 		if _, ok := e.Attributes[attrEgressInterface]; ok {
 			t.Errorf("%v route names an egress: %v", e.Attributes[attrRouteType], e.Attributes)
 		}
-		if e.ID[idKeyNextHopIP] != "0.0.0.0" {
+		if e.ID["next_hop.ip"] != "0.0.0.0" {
 			t.Errorf("route without a next hop = %v", e.ID)
 		}
 	}
