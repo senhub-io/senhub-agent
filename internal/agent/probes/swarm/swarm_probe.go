@@ -364,7 +364,7 @@ func (p *swarmProbe) explainOnce(state clusterState, err error) {
 // The status is returned rather than folded into an error because several
 // callers treat 503 as information, not failure.
 func (p *swarmProbe) get(path string) ([]byte, int, error) {
-	resp, err := p.client.Get(p.api.URL(p.client, path))
+	resp, err := p.client.Get(p.api.URL(context.Background(), p.client, path))
 	if err != nil {
 		return nil, 0, err
 	}

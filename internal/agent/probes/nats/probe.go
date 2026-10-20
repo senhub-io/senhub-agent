@@ -84,7 +84,7 @@ type NATSProbe struct {
 	entitySrc    *natsEntitySource
 
 	// fetch is the HTTP GET function, replaceable in tests.
-	fetch func(path string) ([]byte, int, error)
+	fetch func(ctx context.Context, path string) ([]byte, int, error)
 }
 
 // NewNATSProbe builds a nats probe from its raw params block.
@@ -181,15 +181,24 @@ func checkResultPoint(ts time.Time, result dbcommon.CheckResult, base []tags.Tag
 	}
 }
 
-// Collect fetches /varz, /routez, and /jsz from the NATS management API and
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
+func (p *NATSProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext fetches /varz, /routez, and /jsz from the NATS management API and
 // builds the metric set. A failure on /varz (primary endpoint) marks the
 // server as down; /routez and /jsz failures are tolerated (partial data).
-func (p *NATSProbe) Collect() ([]data_store.DataPoint, error) {
+func (p *NATSProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 
 	// Fetch /varz first; its outcome determines whether this collection is up
 	// and which entity identity the metrics carry on the error paths.
-	varzBody, status, varzErr := p.fetch("/varz")
+	varzBody, status, varzErr := p.fetch(ctx, "/varz")
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("nats collection interrupted: %w", ctxErr)
+	}
 	up := float64(0)
 	if varzErr == nil && status == http.StatusOK {
 		up = 1
@@ -260,7 +269,7 @@ func (p *NATSProbe) Collect() ([]data_store.DataPoint, error) {
 	)
 
 	// --- /routez (optional) ------------------------------------------------
-	routezBody, routeStatus, routeErr := p.fetch("/routez")
+	routezBody, routeStatus, routeErr := p.fetch(ctx, "/routez")
 	if routeErr == nil && routeStatus == http.StatusOK {
 		var routez routezResponse
 		if err := json.Unmarshal(routezBody, &routez); err == nil {
@@ -276,7 +285,7 @@ func (p *NATSProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 
 	// --- /jsz (optional — only present when JetStream is enabled) ----------
-	jszBody, jszStatus, jszErr := p.fetch("/jsz")
+	jszBody, jszStatus, jszErr := p.fetch(ctx, "/jsz")
 	if jszErr == nil && jszStatus == http.StatusOK {
 		var jsz jszResponse
 		if err := json.Unmarshal(jszBody, &jsz); err == nil {
@@ -294,13 +303,20 @@ func (p *NATSProbe) Collect() ([]data_store.DataPoint, error) {
 		p.moduleLogger.Debug().Err(jszErr).Msg("NATS /jsz not available (JetStream likely disabled); skipping JetStream metrics")
 	}
 
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("nats collection interrupted: %w", ctxErr)
+	}
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
 // httpGet performs a GET request to endpoint+path and returns the body, HTTP
 // status code, and any transport-level error.
-func (p *NATSProbe) httpGet(path string) ([]byte, int, error) {
-	resp, err := p.client.Get(p.cfg.Endpoint + path) // #nosec G107 — operator-supplied management URL
+func (p *NATSProbe) httpGet(ctx context.Context, path string) ([]byte, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.cfg.Endpoint+path, nil)
+	if err != nil {
+		return nil, 0, fmt.Errorf("building request for %s: %w", p.cfg.Endpoint+path, err)
+	}
+	resp, err := p.client.Do(req) // #nosec G107 — operator-supplied management URL
 	if err != nil {
 		return nil, 0, err
 	}

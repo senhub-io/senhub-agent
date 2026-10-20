@@ -195,12 +195,21 @@ func (p *MSSQLProbe) OnStart(_ chan struct{}) error {
 	return nil
 }
 
-// Collect runs one poll cycle. It always emits senhub.db.up; a connection or
-// query failure yields up=0 and no further metrics rather than an error, so the
-// outage is observable on every sink (always-emit-up contract of the DB probes).
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
 func (p *MSSQLProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext runs one poll cycle. It always emits senhub.db.up; a
+// connection or query failure yields up=0 and no further metrics rather than
+// an error, so the outage is observable on every sink (always-emit-up
+// contract of the DB probes). A cycle whose parent context ends returns its
+// error and publishes nothing: the server did not go down, and a cycle cut
+// midway would report up=1 with the families it had not reached missing.
+func (p *MSSQLProbe) CollectContext(parent context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
-	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	ctx, cancel := context.WithTimeout(parent, queryTimeout)
 	defer cancel()
 
 	var points []data_store.DataPoint
@@ -211,6 +220,9 @@ func (p *MSSQLProbe) Collect() ([]data_store.DataPoint, error) {
 		up = 0
 		checkErr = fmt.Errorf("mssql connection not initialized")
 	} else if err := p.db.PingContext(ctx); err != nil {
+		if parentErr := parent.Err(); parentErr != nil {
+			return nil, fmt.Errorf("mssql collection interrupted: %w", parentErr)
+		}
 		up = 0
 		checkErr = err
 		p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("mssql ping failed")
@@ -230,6 +242,9 @@ func (p *MSSQLProbe) Collect() ([]data_store.DataPoint, error) {
 		points = append(points, p.collectPerformanceCounters(ctx, now)...)
 		points = append(points, p.collectDatabaseIO(ctx, now)...)
 		points = append(points, p.collectDatabaseStatus(ctx, now)...)
+		if parentErr := parent.Err(); parentErr != nil {
+			return nil, fmt.Errorf("mssql collection interrupted: %w", parentErr)
+		}
 	}
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil

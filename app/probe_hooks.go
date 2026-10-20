@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/rs/zerolog"
 
@@ -38,6 +39,13 @@ func wireProbeTypeLookup() {
 func quietProbeLogger() *agentLogger.Logger {
 	discard := zerolog.New(io.Discard).Level(zerolog.Disabled)
 	return (*agentLogger.Logger)(&discard)
+}
+
+// previewLogger reports on the preview itself, not on the probe it runs,
+// which stays quiet.
+func previewLogger() *agentLogger.ModuleLogger {
+	zlog := zerolog.New(os.Stderr).Level(zerolog.WarnLevel)
+	return agentLogger.NewModuleLogger((*agentLogger.Logger)(&zlog), "probe.preview")
 }
 
 // checkProbeConfig builds the probe and drops it, the same probe that
@@ -83,7 +91,9 @@ func previewCollect(ctx context.Context, ctor probes.ProbeConstructor, params ma
 	}
 	defer func() {
 		close(quit)
-		_ = probe.OnShutdown(context.Background())
+		if err := probe.OnShutdown(context.Background()); err != nil {
+			previewLogger().Warn().Err(err).Msg("preview probe did not shut down cleanly")
+		}
 	}()
 
 	type outcome struct {
