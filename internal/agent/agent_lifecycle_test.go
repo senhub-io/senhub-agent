@@ -330,3 +330,36 @@ func TestStartCleansUpPreviousUpdateWithAutoUpdateDisabled(t *testing.T) {
 		t.Errorf("leftover cleanup ran %d times, want 1", calls)
 	}
 }
+
+type fakeBootGuard struct {
+	rolledBack bool
+	confirmed  bool
+}
+
+func (g *fakeBootGuard) RolledBack() bool                       { return g.rolledBack }
+func (g *fakeBootGuard) ConfirmWhenHealthy(ctx context.Context) { g.confirmed = true }
+
+// A start that put the previous binary back must exit non-zero before any
+// service comes up, so the service manager launches the restored binary.
+func TestStart_RolledBackExitsBeforeStartingServices(t *testing.T) {
+	guard := &fakeBootGuard{rolledBack: true}
+	exitCode := -1
+	cleaned := false
+
+	a := agent{
+		supervisor:      lifecycle.NewSupervisor(noopLogger()),
+		logger:          noopLogger(),
+		beginBoot:       func() bootGuard { return guard },
+		removeLeftovers: func() { cleaned = true },
+		exitFn:          func(code int) { exitCode = code },
+	}
+	if err := a.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if exitCode != cliexit.Failure {
+		t.Errorf("exit code = %d, want %d", exitCode, cliexit.Failure)
+	}
+	if cleaned || guard.confirmed {
+		t.Error("services must not start after a rollback")
+	}
+}
