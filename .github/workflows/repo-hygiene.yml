@@ -15,7 +15,7 @@ jobs:
   conflict-markers:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Refuse committed conflict markers
         # Only <<<<<<< / >>>>>>> are flagged: a bare ======= line is a
         # legitimate Markdown setext underline. Golden files excluded.
@@ -26,11 +26,25 @@ jobs:
           fi
           echo "No conflict markers."
 
+  # During a cycle VERSION names the release in development while the
+  # docs and images still point at the last published one, so the pins
+  # are only required to agree with VERSION when a release reaches
+  # master. The set-version self-test runs on every PR.
+  version-pins:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: make set-version rewrites every pin
+        run: scripts/test-set-version.sh
+      - name: Every pinned version follows the VERSION file
+        if: github.base_ref == 'master'
+        run: scripts/check-version-consistency.sh
+
   docs-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
       - name: Install MkDocs

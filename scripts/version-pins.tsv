@@ -1,0 +1,20 @@
+# Every place that pins the version of the agent being released.
+# Columns (tab separated): file, ERE with one @V@ marking the version.
+# check-version-consistency.sh compares each match with the VERSION file;
+# set-version rewrites each match. Only the first @V@ is substituted.
+# Not listed on purpose: release notes and archives (history), illustrative
+# examples of the form "0.6.2 or 0.6.2-beta.1", and test fixtures.
+charts/senhub-agent/Chart.yaml	^appVersion: "@V@"
+charts/senhub-agent/values.yaml	chart appVersion \(@V@\)
+charts/senhub-agent/README.md	chart `appVersion` \(@V@\)
+docs/user-guide/docs/container.md	senhub-agent:@V@
+docs/user-guide/docs/podman.md	senhub-agent:@V@`
+docs/user-guide/docs/podman.md	`:@V@` never moves
+docs/user-guide/docs/deploying/podman.md	senhub-agent:@V@
+docs/user-guide/docs/deploying/docker-compose.md	senhub-agent-oss:@V@
+docs/user-guide/docs/deploying/docker-compose.md	is the pin: `@V@`
+docs/user-guide/docs/deploying/cloud-init.md	SENHUB_VERSION:-@V@
+docs/user-guide/docs/deploying/cloud-init.md	\(`@V@` in the example\)
+docs/user-guide/docs/deploying/helm.md	tag: "@V@"
+docs/user-guide/docs/deploying/helm.md	exact version \(`@V@`\)
+packaging/podman/senhub-agent.container	use :@V@, or a digest
