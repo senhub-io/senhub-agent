@@ -68,7 +68,7 @@ type scrapeResult struct {
 	err      error
 }
 
-type scrapeFunc func(target string) scrapeResult
+type scrapeFunc func(ctx context.Context, target string) scrapeResult
 
 type PromScrapeProbe struct {
 	*types.BaseProbe
@@ -221,9 +221,17 @@ func (p *PromScrapeProbe) OnShutdown(ctx context.Context) error {
 	return nil
 }
 
-// Collect scrapes every target (bounded parallelism). A failing target
-// is a measurement (up=0), never a collection error.
+// Collect scrapes every target without a cancellation signal; the
+// poller calls CollectContext.
 func (p *PromScrapeProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext scrapes every target (bounded parallelism). A failing
+// target is a measurement (up=0), never a collection error. A cycle
+// whose context ends is not: its targets did not fail, so it returns
+// ctx.Err() and no datapoint.
+func (p *PromScrapeProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 	results := make([]scrapeResult, len(p.config.Targets))
 
@@ -235,10 +243,13 @@ func (p *PromScrapeProbe) Collect() ([]data_store.DataPoint, error) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			results[i] = p.scrape(target)
+			results[i] = p.scrape(ctx, target)
 		}(i, target)
 	}
 	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("prometheus_scrape collection interrupted: %w", err)
+	}
 
 	var points []data_store.DataPoint
 	for _, res := range results {
@@ -299,10 +310,10 @@ func (p *PromScrapeProbe) buildDatapoints(res scrapeResult, ts time.Time) []data
 }
 
 // scrapeOnce is the production scrapeFunc: one HTTP GET + text parse.
-func (p *PromScrapeProbe) scrapeOnce(target string) scrapeResult {
+func (p *PromScrapeProbe) scrapeOnce(ctx context.Context, target string) scrapeResult {
 	res := scrapeResult{target: target}
 
-	req, err := http.NewRequest(http.MethodGet, target, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		res.err = fmt.Errorf("building scrape request for %s: %w", target, err)
 		return res
