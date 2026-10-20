@@ -19,12 +19,6 @@ import (
 	"senhub-agent.go/internal/agent/windows/pdh"
 )
 
-// pathInfo represents path information for performance counters
-type pathInfo struct {
-	path     string
-	instance string
-}
-
 // Configuration des filtres de disques
 var driveFilters = struct {
 	Include []string
@@ -34,47 +28,41 @@ var driveFilters = struct {
 	Exclude: []string{"HarddiskVolume*", "_Total"}, // Liste des disques à exclure
 }
 
-// MetricDefinition définit un compteur de performance avec son chemin
-type LogicalDiskMetricDefinition struct {
-	path     string
-	instance string
-}
-
 // Définition des compteurs de performance
-var logicaldiskCounterPaths = map[string]LogicalDiskMetricDefinition{
+var logicaldiskCounterPaths = map[string]pdh.CounterDef{
 	"disk_free_mb": {
-		path:     "\\LogicalDisk\\Free Megabytes",
-		instance: "*",
+		Path:     "\\LogicalDisk\\Free Megabytes",
+		Instance: "*",
 	},
 	"disk_free_percent": {
-		path:     "\\LogicalDisk\\% Free Space",
-		instance: "*",
+		Path:     "\\LogicalDisk\\% Free Space",
+		Instance: "*",
 	},
 	"disk_reads_sec": {
-		path:     "\\LogicalDisk\\Disk Reads/sec",
-		instance: "*",
+		Path:     "\\LogicalDisk\\Disk Reads/sec",
+		Instance: "*",
 	},
 	"disk_writes_sec": {
-		path:     "\\LogicalDisk\\Disk Writes/sec",
-		instance: "*",
+		Path:     "\\LogicalDisk\\Disk Writes/sec",
+		Instance: "*",
 	},
 	"disk_read_bytes_sec": {
-		path:     "\\LogicalDisk\\Disk Read Bytes/sec",
-		instance: "*",
+		Path:     "\\LogicalDisk\\Disk Read Bytes/sec",
+		Instance: "*",
 	},
 	"disk_write_bytes_sec": {
-		path:     "\\LogicalDisk\\Disk Write Bytes/sec",
-		instance: "*",
+		Path:     "\\LogicalDisk\\Disk Write Bytes/sec",
+		Instance: "*",
 	},
 	"disk_queue_length": {
-		path:     "\\LogicalDisk\\Current Disk Queue Length",
-		instance: "*",
+		Path:     "\\LogicalDisk\\Current Disk Queue Length",
+		Instance: "*",
 	},
 }
 
 type windowsLogicalDiskCollector struct {
 	query          *pdh.Query
-	paths          map[string]pathInfo
+	paths          map[string]pdh.CounterDef
 	fsTypes        map[string]string // drive instance ("C:") → normalized filesystem type ("ntfs")
 	initialized    bool
 	includeFilters []string
@@ -116,7 +104,7 @@ func newLogicalDiskCollector(config map[string]interface{}, baseLogger *logger.L
 
 	collector := &windowsLogicalDiskCollector{
 		query:          query,
-		paths:          make(map[string]pathInfo),
+		paths:          make(map[string]pdh.CounterDef),
 		fsTypes:        make(map[string]string),
 		includeFilters: make([]string, len(driveFilters.Include)),
 		excludeFilters: make([]string, len(driveFilters.Exclude)),
@@ -206,7 +194,7 @@ func (w *windowsLogicalDiskCollector) initializeCounters() error {
 	w.logger.Debug().Msg("Initializing logical disk probe with counters")
 
 	for metricName, def := range logicaldiskCounterPaths {
-		if def.instance == "*" {
+		if def.Instance == "*" {
 			// Obtenir toutes les instances de disques logiques
 			instances, err := pdh.GetInstancesList("LogicalDisk", false)
 			if err != nil {
@@ -236,10 +224,10 @@ func (w *windowsLogicalDiskCollector) initializeCounters() error {
 					w.fsTypes[instance] = queryVolumeFSType(instance)
 				}
 
-				path := pdh.BuildCounterPath(def.path, instance)
-				w.paths[fmt.Sprintf("%s_%s", metricName, instance)] = pathInfo{
-					path:     path,
-					instance: instance,
+				path := pdh.BuildCounterPath(def.Path, instance)
+				w.paths[fmt.Sprintf("%s_%s", metricName, instance)] = pdh.CounterDef{
+					Path:     path,
+					Instance: instance,
 				}
 
 				w.logger.Debug().Str("metric", metricName).Str("path", path).Str("drive", instance).Msg("Adding counter")
@@ -254,10 +242,9 @@ func (w *windowsLogicalDiskCollector) initializeCounters() error {
 
 func (w *windowsLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store.DataPoint, error) {
 	if !w.initialized {
-		if err := w.query.Collect(); err != nil && !errors.Is(err, pdh.ErrNoData) {
-			return nil, fmt.Errorf("failed initial sample collection: %w", err)
+		if err := pdh.PrimeSamples(w.query); err != nil {
+			return nil, err
 		}
-		time.Sleep(1 * time.Second)
 		w.initialized = true
 	}
 
@@ -273,7 +260,7 @@ func (w *windowsLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store
 	dataPoints := make([]data_store.DataPoint, 0, len(w.paths))
 
 	for name, pathInfo := range w.paths {
-		value, err := w.query.GetCounterValue(pathInfo.path)
+		value, err := w.query.GetCounterValue(pathInfo.Path)
 		if err != nil {
 			w.logger.Debug().Str("metric", name).Err(err).Msg("Error getting counter value")
 			continue
@@ -281,10 +268,10 @@ func (w *windowsLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store
 
 		// Préparation des tags
 		metricTags := append([]tags.Tag{}, baseTags...)
-		if pathInfo.instance != "" && pathInfo.instance != "_Total" {
+		if pathInfo.Instance != "" && pathInfo.Instance != "_Total" {
 			metricTags = append(metricTags, tags.Tag{
 				Key:   "drive",
-				Value: pathInfo.instance,
+				Value: pathInfo.Instance,
 			})
 			// device + fs_type mirror the Unix collector's tag set so the
 			// OTel attributes system.device / system.filesystem.type exist
@@ -293,9 +280,9 @@ func (w *windowsLogicalDiskCollector) Collect(timestamp time.Time) ([]data_store
 			// exclude every Windows host (#627).
 			metricTags = append(metricTags, tags.Tag{
 				Key:   "device",
-				Value: pathInfo.instance,
+				Value: pathInfo.Instance,
 			})
-			if fsType := w.fsTypes[pathInfo.instance]; fsType != "" {
+			if fsType := w.fsTypes[pathInfo.Instance]; fsType != "" {
 				metricTags = append(metricTags, tags.Tag{
 					Key:   "fs_type",
 					Value: fsType,

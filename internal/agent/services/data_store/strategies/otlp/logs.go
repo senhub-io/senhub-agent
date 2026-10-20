@@ -267,10 +267,7 @@ type logsPump struct {
 	pipeline *logsPipeline
 	bufSize  int
 
-	mu         sync.Mutex
-	subscribed <-chan agentstate.LogRecord
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
+	worker subscriptionWorker[agentstate.LogRecord]
 }
 
 func newLogsPump(p *logsPipeline, bufSize int) *logsPump {
@@ -290,24 +287,15 @@ func newLogsPump(p *logsPipeline, bufSize int) *logsPump {
 // the endpoints:/strategy routing that governs metrics now applies to
 // logs too.
 func (p *logsPump) start() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.subscribed != nil {
-		return
-	}
-	ch := agentstate.SubscribeLogsFor(strategyName, p.bufSize)
-	p.subscribed = ch
-	ctx, cancel := context.WithCancel(context.Background())
-	p.cancel = cancel
-	p.wg.Add(1)
-	go p.drain(ctx, ch)
+	p.worker.start(func() <-chan agentstate.LogRecord {
+		return agentstate.SubscribeLogsFor(strategyName, p.bufSize)
+	}, p.drain)
 }
 
 // drain runs until the context is cancelled OR the agentstate channel
 // closes. Records arriving after cancel are honored on a best-effort
 // basis up to the deadline.
 func (p *logsPump) drain(ctx context.Context, ch <-chan agentstate.LogRecord) {
-	defer p.wg.Done()
 	for {
 		select {
 		case <-ctx.Done():
@@ -335,32 +323,5 @@ func (p *logsPump) drain(ctx context.Context, ch <-chan agentstate.LogRecord) {
 // waiting (the goroutine will exit on its own when the channel closes
 // from UnsubscribeLogs). Idempotent.
 func (p *logsPump) stop(ctx context.Context) {
-	p.mu.Lock()
-	ch := p.subscribed
-	cancel := p.cancel
-	p.subscribed = nil
-	p.cancel = nil
-	p.mu.Unlock()
-
-	if cancel == nil {
-		return
-	}
-
-	cancel()
-	if ch != nil {
-		agentstate.UnsubscribeLogs(ch)
-	}
-
-	done := make(chan struct{})
-	go func() {
-		p.wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-ctx.Done():
-		// Best-effort; goroutine will exit when channel closes.
-	case <-time.After(5 * time.Second):
-	}
+	p.worker.stop(ctx, agentstate.UnsubscribeLogs)
 }

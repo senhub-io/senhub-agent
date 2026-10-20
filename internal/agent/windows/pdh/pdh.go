@@ -4,18 +4,11 @@
 package pdh
 
 import (
-	"errors"
 	"fmt"
 	"golang.org/x/sys/windows"
 	"sync"
 	"unsafe"
 )
-
-// ErrNoData reports a PDH_NO_DATA condition. It is expected on the first
-// sample of a rate counter — PDH has no delta until a second sample exists —
-// so callers that prime then re-collect should tolerate it via errors.Is
-// rather than treating it as a hard failure.
-var ErrNoData = errors.New("no PDH sample available yet")
 
 const (
 	PDH_CSTATUS_VALID_DATA                     = 0x00000000

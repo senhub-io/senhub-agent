@@ -2,8 +2,6 @@ package otlp
 
 import (
 	"context"
-	"sync"
-	"time"
 
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -20,10 +18,7 @@ type entityPump struct {
 	redact   map[string]struct{}
 	log      *logger.ModuleLogger
 
-	mu         sync.Mutex
-	subscribed <-chan entity.Event
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
+	worker subscriptionWorker[entity.Event]
 }
 
 func newEntityPump(p *logsPipeline, bufSize int, redact map[string]struct{}, log *logger.ModuleLogger) *entityPump {
@@ -36,21 +31,12 @@ func newEntityPump(p *logsPipeline, bufSize int, redact map[string]struct{}, log
 // start subscribes to the entity-event channel and launches the drain
 // goroutine. Idempotent.
 func (p *entityPump) start() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.subscribed != nil {
-		return
-	}
-	ch := entity.SubscribeEvents(p.bufSize)
-	p.subscribed = ch
-	ctx, cancel := context.WithCancel(context.Background())
-	p.cancel = cancel
-	p.wg.Add(1)
-	go p.drain(ctx, ch)
+	p.worker.start(func() <-chan entity.Event {
+		return entity.SubscribeEvents(p.bufSize)
+	}, p.drain)
 }
 
 func (p *entityPump) drain(ctx context.Context, ch <-chan entity.Event) {
-	defer p.wg.Done()
 	for {
 		select {
 		case <-ctx.Done():
@@ -102,31 +88,5 @@ func redactEntityEvent(ev entity.Event, redact map[string]struct{}) entity.Event
 // stop cancels the drain goroutine and unsubscribes. Honors the caller's
 // deadline; idempotent.
 func (p *entityPump) stop(ctx context.Context) {
-	p.mu.Lock()
-	ch := p.subscribed
-	cancel := p.cancel
-	p.subscribed = nil
-	p.cancel = nil
-	p.mu.Unlock()
-
-	if cancel == nil {
-		return
-	}
-
-	cancel()
-	if ch != nil {
-		entity.UnsubscribeEvents(ch)
-	}
-
-	done := make(chan struct{})
-	go func() {
-		p.wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-ctx.Done():
-	case <-time.After(5 * time.Second):
-	}
+	p.worker.stop(ctx, entity.UnsubscribeEvents)
 }

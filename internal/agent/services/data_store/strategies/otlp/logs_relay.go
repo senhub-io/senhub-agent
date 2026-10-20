@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sync"
 	"time"
 
 	collectorlogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
@@ -189,10 +188,7 @@ type logsRelay struct {
 	enricher  *relayEnricher
 	logger    *logger.ModuleLogger
 
-	mu         sync.Mutex
-	subscribed <-chan []*logspb.ResourceLogs
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
+	worker subscriptionWorker[[]*logspb.ResourceLogs]
 }
 
 func newLogsRelay(cfg Config, enricher *relayEnricher, moduleLogger *logger.ModuleLogger) (*logsRelay, error) {
@@ -213,24 +209,14 @@ func newLogsRelay(cfg Config, enricher *relayEnricher, moduleLogger *logger.Modu
 // start subscribes to the agentstate verbatim-log channel and launches the
 // drain goroutine. Idempotent.
 func (r *logsRelay) start() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.subscribed != nil {
-		return
-	}
-	ch := agentstate.SubscribeLogBatchesFor(strategyName, r.cfg.Logs.BufferSize)
-	r.subscribed = ch
-	ctx, cancel := context.WithCancel(context.Background())
-	r.cancel = cancel
-	r.wg.Add(1)
-	go r.drain(ctx, ch)
+	r.worker.start(func() <-chan []*logspb.ResourceLogs {
+		return agentstate.SubscribeLogBatchesFor(strategyName, r.cfg.Logs.BufferSize)
+	}, r.drain)
 }
 
 // drain accumulates ResourceLogs and flushes on the record-count budget or
 // the batch timeout, mirroring the span relay's batching contract.
 func (r *logsRelay) drain(ctx context.Context, ch <-chan []*logspb.ResourceLogs) {
-	defer r.wg.Done()
-
 	timeout := r.cfg.Logs.BatchTimeout
 	if timeout <= 0 {
 		timeout = DefaultLogsBatchTimeout
@@ -342,32 +328,8 @@ func (r *logsRelay) export(rl []*logspb.ResourceLogs, records int) {
 // stop cancels the drain goroutine, unsubscribes, waits for the final
 // flush (bounded), and closes the forwarder. Idempotent.
 func (r *logsRelay) stop(ctx context.Context) {
-	r.mu.Lock()
-	ch := r.subscribed
-	cancel := r.cancel
-	r.subscribed = nil
-	r.cancel = nil
-	r.mu.Unlock()
-
-	if cancel == nil {
+	if !r.worker.stop(ctx, agentstate.UnsubscribeLogBatches) {
 		return
-	}
-
-	cancel()
-	if ch != nil {
-		agentstate.UnsubscribeLogBatches(ch)
-	}
-
-	done := make(chan struct{})
-	go func() {
-		r.wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-ctx.Done():
-	case <-time.After(5 * time.Second):
 	}
 
 	if err := r.forwarder.close(); err != nil {

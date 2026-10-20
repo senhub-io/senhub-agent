@@ -18,67 +18,55 @@ import (
 	"senhub-agent.go/internal/agent/windows/pdh"
 )
 
-// MetricDefinition defines a performance counter with its path and instance
-type MetricDefinition struct {
-	path     string
-	instance string
-}
-
-// pathInfo represents path information for performance counters
-type pathInfo struct {
-	path     string
-	instance string
-}
-
 // Définition des compteurs de performance pour la mémoire
-var memoryCounterPaths = map[string]MetricDefinition{
+var memoryCounterPaths = map[string]pdh.CounterDef{
 	"memory_total": {
-		path:     "\\Memory\\Commit Limit",
-		instance: "",
+		Path:     "\\Memory\\Commit Limit",
+		Instance: "",
 	},
 	"memory_available": {
-		path:     "\\Memory\\Available Bytes",
-		instance: "",
+		Path:     "\\Memory\\Available Bytes",
+		Instance: "",
 	},
 	"memory_committed": {
-		path:     "\\Memory\\Committed Bytes",
-		instance: "",
+		Path:     "\\Memory\\Committed Bytes",
+		Instance: "",
 	},
 	"memory_modified_page_list": {
-		path:     "\\Memory\\Modified Page List Bytes",
-		instance: "",
+		Path:     "\\Memory\\Modified Page List Bytes",
+		Instance: "",
 	},
 	"memory_nonpaged_pool": {
-		path:     "\\Memory\\Pool Nonpaged Bytes",
-		instance: "",
+		Path:     "\\Memory\\Pool Nonpaged Bytes",
+		Instance: "",
 	},
 	"memory_paged_pool": {
-		path:     "\\Memory\\Pool Paged Bytes",
-		instance: "",
+		Path:     "\\Memory\\Pool Paged Bytes",
+		Instance: "",
 	},
 	"memory_cache": {
-		path:     "\\Memory\\Cache Bytes",
-		instance: "",
+		Path:     "\\Memory\\Cache Bytes",
+		Instance: "",
 	},
 	"memory_page_faults": {
-		path:     "\\Memory\\Page Faults/sec",
-		instance: "",
+		Path:     "\\Memory\\Page Faults/sec",
+		Instance: "",
 	},
 	"memory_pages_input": {
-		path:     "\\Memory\\Pages Input/sec",
-		instance: "",
+		Path:     "\\Memory\\Pages Input/sec",
+		Instance: "",
 	},
 	"memory_pages_output": {
-		path:     "\\Memory\\Pages Output/sec",
-		instance: "",
+		Path:     "\\Memory\\Pages Output/sec",
+		Instance: "",
 	},
 	"pagefile_usage": {
-		path:     "\\Paging File(_Total)\\% Usage",
-		instance: "",
+		Path:     "\\Paging File(_Total)\\% Usage",
+		Instance: "",
 	},
 	"pagefile_usage_peak": {
-		path:     "\\Paging File(_Total)\\% Usage Peak",
-		instance: "",
+		Path:     "\\Paging File(_Total)\\% Usage Peak",
+		Instance: "",
 	},
 }
 
@@ -106,7 +94,7 @@ func (m *MemoryMetrics) GetMetric(name string) float64 {
 
 type windowsMemoryCollector struct {
 	query       *pdh.Query
-	paths       map[string]pathInfo
+	paths       map[string]pdh.CounterDef
 	mu          sync.Mutex
 	initialized bool
 	logger      *logger.ModuleLogger
@@ -126,7 +114,7 @@ func newMemoryCollector(config map[string]interface{}, baseLogger *logger.Logger
 
 	collector := &windowsMemoryCollector{
 		query:  query,
-		paths:  make(map[string]pathInfo),
+		paths:  make(map[string]pdh.CounterDef),
 		logger: moduleLogger,
 	}
 
@@ -154,10 +142,10 @@ func (w *windowsMemoryCollector) initializeCounters() error {
 	w.logger.Debug().Msg("Initializing Memory probe with counters")
 
 	for metricName, def := range memoryCounterPaths {
-		path := pdh.BuildCounterPath(def.path, def.instance)
-		w.paths[metricName] = pathInfo{
-			path:     path,
-			instance: def.instance,
+		path := pdh.BuildCounterPath(def.Path, def.Instance)
+		w.paths[metricName] = pdh.CounterDef{
+			Path:     path,
+			Instance: def.Instance,
 		}
 
 		w.logger.Debug().Str("metric", metricName).Str("path", path).Msg("Adding counter")
@@ -173,10 +161,9 @@ func (w *windowsMemoryCollector) Collect(timestamp time.Time) ([]data_store.Data
 	defer w.mu.Unlock()
 
 	if !w.initialized {
-		if err := w.query.Collect(); err != nil && !errors.Is(err, pdh.ErrNoData) {
-			return nil, fmt.Errorf("failed initial sample collection: %w", err)
+		if err := pdh.PrimeSamples(w.query); err != nil {
+			return nil, err
 		}
-		time.Sleep(1 * time.Second)
 		w.initialized = true
 	}
 
@@ -193,7 +180,7 @@ func (w *windowsMemoryCollector) Collect(timestamp time.Time) ([]data_store.Data
 	dataPoints := make([]data_store.DataPoint, 0, len(w.paths))
 
 	for name, pathInfo := range w.paths {
-		value, err := w.query.GetCounterValue(pathInfo.path)
+		value, err := w.query.GetCounterValue(pathInfo.Path)
 		if err != nil {
 			w.logger.Debug().Str("metric", name).Err(err).Msg("Error getting counter value")
 			continue
@@ -203,10 +190,10 @@ func (w *windowsMemoryCollector) Collect(timestamp time.Time) ([]data_store.Data
 		metricTags := append([]tags.Tag{}, baseTags...)
 
 		// Ajout du tag d'instance si présent (pour la mémoire, généralement vide)
-		if pathInfo.instance != "" {
+		if pathInfo.Instance != "" {
 			metricTags = append(metricTags, tags.Tag{
 				Key:     "instance",
-				Value:   pathInfo.instance,
+				Value:   pathInfo.Instance,
 				Private: false,
 			})
 		}
