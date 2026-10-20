@@ -22,11 +22,33 @@
         if (mi) return mi + 'm';
         return sec + 's';
     }
+    // The agent's console policy comes from its file. A read-only console
+    // hides the controls that would be refused; the server refuses them
+    // all the same.
+    function applyConsoleMode(c) {
+        const mode = (c && c.mode) || 'full';
+        document.documentElement.dataset.console = mode;
+        let note = document.getElementById('console-mode-note');
+        if (mode === 'full') { if (note) note.remove(); return; }
+        if (!note) {
+            note = document.createElement('div');
+            note.id = 'console-mode-note';
+            note.className = 'banner info';
+            note.style.margin = '12px 24px';
+            const anchor = document.querySelector('.hdr') || document.querySelector('header');
+            if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(note, anchor.nextSibling);
+            else document.body.insertBefore(note, document.body.firstChild);
+        }
+        note.textContent = mode === 'read-only'
+            ? 'This agent is managed from its configuration files. The console is read-only: probes, outputs and settings cannot be changed here.'
+            : 'This agent does not let the console make it run a program: the exec probe and program paths cannot be set here.';
+    }
     async function refresh() {
         try {
             const r = await fetch('/api/' + key + '/info/system');
             if (!r.ok) throw new Error('HTTP ' + r.status);
             const d = await r.json();
+            applyConsoleMode(d.console);
             const failing = (d.outputs_failing || []).length > 0;
             const state = failing ? 'warn' : 'ok';
             const label = failing ? 'output failing' : 'running';

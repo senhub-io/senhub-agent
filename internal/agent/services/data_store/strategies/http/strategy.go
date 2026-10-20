@@ -363,6 +363,9 @@ type SystemInfoResponse struct {
 	Health     HealthCheckResponse `json:"health"`
 	Cache      CacheInfoResponse   `json:"cache"`
 	Resources  ResourcesInfo       `json:"resources"`
+	// Console tells the console which changes this agent allows, so it
+	// can leave out the controls that would be refused.
+	Console ConsoleInfo `json:"console"`
 	// StrategyFailures lists the configured outputs that are NOT running.
 	// Served here rather than computed by the CLI, because the CLI is a
 	// separate process: reading the in-memory state there would always
@@ -377,6 +380,13 @@ type SystemInfoResponse struct {
 	// configuration watch: an edit then needs a restart to apply. Same
 	// reasoning as above — the daemon holds the truth, the CLI does not.
 	ConfigWatch *ConfigWatchInfo `json:"config_watch,omitempty"`
+}
+
+// ConsoleInfo is the effective console policy as the page reads it.
+type ConsoleInfo struct {
+	ReadOnly  bool   `json:"read_only"`
+	AllowExec bool   `json:"allow_exec"`
+	Mode      string `json:"mode"`
 }
 
 // OTLPInfoResponse represents the response for /info/otlp — a snapshot

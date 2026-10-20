@@ -281,7 +281,7 @@
                 const title = o.type === 'http' ? (o.display_name || 'Console and pull endpoints') : o.name;
                 let action;
                 if (o.type === 'http') action = '<a class="btn sm" href="' + WEB + 'outputs/http#urls">Sensor URLs</a>';
-                else if (off) action = '<button type="button" class="btn sm" data-enable="' + esc(o.name) + '">Enable</button>';
+                else if (off) action = '<button type="button" class="btn sm" data-write data-enable="' + esc(o.name) + '">Enable</button>';
                 else action = '<a class="btn sm" href="' + WEB + 'outputs/' + encodeURIComponent(o.name) + '">Edit</a>';
                 html += '<div class="orow"><div class="oicon' + (off ? ' off' : '') + '">' + esc(String(o.type).toUpperCase().slice(0, 6)) + '</div>' +
                     '<div><div class="t">' + esc(title) + ' ' + outputPill(o) + '</div>' +
