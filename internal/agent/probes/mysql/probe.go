@@ -422,6 +422,20 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	// Uptime
 	points = append(points, p.dp("mysql.uptime", asFloat(status["Uptime"]), now, string(dbcommon.MetricTypeOverview), allCommonTags))
 
+	points = append(points, p.connectionPoints(status, vars, now, allCommonTags)...)
+	points = append(points, p.throughputPoints(status, now, allCommonTags)...)
+	points = append(points, p.cachePoints(status, now, allCommonTags)...)
+	points = append(points, p.lockPoints(status, now, allCommonTags)...)
+	points = append(points, p.ioPoints(status, now, allCommonTags)...)
+	points = append(points, p.storagePoints(now, allCommonTags)...)
+	points = append(points, p.replicationPoints(now, allCommonTags)...)
+
+	points = append(points, p.dp(dbcommon.CheckResultMetric, 0, now, "status", commonTags))
+	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+}
+
+func (p *mysqlProbe) connectionPoints(status, vars map[string]string, now time.Time, allCommonTags []tags.Tag) []data_store.DataPoint {
+	var points []data_store.DataPoint
 	// ─── Connections ─────────────────────────────────────────────────────────
 	connected := asFloat(status["Threads_connected"])
 	running := asFloat(status["Threads_running"])
@@ -456,7 +470,11 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 		errTags := append([]tags.Tag{{Key: "error", Value: errKey.attr}}, allCommonTags...)
 		points = append(points, p.dp("mysql.connection.errors."+errKey.attr, asFloat(status[errKey.statusKey]), now, string(dbcommon.MetricTypeConnections), errTags))
 	}
+	return points
+}
 
+func (p *mysqlProbe) throughputPoints(status map[string]string, now time.Time, allCommonTags []tags.Tag) []data_store.DataPoint {
+	var points []data_store.DataPoint
 	// ─── Throughput ──────────────────────────────────────────────────────────
 	points = append(points,
 		p.dp("mysql.query.count", asFloat(status["Questions"]), now, string(dbcommon.MetricTypeThroughput), allCommonTags),
@@ -490,7 +508,11 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	if tmpTotal > 0 {
 		points = append(points, p.dp("senhub.db.mysql.tmp_tables.disk_ratio", tmpDisk/tmpTotal*100, now, string(dbcommon.MetricTypeThroughput), allCommonTags))
 	}
+	return points
+}
 
+func (p *mysqlProbe) cachePoints(status map[string]string, now time.Time, allCommonTags []tags.Tag) []data_store.DataPoint {
+	var points []data_store.DataPoint
 	// ─── Cache (InnoDB buffer pool) ───────────────────────────────────────────
 	poolReads := asFloat(status["Innodb_buffer_pool_reads"])
 	poolReadReqs := asFloat(status["Innodb_buffer_pool_read_requests"])
@@ -507,14 +529,22 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	points = append(points,
 		p.dp("mysql.buffer_pool.data_pages.dirty", asFloat(status["Innodb_buffer_pool_pages_dirty"]), now, string(dbcommon.MetricTypeCache), dirtyTags),
 	)
+	return points
+}
 
+func (p *mysqlProbe) lockPoints(status map[string]string, now time.Time, allCommonTags []tags.Tag) []data_store.DataPoint {
+	var points []data_store.DataPoint
 	// ─── Locks ────────────────────────────────────────────────────────────────
 	points = append(points,
 		p.dp("senhub.db.mysql.lock.deadlocks", asFloat(status["Innodb_deadlocks"]), now, string(dbcommon.MetricTypeLocks), allCommonTags),
 		p.dp("senhub.db.mysql.lock.waiting", asFloat(status["Innodb_row_lock_current_waits"]), now, string(dbcommon.MetricTypeLocks), allCommonTags),
 		p.dp("senhub.db.mysql.row_lock.time.avg", asFloat(status["Innodb_row_lock_time_avg"]), now, string(dbcommon.MetricTypeLocks), allCommonTags),
 	)
+	return points
+}
 
+func (p *mysqlProbe) ioPoints(status map[string]string, now time.Time, allCommonTags []tags.Tag) []data_store.DataPoint {
+	var points []data_store.DataPoint
 	// ─── IO ───────────────────────────────────────────────────────────────────
 	ioReadTags := append([]tags.Tag{{Key: "io.direction", Value: "read"}}, allCommonTags...)
 	ioWriteTags := append([]tags.Tag{{Key: "io.direction", Value: "write"}}, allCommonTags...)
@@ -522,7 +552,11 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 		p.dp("senhub.db.mysql.io.read", asFloat(status["Innodb_data_read"]), now, string(dbcommon.MetricTypeIO), ioReadTags),
 		p.dp("senhub.db.mysql.io.write", asFloat(status["Innodb_data_written"]), now, string(dbcommon.MetricTypeIO), ioWriteTags),
 	)
+	return points
+}
 
+func (p *mysqlProbe) storagePoints(now time.Time, allCommonTags []tags.Tag) []data_store.DataPoint {
+	var points []data_store.DataPoint
 	// ─── Storage ──────────────────────────────────────────────────────────────
 	storageCtx, storageCancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
 	defer storageCancel()
@@ -557,7 +591,11 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 			}
 		}
 	}
+	return points
+}
 
+func (p *mysqlProbe) replicationPoints(now time.Time, allCommonTags []tags.Tag) []data_store.DataPoint {
+	var points []data_store.DataPoint
 	// ─── Replication ──────────────────────────────────────────────────────────
 	replCtx, replCancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
 	defer replCancel()
@@ -586,9 +624,7 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 		)
 	}
 	points = append(points, p.dp("senhub.db.replication.health", health, now, string(dbcommon.MetricTypeReplication), allCommonTags))
-
-	points = append(points, p.dp(dbcommon.CheckResultMetric, 0, now, "status", commonTags))
-	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+	return points
 }
 
 // commonTags builds the base tag set used by every datapoint emitted by

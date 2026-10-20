@@ -344,26 +344,7 @@ func checkConfig(configPath string) checkOutcome {
 
 	fmt.Printf("Checking configuration: %s\n\n", absPath)
 
-	// The service reads ${env:} values from its unit, which the shell
-	// running this check does not have: a bearer token set there made
-	// every check end on an error for a working file (#892). Check with
-	// the service's environment when it runs this configuration; a
-	// variable already exported in the shell wins.
-	unitEnv, unitEnvErr := serviceEnvironment(absPath)
-	if unitEnvErr != nil {
-		fmt.Printf("  [WARN] Could not read the service environment: %v\n", unitEnvErr)
-	}
-	applied := 0
-	for k, v := range unitEnv {
-		if _, set := os.LookupEnv(k); !set {
-			if err := os.Setenv(k, v); err == nil {
-				applied++
-			}
-		}
-	}
-	if applied > 0 {
-		fmt.Printf("  [OK]   %d variable(s) taken from the senhub-agent service's environment\n", applied)
-	}
+	applyUnitEnvironmentForCheck(absPath)
 
 	// Read raw bytes once so YAML-syntax errors can still print a
 	// useful "near this line" context (LoadFromDisk only returns a
@@ -417,6 +398,68 @@ func checkConfig(configPath string) checkOutcome {
 	// resulting error then points at a file that has no defect (#892).
 	// Name the variable first so the errors below read in that light.
 	unsetEnv := configuration.UnsetEnvReferences(configPath)
+	warnings += reportUnsetEnvReferences(unsetEnv)
+
+	errorCount += checkConfigVersion(&config)
+
+	keyLine, keyErr, keyWarn := agentKeyCheckLine(config.Agent.Key)
+	fmt.Println(keyLine)
+	if keyErr {
+		errorCount++
+	}
+	if keyWarn {
+		warnings++
+	}
+
+	e, w := checkConfigLicense(&config)
+	errorCount += e
+	warnings += w
+
+	e, w = checkConfigProbes(&config)
+	errorCount += e
+	warnings += w
+
+	e, w = checkConfigStorage(&config, unsetEnv)
+	errorCount += e
+	warnings += w
+
+	errorCount += reportAgentGovernanceProblems(config.Governance)
+
+	errorCount, warnings = reportNagiosFile(configPath, errorCount, warnings)
+
+	e, w = checkConfigAutoUpdate(&config)
+	errorCount += e
+	warnings += w
+
+	printCheckSummary(errorCount, warnings)
+	return checkOutcome{errors: errorCount, warnings: warnings}
+}
+
+func applyUnitEnvironmentForCheck(absPath string) {
+	// The service reads ${env:} values from its unit, which the shell
+	// running this check does not have: a bearer token set there made
+	// every check end on an error for a working file (#892). Check with
+	// the service's environment when it runs this configuration; a
+	// variable already exported in the shell wins.
+	unitEnv, unitEnvErr := serviceEnvironment(absPath)
+	if unitEnvErr != nil {
+		fmt.Printf("  [WARN] Could not read the service environment: %v\n", unitEnvErr)
+	}
+	applied := 0
+	for k, v := range unitEnv {
+		if _, set := os.LookupEnv(k); !set {
+			if err := os.Setenv(k, v); err == nil {
+				applied++
+			}
+		}
+	}
+	if applied > 0 {
+		fmt.Printf("  [OK]   %d variable(s) taken from the senhub-agent service's environment\n", applied)
+	}
+}
+
+func reportUnsetEnvReferences(unsetEnv []configuration.EnvReference) int {
+	warnings := 0
 	for _, ref := range unsetEnv {
 		fmt.Printf("  [WARN] ${env:%s} in %s: %s is not set in this shell\n", ref.Name, ref.File, ref.Name)
 		warnings++
@@ -430,7 +473,11 @@ func checkConfig(configPath string) checkOutcome {
 			fmt.Println("         environment (systemctl show senhub-agent -p Environment) or export them first.")
 		}
 	}
+	return warnings
+}
 
+func checkConfigVersion(config *configuration.LocalConfigurationData) int {
+	errorCount := 0
 	// Config version. Validate against the agent's supported range
 	// (MinimumConfigVersion..CurrentConfigVersion) rather than a
 	// hardcoded literal, so `config check` tracks the source of truth
@@ -450,16 +497,12 @@ func checkConfig(configPath string) checkOutcome {
 	default:
 		fmt.Printf("  [OK]   config_version: %d\n", config.ConfigVersion)
 	}
+	return errorCount
+}
 
-	keyLine, keyErr, keyWarn := agentKeyCheckLine(config.Agent.Key)
-	fmt.Println(keyLine)
-	if keyErr {
-		errorCount++
-	}
-	if keyWarn {
-		warnings++
-	}
-
+func checkConfigLicense(config *configuration.LocalConfigurationData) (int, int) {
+	errorCount := 0
+	warnings := 0
 	// License
 	if config.Agent.License != "" {
 		validator, validatorErr := license.GetDefaultValidator(7)
@@ -494,7 +537,31 @@ func checkConfig(configPath string) checkOutcome {
 		// must not turn config check (and a validator built on it) amber.
 		fmt.Println("  [INFO] agent.license not set (free tier)")
 	}
+	return errorCount, warnings
+}
 
+func reportProbeOverlaps(probes []configuration.ProbeConfig) int {
+	warnings := 0
+	for _, o := range filetailOverlaps(probes) {
+		fmt.Printf("  [WARN] %s is read by filetail probes %s: each line is sent once per probe and the probes share one rotation notice; declare the file in a single probe\n",
+			o.path, strings.Join(o.probes, " and "))
+		warnings++
+	}
+	for _, o := range configuration.SNMPPollTargetOverlaps(probes) {
+		quoted := make([]string, len(o.Probes))
+		for i, name := range o.Probes {
+			quoted[i] = fmt.Sprintf("%q", name)
+		}
+		fmt.Printf("  [WARN] %s is polled by snmp_poll probes %s with the same credential: the device is read once per probe and its metrics are duplicated; poll it from a single probe\n",
+			o.Target, strings.Join(quoted, " and "))
+		warnings++
+	}
+	return warnings
+}
+
+func checkConfigProbes(config *configuration.LocalConfigurationData) (int, int) {
+	errorCount := 0
+	warnings := 0
 	// Probes
 	if len(config.Probes) == 0 {
 		fmt.Println("  [WARN] No probes configured")
@@ -517,77 +584,78 @@ func checkConfig(configPath string) checkOutcome {
 		registeredProbes := probes.GetRegisteredProbeTypes()
 		duplicate := duplicateProbeIndexes(config.Probes)
 		for i, p := range config.Probes {
-			if p.Name == "" {
-				fmt.Println("  [ERROR] Probe with empty name")
-				errorCount++
-				continue
-			}
-			if duplicate[i] {
-				fmt.Printf("  [ERROR] Probe %q (type: %s): the name is already used by an earlier probe; the agent runs the first and ignores this one\n", p.Name, p.Type)
-				errorCount++
-				continue
-			}
-			if p.Type == "" {
-				fmt.Printf("  [ERROR] Probe %q: type is missing\n", p.Name)
-				errorCount++
-				continue
-			}
-			if !registeredProbes[p.Type] {
-				fmt.Printf("  [ERROR] Probe %q: %s\n", p.Name, license.NotInThisBuild(p.Type))
-				errorCount++
-				continue
-			}
-			// An output that cannot consume logs would silently swallow
-			// this probe's records: they would be routed to it, and it
-			// would never read the log rail. Refuse the value instead of
-			// letting the operator discover it as missing data (#836).
-			badRouting := false
-			for _, target := range p.LogStrategies {
-				if !configuration.IsLogCapableStrategy(target) {
-					fmt.Printf("  [ERROR] Probe %q: log_strategies names %q, which cannot receive logs (accepted: %s)\n",
-						p.Name, target, strings.Join(configuration.LogCapableStrategies, ", "))
-					errorCount++
-					badRouting = true
-				}
-			}
-			if badRouting {
-				// Don't follow an ERROR with an OK line describing the
-				// routing that was just rejected — the operator would
-				// have to read both to know which one holds.
-				continue
-			}
-
-			if !p.IsEnabled() {
-				fmt.Printf("  [OFF]  Probe %q (type: %s) - disabled, will not collect\n", p.Name, p.Type)
-			} else if len(p.LogStrategies) > 0 {
-				fmt.Printf("  [OK]   Probe %q (type: %s), logs routed to %s\n",
-					p.Name, p.Type, strings.Join(p.LogStrategies, ", "))
-			} else {
-				fmt.Printf("  [OK]   Probe %q (type: %s)\n", p.Name, p.Type)
-			}
-
-			// Validate required params per probe type
-			e, w := validateProbeParams(p.Name, p.Type, p.Params)
+			e, w := checkConfigProbeEntry(p, i, duplicate, registeredProbes)
 			errorCount += e
 			warnings += w
-			errorCount += reportGovernanceProblems(p)
 		}
-		for _, o := range filetailOverlaps(config.Probes) {
-			fmt.Printf("  [WARN] %s is read by filetail probes %s: each line is sent once per probe and the probes share one rotation notice; declare the file in a single probe\n",
-				o.path, strings.Join(o.probes, " and "))
-			warnings++
-		}
-		for _, o := range configuration.SNMPPollTargetOverlaps(config.Probes) {
-			quoted := make([]string, len(o.Probes))
-			for i, name := range o.Probes {
-				quoted[i] = fmt.Sprintf("%q", name)
-			}
-			fmt.Printf("  [WARN] %s is polled by snmp_poll probes %s with the same credential: the device is read once per probe and its metrics are duplicated; poll it from a single probe\n",
-				o.Target, strings.Join(quoted, " and "))
-			warnings++
+		warnings += reportProbeOverlaps(config.Probes)
+	}
+	return errorCount, warnings
+}
+
+func checkConfigProbeEntry(p configuration.ProbeConfig, i int, duplicate map[int]bool, registeredProbes map[string]bool) (int, int) {
+	errorCount := 0
+	warnings := 0
+	if p.Name == "" {
+		fmt.Println("  [ERROR] Probe with empty name")
+		errorCount++
+		return errorCount, warnings
+	}
+	if duplicate[i] {
+		fmt.Printf("  [ERROR] Probe %q (type: %s): the name is already used by an earlier probe; the agent runs the first and ignores this one\n", p.Name, p.Type)
+		errorCount++
+		return errorCount, warnings
+	}
+	if p.Type == "" {
+		fmt.Printf("  [ERROR] Probe %q: type is missing\n", p.Name)
+		errorCount++
+		return errorCount, warnings
+	}
+	if !registeredProbes[p.Type] {
+		fmt.Printf("  [ERROR] Probe %q: %s\n", p.Name, license.NotInThisBuild(p.Type))
+		errorCount++
+		return errorCount, warnings
+	}
+	// An output that cannot consume logs would silently swallow
+	// this probe's records: they would be routed to it, and it
+	// would never read the log rail. Refuse the value instead of
+	// letting the operator discover it as missing data (#836).
+	badRouting := false
+	for _, target := range p.LogStrategies {
+		if !configuration.IsLogCapableStrategy(target) {
+			fmt.Printf("  [ERROR] Probe %q: log_strategies names %q, which cannot receive logs (accepted: %s)\n",
+				p.Name, target, strings.Join(configuration.LogCapableStrategies, ", "))
+			errorCount++
+			badRouting = true
 		}
 	}
+	if badRouting {
+		// Don't follow an ERROR with an OK line describing the
+		// routing that was just rejected — the operator would
+		// have to read both to know which one holds.
+		return errorCount, warnings
+	}
 
+	if !p.IsEnabled() {
+		fmt.Printf("  [OFF]  Probe %q (type: %s) - disabled, will not collect\n", p.Name, p.Type)
+	} else if len(p.LogStrategies) > 0 {
+		fmt.Printf("  [OK]   Probe %q (type: %s), logs routed to %s\n",
+			p.Name, p.Type, strings.Join(p.LogStrategies, ", "))
+	} else {
+		fmt.Printf("  [OK]   Probe %q (type: %s)\n", p.Name, p.Type)
+	}
+
+	// Validate required params per probe type
+	e, w := validateProbeParams(p.Name, p.Type, p.Params)
+	errorCount += e
+	warnings += w
+	errorCount += reportGovernanceProblems(p)
+	return errorCount, warnings
+}
+
+func checkConfigStorage(config *configuration.LocalConfigurationData, unsetEnv []configuration.EnvReference) (int, int) {
+	errorCount := 0
+	warnings := 0
 	// Storage
 	if len(config.Storage) == 0 {
 		fmt.Println("  [ERROR] at least one storage strategy is required (the agent refuses to load a configuration without one)")
@@ -598,69 +666,79 @@ func checkConfig(configPath string) checkOutcome {
 			validStrategies[name] = true
 		}
 		for _, s := range config.Storage {
-			if s.Name == "" {
-				fmt.Println("  [ERROR] storage strategy name cannot be empty")
-				errorCount++
-				continue
-			}
-			if !validStrategies[s.Name] {
-				fmt.Printf("  [WARN] Storage %q: unknown strategy\n", s.Name)
-				warnings++
-				continue
-			}
-			// A key no strategy reads is invisible at runtime: the file
-			// says one thing and the agent does another, which is how
-			// `insecure: true` came to mean a TLS handshake (#846).
-			for _, unread := range data_store.UnreadParamsFor(s.Name, s.Params) {
-				if unread.Replacement != "" {
-					fmt.Printf("         [WARN] Storage %q: param %q is not read; write %s instead\n",
-						s.Name, unread.Key, unread.Replacement)
-					warnings++
-					continue
-				}
-				fmt.Printf("         [ERROR] Storage %q: param %q is not read by the %s strategy and has no effect\n",
-					s.Name, unread.Key, s.Name)
-				errorCount++
-			}
-
-			// And the validation the agent runs at construction: a
-			// configuration this refuses is a configuration that will be
-			// dropped, and reporting it valid here only moves the
-			// discovery to the restart (#848).
-			if verr := data_store.ValidateStrategyParams(s.Name, s.Params); verr != nil {
-				fmt.Printf("  [ERROR] Storage %q: %v\n", s.Name, verr)
-				var blank *otlp.BlankCredentialError
-				if errors.As(verr, &blank) && len(unsetEnv) > 0 {
-					fmt.Printf("          The credential is empty because %s is not set in this shell (see above);\n", unsetEnvNames(unsetEnv))
-					fmt.Println("          the file itself may be correct.")
-				}
-				errorCount++
-				continue
-			}
-
-			if s.Name == "otlp" {
-				if otlp.StalenessEvictionDisabled(s.Params) {
-					fmt.Printf("  [WARN] Strategy %q: staleness_ttl disables series eviction\n", s.Name)
-					fmt.Println("         A series whose producer disappears (a target removed from a probe,")
-					fmt.Println("         a probe denied by licence) keeps being exported at its last value")
-					fmt.Println("         with fresh timestamps, and a restart restores it from the checkpoint.")
-					warnings++
-				}
-				if verr := otlp.ValidateEntitiesRedactAttributes(s.Params); verr != nil {
-					fmt.Printf("  [ERROR] Storage %q: %v\n", s.Name, verr)
-					errorCount++
-					continue
-				}
-			}
-			fmt.Printf("  [OK]   Storage: %s\n", s.Name)
+			e, w := checkConfigStorageStrategy(s, validStrategies, unsetEnv)
+			errorCount += e
+			warnings += w
 		}
 		reportEntityEmission(config.Entities, config.Storage)
 	}
+	return errorCount, warnings
+}
 
-	errorCount += reportAgentGovernanceProblems(config.Governance)
+func checkConfigStorageStrategy(s configuration.StorageConfig, validStrategies map[string]bool, unsetEnv []configuration.EnvReference) (int, int) {
+	errorCount := 0
+	warnings := 0
+	if s.Name == "" {
+		fmt.Println("  [ERROR] storage strategy name cannot be empty")
+		errorCount++
+		return errorCount, warnings
+	}
+	if !validStrategies[s.Name] {
+		fmt.Printf("  [WARN] Storage %q: unknown strategy\n", s.Name)
+		warnings++
+		return errorCount, warnings
+	}
+	// A key no strategy reads is invisible at runtime: the file
+	// says one thing and the agent does another, which is how
+	// `insecure: true` came to mean a TLS handshake (#846).
+	for _, unread := range data_store.UnreadParamsFor(s.Name, s.Params) {
+		if unread.Replacement != "" {
+			fmt.Printf("         [WARN] Storage %q: param %q is not read; write %s instead\n",
+				s.Name, unread.Key, unread.Replacement)
+			warnings++
+			continue
+		}
+		fmt.Printf("         [ERROR] Storage %q: param %q is not read by the %s strategy and has no effect\n",
+			s.Name, unread.Key, s.Name)
+		errorCount++
+	}
 
-	errorCount, warnings = reportNagiosFile(configPath, errorCount, warnings)
+	// And the validation the agent runs at construction: a
+	// configuration this refuses is a configuration that will be
+	// dropped, and reporting it valid here only moves the
+	// discovery to the restart (#848).
+	if verr := data_store.ValidateStrategyParams(s.Name, s.Params); verr != nil {
+		fmt.Printf("  [ERROR] Storage %q: %v\n", s.Name, verr)
+		var blank *otlp.BlankCredentialError
+		if errors.As(verr, &blank) && len(unsetEnv) > 0 {
+			fmt.Printf("          The credential is empty because %s is not set in this shell (see above);\n", unsetEnvNames(unsetEnv))
+			fmt.Println("          the file itself may be correct.")
+		}
+		errorCount++
+		return errorCount, warnings
+	}
 
+	if s.Name == "otlp" {
+		if otlp.StalenessEvictionDisabled(s.Params) {
+			fmt.Printf("  [WARN] Strategy %q: staleness_ttl disables series eviction\n", s.Name)
+			fmt.Println("         A series whose producer disappears (a target removed from a probe,")
+			fmt.Println("         a probe denied by licence) keeps being exported at its last value")
+			fmt.Println("         with fresh timestamps, and a restart restores it from the checkpoint.")
+			warnings++
+		}
+		if verr := otlp.ValidateEntitiesRedactAttributes(s.Params); verr != nil {
+			fmt.Printf("  [ERROR] Storage %q: %v\n", s.Name, verr)
+			errorCount++
+			return errorCount, warnings
+		}
+	}
+	fmt.Printf("  [OK]   Storage: %s\n", s.Name)
+	return errorCount, warnings
+}
+
+func checkConfigAutoUpdate(config *configuration.LocalConfigurationData) (int, int) {
+	errorCount := 0
+	warnings := 0
 	// Binary writability. What is correct differs per platform: on Linux the
 	// daemon must NOT be able to write its own executable (#794), everywhere
 	// else the in-process updater needs to (#377). checkAutoUpdateWritability
@@ -699,7 +777,10 @@ func checkConfig(configPath string) checkOutcome {
 			fmt.Println("  [OK]   auto_update.enabled: binary is replaceable in place")
 		}
 	}
+	return errorCount, warnings
+}
 
+func printCheckSummary(errorCount, warnings int) {
 	// Summary
 	fmt.Println()
 	if errorCount == 0 && warnings == 0 {
@@ -709,7 +790,6 @@ func checkConfig(configPath string) checkOutcome {
 	} else {
 		fmt.Printf("Configuration has %d error(s) and %d warning(s).\n", errorCount, warnings)
 	}
-	return checkOutcome{errors: errorCount, warnings: warnings}
 }
 
 // agentKeyCheckLine reports the agent key without its value: the key is

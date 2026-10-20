@@ -277,43 +277,14 @@ func runConfigInit(argv []string, out io.Writer, env initEnv) int {
 	// Idempotent: an existing config (multi-file agent.yaml or a legacy
 	// monolithic file) is preserved verbatim.
 	if _, err := os.Stat(configPath); err == nil {
-		fmt.Fprintf(text, "Configuration already present at %s — leaving it unchanged.\n", configPath)
-		// A kept configuration is not re-seeded (the agent owns its config,
-		// the installer does not rewrite it). Two things still deserve a
-		// word, because the installer runs before the service starts and
-		// this print is the only trace the operator gets:
-		//   - a port asked for on this run that the kept config ignores,
-		//     which is exactly the reinstall-over-kept-config surprise;
-		//   - a kept port that is already taken.
-		if opts.httpBind != "" {
-			fmt.Fprintf(text, "Warning: --http-bind %s was ignored; an existing configuration keeps its address. Change it with 'senhub-agent config set http.bind_address %s'.\n", opts.httpBind, opts.httpBind)
-		}
-		if _, port := resolveHTTPStrategyEndpoint(configPath); port > 0 {
-			if opts.httpPort != 0 && opts.httpPort != port {
-				fmt.Fprintf(text, "Warning: --http-port %d was ignored; the existing configuration keeps port %d. Change it with 'senhub-agent config set http.port %d'.\n", opts.httpPort, port, opts.httpPort)
-			}
-			if portErr := env.checkPort(defaultHTTPBindAddress, port); portErr != nil {
-				fmt.Fprintf(text, "Warning: %v\n", portErr)
-			}
-		}
+		noteKeptConfiguration(text, configPath, opts, env)
 		// Still ensure the OTLP fragment on an existing config: a prior run
 		// could have generated the config but not yet written the fragment.
 		// Idempotent — the writer no-ops when 10-otlp.yaml already exists
 		// (audit M4).
-		var written []string
-		wroteOTLP, err := configuration.EnsureOTLPStrategyFragment(configDir, otlpEndpoint, otlpProtocol)
+		written, err := writeStrategyFragments(configDir, otlpEndpoint, otlpProtocol, opts, nil)
 		if err != nil {
-			return fail(fmt.Errorf("config init: writing OTLP strategy: %w", err))
-		}
-		if wroteOTLP {
-			written = append(written, filepath.Join(configDir, "strategies.d", "10-otlp.yaml"))
-		}
-		wroteZabbix, err := configuration.EnsureZabbixStrategyFragment(configDir, opts.zabbixServer, opts.zabbixMetadata)
-		if err != nil {
-			return fail(fmt.Errorf("config init: writing Zabbix strategy: %w", err))
-		}
-		if wroteZabbix {
-			written = append(written, filepath.Join(configDir, "strategies.d", "20-zabbix.yaml"))
+			return fail(err)
 		}
 		return finish(false, written)
 	}
@@ -322,20 +293,9 @@ func runConfigInit(argv []string, out io.Writer, env initEnv) int {
 	// must fail with nothing on disk. A configuration left behind by a
 	// failed install is picked up as "already present" by the next one,
 	// which then ignores the port and licence it was given.
-	licenseFile := opts.licenseFile
-	if licenseFile == "" && opts.licenseDir != "" {
-		found, findErr := findLicenseInDir(opts.licenseDir)
-		if findErr != nil {
-			return fail(fmt.Errorf("config init: %w", findErr))
-		}
-		if found == "" {
-			fmt.Fprintf(os.Stderr, "Note: no licence file (*.jwt) in %s; installing on the Free tier. A licence can be added later from the web console.\n", opts.licenseDir)
-		}
-		licenseFile = found
-	}
-	license, err := resolveLicenseInput(opts.license, licenseFile)
+	license, err := resolveInitLicense(opts)
 	if err != nil {
-		return fail(fmt.Errorf("config init: %w", err))
+		return fail(err)
 	}
 
 	// Refuse a port the strategy cannot bind before anything is written.
@@ -372,22 +332,76 @@ func runConfigInit(argv []string, out io.Writer, env initEnv) int {
 		warnLicenseBinding(configPath, license)
 	}
 
-	written := []string{configPath}
+	written, err := writeStrategyFragments(configDir, otlpEndpoint, otlpProtocol, opts, []string{configPath})
+	if err != nil {
+		return fail(err)
+	}
+
+	printConfigInitSummary(text, configPath, bind, httpPort, license, tags, otlpEndpoint, opts)
+	return finish(true, written)
+}
+
+func noteKeptConfiguration(text io.Writer, configPath string, opts initConfigArgs, env initEnv) {
+	fmt.Fprintf(text, "Configuration already present at %s — leaving it unchanged.\n", configPath)
+	// A kept configuration is not re-seeded (the agent owns its config,
+	// the installer does not rewrite it). Two things still deserve a
+	// word, because the installer runs before the service starts and
+	// this print is the only trace the operator gets:
+	//   - a port asked for on this run that the kept config ignores,
+	//     which is exactly the reinstall-over-kept-config surprise;
+	//   - a kept port that is already taken.
+	if opts.httpBind != "" {
+		fmt.Fprintf(text, "Warning: --http-bind %s was ignored; an existing configuration keeps its address. Change it with 'senhub-agent config set http.bind_address %s'.\n", opts.httpBind, opts.httpBind)
+	}
+	if _, port := resolveHTTPStrategyEndpoint(configPath); port > 0 {
+		if opts.httpPort != 0 && opts.httpPort != port {
+			fmt.Fprintf(text, "Warning: --http-port %d was ignored; the existing configuration keeps port %d. Change it with 'senhub-agent config set http.port %d'.\n", opts.httpPort, port, opts.httpPort)
+		}
+		if portErr := env.checkPort(defaultHTTPBindAddress, port); portErr != nil {
+			fmt.Fprintf(text, "Warning: %v\n", portErr)
+		}
+	}
+}
+
+func writeStrategyFragments(configDir, otlpEndpoint, otlpProtocol string, opts initConfigArgs, written []string) ([]string, error) {
 	wroteOTLP, err := configuration.EnsureOTLPStrategyFragment(configDir, otlpEndpoint, otlpProtocol)
 	if err != nil {
-		return fail(fmt.Errorf("config init: writing OTLP strategy: %w", err))
+		return nil, fmt.Errorf("config init: writing OTLP strategy: %w", err)
 	}
 	if wroteOTLP {
 		written = append(written, filepath.Join(configDir, "strategies.d", "10-otlp.yaml"))
 	}
 	wroteZabbix, err := configuration.EnsureZabbixStrategyFragment(configDir, opts.zabbixServer, opts.zabbixMetadata)
 	if err != nil {
-		return fail(fmt.Errorf("config init: writing Zabbix strategy: %w", err))
+		return nil, fmt.Errorf("config init: writing Zabbix strategy: %w", err)
 	}
 	if wroteZabbix {
 		written = append(written, filepath.Join(configDir, "strategies.d", "20-zabbix.yaml"))
 	}
+	return written, nil
+}
 
+func resolveInitLicense(opts initConfigArgs) (string, error) {
+	licenseFile := opts.licenseFile
+	if licenseFile == "" && opts.licenseDir != "" {
+		found, findErr := findLicenseInDir(opts.licenseDir)
+		if findErr != nil {
+			return "", fmt.Errorf("config init: %w", findErr)
+		}
+		if found == "" {
+			fmt.Fprintf(os.Stderr, "Note: no licence file (*.jwt) in %s; installing on the Free tier. A licence can be added later from the web console.\n", opts.licenseDir)
+		}
+		licenseFile = found
+	}
+	license, err := resolveLicenseInput(opts.license, licenseFile)
+	if err != nil {
+		return "", fmt.Errorf("config init: %w", err)
+	}
+	return license, nil
+}
+
+func printConfigInitSummary(text io.Writer, configPath, bind string, httpPort int, license string, tags map[string]string, otlpEndpoint string, opts initConfigArgs) {
+	configDir := filepath.Dir(configPath)
 	fmt.Fprintf(text, "Configuration created at %s\n", configPath)
 	fmt.Fprintf(text, "  http: %s\n", net.JoinHostPort(bind, strconv.Itoa(httpPort)))
 	if license != "" {
@@ -403,7 +417,6 @@ func runConfigInit(argv []string, out io.Writer, env initEnv) int {
 		fmt.Fprintf(text, "  zabbix server: %s\n", opts.zabbixServer)
 	}
 	fmt.Fprintf(text, "  probes: %s\n", filepath.Join(configDir, "probes.d"))
-	return finish(true, written)
 }
 
 // findLicenseInDir returns the licence file to use from a folder the

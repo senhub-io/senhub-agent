@@ -357,72 +357,87 @@ func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string
 		return pts
 	}
 
+	p.addOverviewDatapoints(&pts, info, ts)
+	p.addKeyspaceDatapoints(&pts, info, ts)
+	p.addReplicationDatapoints(&pts, info, ts)
+	p.addPersistenceDatapoints(&pts, info, ts)
+	p.addResourceDatapoints(&pts, info, ts)
+	p.addCommandStatDatapoints(&pts, cmdStats, ts)
+	p.addClusterDatapoints(&pts, clusterInfo, ts)
+	p.addSentinelDatapoints(&pts, sentinelInfo, ts)
+	p.addTrackingDatapoints(&pts, info, ts)
+	return pts
+}
+
+func (p *redisProbe) addOverviewDatapoints(pts *[]data_store.DataPoint, info map[string]string, ts time.Time) {
 	// overview
 	if v, ok := parseFloat(info["uptime_in_seconds"]); ok {
-		p.addCounter(&pts, "redis.uptime", v, ts, "overview")
+		p.addCounter(pts, "redis.uptime", v, ts, "overview")
 	}
 	if ver := info["redis_version"]; ver != "" {
-		p.addGauge(&pts, "senhub.db.version.info", 1, ts, "overview",
+		p.addGauge(pts, "senhub.db.version.info", 1, ts, "overview",
 			tags.Tag{Key: "version", Value: ver})
 	}
 
 	// connections
 	if v, ok := parseFloat(info["connected_clients"]); ok {
-		p.addGauge(&pts, "redis.clients.connected", v, ts, "connections")
+		p.addGauge(pts, "redis.clients.connected", v, ts, "connections")
 	}
 	if v, ok := parseFloat(info["blocked_clients"]); ok {
-		p.addGauge(&pts, "redis.clients.blocked", v, ts, "connections")
+		p.addGauge(pts, "redis.clients.blocked", v, ts, "connections")
 	}
 	if v, ok := parseFloat(info["total_connections_received"]); ok {
-		p.addCounter(&pts, "redis.connections.received", v, ts, "connections")
+		p.addCounter(pts, "redis.connections.received", v, ts, "connections")
 	}
 	if v, ok := parseFloat(info["rejected_connections"]); ok {
-		p.addCounter(&pts, "redis.connections.rejected", v, ts, "connections")
+		p.addCounter(pts, "redis.connections.rejected", v, ts, "connections")
 	}
 
 	// memory
 	if v, ok := parseFloat(info["used_memory"]); ok {
-		p.addGauge(&pts, "redis.memory.used", v, ts, "memory")
+		p.addGauge(pts, "redis.memory.used", v, ts, "memory")
 	}
 	if v, ok := parseFloat(info["used_memory_rss"]); ok {
-		p.addGauge(&pts, "redis.memory.used.rss", v, ts, "memory")
+		p.addGauge(pts, "redis.memory.used.rss", v, ts, "memory")
 	}
 	if v, ok := parseFloat(info["used_memory_peak"]); ok {
-		p.addGauge(&pts, "redis.memory.peak", v, ts, "memory")
+		p.addGauge(pts, "redis.memory.peak", v, ts, "memory")
 	}
 	if v, ok := parseFloat(info["mem_fragmentation_ratio"]); ok {
-		p.addGauge(&pts, "redis.memory.fragmentation.ratio", v, ts, "memory")
+		p.addGauge(pts, "redis.memory.fragmentation.ratio", v, ts, "memory")
 	}
 
 	// throughput
 	if v, ok := parseFloat(info["total_commands_processed"]); ok {
-		p.addCounter(&pts, "redis.commands.processed", v, ts, "throughput")
+		p.addCounter(pts, "redis.commands.processed", v, ts, "throughput")
 	}
 	if v, ok := parseFloat(info["total_net_input_bytes"]); ok {
-		p.addCounter(&pts, "redis.net.input", v, ts, "throughput")
+		p.addCounter(pts, "redis.net.input", v, ts, "throughput")
 	}
 	if v, ok := parseFloat(info["total_net_output_bytes"]); ok {
-		p.addCounter(&pts, "redis.net.output", v, ts, "throughput")
+		p.addCounter(pts, "redis.net.output", v, ts, "throughput")
 	}
 	if v, ok := parseFloat(info["instantaneous_ops_per_sec"]); ok {
-		p.addGauge(&pts, "redis.ops.per_sec", v, ts, "throughput")
+		p.addGauge(pts, "redis.ops.per_sec", v, ts, "throughput")
 	}
+}
 
+func (p *redisProbe) addKeyspaceDatapoints(pts *[]data_store.DataPoint, info map[string]string, ts time.Time) {
 	// cache / keyspace hits
 	hits, hitsOK := parseFloat(info["keyspace_hits"])
 	misses, missesOK := parseFloat(info["keyspace_misses"])
 	if hitsOK {
-		p.addCounter(&pts, "redis.keyspace.hits", hits, ts, "cache")
+		p.addCounter(pts, "redis.keyspace.hits", hits, ts, "cache")
 	}
 	if missesOK {
-		p.addCounter(&pts, "redis.keyspace.misses", misses, ts, "cache")
+		p.addCounter(pts, "redis.keyspace.misses", misses, ts, "cache")
 	}
 	sum := hits + misses
 	ratio := float64(0)
 	if sum > 0 {
 		ratio = hits / sum * 100
 	}
-	p.addGauge(&pts, "redis.keyspace.hit.ratio", ratio, ts, "cache")
+	p.addGauge(pts, "redis.keyspace.hit.ratio", ratio, ts, "cache")
 
 	// keyspace per-db (lines like db0:keys=N,expires=M,avg_ttl=T)
 	sawDB0 := false
@@ -438,20 +453,22 @@ func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string
 			sawDB0 = true
 		}
 		dbTag := tags.Tag{Key: "db", Value: dbIdx}
-		p.addGauge(&pts, "redis.db.keys", float64(keys), ts, "keyspace", dbTag)
-		p.addGauge(&pts, "redis.db.expires", float64(expires), ts, "keyspace", dbTag)
-		p.addGauge(&pts, "redis.db.avg_ttl", float64(avgTTL), ts, "keyspace", dbTag)
+		p.addGauge(pts, "redis.db.keys", float64(keys), ts, "keyspace", dbTag)
+		p.addGauge(pts, "redis.db.expires", float64(expires), ts, "keyspace", dbTag)
+		p.addGauge(pts, "redis.db.avg_ttl", float64(avgTTL), ts, "keyspace", dbTag)
 	}
 	// Redis omits the line of a database that holds no key, so an emptied
 	// db0 would lose its channels instead of reading 0. A Sentinel has no
 	// keyspace at all.
 	if !sawDB0 && info["redis_mode"] != "sentinel" {
 		dbTag := tags.Tag{Key: "db", Value: "0"}
-		p.addGauge(&pts, "redis.db.keys", 0, ts, "keyspace", dbTag)
-		p.addGauge(&pts, "redis.db.expires", 0, ts, "keyspace", dbTag)
-		p.addGauge(&pts, "redis.db.avg_ttl", 0, ts, "keyspace", dbTag)
+		p.addGauge(pts, "redis.db.keys", 0, ts, "keyspace", dbTag)
+		p.addGauge(pts, "redis.db.expires", 0, ts, "keyspace", dbTag)
+		p.addGauge(pts, "redis.db.avg_ttl", 0, ts, "keyspace", dbTag)
 	}
+}
 
+func (p *redisProbe) addReplicationDatapoints(pts *[]data_store.DataPoint, info map[string]string, ts time.Time) {
 	// replication
 	role := info["role"]
 	roleVal := float64(-1)
@@ -461,7 +478,7 @@ func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string
 	case "slave", "replica":
 		roleVal = 0
 	}
-	p.addGauge(&pts, "redis.replication.role", roleVal, ts, "replication")
+	p.addGauge(pts, "redis.replication.role", roleVal, ts, "replication")
 
 	// replication offset: master_repl_offset on master; slave_repl_offset /
 	// replica_repl_offset on replica (Redis 7 renamed the field).
@@ -477,28 +494,30 @@ func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string
 		}
 	}
 	if v, ok := parseFloat(replOffset); ok {
-		p.addCounter(&pts, "redis.replication.offset", v, ts, "replication")
+		p.addCounter(pts, "redis.replication.offset", v, ts, "replication")
 	}
 
 	if role == "master" {
 		if v, ok := parseFloat(info["connected_slaves"]); ok {
-			p.addGauge(&pts, "redis.replication.slaves.connected", v, ts, "replication")
+			p.addGauge(pts, "redis.replication.slaves.connected", v, ts, "replication")
 		}
 	} else {
 		if v, ok := parseFloat(info["master_last_io_seconds_ago"]); ok {
-			p.addGauge(&pts, "redis.replication.lag", v, ts, "replication")
+			p.addGauge(pts, "redis.replication.lag", v, ts, "replication")
 		}
 	}
+}
 
+func (p *redisProbe) addPersistenceDatapoints(pts *[]data_store.DataPoint, info map[string]string, ts time.Time) {
 	// persistence
 	if v, ok := parseFloat(info["rdb_changes_since_last_save"]); ok {
-		p.addGauge(&pts, "redis.rdb.changes", v, ts, "persistence")
+		p.addGauge(pts, "redis.rdb.changes", v, ts, "persistence")
 	}
 	if v, ok := parseFloat(info["aof_enabled"]); ok {
-		p.addGauge(&pts, "redis.aof.enabled", v, ts, "persistence")
+		p.addGauge(pts, "redis.aof.enabled", v, ts, "persistence")
 	}
 	if v, ok := parseFloat(info["rdb_last_bgsave_time_sec"]); ok {
-		p.addGauge(&pts, "redis.rdb.last_bgsave.duration", v, ts, "persistence")
+		p.addGauge(pts, "redis.rdb.last_bgsave.duration", v, ts, "persistence")
 	}
 	if lastSaveStr := info["rdb_last_save_time"]; lastSaveStr != "" {
 		if lastSaveEpoch, err := strconv.ParseInt(strings.TrimSpace(lastSaveStr), 10, 64); err == nil && lastSaveEpoch > 0 {
@@ -506,7 +525,7 @@ func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string
 			if age < 0 {
 				age = 0
 			}
-			p.addGauge(&pts, "redis.rdb.last_save.age", float64(age), ts, "persistence")
+			p.addGauge(pts, "redis.rdb.last_save.age", float64(age), ts, "persistence")
 		}
 	}
 
@@ -516,13 +535,15 @@ func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string
 		{"aof_last_write_status", "redis.aof.last_write.status"},
 	} {
 		if raw, present := info[st.field]; present && raw != "" {
-			p.addGauge(&pts, st.metric, statusValue(raw), ts, "persistence")
+			p.addGauge(pts, st.metric, statusValue(raw), ts, "persistence")
 		}
 	}
 	if v, ok := parseFloat(info["aof_last_rewrite_time_sec"]); ok {
-		p.addGauge(&pts, "redis.aof.last_rewrite.duration", v, ts, "persistence")
+		p.addGauge(pts, "redis.aof.last_rewrite.duration", v, ts, "persistence")
 	}
+}
 
+func (p *redisProbe) addResourceDatapoints(pts *[]data_store.DataPoint, info map[string]string, ts time.Time) {
 	// cpu
 	for _, state := range []struct{ field, label string }{
 		{"used_cpu_sys", "sys"},
@@ -531,67 +552,71 @@ func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string
 		{"used_cpu_user_children", "user_children"},
 	} {
 		if v, ok := parseFloat(info[state.field]); ok {
-			p.addCounter(&pts, "redis.cpu.time", v, ts, "cpu",
+			p.addCounter(pts, "redis.cpu.time", v, ts, "cpu",
 				tags.Tag{Key: "state", Value: state.label})
 		}
 	}
 
 	// memory — additional fields
 	if v, ok := parseFloat(info["used_memory_lua"]); ok {
-		p.addGauge(&pts, "redis.memory.lua", v, ts, "memory")
+		p.addGauge(pts, "redis.memory.lua", v, ts, "memory")
 	}
 
 	// client buffers
 	if v, ok := parseFloat(info["client_recent_max_input_buffer"]); ok {
-		p.addGauge(&pts, "redis.clients.max_input_buffer", v, ts, "connections")
+		p.addGauge(pts, "redis.clients.max_input_buffer", v, ts, "connections")
 	}
 	if v, ok := parseFloat(info["client_recent_max_output_buffer"]); ok {
-		p.addGauge(&pts, "redis.clients.max_output_buffer", v, ts, "connections")
+		p.addGauge(pts, "redis.clients.max_output_buffer", v, ts, "connections")
 	}
 
 	// fork duration
 	if v, ok := parseFloat(info["latest_fork_usec"]); ok {
-		p.addGauge(&pts, "redis.latest.fork", v, ts, "persistence")
+		p.addGauge(pts, "redis.latest.fork", v, ts, "persistence")
 	}
 
 	// replication backlog
 	if v, ok := parseFloat(info["repl_backlog_first_byte_offset"]); ok {
-		p.addGauge(&pts, "redis.replication.backlog_first_byte_offset", v, ts, "replication")
+		p.addGauge(pts, "redis.replication.backlog_first_byte_offset", v, ts, "replication")
 	}
 
 	if v, ok := parseFloat(info["repl_backlog_active"]); ok {
-		p.addGauge(&pts, "redis.replication.backlog_active", v, ts, "replication")
+		p.addGauge(pts, "redis.replication.backlog_active", v, ts, "replication")
 	}
 	if v, ok := parseFloat(info["repl_backlog_size"]); ok {
-		p.addGauge(&pts, "redis.replication.backlog_size", v, ts, "replication")
+		p.addGauge(pts, "redis.replication.backlog_size", v, ts, "replication")
 	}
 	if v, ok := parseFloat(info["repl_backlog_histlen"]); ok {
-		p.addGauge(&pts, "redis.replication.backlog_histlen", v, ts, "replication")
+		p.addGauge(pts, "redis.replication.backlog_histlen", v, ts, "replication")
 	}
 
 	// pub/sub
 	if v, ok := parseFloat(info["pubsub_channels"]); ok {
-		p.addGauge(&pts, "redis.pubsub.channels", v, ts, "pubsub")
+		p.addGauge(pts, "redis.pubsub.channels", v, ts, "pubsub")
 	}
 	if v, ok := parseFloat(info["pubsub_patterns"]); ok {
-		p.addGauge(&pts, "redis.pubsub.patterns", v, ts, "pubsub")
+		p.addGauge(pts, "redis.pubsub.patterns", v, ts, "pubsub")
 	}
 
 	// evicted and expired keys
 	if v, ok := parseFloat(info["evicted_keys"]); ok {
-		p.addCounter(&pts, "redis.evicted_keys", v, ts, "cache")
+		p.addCounter(pts, "redis.evicted_keys", v, ts, "cache")
 	}
 	if v, ok := parseFloat(info["expired_keys"]); ok {
-		p.addCounter(&pts, "redis.expired_keys", v, ts, "cache")
+		p.addCounter(pts, "redis.expired_keys", v, ts, "cache")
 	}
+}
 
+func (p *redisProbe) addCommandStatDatapoints(pts *[]data_store.DataPoint, cmdStats map[string]cmdStat, ts time.Time) {
 	// per-command stats
 	for cmd, cs := range cmdStats {
 		cmdTag := tags.Tag{Key: "cmd", Value: cmd}
-		p.addCounter(&pts, "redis.cmd.calls", float64(cs.calls), ts, "commands", cmdTag)
-		p.addCounter(&pts, "redis.cmd.usec", float64(cs.usec), ts, "commands", cmdTag)
+		p.addCounter(pts, "redis.cmd.calls", float64(cs.calls), ts, "commands", cmdTag)
+		p.addCounter(pts, "redis.cmd.usec", float64(cs.usec), ts, "commands", cmdTag)
 	}
+}
 
+func (p *redisProbe) addClusterDatapoints(pts *[]data_store.DataPoint, clusterInfo map[string]string, ts time.Time) {
 	// cluster metrics (INFO cluster — only populated when cluster_enabled=1)
 	if clusterInfo != nil {
 		// cluster_state: "ok" → 1, anything else → 0.
@@ -599,62 +624,64 @@ func (p *redisProbe) buildDatapoints(info map[string]string, cmdStats map[string
 		if clusterInfo["cluster_state"] == "ok" {
 			stateVal = 1
 		}
-		p.addGauge(&pts, "redis.cluster.state", stateVal, ts, "cluster")
+		p.addGauge(pts, "redis.cluster.state", stateVal, ts, "cluster")
 
 		if v, ok := parseFloat(clusterInfo["cluster_slots_assigned"]); ok {
-			p.addGauge(&pts, "redis.cluster.slots.assigned", v, ts, "cluster")
+			p.addGauge(pts, "redis.cluster.slots.assigned", v, ts, "cluster")
 		}
 		if v, ok := parseFloat(clusterInfo["cluster_slots_ok"]); ok {
-			p.addGauge(&pts, "redis.cluster.slots.ok", v, ts, "cluster")
+			p.addGauge(pts, "redis.cluster.slots.ok", v, ts, "cluster")
 		}
 		if v, ok := parseFloat(clusterInfo["cluster_slots_pfail"]); ok {
-			p.addGauge(&pts, "redis.cluster.slots.pfail", v, ts, "cluster")
+			p.addGauge(pts, "redis.cluster.slots.pfail", v, ts, "cluster")
 		}
 		if v, ok := parseFloat(clusterInfo["cluster_slots_fail"]); ok {
-			p.addGauge(&pts, "redis.cluster.slots.fail", v, ts, "cluster")
+			p.addGauge(pts, "redis.cluster.slots.fail", v, ts, "cluster")
 		}
 		if v, ok := parseFloat(clusterInfo["cluster_stats_messages_sent"]); ok {
-			p.addCounter(&pts, "redis.cluster.links.created", v, ts, "cluster")
+			p.addCounter(pts, "redis.cluster.links.created", v, ts, "cluster")
 		}
 		if v, ok := parseFloat(clusterInfo["cluster_stats_messages_received"]); ok {
-			p.addCounter(&pts, "redis.cluster.links.disconnected", v, ts, "cluster")
+			p.addCounter(pts, "redis.cluster.links.disconnected", v, ts, "cluster")
 		}
 	}
+}
 
+func (p *redisProbe) addSentinelDatapoints(pts *[]data_store.DataPoint, sentinelInfo map[string]string, ts time.Time) {
 	// sentinel metrics (INFO sentinel — only populated in sentinel mode)
 	if sentinelInfo != nil {
 		if v, ok := parseFloat(sentinelInfo["sentinel_masters"]); ok {
-			p.addGauge(&pts, "redis.sentinel.masters", v, ts, "sentinel")
+			p.addGauge(pts, "redis.sentinel.masters", v, ts, "sentinel")
 		}
 		if v, ok := parseFloat(sentinelInfo["sentinel_running_scripts"]); ok {
-			p.addGauge(&pts, "redis.sentinel.scripts_queue_length", v, ts, "sentinel")
+			p.addGauge(pts, "redis.sentinel.scripts_queue_length", v, ts, "sentinel")
 		}
 		// Aggregate ok/total slaves and sentinels across all monitored masters.
 		// Each master is reported as: sentinel_mastersN:name=...,status=...,slaves=N,sentinels=M
 		// Parallel fields sentinel_slavesN_... and sentinel_sentinelsN_... provide per-master detail.
 		totalSlaves, okSlaves, totalSentinels, okSentinels := parseSentinelMasterStats(sentinelInfo)
-		p.addGauge(&pts, "redis.sentinel.slaves", float64(totalSlaves), ts, "sentinel")
-		p.addGauge(&pts, "redis.sentinel.ok_slaves", float64(okSlaves), ts, "sentinel")
-		p.addGauge(&pts, "redis.sentinel.sentinels", float64(totalSentinels), ts, "sentinel")
-		p.addGauge(&pts, "redis.sentinel.ok_sentinels", float64(okSentinels), ts, "sentinel")
+		p.addGauge(pts, "redis.sentinel.slaves", float64(totalSlaves), ts, "sentinel")
+		p.addGauge(pts, "redis.sentinel.ok_slaves", float64(okSlaves), ts, "sentinel")
+		p.addGauge(pts, "redis.sentinel.sentinels", float64(totalSentinels), ts, "sentinel")
+		p.addGauge(pts, "redis.sentinel.ok_sentinels", float64(okSentinels), ts, "sentinel")
 		for _, m := range parseSentinelMasters(sentinelInfo) {
 			masterTag := tags.Tag{Key: "master", Value: m.name}
-			p.addGauge(&pts, "redis.sentinel.master.status", m.statusValue(), ts, "sentinel", masterTag)
-			p.addGauge(&pts, "redis.sentinel.master.slaves", float64(m.slaves), ts, "sentinel", masterTag)
-			p.addGauge(&pts, "redis.sentinel.master.sentinels", float64(m.sentinels), ts, "sentinel", masterTag)
+			p.addGauge(pts, "redis.sentinel.master.status", m.statusValue(), ts, "sentinel", masterTag)
+			p.addGauge(pts, "redis.sentinel.master.slaves", float64(m.slaves), ts, "sentinel", masterTag)
+			p.addGauge(pts, "redis.sentinel.master.sentinels", float64(m.sentinels), ts, "sentinel", masterTag)
 		}
 	}
+}
 
+func (p *redisProbe) addTrackingDatapoints(pts *[]data_store.DataPoint, info map[string]string, ts time.Time) {
 	// tracking metrics (RESP3 client-side tracking, present in INFO clients
 	// only when at least one client uses TRACKING; parse defensively).
 	if v, ok := parseFloat(info["tracking_clients"]); ok {
-		p.addGauge(&pts, "redis.tracking.clients", v, ts, "tracking")
+		p.addGauge(pts, "redis.tracking.clients", v, ts, "tracking")
 	}
 	if v, ok := parseFloat(info["tracking_table_used_keys"]); ok {
-		p.addGauge(&pts, "redis.tracking.keys", v, ts, "tracking")
+		p.addGauge(pts, "redis.tracking.keys", v, ts, "tracking")
 	}
-
-	return pts
 }
 
 // sentinelMasterDetails is one master from SENTINEL MASTERS.
