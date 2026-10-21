@@ -1,6 +1,5 @@
 //go:build !windows
 
-// internal/agent/probes/host/cpuProbe_unix.go
 package cpu
 
 import (
@@ -15,6 +14,8 @@ import (
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
+
+const primeDelay = 1 * time.Second
 
 type unixCollector struct {
 	logger *logger.Logger
@@ -31,6 +32,8 @@ type unixCollector struct {
 	// already reports them.
 	lastKernel   *kernelCounters
 	lastKernelAt time.Time
+
+	primeWait time.Duration
 }
 
 func newCPUCollector(config map[string]interface{}, logger *logger.Logger) (hostpoll.Collector, error) {
@@ -113,18 +116,46 @@ func (u *unixCollector) collectCPUTimes(dataPoints *[]data_store.DataPoint, time
 
 	curr := times[0]
 
-	// On the first collection we have nothing to diff against — store the
-	// snapshot and return without emitting per-mode percentages. The first
-	// real datapoints arrive on the second tick of the probe interval.
-	// Total CPU usage (cpu_usage_total) and per-core values come from
-	// gopsutil's blocking cpu.Percent path and don't need this warm-up.
+	// On the first collection there is nothing to diff against. Store a
+	// priming snapshot, wait for a short real interval, then read again
+	// and emit rates over that interval, so the first tick does not leave
+	// a gap in the per-mode percentage series.
 	if u.lastTimes == nil {
+		baseline := curr
+		wait := primeDelay
+		if u.primeWait != 0 {
+			wait = u.primeWait
+		}
+		start := time.Now()
+		time.Sleep(wait)
+		elapsed := time.Since(start).Seconds()
+
 		u.lastTimes = &curr
 		u.lastTimestamp = timestamp
-		return nil
+		if elapsed <= 0 {
+			return nil
+		}
+
+		times, err = cpu.Times(false)
+		if err != nil {
+			return fmt.Errorf("error getting CPU times: %w", err)
+		}
+		if len(times) == 0 {
+			return nil
+		}
+		curr = times[0]
+		u.lastTimes = &curr
+		return u.emitCPUTimes(dataPoints, timestamp, baseTags, baseline, curr)
 	}
 
 	prev := *u.lastTimes
+	u.lastTimes = &curr
+	u.lastTimestamp = timestamp
+
+	return u.emitCPUTimes(dataPoints, timestamp, baseTags, prev, curr)
+}
+
+func (u *unixCollector) emitCPUTimes(dataPoints *[]data_store.DataPoint, timestamp time.Time, baseTags []tags.Tag, prev, curr cpu.TimesStat) error {
 	// Sum of all mode deltas — denominator for the per-mode percentage.
 	// We compute it from the times themselves (not wall-clock × NumCPU)
 	// so the math matches what `top` / `mpstat` report and stays
@@ -157,9 +188,6 @@ func (u *unixCollector) collectCPUTimes(dataPoints *[]data_store.DataPoint, time
 		(curr.Steal - prev.Steal) +
 		guestDelta +
 		guestNiceDelta
-
-	u.lastTimes = &curr
-	u.lastTimestamp = timestamp
 
 	if totalDelta <= 0 {
 		// Clock skew, hibernate/resume, or a tick interval below kernel
@@ -330,29 +358,73 @@ type kernelCounters struct {
 
 // collectKernelCounters turns the cumulative counters into the rates the
 // definitions declare, and emits the runnable process count as it is.
-// The first reading has nothing to subtract from and emits only the
-// gauge, the way the per-mode percentages warm up.
+// The first reading has nothing to subtract from, so it primes over a
+// short real interval before emitting rates.
 func (u *unixCollector) collectKernelCounters(dataPoints *[]data_store.DataPoint, timestamp time.Time, baseTags []tags.Tag) error {
 	curr, err := readKernelCounters()
 	if err != nil {
 		return err
 	}
+
+	if u.lastKernel == nil {
+		baseline := curr
+		wait := primeDelay
+		if u.primeWait != 0 {
+			wait = u.primeWait
+		}
+		start := time.Now()
+		time.Sleep(wait)
+		elapsed := time.Since(start).Seconds()
+
+		u.lastKernel = baseline
+		u.lastKernelAt = timestamp
+
+		if elapsed <= 0 {
+			u.appendKernelGauge(dataPoints, timestamp, baseTags, baseline)
+			return nil
+		}
+
+		curr, err = readKernelCounters()
+		if err != nil {
+			u.appendKernelGauge(dataPoints, timestamp, baseTags, baseline)
+			return err
+		}
+
+		// The second reading was taken one wait after timestamp; date it
+		// so, or the next rate spreads its delta over a longer span.
+		u.lastKernel = curr
+		u.lastKernelAt = timestamp.Add(time.Duration(elapsed * float64(time.Second)))
+		u.appendKernelGauge(dataPoints, timestamp, baseTags, curr)
+		u.appendKernelRates(dataPoints, timestamp, baseTags, baseline, curr, elapsed)
+		return nil
+	}
+
+	prev, prevAt := u.lastKernel, u.lastKernelAt
+	u.lastKernel, u.lastKernelAt = curr, timestamp
+
+	u.appendKernelGauge(dataPoints, timestamp, baseTags, curr)
+	if prev == nil {
+		return nil
+	}
+
+	elapsed := timestamp.Sub(prevAt).Seconds()
+	if elapsed <= 0 {
+		return nil
+	}
+	u.appendKernelRates(dataPoints, timestamp, baseTags, prev, curr, elapsed)
+	return nil
+}
+
+func (u *unixCollector) appendKernelGauge(dataPoints *[]data_store.DataPoint, timestamp time.Time, baseTags []tags.Tag, curr *kernelCounters) {
 	*dataPoints = append(*dataPoints, data_store.DataPoint{
 		Name:      "cpu_processes_running",
 		Timestamp: timestamp,
 		Value:     curr.ProcsRunning,
 		Tags:      baseTags,
 	})
+}
 
-	prev, prevAt := u.lastKernel, u.lastKernelAt
-	u.lastKernel, u.lastKernelAt = curr, timestamp
-	if prev == nil {
-		return nil
-	}
-	elapsed := timestamp.Sub(prevAt).Seconds()
-	if elapsed <= 0 {
-		return nil
-	}
+func (u *unixCollector) appendKernelRates(dataPoints *[]data_store.DataPoint, timestamp time.Time, baseTags []tags.Tag, prev, curr *kernelCounters, elapsed float64) {
 	rate := func(now, before float64) (float64, bool) {
 		// A counter that went backwards was reset, by a reboot or by the
 		// container being replaced; skip the round rather than emit a
@@ -378,5 +450,4 @@ func (u *unixCollector) collectKernelCounters(dataPoints *[]data_store.DataPoint
 			})
 		}
 	}
-	return nil
 }

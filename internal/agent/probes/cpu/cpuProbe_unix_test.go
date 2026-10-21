@@ -3,6 +3,7 @@
 package cpu
 
 import (
+	"runtime"
 	"testing"
 	"time"
 
@@ -81,28 +82,106 @@ func TestUnixCollector_CPUTimes_PercentageMath(t *testing.T) {
 	// apply the same division (pct(delta) = delta/totalDelta*100).
 }
 
-// TestUnixCollector_CPUTimes_FirstCallNoEmit ensures the very first
-// Collect() seeds lastTimes but emits zero per-mode datapoints — there
-// is no baseline to diff against and synthesising one would mis-report
-// the agent's startup interval. Total-CPU and per-core paths still emit
-// because they use gopsutil's own blocking percent API.
-func TestUnixCollector_CPUTimes_FirstCallNoEmit(t *testing.T) {
+func TestUnixCollector_CPUTimes_FirstCollectPrimes(t *testing.T) {
 	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
-	u := &unixCollector{logger: baseLogger}
+	u := &unixCollector{logger: baseLogger, primeWait: 200 * time.Millisecond}
 
 	var dataPoints []data_store.DataPoint
 	baseTags := []tags.Tag{{Key: "host", Value: "test"}}
 
-	// First call — should populate lastTimes (or fail gracefully on
-	// macOS where cpu.Times is not implemented) and not emit any
-	// per-mode percentage.
-	_ = u.collectCPUTimes(&dataPoints, time.Now(), baseTags)
+	if err := u.collectCPUTimes(&dataPoints, time.Now(), baseTags); err != nil {
+		t.Fatalf("collectCPUTimes() error = %v", err)
+	}
 
+	perMode := map[string]bool{
+		"cpu_user":       true,
+		"cpu_system":     true,
+		"cpu_idle":       true,
+		"cpu_nice":       true,
+		"cpu_iowait":     true,
+		"cpu_irq":        true,
+		"cpu_softirq":    true,
+		"cpu_steal":      true,
+		"cpu_guest":      true,
+		"cpu_guest_nice": true,
+	}
+
+	found := false
 	for _, dp := range dataPoints {
-		switch dp.Name {
-		case "cpu_user", "cpu_system", "cpu_idle", "cpu_nice",
-			"cpu_iowait", "cpu_irq", "cpu_softirq", "cpu_steal":
-			t.Errorf("first call should not emit %s; got value=%v", dp.Name, dp.Value)
+		if !perMode[dp.Name] {
+			continue
 		}
+		found = true
+		if dp.Value < 0 || dp.Value > 100 {
+			t.Errorf("%s = %v, want within [0,100]", dp.Name, dp.Value)
+		}
+	}
+	if !found {
+		skipOffLinux(t)
+		t.Fatalf("first collectCPUTimes emitted no per-mode percentage: %v", dataPoints)
+	}
+}
+
+func TestUnixCollector_CPUTimes_SecondCollectUsesFirst(t *testing.T) {
+	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
+	u := &unixCollector{logger: baseLogger, primeWait: 200 * time.Millisecond}
+
+	var first, second []data_store.DataPoint
+	baseTags := []tags.Tag{{Key: "host", Value: "test"}}
+
+	if err := u.collectCPUTimes(&first, time.Now(), baseTags); err != nil {
+		t.Fatalf("first collectCPUTimes() error = %v", err)
+	}
+	if len(first) == 0 {
+		skipOffLinux(t)
+		t.Fatal("first collectCPUTimes emitted no per-mode datapoints")
+	}
+
+	time.Sleep(10 * time.Millisecond)
+
+	if err := u.collectCPUTimes(&second, time.Now().Add(time.Second), baseTags); err != nil {
+		t.Fatalf("second collectCPUTimes() error = %v", err)
+	}
+	if len(second) == 0 {
+		skipOffLinux(t)
+		t.Fatal("second collectCPUTimes emitted no per-mode datapoints")
+	}
+}
+
+// skipOffLinux skips where the kernel refreshes the CPU times too seldom
+// for a short priming window: macOS updates them about once a second, so
+// two readings 200 ms apart are often equal and, rightly, emit nothing.
+func skipOffLinux(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS != "linux" {
+		t.Skip("CPU times refresh too seldom on " + runtime.GOOS + " for a short priming window")
+	}
+}
+
+func TestUnixCollector_KernelCounters_FirstCollectPrimes(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the kernel counters are read from /proc/stat")
+	}
+	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
+	u := &unixCollector{logger: baseLogger, primeWait: 200 * time.Millisecond}
+	var dataPoints []data_store.DataPoint
+	now := time.Now()
+	if err := u.collectKernelCounters(&dataPoints, now, []tags.Tag{{Key: "host", Value: "test"}}); err != nil {
+		t.Fatalf("collectKernelCounters() error = %v", err)
+	}
+	found := false
+	for _, dp := range dataPoints {
+		if dp.Name == "cpu_context_switches" {
+			found = true
+			if dp.Value < 0 {
+				t.Errorf("cpu_context_switches = %v, want >= 0", dp.Value)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("first collection emitted no rate: %v", dataPoints)
+	}
+	if !u.lastKernelAt.After(now) {
+		t.Errorf("the primed reading must be dated after the collection time, got %v for %v", u.lastKernelAt, now)
 	}
 }
