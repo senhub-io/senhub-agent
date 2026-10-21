@@ -69,6 +69,7 @@ block invalid logs it and stays idle.
 | `EffectiveConfig()` | The configuration file by file (`agent.yaml`, each `probes.d/` and `strategies.d/` fragment, the single file of a monolithic layout, and `environment` for the probes `SENHUB_PROBE_*` declares), each redacted as `config show --redact` redacts it. |
 | `PublishStatus(map)` | Replaces what the status channel carries for this extension. It is cleared when the extension stops. |
 | `ReloadConfig()` | Reads the configuration again, overlays included, and applies it as a change on disk would. On error the configuration in force is kept. Observers are notified asynchronously, so a probe has not necessarily restarted when it returns. |
+| `StateDir()` | The directory where the agent keeps its own state (`/var/lib/senhub-agent` under the systemd unit, the platform state directory otherwise), writable by the service account. It may not exist yet. |
 | `SetLogLevel(level)` | One level, `debug`, `info`, `warn` or `error`, for every module logger. An empty level puts back the levels in force before. |
 
 `extension.RedactSecrets(s)` masks the credentials a free-form text can

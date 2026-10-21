@@ -80,6 +80,10 @@ type Host interface {
 	// applies it as a change on disk would. On error the configuration
 	// in force is kept.
 	ReloadConfig() error
+	// StateDir is the directory where the agent keeps its own state,
+	// writable by the account the service runs under. The directory may
+	// not exist yet.
+	StateDir() string
 	// SetLogLevel sets the level of every module logger: debug, info,
 	// warn or error. An empty level puts back the levels the agent
 	// started with.

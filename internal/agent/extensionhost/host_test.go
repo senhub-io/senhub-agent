@@ -311,3 +311,11 @@ func TestHostReloadsTheConfigurationAndSetsTheLogLevel(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+func TestHostStateDirFollowsTheAgentStateDir(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENHUB_STATE_DIR", dir)
+	if got := (&host{}).StateDir(); got != dir {
+		t.Errorf("StateDir = %q, want %q", got, dir)
+	}
+}

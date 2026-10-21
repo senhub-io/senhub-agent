@@ -13,6 +13,7 @@ import (
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/exporthook"
 	"senhub-agent.go/internal/agent/services/extension"
+	"senhub-agent.go/internal/agent/services/instanceid"
 	"senhub-agent.go/internal/agent/services/license"
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -165,6 +166,8 @@ func (h *host) ReloadConfig() error {
 	}
 	return h.deps.Config.Reload()
 }
+
+func (h *host) StateDir() string { return instanceid.OwnStateDir() }
 
 func (h *host) SetLogLevel(level string) error {
 	if level == "" {
