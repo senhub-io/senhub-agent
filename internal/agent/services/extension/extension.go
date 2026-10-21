@@ -43,6 +43,11 @@ type Extension struct {
 	Check func(block map[string]any, present bool) []CheckLine
 	// Doctor adds one line to `doctor`. Nil adds none.
 	Doctor func(DoctorInput) DoctorLine
+	// Overlay adjusts the configuration each time the running agent
+	// loads it, after the files are read and before the result is
+	// validated and published. The files are never rewritten. Nil
+	// changes nothing.
+	Overlay func(OverlayTarget)
 }
 
 // Host is the agent as an extension sees it.
@@ -71,6 +76,14 @@ type Host interface {
 	// PublishStatus replaces what the status channel reports for this
 	// extension; doctor receives it as DoctorInput.Status.
 	PublishStatus(status map[string]any)
+	// ReloadConfig reads the configuration again, overlays included, and
+	// applies it as a change on disk would. On error the configuration
+	// in force is kept.
+	ReloadConfig() error
+	// SetLogLevel sets the level of every module logger: debug, info,
+	// warn or error. An empty level puts back the levels the agent
+	// started with.
+	SetLogLevel(level string) error
 }
 
 // Identity is what the agent is.

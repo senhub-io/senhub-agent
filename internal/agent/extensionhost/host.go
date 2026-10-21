@@ -24,6 +24,7 @@ type ConfigSource interface {
 	GetAuthenticationKey() string
 	GetConfigPath() string
 	GetConfiguration() configuration.ConfigurationData
+	Reload() error
 }
 
 // Deps is what the agent hands the extensions.
@@ -157,6 +158,21 @@ func (h *host) EffectiveConfig() ([]extension.ConfigFile, error) {
 }
 
 func (h *host) PublishStatus(status map[string]any) { extension.SetStatus(h.name, status) }
+
+func (h *host) ReloadConfig() error {
+	if h.deps.Config == nil {
+		return nil
+	}
+	return h.deps.Config.Reload()
+}
+
+func (h *host) SetLogLevel(level string) error {
+	if level == "" {
+		logger.ClearOverallLevel()
+		return nil
+	}
+	return logger.SetOverallLevel(level)
+}
 
 // CollectHealth reads the probe run state, the start failures, the output
 // failures and the export activity: what status and doctor read.

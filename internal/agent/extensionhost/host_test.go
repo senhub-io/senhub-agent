@@ -31,6 +31,8 @@ type fakeConfig struct {
 	key       string
 	path      string
 	data      configuration.ConfigurationData
+	reloads   int
+	reloadErr error
 }
 
 func (f *fakeConfig) ExtensionBlock(name string) (map[string]interface{}, bool) {
@@ -42,6 +44,10 @@ func (f *fakeConfig) GetAuthenticationKey() string    { return f.key }
 func (f *fakeConfig) GetConfigPath() string           { return f.path }
 func (f *fakeConfig) GetConfiguration() configuration.ConfigurationData {
 	return f.data
+}
+func (f *fakeConfig) Reload() error {
+	f.reloads++
+	return f.reloadErr
 }
 
 type recordingService struct {
@@ -284,5 +290,24 @@ func TestLicenseInForceCarriesIDAndExpiry(t *testing.T) {
 	}
 	if _, lic := LicenseInForce("", "", newV); lic != nil {
 		t.Error("no token must give no licence")
+	}
+}
+
+func TestHostReloadsTheConfigurationAndSetsTheLogLevel(t *testing.T) {
+	t.Cleanup(logger.ClearOverallLevel)
+	cfg := &fakeConfig{reloadErr: errors.New("invalid")}
+	h := &host{deps: Deps{Logger: nopLogger(), Config: cfg}, name: "x"}
+
+	if err := h.ReloadConfig(); err == nil || cfg.reloads != 1 {
+		t.Errorf("ReloadConfig = %v after %d reloads, want the configuration's error after 1", err, cfg.reloads)
+	}
+	if err := h.SetLogLevel("verbose"); err == nil {
+		t.Error("an unknown level must be refused")
+	}
+	if err := h.SetLogLevel("debug"); err != nil {
+		t.Error(err)
+	}
+	if err := h.SetLogLevel(""); err != nil {
+		t.Error(err)
 	}
 }

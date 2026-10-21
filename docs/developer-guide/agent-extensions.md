@@ -62,12 +62,14 @@ block invalid logs it and stays idle.
 | `Logger()` | The agent's logger; derive a module logger from it. |
 | `ConfigBlock(name)` | A copy of the claimed block as a map, `${env:}`, `${file:}` and `${secret:}` references resolved. A key no extension claims is not loaded. |
 | `OnConfigChange(fn)` | Calls `fn` after a reload that changed something, a change confined to an extension block included. |
-| `Identity()` | `service.instance.id`, version, edition (`enterprise` when the build carries a paid probe, `oss` otherwise) and licence tier (`free` without a valid licence). |
+| `Identity()` | `service.instance.id`, version, edition (`enterprise` when the build carries a paid probe, `oss` otherwise), licence tier (`free` without a valid licence), and the `jti` and expiry of the licence in force. |
 | `HostAttributes()` | The host resource attributes the OTLP output attaches to its resource: same function, same `host.id`. |
 | `Authorized(feature)` | Whether the licence grants the feature: true when its `authorized_probes` lists the name or the wildcard `*`. The check is live, so a licence change applies without a restart. |
 | `Health()` | Root `Healthy`, the agent start time, each configured probe (enabled, running, health, last error, start time, last cycle) and each output (failure reason and detail, failing exports, last export error), from the state `status` and `doctor` read. |
 | `EffectiveConfig()` | The configuration file by file (`agent.yaml`, each `probes.d/` and `strategies.d/` fragment, the single file of a monolithic layout, and `environment` for the probes `SENHUB_PROBE_*` declares), each redacted as `config show --redact` redacts it. |
 | `PublishStatus(map)` | Replaces what the status channel carries for this extension. It is cleared when the extension stops. |
+| `ReloadConfig()` | Reads the configuration again, overlays included, and applies it as a change on disk would. On error the configuration in force is kept. Observers are notified asynchronously, so a probe has not necessarily restarted when it returns. |
+| `SetLogLevel(level)` | One level, `debug`, `info`, `warn` or `error`, for every module logger. An empty level puts back the levels in force before. |
 
 `extension.RedactSecrets(s)` masks the credentials a free-form text can
 carry (a URI password, a DSN password) before the text leaves the
@@ -87,6 +89,24 @@ example:
 It is shown by `config show` and by the per-file view with the usual
 redaction: a key whose name looks like a secret, or a value that came
 from `${file:}` or `${secret:}`, is masked.
+
+## Overlay
+
+`Overlay(target)` runs each time the running agent loads its
+configuration, after the files are read and before the result is
+validated and published. It may turn a probe on or off, replace its
+`params.interval`, and set the entity detection switches; nothing else is
+reachable, and the files are never rewritten. A loaded configuration that
+fails validation is not published, so the one in force stays.
+
+A probe whose name and parameters are unchanged keeps running; changing
+its interval restarts that probe alone, and it collects at once. The
+CLI (`config show`, `config check`) reads the files only: an overlay
+lives in the running agent.
+
+To change what the overlay applies, update the extension's own state and
+call `Host.ReloadConfig()`. Calling it from `New` applies a stored overlay
+before the first probe starts.
 
 ## config check and doctor
 

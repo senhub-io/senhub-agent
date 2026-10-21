@@ -153,6 +153,11 @@ type LocalConfiguration struct {
 	// while the constructor was called directly.
 	newWatcher func() (*fsnotify.Watcher, error)
 
+	// reloadMu serializes reloads: the file watcher and an extension
+	// asking for one would otherwise compare against the same previous
+	// configuration and notify twice, or not at all.
+	reloadMu sync.Mutex
+
 	// lastCacheRetention is the retention GetCacheConfig last announced, so a
 	// value that has not changed is not re-announced on every call.
 	lastCacheRetention atomic.Int32

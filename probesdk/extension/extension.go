@@ -35,6 +35,11 @@ type (
 	CheckLine    = iextension.CheckLine
 	DoctorInput  = iextension.DoctorInput
 	DoctorLine   = iextension.DoctorLine
+	// OverlayTarget, OverlayProbe and EntitySwitches are what an
+	// Extension.Overlay may read and change.
+	OverlayTarget  = iextension.OverlayTarget
+	OverlayProbe   = iextension.OverlayProbe
+	EntitySwitches = iextension.EntitySwitches
 )
 
 // Check line levels for `config check`.

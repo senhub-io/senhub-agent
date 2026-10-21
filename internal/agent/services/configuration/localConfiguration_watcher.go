@@ -149,8 +149,17 @@ func shouldIgnoreEvent(event fsnotify.Event) bool {
 	return false
 }
 
+// Reload reads the configuration again and notifies the observers when
+// it changed. On error the configuration in force is kept.
+func (lc *LocalConfiguration) Reload() error {
+	return lc.reloadConfiguration()
+}
+
 // reloadConfiguration reloads the configuration and notifies observers
 func (lc *LocalConfiguration) reloadConfiguration() error {
+	lc.reloadMu.Lock()
+	defer lc.reloadMu.Unlock()
+
 	// Store previous configuration for comparison
 	previousData := *lc.snapshot()
 
