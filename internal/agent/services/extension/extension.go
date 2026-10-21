@@ -84,6 +84,11 @@ type Identity struct {
 	// LicenseTier is the tier of the licence in force: "free" without a
 	// valid one.
 	LicenseTier string
+	// LicenseID is the jti of the licence in force; empty without one.
+	LicenseID string
+	// LicenseExpiresAt is when the licence in force expires; zero
+	// without one.
+	LicenseExpiresAt time.Time
 }
 
 // Health is the agent's current health, from the state status and doctor

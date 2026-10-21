@@ -272,3 +272,17 @@ func TestLicenseTier(t *testing.T) {
 		}
 	}
 }
+
+func TestLicenseInForceCarriesIDAndExpiry(t *testing.T) {
+	exp := time.Date(2027, 6, 15, 15, 14, 0, 0, time.UTC)
+	newV := func() (license.Validator, error) {
+		return fakeValidator{lic: &license.License{Tier: license.TierEnterprise, ID: "lic-42", ExpiresAt: exp}}, nil
+	}
+	tier, lic := LicenseInForce("tok", "", newV)
+	if tier != "enterprise" || lic == nil || lic.ID != "lic-42" || !lic.ExpiresAt.Equal(exp) {
+		t.Errorf("tier %q, licence %+v", tier, lic)
+	}
+	if _, lic := LicenseInForce("", "", newV); lic != nil {
+		t.Error("no token must give no licence")
+	}
+}

@@ -65,8 +65,10 @@ type License struct {
 	ExpiresAt        time.Time
 	IssuedAt         time.Time
 	Subject          string
-	IsExpired        bool
-	GracePeriodDays  int
+	// ID is the jti claim; empty when the token has none.
+	ID              string
+	IsExpired       bool
+	GracePeriodDays int
 }
 
 // Validator validates license tokens
@@ -168,6 +170,7 @@ func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
 		ExpiresAt:        expiresAt,
 		IssuedAt:         issuedAt,
 		Subject:          claims.RegisteredClaims.Subject,
+		ID:               claims.RegisteredClaims.ID,
 		IsExpired:        isExpired,
 		GracePeriodDays:  v.gracePeriodDays,
 	}
