@@ -306,7 +306,7 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Type:        "counter",
 			Attributes:  map[string]string{},
 			Value:       float64(agentstate.GetOTLPKeepalivePointsTotal()),
-			Description: "Cumulative count of gauge points exported again at export time because their probe, slower than the export, still vouched for the value (keepalive_interval).",
+			Description: "Cumulative count of gauge points exported again at export time because their probe, which runs less often than keepalive_interval, still vouched for the value.",
 		},
 		otelmapper.OtelRecord{
 			Name:        "senhub.agent.otlp.buffer.fill_ratio",

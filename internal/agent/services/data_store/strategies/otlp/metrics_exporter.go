@@ -75,10 +75,10 @@ func pushMetrics(
 
 		appended := 0
 		for _, rec := range recs {
-			// The store only marks keepalive candidates; the actual
-			// instrument type comes from the mapper. Cumulative sums and
-			// histograms must never be re-emitted as keepalives.
-			if cand.Keepalive && rec.Type != "gauge" {
+			// The store only marks keepalive candidates; the instrument
+			// comes from the mapping. Sums and histograms are never
+			// exported again.
+			if cand.Keepalive && !exportedAsGauge(rec.Type) {
 				continue
 			}
 			rec.ObservedAt = cand.At
@@ -86,7 +86,10 @@ func pushMetrics(
 			appended++
 		}
 
-		if appended > 0 {
+		// A keepalive candidate whose records were all filtered out is
+		// marked too, so a vouched sum of a slow probe is not resolved
+		// again at every cycle.
+		if appended > 0 || cand.Keepalive {
 			exportedCands = append(exportedCands, cand)
 			if cand.Keepalive {
 				keepaliveRecords += appended
@@ -95,6 +98,7 @@ func pushMetrics(
 	}
 
 	if len(records) == 0 {
+		store.markEmitted(exportedCands)
 		return 0, nil
 	}
 
@@ -307,6 +311,18 @@ func buildResourceMetrics(
 				Metrics: metrics,
 			},
 		},
+	}
+}
+
+// exportedAsGauge reports whether buildAggregation exports a record of
+// this type as a gauge. It must stay the mirror of that switch: a type
+// it does not know is exported as a gauge, and is kept alive as one.
+func exportedAsGauge(otelType string) bool {
+	switch otelType {
+	case "counter", "updowncounter", "histogram":
+		return false
+	default:
+		return true
 	}
 }
 

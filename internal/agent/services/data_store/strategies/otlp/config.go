@@ -94,8 +94,8 @@ const (
 	// DefaultKeepaliveInterval is how long a gauge its probe still
 	// vouches for may go without an exported point before its current
 	// value is exported again. It stays under the five-minute lookback
-	// Prometheus and VictoriaMetrics apply by default, so a probe slower
-	// than the export stays visible between two runs. 0 exports each
+	// Prometheus and VictoriaMetrics apply by default, so a probe that
+	// runs less often stays visible between two runs. 0 exports each
 	// measurement once.
 	DefaultKeepaliveInterval = 4 * time.Minute
 

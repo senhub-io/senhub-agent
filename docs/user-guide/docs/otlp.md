@@ -139,10 +139,10 @@ otlp:
   max_active_series_per_probe: 10000  # default 10000 per probe; 0 = no per-probe cap
   staleness_ttl: 10m              # default 10m; a series silent this long is
                                   # evicted. 0s disables eviction
-  keepalive_interval: 4m          # default 4m; a gauge from a probe slower
-                                  # than the export is exported again at
-                                  # this interval. 0s exports each
-                                  # measurement once
+  keepalive_interval: 4m          # default 4m; a gauge from a probe that
+                                  # runs less often than this is exported
+                                  # again at this interval. 0s exports
+                                  # each measurement once
 
   # How many exports may be in flight at once. The push splits a
   # large cycle per probe and ships the parts in parallel; 1 means

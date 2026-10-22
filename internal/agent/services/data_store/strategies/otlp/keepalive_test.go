@@ -449,3 +449,59 @@ func TestMarkEmitted_ClearsPendingOnlyIfReceivedAtUnchanged(t *testing.T) {
 	}
 	assertCandidate(t, after[0], replacement, false)
 }
+
+func TestPushMetrics_KeepaliveFollowsTheExportedInstrument(t *testing.T) {
+	base := keepaliveBase()
+	start := base.Add(-time.Minute)
+	untyped := newGaugeDef()
+	untyped.Metrics[0].Otel.Type = ""
+	defs := &fakeDefs{defs: map[string]*transformers.ProbeDefinition{"cpu": untyped}}
+
+	store := newMetricStore().withFreshnessGrace(30 * time.Second).withKeepalive(4 * time.Minute)
+	store.noteProbeCadence("cpu", 30*time.Minute)
+	store.upsertAt(datapoint.DataPoint{
+		Name: "cpu_utilization", Value: 50, Timestamp: base,
+		Tags: []tags.Tag{{Key: "probe_name", Value: "cpu"}, {Key: "probe_type", Value: "cpu"}},
+	}, base)
+
+	var captured *metricdata.ResourceMetrics
+	export := func(_ context.Context, rm *metricdata.ResourceMetrics) error {
+		captured = rm
+		return nil
+	}
+	for _, now := range []time.Time{base, base.Add(4 * time.Minute)} {
+		captured = nil
+		count, err := pushMetrics(context.Background(), store, defs, resource.NewSchemaless(), "",
+			start, now, otelmapper.DefaultResolveOptions(), nil, nil, export, nil, 1)
+		if err != nil || count != 1 {
+			t.Fatalf("push at %v: count %d, err %v", now, count, err)
+		}
+		g, ok := captured.ScopeMetrics[0].Metrics[0].Data.(metricdata.Gauge[float64])
+		if !ok || !g.DataPoints[0].Time.Equal(now) {
+			t.Fatalf("push at %v: %#v, want a gauge point at %v", now, captured.ScopeMetrics[0].Metrics[0].Data, now)
+		}
+	}
+}
+
+func TestPushMetrics_AFilteredKeepaliveIsNotResolvedAgainEachCycle(t *testing.T) {
+	base := keepaliveBase()
+	start := base.Add(-time.Minute)
+	store := newMetricStore().withFreshnessGrace(30 * time.Second).withKeepalive(4 * time.Minute)
+	store.noteProbeCadence("cpu", 30*time.Minute)
+	store.upsertAt(datapoint.DataPoint{
+		Name: "cpu_user_time", Value: 42, Timestamp: base,
+		Tags: []tags.Tag{{Key: "probe_name", Value: "cpu"}, {Key: "probe_type", Value: "cpu"}},
+	}, base)
+	defs := &fakeDefs{defs: map[string]*transformers.ProbeDefinition{"cpu": newCounterDef()}}
+	export := func(context.Context, *metricdata.ResourceMetrics) error { return nil }
+
+	for _, now := range []time.Time{base, base.Add(4 * time.Minute)} {
+		if _, err := pushMetrics(context.Background(), store, defs, resource.NewSchemaless(), "",
+			start, now, otelmapper.DefaultResolveOptions(), nil, nil, export, nil, 1); err != nil {
+			t.Fatalf("push at %v: %v", now, err)
+		}
+	}
+	if cands := store.snapshot(base.Add(5 * time.Minute)); len(cands) != 0 {
+		t.Fatalf("candidates one minute after a filtered keepalive = %+v, want none", cands)
+	}
+}
