@@ -91,6 +91,14 @@ const (
 	// 0 disables staleness eviction.
 	DefaultStalenessTTL = 10 * time.Minute
 
+	// DefaultKeepaliveInterval is how long a gauge its probe still
+	// vouches for may go without an exported point before its current
+	// value is exported again. It stays under the five-minute lookback
+	// Prometheus and VictoriaMetrics apply by default, so a probe slower
+	// than the export stays visible between two runs. 0 exports each
+	// measurement once.
+	DefaultKeepaliveInterval = 4 * time.Minute
+
 	// Memory-limiter defaults. Soft and hard limits are measured
 	// against runtime.MemStats.HeapAlloc (Go heap currently allocated,
 	// not RSS — see memory_limiter.go for the rationale). The
@@ -384,6 +392,10 @@ type Config struct {
 	// StalenessTTL evicts series that received no datapoint for this
 	// long (see DefaultStalenessTTL). 0 disables eviction.
 	StalenessTTL time.Duration
+	// KeepaliveInterval re-exports a vouched gauge whose last exported
+	// point is older than this (see DefaultKeepaliveInterval). 0
+	// disables it.
+	KeepaliveInterval time.Duration
 	// MemoryLimit defines the circuit-breaker thresholds for the OTLP
 	// strategy's metric store. A background poller reads Go heap
 	// pressure every CheckInterval; when soft is hit, new series are
@@ -561,6 +573,7 @@ func defaultConfig() Config {
 		MaxStoreSize:            DefaultMaxStoreSize,
 		MaxActiveSeriesPerProbe: DefaultMaxActiveSeriesPerProbe,
 		StalenessTTL:            DefaultStalenessTTL,
+		KeepaliveInterval:       DefaultKeepaliveInterval,
 		MemoryLimit: MemoryLimitConfig{
 			SoftMiB:       DefaultMemoryLimitSoftMiB,
 			HardMiB:       DefaultMemoryLimitHardMiB,
@@ -686,6 +699,21 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 			return cfg, fmt.Errorf("staleness_ttl must be >= 0 (0 disables eviction), got %s", d)
 		}
 		cfg.StalenessTTL = d
+	}
+
+	if raw, ok := params["keepalive_interval"]; ok {
+		str, isStr := raw.(string)
+		if !isStr {
+			return cfg, fmt.Errorf("keepalive_interval must be a duration string (e.g. \"4m\"), got %T", raw)
+		}
+		d, err := time.ParseDuration(str)
+		if err != nil {
+			return cfg, fmt.Errorf("keepalive_interval: %w", err)
+		}
+		if d < 0 {
+			return cfg, fmt.Errorf("keepalive_interval must be >= 0 (0 disables the keepalive), got %s", d)
+		}
+		cfg.KeepaliveInterval = d
 	}
 
 	if err := parseMemoryLimit(params["memory_limit"], &cfg.MemoryLimit); err != nil {
@@ -1467,9 +1495,9 @@ func resolveRelayEnrichment(relay RelayConfig, traces TracesSignal) bool {
 // configuration turns series eviction off.
 //
 // It is a supported setting, but it has one failure mode an operator
-// cannot see: a series whose producer disappears keeps being exported
-// at its last value with fresh timestamps, indefinitely, and a restart
-// restores it from the checkpoint rather than clearing it. `agent config
+// cannot see: a series whose producer disappears stays in the store and
+// the checkpoint indefinitely, and every restart exports its last value
+// again. `agent config
 // check` reports it so the choice is visible before it becomes a red
 // alert on a target that no longer exists (#812).
 func StalenessEvictionDisabled(params map[string]interface{}) bool {
@@ -1478,4 +1506,16 @@ func StalenessEvictionDisabled(params map[string]interface{}) bool {
 		return false // a config that does not parse is reported elsewhere
 	}
 	return cfg.StalenessTTL <= 0
+}
+
+// KeepaliveOutlastsStaleness reports whether a parsed otlp strategy
+// configuration sets keepalive_interval at or above a non-zero
+// staleness_ttl: a series is then evicted before its keepalive is due,
+// so the keepalive never acts. `agent config check` warns about it.
+func KeepaliveOutlastsStaleness(params map[string]interface{}) bool {
+	cfg, err := ParseConfig(params)
+	if err != nil {
+		return false // a config that does not parse is reported elsewhere
+	}
+	return cfg.KeepaliveInterval > 0 && cfg.StalenessTTL > 0 && cfg.KeepaliveInterval >= cfg.StalenessTTL
 }

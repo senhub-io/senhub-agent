@@ -225,7 +225,7 @@ func NewOTLPSyncStrategy(
 		ml = newMemoryLimiter(soft, hard, cfg.MemoryLimit.CheckInterval)
 	}
 
-	store := newMetricStoreWithCap(cfg.MaxStoreSize).withFreshnessGrace(cfg.Metrics.Interval)
+	store := newMetricStoreWithCap(cfg.MaxStoreSize).withFreshnessGrace(cfg.Metrics.Interval).withKeepalive(cfg.KeepaliveInterval)
 	if cfg.MaxActiveSeriesPerProbe > 0 {
 		store = store.withProbeBudget(cfg.MaxActiveSeriesPerProbe)
 	}

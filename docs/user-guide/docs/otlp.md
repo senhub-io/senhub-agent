@@ -139,6 +139,10 @@ otlp:
   max_active_series_per_probe: 10000  # default 10000 per probe; 0 = no per-probe cap
   staleness_ttl: 10m              # default 10m; a series silent this long is
                                   # evicted. 0s disables eviction
+  keepalive_interval: 4m          # default 4m; a gauge from a probe slower
+                                  # than the export is exported again at
+                                  # this interval. 0s exports each
+                                  # measurement once
 
   # How many exports may be in flight at once. The push splits a
   # large cycle per probe and ships the parts in parallel; 1 means
@@ -887,7 +891,7 @@ otlp:
   max_store_size: 100000               # default 50000 (global cap)
   staleness_ttl: "10m"                 # default 10m: a series with no new
                                        # datapoint for this long is evicted
-                                       # instead of re-exporting forever
+                                       # instead of being kept forever
                                        # (zombie series); "0s" disables
 ```
 
@@ -918,22 +922,41 @@ of these metrics.
 
 ### What time a point carries
 
-Every push re-exports the last value of every stored series, so the time
-stamped on a point decides what a consumer sees between two runs of a
-probe:
+Each measurement is exported once, stamped with the time it was taken.
+A push that finds no new measurement for a series exports nothing for
+it, so a probe that runs every 60 seconds under a 30-second push sends
+one point per run, and the points show the probe's cadence.
 
-- While the probe still vouches for the value, the point carries the
-  export time. A probe vouches for its last value for one and a half
-  times its `interval`, plus one push interval. A gauge from a probe
-  that runs every 30 minutes is therefore published as current every
-  30 seconds, and an alert with a five-minute lookback keeps seeing it.
-- Once that window has elapsed, the point carries the time the value was
-  measured: the probe missed its own next run, or the target it measured
-  is no longer in its configuration, and re-stamping the old value would
-  assert a measurement that never happened. The series is evicted after
-  `staleness_ttl`.
-- A series restored from the checkpoint at start-up carries its
-  measurement time until its probe observes it again in this process.
+A probe slower than the backend's lookback would then vanish from a
+dashboard between two runs. For gauges, the agent exports the current
+value again while the probe still vouches for it:
+
+- A probe vouches for its last value for one and a half times its
+  `interval`, plus one push interval.
+- While it does, and the series' last exported point is older than
+  `keepalive_interval` (4 minutes by default), the push exports the
+  same value again, stamped with the push time: the value is still the
+  probe's current reading. A probe that runs every 30 minutes thus
+  gets a point every 4 minutes and stays visible under a 5-minute
+  lookback.
+- Keep `keepalive_interval` below the lookback of the backend
+  (5 minutes by default for Prometheus and VictoriaMetrics) and below
+  `staleness_ttl`; `agent config check` warns when it is not below
+  `staleness_ttl`. A probe that runs more often than
+  `keepalive_interval` never gets a keepalive point.
+- Counters and histograms are never exported again: their value at a
+  given instant is only known when the probe measures it, and a
+  repeated point would put a false zero in a `rate()`.
+- Once the probe stops vouching (it missed its own next run, or the
+  target is no longer in its configuration), nothing more is exported
+  for the series, which is evicted after `staleness_ttl`.
+- A series restored from the checkpoint at start-up is exported once,
+  stamped with its measurement time, and never kept alive until its
+  probe observes it again in this process.
+
+`senhub.agent.otlp.keepalive_points` counts the points exported this
+way. `keepalive_interval: 0s` turns it off: every measurement is then
+exported once and only once.
 
 ## Backward compatibility
 

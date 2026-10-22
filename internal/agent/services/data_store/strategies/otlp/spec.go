@@ -72,6 +72,7 @@ func init() {
 			{Key: "max_store_size", Kind: spec.KindInt, Default: 50000, Group: "memory", Description: "Distinct series kept between exports; new ones are dropped past it"},
 			{Key: "max_active_series_per_probe", Kind: spec.KindInt, Default: 10000, Group: "memory"},
 			{Key: "staleness_ttl", Kind: spec.KindDuration, Default: "10m", Group: "memory", Description: "A series not updated for this long is evicted"},
+			{Key: "keepalive_interval", Kind: spec.KindDuration, Default: "4m", Group: "delivery", Description: "A gauge from a probe slower than the export is exported again at this interval while its probe vouches for it; keep it under the backend lookback; 0 exports each measurement once"},
 			{Key: "memory_limit", Kind: spec.KindBlock, Group: "memory", Fields: []spec.ParamSpec{
 				{Key: "soft_mib", Kind: spec.KindInt, Default: 200},
 				{Key: "hard_mib", Kind: spec.KindInt, Default: 400},

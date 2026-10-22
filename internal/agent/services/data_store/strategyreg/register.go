@@ -60,7 +60,7 @@ func init() {
 		"depends_on_enabled", "depends_on_exclude_cidrs", "enabled",
 		"endpoint", "enrichment", "entities", "fallback_endpoints",
 		"governance", "hard_mib", "headers", "idle_conn_timeout",
-		"initial_interval", "insecure_skip_verify", "interval", "key",
+		"initial_interval", "insecure_skip_verify", "interval", "keepalive_interval", "key",
 		"key_file", "logs", "logs_queue_max_age", "logs_queue_max_bytes", "match",
 		"max_active_series_per_probe", "max_concurrent_exports",
 		"max_elapsed_time", "max_interval", "max_store_size", "memory_limit",

@@ -26,10 +26,11 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	// have occurred yet:
 	//   6 core         (uptime, cache.entries, probes.{active,total,healthy},
 	//                   transformer.fallback)
-	//  11 OTLP push    (metrics.pushed, logs.pushed, spans.relayed,
+	//  12 OTLP push    (metrics.pushed, logs.pushed, spans.relayed,
 	//                   logs.relayed, metrics.relayed,
 	//                   dropped_log_records,
-	//                   dropped_span_batches, buffer.fill_ratio, store_size,
+	//                   dropped_span_batches, keepalive_points,
+	//                   buffer.fill_ratio, store_size,
 	//                   export.duration{window=last},
 	//                   export.duration{window=mean})
 	//   3 OTLP checkpoint (size, last_save_age, restored_entries)
@@ -51,7 +52,7 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	// processed, processed{error.type=queue_full}, queue.size, capacity;
 	// plus senhub.agent.entity.attribute.conflicts and .duplicates.merged;
 	// plus senhub.agent.self_logs.published and .dropped.
-	want := 33 + 6 + 2 + len(agentstate.OTLPSignals) + len(agentstate.OTLPDropReasons)
+	want := 34 + 6 + 2 + len(agentstate.OTLPSignals) + len(agentstate.OTLPDropReasons)
 	if len(recs) != want {
 		t.Fatalf("expected %d records (no build info, no http requests, no collect errors, no checkpoint errors), got %d", want, len(recs))
 	}
@@ -74,6 +75,7 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 		"senhub.agent.otlp.metrics.relayed",
 		"senhub.agent.otlp.dropped_log_records",
 		"senhub.agent.otlp.dropped_span_batches",
+		"senhub.agent.otlp.keepalive_points",
 		"senhub.agent.otlp.buffer.fill_ratio",
 		"senhub.agent.otlp.store_size",
 		"senhub.agent.otlp.export.duration",

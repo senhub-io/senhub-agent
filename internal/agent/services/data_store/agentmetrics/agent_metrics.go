@@ -301,6 +301,14 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Cumulative count of received span batches dropped due to backpressure on the agent span channel (the trace relay could not keep up).",
 		},
 		otelmapper.OtelRecord{
+			Name:        "senhub.agent.otlp.keepalive_points",
+			Unit:        "{point}",
+			Type:        "counter",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetOTLPKeepalivePointsTotal()),
+			Description: "Cumulative count of gauge points exported again at export time because their probe, slower than the export, still vouched for the value (keepalive_interval).",
+		},
+		otelmapper.OtelRecord{
 			Name:        "senhub.agent.otlp.buffer.fill_ratio",
 			Unit:        "1",
 			Type:        "gauge",

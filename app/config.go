@@ -642,8 +642,14 @@ func checkConfig(configPath string) checkOutcome {
 				if otlp.StalenessEvictionDisabled(s.Params) {
 					fmt.Printf("  [WARN] Strategy %q: staleness_ttl disables series eviction\n", s.Name)
 					fmt.Println("         A series whose producer disappears (a target removed from a probe,")
-					fmt.Println("         a probe denied by licence) keeps being exported at its last value")
-					fmt.Println("         with fresh timestamps, and a restart restores it from the checkpoint.")
+					fmt.Println("         a probe denied by licence) stays in the store and the checkpoint,")
+					fmt.Println("         and every restart exports its last value again.")
+					warnings++
+				}
+				if otlp.KeepaliveOutlastsStaleness(s.Params) {
+					fmt.Printf("  [WARN] Strategy %q: keepalive_interval is not below staleness_ttl\n", s.Name)
+					fmt.Println("         A series is evicted before its keepalive is due, so a probe slower")
+					fmt.Println("         than the export disappears from the backend between two runs.")
 					warnings++
 				}
 				if verr := otlp.ValidateEntitiesRedactAttributes(s.Params); verr != nil {

@@ -31,7 +31,7 @@ func TestForgetProbesStopsExportingARetiredProbe(t *testing.T) {
 
 	s.ForgetProbes([]string{"removed_probe"})
 
-	cms, _ := s.store.snapshot(time.Now())
+	cms := snapshotMetrics(s.store, time.Now())
 	if len(cms) != 1 || cms[0].ProbeName != "kept" {
 		t.Fatalf("next export holds %+v, want only the kept probe", cms)
 	}

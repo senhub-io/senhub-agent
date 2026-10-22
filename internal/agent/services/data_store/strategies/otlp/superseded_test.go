@@ -17,7 +17,7 @@ func redisPoint(name string, v float64) datapoint.DataPoint {
 }
 
 func storedNames(s *metricStore) []string {
-	cms, _ := s.snapshot(time.Now())
+	cms := snapshotMetrics(s, time.Now())
 	out := make([]string, 0, len(cms))
 	for _, cm := range cms {
 		out = append(out, cm.MetricName)

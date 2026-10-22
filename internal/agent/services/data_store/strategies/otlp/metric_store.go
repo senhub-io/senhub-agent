@@ -46,6 +46,9 @@ type metricStore struct {
 	// vouched for: the push interval, so a run that lands just after a
 	// push is not stamped stale for one cycle.
 	grace time.Duration
+	// keepalive is the interval after which a still-vouched gauge value
+	// may be re-emitted with the export time. 0 disables keepalive.
+	keepalive time.Duration
 }
 
 // storedMetric is one LWW slot — the metadata we need to feed
@@ -68,6 +71,22 @@ type storedMetric struct {
 	// observed since: its producer may be gone, so its value is never
 	// presented as current until a datapoint replaces it.
 	restored bool
+	// lastEmittedAt is the point time of the last successfully exported
+	// point for this series. It drives keepalive interval calculation.
+	lastEmittedAt time.Time
+	// pending marks an entry that has received a datapoint since its
+	// last successful emission. Pending entries are exported once at
+	// their observedAt, regardless of vouching state.
+	pending bool
+}
+
+// exportCandidate is one stored series selected for export by snapshot.
+type exportCandidate struct {
+	Metric     otelmapper.CacheMetric
+	At         time.Time
+	Keepalive  bool
+	key        string
+	receivedAt time.Time
 }
 
 func newMetricStore() *metricStore {
@@ -92,6 +111,14 @@ func (s *metricStore) withFreshnessGrace(d time.Duration) *metricStore {
 	return s
 }
 
+// withKeepalive sets the interval after which a still-vouched gauge
+// value may be re-emitted with the export time. 0 disables keepalive.
+// Returns the store for chaining.
+func (s *metricStore) withKeepalive(d time.Duration) *metricStore {
+	s.keepalive = d
+	return s
+}
+
 // noteProbeCadence records how often the named probe collects. A probe
 // with no recorded cadence, or a cadence of zero, has its values
 // exported at their measurement time only.
@@ -108,8 +135,9 @@ func (s *metricStore) noteProbeCadence(probeName string, interval time.Duration)
 // stored value at instant now: the entry was observed by this process,
 // the probe's cadence is known, and less than one and a half cadences
 // plus the grace have elapsed since the observation. A vouched value is
-// the probe's current reading between two runs; an unvouched one is a
-// measurement of the past (#812, #890).
+// the probe's current reading between two runs, which a keepalive may
+// export again; an unvouched one is a measurement of the past (#812,
+// #890). A restored entry is never vouched.
 func (s *metricStore) vouched(e storedMetric, now time.Time) bool {
 	if e.restored {
 		return false
@@ -201,7 +229,7 @@ func (s *metricStore) upsertAt(dp datapoint.DataPoint, receivedAt time.Time) {
 	}
 
 	s.mu.Lock()
-	_, exists := s.entries[key]
+	prev, exists := s.entries[key]
 	if !exists {
 		// Per-probe budget: each probe instance gets its own
 		// cardinality cap. Protects a fleet from one rogue probe
@@ -219,16 +247,24 @@ func (s *metricStore) upsertAt(dp datapoint.DataPoint, receivedAt time.Time) {
 		}
 		s.probeCounts[probeName]++
 	}
+
+	lastEmittedAt := time.Time{}
+	if exists {
+		lastEmittedAt = prev.lastEmittedAt
+	}
+
 	s.entries[key] = storedMetric{
-		probeName:  probeName,
-		probeType:  probeType,
-		metricName: dp.Name,
-		value:      dp.Value,
-		unit:       tagMap["unit"],
-		tags:       tagsCopy,
-		histogram:  dp.Histogram,
-		observedAt: when,
-		receivedAt: receivedAt,
+		probeName:     probeName,
+		probeType:     probeType,
+		metricName:    dp.Name,
+		value:         dp.Value,
+		unit:          tagMap["unit"],
+		tags:          tagsCopy,
+		histogram:     dp.Histogram,
+		observedAt:    when,
+		receivedAt:    receivedAt,
+		lastEmittedAt: lastEmittedAt,
+		pending:       true,
 	}
 	s.mu.Unlock()
 }
@@ -300,7 +336,9 @@ func (s *metricStore) snapshotForCheckpoint() []entrySnapshot {
 // Bypasses the upsert hot-path checks (cardinality cap, probe budget,
 // memory limiter) — restoring a snapshot is a privileged path that
 // trusts whatever was last successfully persisted. Probe counts are
-// rebuilt to match.
+// rebuilt to match. Restored entries are marked pending so each restored
+// series is emitted once at its observedAt before being silenced until a
+// fresh datapoint replaces it.
 func (s *metricStore) restoreFromSnapshot(entries []entrySnapshot) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -321,28 +359,39 @@ func (s *metricStore) restoreFromSnapshot(entries []entrySnapshot) {
 			histogram:  e.Histogram,
 			observedAt: e.ObservedAt,
 			restored:   true,
+			pending:    true,
 		}
 		s.probeCounts[e.ProbeName]++
 	}
 }
 
-// snapshot returns a slice of CacheMetric ready to feed into
-// otelmapper.Resolve, plus the time each series is exported with,
-// aligned by index: now for a series its probe still vouches for, the
-// measurement time otherwise. Callers must not retain references — the
-// maps inside are snapshots and may be reused on the next call.
-func (s *metricStore) snapshot(now time.Time) ([]otelmapper.CacheMetric, []time.Time) {
+// snapshot returns the export candidates for one push cycle. A pending
+// entry — one that received a datapoint since its last successful
+// emission — is emitted once at its observedAt. A non-pending, vouched
+// gauge entry whose last emitted point is older than the keepalive
+// interval is emitted as a keepalive candidate with the export time;
+// the caller drops the candidates its mapping does not resolve to a
+// gauge, which the store cannot tell from a sum. A histogram is never
+// a candidate. Everything else is omitted.
+func (s *metricStore) snapshot(now time.Time) []exportCandidate {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	cms := make([]otelmapper.CacheMetric, 0, len(s.entries))
-	times := make([]time.Time, 0, len(s.entries))
-	for _, e := range s.entries {
-		when := e.observedAt
-		if s.vouched(e, now) {
-			when = now
+	cands := make([]exportCandidate, 0, len(s.entries))
+	for key, e := range s.entries {
+		switch {
+		case e.pending:
+			cands = append(cands, e.candidate(key, e.observedAt, false))
+		case s.keepalive > 0 && e.histogram == nil && s.vouched(e, now) && now.Sub(e.lastEmittedAt) >= s.keepalive:
+			cands = append(cands, e.candidate(key, now, true))
 		}
-		cms = append(cms, otelmapper.CacheMetric{
+	}
+	return cands
+}
+
+func (e storedMetric) candidate(key string, at time.Time, keepalive bool) exportCandidate {
+	return exportCandidate{
+		Metric: otelmapper.CacheMetric{
 			ProbeName:  e.probeName,
 			ProbeType:  e.probeType,
 			MetricName: e.metricName,
@@ -350,10 +399,34 @@ func (s *metricStore) snapshot(now time.Time) ([]otelmapper.CacheMetric, []time.
 			Unit:       e.unit,
 			Tags:       e.tags,
 			Histogram:  e.histogram,
-		})
-		times = append(times, when)
+		},
+		At:         at,
+		Keepalive:  keepalive,
+		key:        key,
+		receivedAt: e.receivedAt,
 	}
-	return cms, times
+}
+
+// markEmitted records the successful emission of candidates produced by
+// snapshot. Keepalive candidates only update lastEmittedAt; new
+// measurement candidates also clear pending, but only when the stored
+// entry has not been replaced since the snapshot was taken.
+func (s *metricStore) markEmitted(cands []exportCandidate) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, c := range cands {
+		e, ok := s.entries[c.key]
+		if !ok {
+			continue
+		}
+
+		e.lastEmittedAt = c.At
+		if !c.Keepalive && e.receivedAt.Equal(c.receivedAt) {
+			e.pending = false
+		}
+		s.entries[c.key] = e
+	}
 }
 
 // size reports the current number of stored series; used by tests and
