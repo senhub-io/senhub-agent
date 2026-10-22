@@ -2,6 +2,7 @@ package otlp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -46,8 +47,8 @@ func pushMetrics(
 	missingMappingHandler func(otelmapper.CacheMetric, error),
 	maxConcurrent int,
 ) (int, error) {
-	cms, pointTimes := store.snapshot(now)
-	if len(cms) == 0 && len(extraRecords) == 0 {
+	cands := store.snapshot(now)
+	if len(cands) == 0 && len(extraRecords) == 0 {
 		return 0, nil
 	}
 
@@ -55,33 +56,43 @@ func pushMetrics(
 	// appear in the export batch even when no probe data flowed
 	// during this tick — operators get continuity on the agent's
 	// own resource graphs even when probes are quiet.
-	records := make([]otelmapper.OtelRecord, 0, len(extraRecords)+len(cms))
+	records := make([]otelmapper.OtelRecord, 0, len(extraRecords)+len(cands))
 	records = append(records, extraRecords...)
-	for i, cm := range cms {
+
+	exportedCands := make([]exportCandidate, 0, len(cands))
+	var keepaliveRecords int
+
+	for _, cand := range cands {
 		// def may be nil — Resolve handles that (an error for probe metrics
 		// with no definition, a pass-through for OTLP-ingested metrics).
-		def := defs.GetProbeDefinition(cm.ProbeType)
-		recs, err := otelmapper.Resolve(def, cm, resolveOpts)
+		def := defs.GetProbeDefinition(cand.Metric.ProbeType)
+		recs, err := otelmapper.Resolve(def, cand.Metric, resolveOpts)
 		if err != nil {
 			if missingMappingHandler != nil {
-				missingMappingHandler(cm, err)
+				missingMappingHandler(cand.Metric, err)
 			}
 			continue
 		}
-		// The store decides the stamp: the export time while the probe
-		// still vouches for the value, the measurement time once it
-		// does not. Without it every stored series is re-exported
-		// stamped `now`, which claims a fresh measurement of something
-		// that may not have been queried for hours (#812); with only the
-		// measurement time, a probe that runs less often than the push
-		// yields one sample per run and vanishes from a short lookback
-		// (#890).
-		if i < len(pointTimes) && !pointTimes[i].IsZero() {
-			for j := range recs {
-				recs[j].ObservedAt = pointTimes[i]
+
+		appended := 0
+		for _, rec := range recs {
+			// The store only marks keepalive candidates; the actual
+			// instrument type comes from the mapper. Cumulative sums and
+			// histograms must never be re-emitted as keepalives.
+			if cand.Keepalive && rec.Type != "gauge" {
+				continue
+			}
+			rec.ObservedAt = cand.At
+			records = append(records, rec)
+			appended++
+		}
+
+		if appended > 0 {
+			exportedCands = append(exportedCands, cand)
+			if cand.Keepalive {
+				keepaliveRecords += appended
 			}
 		}
-		records = append(records, recs...)
 	}
 
 	if len(records) == 0 {
@@ -106,10 +117,19 @@ func pushMetrics(
 	if maxConcurrent <= 1 || len(records) < SplitBatchThreshold {
 		rm := buildResourceMetrics(records, res, scopeVersion, startTime, now)
 		if err := export(ctx, rm); err != nil {
+			if errors.Is(err, errExportQueued) {
+				// On disk and replayed as built: sent, as far as the store
+				// is concerned. Re-exporting it would duplicate it.
+				store.markEmitted(exportedCands)
+			}
 			return 0, fmt.Errorf("export: %w", err)
 		}
 		if exporthook.HasSeriesObservers() {
 			exporthook.ObserveSeries("otlp", seriesPoints(records), now)
+		}
+		store.markEmitted(exportedCands)
+		if keepaliveRecords > 0 {
+			agentstate.AddOTLPKeepalivePoints(keepaliveRecords)
 		}
 		agentstate.RecordOTLPSubBatchCount(1)
 		return len(records), nil
@@ -117,12 +137,22 @@ func pushMetrics(
 
 	parts := partitionRecordsByProbe(records)
 	agentstate.RecordOTLPSubBatchCount(len(parts))
-	return exportInParallel(ctx, parts, res, scopeVersion, startTime, now, export, maxConcurrent,
+	total, err := exportInParallel(ctx, parts, res, scopeVersion, startTime, now, export, maxConcurrent,
 		func(recs []otelmapper.OtelRecord) {
 			if exporthook.HasSeriesObservers() {
 				exporthook.ObserveSeries("otlp", seriesPoints(recs), now)
 			}
 		})
+	if err == nil || errors.Is(err, errExportQueued) {
+		store.markEmitted(exportedCands)
+	}
+	if err != nil {
+		return total, err
+	}
+	if keepaliveRecords > 0 {
+		agentstate.AddOTLPKeepalivePoints(keepaliveRecords)
+	}
+	return total, nil
 }
 
 // seriesPoints views the records as the series they export. The maps are
