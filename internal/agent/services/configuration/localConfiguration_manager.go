@@ -79,6 +79,7 @@ func (lc *LocalConfiguration) loadConfiguration() error {
 
 	// Fix YAML interface conversion issues
 	config = lc.fixYAMLTypes(config)
+	applyOverlays(&config)
 
 	// Validate configuration
 	if err := ValidateConfiguration(&config); err != nil {
@@ -393,6 +394,7 @@ func (lc *LocalConfiguration) fixYAMLTypes(config LocalConfigurationData) LocalC
 // nests maps the same way. It runs in the loader so every reader of a
 // configuration gets the same shapes, not only the running agent.
 func normalizeYAMLTypes(config LocalConfigurationData) LocalConfigurationData {
+	config.Extensions = claimedBlocks(config.Extensions)
 	if config.Governance != nil {
 		if converted, ok := convertMapTypes(config.Governance).(map[string]interface{}); ok {
 			config.Governance = converted

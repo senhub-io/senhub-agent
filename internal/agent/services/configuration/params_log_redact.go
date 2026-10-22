@@ -136,3 +136,8 @@ func sanitizeValueForLog(key string, v interface{}) interface{} {
 		return v
 	}
 }
+
+// RedactSecretsInString masks the credentials a free-form message can
+// carry (the password of a URI, DSN password pairs) before the text
+// leaves the process, a remote health report for instance.
+func RedactSecretsInString(s string) string { return redactSecretsInString(s) }

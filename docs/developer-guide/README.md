@@ -10,6 +10,7 @@ Welcome to the SenHub Agent Developer Guide. This documentation provides compreh
 - **[Build System](./build-system.md)** - Makefile commands, compilation, and packaging
 - **[Design Patterns](./design-patterns.md)** - Code patterns, best practices, and compliance checklist
 - **[Current Development](./current-development.md)** - Where the line stands and where to find release content
+- **[Agent extensions](./agent-extensions.md)** - Adding an agent-lifetime service from another Go module
 
 ### Specialized Topics
 - **[Engineering Documentation](./engineering/)** - Technical deep-dives and implementation details

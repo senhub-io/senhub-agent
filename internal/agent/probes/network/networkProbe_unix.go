@@ -16,6 +16,8 @@ import (
 	"senhub-agent.go/internal/agent/tags"
 )
 
+const primeDelay = 1 * time.Second
+
 type interfaceInfo struct {
 	isMonitored bool
 	addresses   []string
@@ -111,6 +113,9 @@ type unixNetworkCollector struct {
 	lastCounters             map[string]counterWithTime
 	includeVirtualInterfaces bool
 	addressLabel             bool
+
+	primeWait time.Duration
+	primed    bool
 }
 
 type counterWithTime struct {
@@ -131,14 +136,39 @@ func newNetworkCollector(config map[string]interface{}, logger *logger.Logger) (
 }
 
 func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPoint, error) {
+	baseTags, err := common.GetHostTags()
+	if err != nil {
+		return nil, fmt.Errorf("error getting host tags: %w", err)
+	}
+
 	counters, err := psnet.IOCounters(true)
 	if err != nil {
 		return nil, fmt.Errorf("error getting network metrics: %w", err)
 	}
 
-	baseTags, err := common.GetHostTags()
-	if err != nil {
-		return nil, fmt.Errorf("error getting host tags: %w", err)
+	var firstSnapshot map[string]psnet.IOCountersStat
+	var firstElapsed float64
+
+	if !u.primed {
+		baseline := counters
+		wait := primeDelay
+		if u.primeWait != 0 {
+			wait = u.primeWait
+		}
+		start := time.Now()
+		time.Sleep(wait)
+		firstElapsed = time.Since(start).Seconds()
+
+		counters, err = psnet.IOCounters(true)
+		if err != nil {
+			return nil, fmt.Errorf("error getting network metrics after priming: %w", err)
+		}
+
+		u.primed = true
+		firstSnapshot = make(map[string]psnet.IOCountersStat, len(baseline))
+		for _, counter := range baseline {
+			firstSnapshot[counter.Name] = counter
+		}
 	}
 
 	dataPoints := make([]data_store.DataPoint, 0)
@@ -209,43 +239,56 @@ func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPo
 			})
 		}
 
-		// Calculate rates per second if we have previous data
-		if lastCounter, exists := u.lastCounters[counter.Name]; exists {
+		if firstSnapshot != nil {
+			if lastCounter, exists := firstSnapshot[counter.Name]; exists {
+				appendNetworkRates(&dataPoints, timestamp, interfaceTags, counter, lastCounter, firstElapsed)
+			}
+		} else if lastCounter, exists := u.lastCounters[counter.Name]; exists {
 			timeDiff := timestamp.Sub(lastCounter.Timestamp).Seconds()
 			if timeDiff > 0 {
-				metrics := []struct {
-					name  string
-					value float64
-				}{
-					{"bytes_sent", float64(counter.BytesSent-lastCounter.Stats.BytesSent) / timeDiff},
-					{"bytes_received", float64(counter.BytesRecv-lastCounter.Stats.BytesRecv) / timeDiff},
-					{"packets_sent", float64(counter.PacketsSent-lastCounter.Stats.PacketsSent) / timeDiff},
-					{"packets_received", float64(counter.PacketsRecv-lastCounter.Stats.PacketsRecv) / timeDiff},
-					{"errors_sent", float64(counter.Errout-lastCounter.Stats.Errout) / timeDiff},
-					{"errors_received", float64(counter.Errin-lastCounter.Stats.Errin) / timeDiff},
-					{"discards_sent", float64(counter.Dropout-lastCounter.Stats.Dropout) / timeDiff},
-					{"discards_received", float64(counter.Dropin-lastCounter.Stats.Dropin) / timeDiff},
-				}
-
-				for _, metric := range metrics {
-					dataPoints = append(dataPoints, data_store.DataPoint{
-						Name:      metric.name,
-						Timestamp: timestamp,
-						Value:     metric.value,
-						Tags:      interfaceTags,
-					})
-				}
+				appendNetworkRates(&dataPoints, timestamp, interfaceTags, counter, lastCounter.Stats, timeDiff)
 			}
 		}
 
-		// Save current counters for next iteration
+		// Save current counters for next iteration. After priming they
+		// were read one wait after timestamp; dating them at timestamp
+		// would spread the next delta over a longer span than it covers.
 		u.lastCounters[counter.Name] = counterWithTime{
 			Stats:     counter,
-			Timestamp: timestamp,
+			Timestamp: timestamp.Add(time.Duration(firstElapsed * float64(time.Second))),
 		}
 	}
 
 	return dataPoints, nil
+}
+
+func appendNetworkRates(dataPoints *[]data_store.DataPoint, timestamp time.Time, interfaceTags []tags.Tag, curr, prev psnet.IOCountersStat, elapsed float64) {
+	if elapsed <= 0 {
+		return
+	}
+
+	metrics := []struct {
+		name  string
+		value float64
+	}{
+		{"bytes_sent", float64(curr.BytesSent-prev.BytesSent) / elapsed},
+		{"bytes_received", float64(curr.BytesRecv-prev.BytesRecv) / elapsed},
+		{"packets_sent", float64(curr.PacketsSent-prev.PacketsSent) / elapsed},
+		{"packets_received", float64(curr.PacketsRecv-prev.PacketsRecv) / elapsed},
+		{"errors_sent", float64(curr.Errout-prev.Errout) / elapsed},
+		{"errors_received", float64(curr.Errin-prev.Errin) / elapsed},
+		{"discards_sent", float64(curr.Dropout-prev.Dropout) / elapsed},
+		{"discards_received", float64(curr.Dropin-prev.Dropin) / elapsed},
+	}
+
+	for _, metric := range metrics {
+		*dataPoints = append(*dataPoints, data_store.DataPoint{
+			Name:      metric.name,
+			Timestamp: timestamp,
+			Value:     metric.value,
+			Tags:      interfaceTags,
+		})
+	}
 }
 
 func (u *unixNetworkCollector) Close() error {

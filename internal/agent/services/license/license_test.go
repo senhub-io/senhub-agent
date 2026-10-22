@@ -878,3 +878,28 @@ func TestGetDefaultValidator(t *testing.T) {
 // authenticated compact tokens could not survive a public source
 // tree (see docs/LICENSE-SYSTEM.md for the JWT-only design that
 // replaced it).
+
+func TestValidateLicenseReadsTheJTI(t *testing.T) {
+	priv, pub := generateTestRSAKeys(t)
+	v, err := NewJWTValidator(publicKeyToPEM(pub), 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := jwt.MapClaims{
+		"tier":              "Pro",
+		"authorized_probes": []string{"citrix", "opamp"},
+		"exp":               time.Now().Add(24 * time.Hour).Unix(),
+		"iat":               time.Now().Unix(),
+		"iss":               "SenHub",
+		"sub":               "test-customer",
+	}
+	lic, err := v.ValidateLicense(createSignedJWT(t, priv, base))
+	if err != nil || lic.ID != "" {
+		t.Fatalf("a licence without jti: id %q, err %v; want it read as before, with no id", lic.ID, err)
+	}
+	base["jti"] = "8a1f6c2e-0b7d-4c3a-9e5f-1d2c3b4a5e6f"
+	lic, err = v.ValidateLicense(createSignedJWT(t, priv, base))
+	if err != nil || lic.ID != "8a1f6c2e-0b7d-4c3a-9e5f-1d2c3b4a5e6f" {
+		t.Fatalf("id %q, err %v", lic.ID, err)
+	}
+}

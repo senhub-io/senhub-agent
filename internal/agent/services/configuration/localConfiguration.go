@@ -44,6 +44,10 @@ type LocalConfigurationData struct {
 	// location and lifecycle of the host this agent runs on. It is kept
 	// raw: the governance package owns the shape and the closed sets.
 	Governance map[string]interface{} `yaml:"governance,omitempty"`
+	// Extensions holds the top-level blocks a registered extension
+	// claims, keyed by block name. Any other unknown top-level key is
+	// dropped by normalizeYAMLTypes, as it always was.
+	Extensions map[string]interface{} `yaml:",inline"`
 }
 
 // EntitiesConfig is the operator's control over entity detection.
@@ -151,6 +155,11 @@ type LocalConfiguration struct {
 	// agent from running at all (#850) and that no test could reach
 	// while the constructor was called directly.
 	newWatcher func() (*fsnotify.Watcher, error)
+
+	// reloadMu serializes reloads: the file watcher and an extension
+	// asking for one would otherwise compare against the same previous
+	// configuration and notify twice, or not at all.
+	reloadMu sync.Mutex
 
 	// lastCacheRetention is the retention GetCacheConfig last announced, so a
 	// value that has not changed is not re-announced on every call.
