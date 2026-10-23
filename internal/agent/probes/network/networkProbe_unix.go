@@ -16,7 +16,9 @@ import (
 	"senhub-agent.go/internal/agent/tags"
 )
 
-const primeDelay = 1 * time.Second
+// hostCounters hands the last reading of this host's interface counters
+// over to the collector of the next network probe instance.
+var hostCounters hostpoll.Handover[map[string]psnet.IOCountersStat]
 
 type interfaceInfo struct {
 	isMonitored bool
@@ -114,8 +116,35 @@ type unixNetworkCollector struct {
 	includeVirtualInterfaces bool
 	addressLabel             bool
 
-	primeWait time.Duration
-	primed    bool
+	primed bool
+	// primeWait replaces hostpoll.PrimeWindow; readCounters, sleep and
+	// handover replace the host's when set. Tests only.
+	primeWait    time.Duration
+	readCounters func() ([]psnet.IOCountersStat, error)
+	sleep        func(time.Duration)
+	handover     *hostpoll.Handover[map[string]psnet.IOCountersStat]
+}
+
+func (u *unixNetworkCollector) ioCounters() ([]psnet.IOCountersStat, error) {
+	if u.readCounters != nil {
+		return u.readCounters()
+	}
+	return psnet.IOCounters(true)
+}
+
+func (u *unixNetworkCollector) countersHandover() *hostpoll.Handover[map[string]psnet.IOCountersStat] {
+	if u.handover != nil {
+		return u.handover
+	}
+	return &hostCounters
+}
+
+func byName(counters []psnet.IOCountersStat) map[string]psnet.IOCountersStat {
+	out := make(map[string]psnet.IOCountersStat, len(counters))
+	for _, c := range counters {
+		out[c.Name] = c
+	}
+	return out
 }
 
 type counterWithTime struct {
@@ -141,35 +170,44 @@ func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPo
 		return nil, fmt.Errorf("error getting host tags: %w", err)
 	}
 
-	counters, err := psnet.IOCounters(true)
+	counters, err := u.ioCounters()
 	if err != nil {
 		return nil, fmt.Errorf("error getting network metrics: %w", err)
 	}
 
 	var firstSnapshot map[string]psnet.IOCountersStat
 	var firstElapsed float64
+	readAt := timestamp
 
+	// The first collection diffs against the last reading the previous
+	// instance of the probe left, or primes over PrimeWindow without one,
+	// so a restart on a configuration change leaves no gap in the rates.
 	if !u.primed {
-		baseline := counters
-		wait := primeDelay
+		base, baseAt, ok := u.countersHandover().Base(timestamp)
+		if !ok {
+			base, baseAt = byName(counters), timestamp
+		}
+		window := hostpoll.PrimeWindow
 		if u.primeWait != 0 {
-			wait = u.primeWait
+			window = u.primeWait
 		}
-		start := time.Now()
-		time.Sleep(wait)
-		firstElapsed = time.Since(start).Seconds()
-
-		counters, err = psnet.IOCounters(true)
-		if err != nil {
-			return nil, fmt.Errorf("error getting network metrics after priming: %w", err)
+		if wait := window - timestamp.Sub(baseAt); wait > 0 {
+			if u.sleep != nil {
+				u.sleep(wait)
+			} else {
+				time.Sleep(wait)
+			}
+			counters, err = u.ioCounters()
+			if err != nil {
+				return nil, fmt.Errorf("error getting network metrics after priming: %w", err)
+			}
+			readAt = timestamp.Add(wait)
 		}
-
 		u.primed = true
-		firstSnapshot = make(map[string]psnet.IOCountersStat, len(baseline))
-		for _, counter := range baseline {
-			firstSnapshot[counter.Name] = counter
-		}
+		firstSnapshot = base
+		firstElapsed = readAt.Sub(baseAt).Seconds()
 	}
+	defer u.countersHandover().Store(byName(counters), readAt)
 
 	dataPoints := make([]data_store.DataPoint, 0)
 
@@ -240,7 +278,7 @@ func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPo
 		}
 
 		if firstSnapshot != nil {
-			if lastCounter, exists := firstSnapshot[counter.Name]; exists {
+			if lastCounter, exists := firstSnapshot[counter.Name]; exists && firstElapsed > 0 {
 				appendNetworkRates(&dataPoints, timestamp, interfaceTags, counter, lastCounter, firstElapsed)
 			}
 		} else if lastCounter, exists := u.lastCounters[counter.Name]; exists {
@@ -255,7 +293,7 @@ func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPo
 		// would spread the next delta over a longer span than it covers.
 		u.lastCounters[counter.Name] = counterWithTime{
 			Stats:     counter,
-			Timestamp: timestamp.Add(time.Duration(firstElapsed * float64(time.Second))),
+			Timestamp: readAt,
 		}
 	}
 

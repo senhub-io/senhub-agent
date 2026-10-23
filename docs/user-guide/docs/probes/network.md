@@ -341,7 +341,7 @@ netstat -s | grep -i overrun
    cat /proc/net/dev
    ```
 
-3. **Check collection interval**: First collection after agent start may be incomplete (requires 2 samples for rate calculation)
+3. **Check collection interval**: Rates are differences between two readings. Right after the agent starts, the first collection reads twice, five seconds apart; after a probe restart it continues from the previous instance's last reading
 
 ### Interface Name Mismatch
 
@@ -500,7 +500,7 @@ The Network probe requires no authentication as it collects local system metrics
 ### Unix/Linux/macOS
 - Link-local IPv6 addresses are excluded
 - Virtual interfaces (bridges, tun/tap) are excluded if not UP/RUNNING
-- First collection provides no rate data (requires 2 samples)
+- The first collection after the agent starts measures its rates over five seconds
 
 ## Metric reference
 

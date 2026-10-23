@@ -73,13 +73,23 @@ the last collection, so a reading is up to one collection interval old.
 
 | Metric | Description |
 |--------|-------------|
-| `cpu_idle` | CPU idle time (seconds) |
-| `cpu_nice` | CPU nice priority time (seconds) |
-| `cpu_iowait` | CPU I/O wait time (seconds) |
-| `cpu_steal` | CPU steal time for VMs (seconds) |
+| `cpu_idle` | Share of CPU time spent idle (%) |
+| `cpu_nice` | Share of CPU time at nice priority (%) |
+| `cpu_iowait` | Share of CPU time waiting for I/O (%) |
+| `cpu_steal` | Share of CPU time taken by the hypervisor (%) |
 | `cpu_load1` | Load average (1 minute) |
 | `cpu_load5` | Load average (5 minutes) |
 | `cpu_load15` | Load average (15 minutes) |
+
+The per-mode shares, and on Linux the interrupt and context-switch
+rates, are differences between two readings of the kernel counters.
+When the probe restarts on a configuration change, its first collection
+continues from the last reading the previous instance took. Right after
+the agent starts there is none, so the first collection reads twice,
+five seconds apart. The kernel counts CPU time in steps of 10 ms, so
+over those five seconds a mode below 1 / (500 × CPU count) of the time,
+0.1 % on two CPUs, reads 0; the next collections cover the whole
+interval.
 
 ### Windows Specific
 

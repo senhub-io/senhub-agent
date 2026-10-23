@@ -9,6 +9,7 @@ import (
 
 	"github.com/shirou/gopsutil/v3/cpu"
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/probes/hostpoll"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
@@ -84,7 +85,7 @@ func TestUnixCollector_CPUTimes_PercentageMath(t *testing.T) {
 
 func TestUnixCollector_CPUTimes_FirstCollectPrimes(t *testing.T) {
 	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
-	u := &unixCollector{logger: baseLogger, primeWait: 200 * time.Millisecond}
+	u := &unixCollector{logger: baseLogger, primeWait: 200 * time.Millisecond, times: &hostpoll.Handover[cpu.TimesStat]{}, kernel: &hostpoll.Handover[kernelCounters]{}}
 
 	var dataPoints []data_store.DataPoint
 	baseTags := []tags.Tag{{Key: "host", Value: "test"}}
@@ -124,7 +125,7 @@ func TestUnixCollector_CPUTimes_FirstCollectPrimes(t *testing.T) {
 
 func TestUnixCollector_CPUTimes_SecondCollectUsesFirst(t *testing.T) {
 	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
-	u := &unixCollector{logger: baseLogger, primeWait: 200 * time.Millisecond}
+	u := &unixCollector{logger: baseLogger, primeWait: 200 * time.Millisecond, times: &hostpoll.Handover[cpu.TimesStat]{}, kernel: &hostpoll.Handover[kernelCounters]{}}
 
 	var first, second []data_store.DataPoint
 	baseTags := []tags.Tag{{Key: "host", Value: "test"}}
@@ -163,7 +164,7 @@ func TestUnixCollector_KernelCounters_FirstCollectPrimes(t *testing.T) {
 		t.Skip("the kernel counters are read from /proc/stat")
 	}
 	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
-	u := &unixCollector{logger: baseLogger, primeWait: 200 * time.Millisecond}
+	u := &unixCollector{logger: baseLogger, primeWait: 200 * time.Millisecond, times: &hostpoll.Handover[cpu.TimesStat]{}, kernel: &hostpoll.Handover[kernelCounters]{}}
 	var dataPoints []data_store.DataPoint
 	now := time.Now()
 	if err := u.collectKernelCounters(&dataPoints, now, []tags.Tag{{Key: "host", Value: "test"}}); err != nil {
