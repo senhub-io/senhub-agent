@@ -154,3 +154,25 @@ func TestSweepRetryDelay(t *testing.T) {
 		}
 	}
 }
+
+// A device identified earlier that stops answering: each metric column
+// waited for the request timeout and its retries, past the poll interval
+// on a device with a few dozen columns. The first timed-out read now ends
+// the cycle's walks.
+func TestACycleOnASilentDeviceStopsAtItsFirstTimeout(t *testing.T) {
+	dev := silentDevice()
+	cfg := &config{MIBs: []string{"if-mib"}}
+	_, answered := collect(dev, cfg, "192.0.2.10:161", "name:sw1", nil, time.Now(), testLogger(t))
+	if answered {
+		t.Error("a silent device reported as answering")
+	}
+	if dev.reads != 1 {
+		t.Errorf("%d reads reached a silent device in one cycle, want 1", dev.reads)
+	}
+
+	refusing := &sweepCountingClient{fakeClient: &fakeClient{walkErr: errors.New("authorizationError")}}
+	_, _ = collect(refusing, cfg, "192.0.2.10:161", "name:sw1", nil, time.Now(), testLogger(t))
+	if _, walks := buildPlan(cfg); refusing.reads != len(walks) {
+		t.Errorf("%d reads for %d columns: an error that is not a timeout must not end the cycle", refusing.reads, len(walks))
+	}
+}

@@ -134,7 +134,8 @@ topology is swept at most once per `topology_interval`, inside a poll
 cycle. A sweep stops its walks once it has run for `interval` (30
 seconds at least) and still reads the device identity. It stops at its
 first read that times out when the device has answered nothing yet, so
-an unreachable device costs one `timeout` and its retries per attempt.
+an unreachable device costs one `timeout` and its retries per attempt;
+a poll cycle stops its walks the same way.
 After a failed sweep the next attempt comes at the next cycle, then twice
 as late each time, up to five minutes, until the device answers.
 `mib_paths` is read locally; the probe never fetches a MIB over the
