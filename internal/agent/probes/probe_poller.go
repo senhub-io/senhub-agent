@@ -47,6 +47,10 @@ type ProbePoller struct {
 	// governance-only change on reload reaches the next emission without
 	// restarting the probe.
 	governanceAttrs atomic.Pointer[map[string]any]
+	// stopped is set by Shutdown. A collection still blocked when the
+	// stop budget ran out returns later; what it brings back belongs to
+	// a probe that no longer runs and is dropped.
+	stopped atomic.Bool
 }
 
 // probeCadenceSource wraps a probe entity source so it also reports the
@@ -251,6 +255,7 @@ func (p *ProbePoller) Start(ctx context.Context) error {
 		return nil
 	}
 
+	p.stopped.Store(false)
 	if err := p.scheduler.Start(ctx); err != nil {
 		return err
 	}
@@ -352,6 +357,10 @@ func (p *ProbePoller) collect() error {
 	defer span.End()
 
 	data, err := p.Probe.Collect()
+	if p.stopped.Load() {
+		p.moduleLogger.Debug().Msg("Collection ended after the probe stopped; result dropped")
+		return nil
+	}
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -586,6 +595,7 @@ func (p *ProbePoller) getWrappedCallback() func([]datapoint.DataPoint) error {
 // the consumer, reloads duplicate sources).
 func (p *ProbePoller) Shutdown(ctx context.Context) error {
 	p.moduleLogger.Debug().Msg("Shutting down probe")
+	p.stopped.Store(true)
 
 	if p.unregisterEntitySource != nil {
 		p.unregisterEntitySource()
