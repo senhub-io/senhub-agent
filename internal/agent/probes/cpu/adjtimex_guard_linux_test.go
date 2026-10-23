@@ -50,8 +50,8 @@ func TestAdjtimexSurvivable(t *testing.T) {
 		{name: "no filter skips the child", seccomp: "0", child: shell("exit 0")},
 		{name: "filter, child succeeds", seccomp: "2", child: shell("exit 0"), wantChild: true},
 		{name: "filter, child gets EPERM", seccomp: "2", child: shell("exit 1"), wantChild: true},
-		{name: "filter, child killed by SIGSYS", seccomp: "2", child: shell("kill -SYS $$"), wantChild: true, wantErr: errAdjtimexForbidden},
-		{name: "unreadable status still probes", seccomp: "", child: shell("kill -SYS $$"), wantChild: true, wantErr: errAdjtimexForbidden},
+		{name: "filter, child killed by SIGSYS", seccomp: "2", child: shell("ulimit -c 0; kill -SYS $$"), wantChild: true, wantErr: errAdjtimexForbidden},
+		{name: "unreadable status still probes", seccomp: "", child: shell("ulimit -c 0; kill -SYS $$"), wantChild: true, wantErr: errAdjtimexForbidden},
 		{name: "child cannot start", seccomp: "2", child: func() error { return exec.Command("/nonexistent/senhub").Run() }, wantChild: true, wantAnyEr: true},
 	}
 	for _, tt := range tests {
