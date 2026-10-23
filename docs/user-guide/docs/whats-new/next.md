@@ -22,5 +22,6 @@ Changes land here as they are merged.
 
 ## Fixes
 
+- **An unreachable SNMP device no longer stalls its probe for minutes.** `snmp_poll` swept the topology of a device that answered nothing with a dozen reads in a row, each waiting for `timeout` and its `retries`, inside the poll cycle, and tried again on every cycle. A sweep now stops at its first read that times out, stops its walks once it has run for one poll interval, and after a failure is tried again at the next cycle, then twice as late each time, up to five minutes.
 - **Windows: `install` from the ZIP no longer runs over another install.** On a machine where a `senhub-agent` service from another install is already registered (the MSI, or a ZIP extracted elsewhere), `senhub-agent.exe install` now stops without changing anything, and says how to upgrade that install instead.
 - **`install --ok-if-unchanged`.** Run again on a machine already in the requested state, `install` exits `3` and writes nothing. With the new flag it exits `0` instead, as `config init --ok-if-unchanged` already did, for GPO, SCCM or Intune scripts that read any other code as a failure. See [Exit codes](../cli.md#exit-codes).
