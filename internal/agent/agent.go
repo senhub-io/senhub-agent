@@ -207,12 +207,14 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 // services is the ordered service set. Start brings them up in this
 // order and Shutdown tears them down in reverse, so producers (probes)
 // stop before the consumer (data store) and the configuration provider
-// outlives everything that reads it.
+// outlives everything that reads it. The probes come last: a probe whose
+// start is slow must not keep the status channel, the entity detector,
+// the updater or an extension (remote management among them) from
+// running, and those keep reporting while the probes stop.
 func (a agent) services() []Service {
 	servicesToStart := []Service{
 		a.localConfiguration,
 		a.store,
-		a.sensors,
 	}
 	if a.statusChan != nil {
 		servicesToStart = append(servicesToStart, a.statusChan)
@@ -224,7 +226,8 @@ func (a agent) services() []Service {
 		a.logger.Info().Msg("Adding auto-updater to services")
 		servicesToStart = append(servicesToStart, a.updater)
 	}
-	return append(servicesToStart, a.extensions...)
+	servicesToStart = append(servicesToStart, a.extensions...)
+	return append(servicesToStart, a.sensors)
 }
 
 // StopBudget is the wall-clock the caller must allow for Shutdown: the
