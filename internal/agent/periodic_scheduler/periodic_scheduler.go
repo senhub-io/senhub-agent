@@ -53,7 +53,6 @@ type periodicScheduler struct {
 	started bool
 	logger  *logger.Logger
 	config  PeriodicSchedulerConfig
-	ticker  *time.Ticker
 	// runCtx is the scheduler's own cancellation root, derived from
 	// the context Start received. It is the SINGLE termination signal
 	// for everything the scheduler owns: the tick goroutine and any
@@ -124,24 +123,16 @@ func (l *periodicScheduler) Start(ctx context.Context) error {
 		}
 	}
 
-	if l.config.ExecuteOnStart {
+	initialCall := l.config.ExecuteOnStart
+	if initialCall && l.config.FailOnStartError {
+		initialCall = false
 		l.logger.Info().Msg("Initial call")
-		// Do onStart call
 		if err := l.doCall(); err != nil {
-			if l.config.FailOnStartError {
-				return fmt.Errorf("Initial call failed: %w", err)
-			}
-			// The first collect failing is the moment an operator most
-			// needs to hear about; the log line was unreachable behind a
-			// condition that had already returned.
-			l.logger.Error().Err(err).Msg("Initial call failed")
+			return fmt.Errorf("Initial call failed: %w", err)
 		}
 	}
 
-	if err := l.setupIntervalCall(); err != nil {
-		return fmt.Errorf("Unable to setup interval call %w", err)
-	}
-
+	l.run(initialCall)
 	return nil
 }
 
@@ -156,16 +147,18 @@ func (l *periodicScheduler) doCall() error {
 	return nil
 }
 
-func (l *periodicScheduler) setupIntervalCall() error {
+// run starts the goroutine that makes the initial call, when asked, and
+// then one call per interval. The initial call runs there rather than in
+// Start: a probe whose first collection hangs on an unreachable target
+// would otherwise hold Start, and with it the sensor lock and every
+// service started after the sensor.
+func (l *periodicScheduler) run(initialCall bool) {
 	if l.config.Interval == 0 {
 		l.logger.Info().Msg("No interval set")
-		return nil
+		if !initialCall {
+			return
+		}
 	}
-
-	l.ticker = time.NewTicker(l.config.Interval)
-	errorCount := 0
-	backoffTicks := 0  // current backoff width in ticks (0 = none)
-	skipRemaining := 0 // ticks left to skip before the next attempt
 
 	// done and the run context are captured here, not read from the
 	// struct inside the goroutine: a Shutdown/Start restart cycle
@@ -175,7 +168,7 @@ func (l *periodicScheduler) setupIntervalCall() error {
 	done := make(chan struct{})
 	l.done = done
 
-	go func(ticker *time.Ticker, runCtx context.Context, done chan struct{}) {
+	go func(runCtx context.Context, done chan struct{}) {
 		defer close(done)
 		stopped := false
 		// Recover from any panic in Execute so a buggy probe collector
@@ -195,6 +188,28 @@ func (l *periodicScheduler) setupIntervalCall() error {
 				l.logger.Warn().Msg("scheduler goroutine exited without quit signal — probe is now stalled")
 			}
 		}()
+
+		if initialCall && runCtx.Err() == nil {
+			l.logger.Info().Msg("Initial call")
+			if err := l.doCall(); err != nil {
+				// The first collect failing is the moment an operator
+				// most needs to hear about.
+				l.logger.Error().Err(err).Msg("Initial call failed")
+			}
+		}
+		if l.config.Interval == 0 {
+			stopped = true
+			return
+		}
+
+		// The ticker starts after the initial call, so the first tick
+		// comes one interval after it ended, as when that call ran in
+		// Start.
+		ticker := time.NewTicker(l.config.Interval)
+		defer ticker.Stop()
+		errorCount := 0
+		backoffTicks := 0  // current backoff width in ticks (0 = none)
+		skipRemaining := 0 // ticks left to skip before the next attempt
 
 		l.logger.Info().
 			Dur("interval", l.config.Interval).
@@ -265,9 +280,7 @@ func (l *periodicScheduler) setupIntervalCall() error {
 				return
 			}
 		}
-	}(l.ticker, runCtx, done)
-
-	return nil
+	}(runCtx, done)
 }
 
 func (l *periodicScheduler) Shutdown(ctx context.Context) error {
@@ -280,11 +293,6 @@ func (l *periodicScheduler) Shutdown(ctx context.Context) error {
 
 	l.logger.Debug().Msg("Shutting down")
 	l.started = false
-
-	if l.ticker != nil {
-		l.ticker.Stop()
-		l.ticker = nil
-	}
 
 	// Cancelling the run context is the single stop signal: it ends the
 	// tick goroutine and closes the channel the OnStart hook parked its
@@ -304,16 +312,20 @@ func (l *periodicScheduler) Shutdown(ctx context.Context) error {
 	// caller's budget. Without this, Shutdown returned while a tick was
 	// still in flight: the next Start raced it, and a leak test could
 	// never observe a settled state.
+	settled := true
 	if l.done != nil {
 		select {
 		case <-l.done:
 		case <-ctx.Done():
+			settled = false
 			l.logger.Warn().Msg("Scheduler goroutine still running when the stop budget expired")
 		}
 		l.done = nil
 	}
 
-	if l.config.ExecuteOnShutdown {
+	// A call still in flight holds the call mutex: a final call would
+	// wait on it past the budget.
+	if l.config.ExecuteOnShutdown && settled {
 		l.logger.Info().Msg("Final call")
 		if err := l.doCall(); err != nil {
 			return fmt.Errorf("Unable to call Execute on shutdown: %w", err)

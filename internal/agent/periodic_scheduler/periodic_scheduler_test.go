@@ -84,12 +84,12 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 
 	t.Run("Start should call Execute if ExecuteOnStart is true", func(t *testing.T) {
 		runCtx := context.Background()
-		called := false
+		var called atomic.Int32
 
 		periodicScheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
 			ExecuteOnStart: true,
 			Execute: func() error {
-				called = true
+				called.Add(1)
 				return nil
 			},
 		}, &logger)
@@ -99,19 +99,19 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 			t.Errorf("PeriodicScheduler.Start() error = %v", err)
 		}
 
-		if !called {
+		if !waitForCalls(&called, 1) {
 			t.Errorf("PeriodicScheduler.Start() should call Execute")
 		}
 	})
 
 	t.Run("Start should call Execute only once if ExecuteOnStart is true", func(t *testing.T) {
 		runCtx := context.Background()
-		called := 0
+		var called atomic.Int32
 
 		periodicScheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
 			ExecuteOnStart: true,
 			Execute: func() error {
-				called += 1
+				called.Add(1)
 				return nil
 			},
 		}, &logger)
@@ -121,7 +121,9 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 			t.Errorf("PeriodicScheduler.Start() error = %v", err)
 		}
 
-		if called != 1 {
+		waitForCalls(&called, 1)
+		_ = periodicScheduler.Shutdown(context.Background())
+		if called.Load() != 1 {
 			t.Errorf("PeriodicScheduler.Start() should call Execute only once")
 		}
 	})
@@ -153,12 +155,12 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 		func(t *testing.T) {
 			runCtx := context.Background()
 			onStartCalled := 0
-			executeCalled := 0
+			var executeCalled atomic.Int32
 
 			periodicScheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
 				ExecuteOnStart: true,
 				Execute: func() error {
-					executeCalled += 1
+					executeCalled.Add(1)
 					return nil
 				},
 				OnStart: func(quitChannel chan struct{}) error {
@@ -177,7 +179,9 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 				t.Errorf("PeriodicScheduler.Start() second call error = %v", err)
 			}
 
-			if executeCalled != 1 {
+			waitForCalls(&executeCalled, 1)
+			_ = periodicScheduler.Shutdown(context.Background())
+			if executeCalled.Load() != 1 {
 				t.Errorf("PeriodicScheduler.Start() should call Execute only once")
 			}
 			if onStartCalled != 1 {
@@ -188,12 +192,12 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 	t.Run("Start should be callabale after Shutdown", func(t *testing.T) {
 		runCtx := context.Background()
 		onStartCalled := 0
-		executeCalled := 0
+		var executeCalled atomic.Int32
 
 		periodicScheduler := NewPeriodicScheduler(PeriodicSchedulerConfig{
 			ExecuteOnStart: true,
 			Execute: func() error {
-				executeCalled += 1
+				executeCalled.Add(1)
 				return nil
 			},
 			OnStart: func(quitChannel chan struct{}) error {
@@ -206,6 +210,7 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 		if err != nil {
 			t.Errorf("PeriodicScheduler.Start() error = %v", err)
 		}
+		waitForCalls(&executeCalled, 1)
 
 		err = periodicScheduler.Shutdown(context.Background())
 		if err != nil {
@@ -217,7 +222,7 @@ func TestPeriodicScheduler_Start(t *testing.T) {
 			t.Errorf("PeriodicScheduler.Start() after Shutdown error = %v", err)
 		}
 
-		if executeCalled != 2 {
+		if !waitForCalls(&executeCalled, 2) {
 			t.Errorf("PeriodicScheduler.Start() should call Execute after Shutdown")
 		}
 		if onStartCalled != 2 {
@@ -800,4 +805,115 @@ func TestPeriodicScheduler_OnStartChannelFreshAfterRestart(t *testing.T) {
 		t.Fatal("second Start handed OnStart an already-closed channel")
 	default:
 	}
+}
+
+// The initial call runs after Start returns: a call that hangs must not
+// hold the caller, and the scheduler stops within the caller's budget.
+func TestPeriodicScheduler_StartDoesNotWaitForTheInitialCall(t *testing.T) {
+	logger := zerolog.New(io.Discard)
+	release := make(chan struct{})
+	defer close(release)
+	var calls atomic.Int32
+	s := NewPeriodicScheduler(PeriodicSchedulerConfig{
+		Interval:       time.Hour,
+		ExecuteOnStart: true,
+		Execute: func() error {
+			calls.Add(1)
+			<-release
+			return nil
+		},
+	}, &logger)
+
+	returned := make(chan error, 1)
+	go func() { returned <- s.Start(context.Background()) }()
+	select {
+	case err := <-returned:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Start waited on the initial call")
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for calls.Load() == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("initial call made %d times, want 1", calls.Load())
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	began := time.Now()
+	if err := s.Shutdown(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if took := time.Since(began); took > time.Second {
+		t.Errorf("Shutdown took %s with a 100ms budget", took)
+	}
+}
+
+// The first tick comes one interval after the initial call ended, as when
+// that call ran inside Start.
+func TestPeriodicScheduler_FirstTickFollowsTheInitialCall(t *testing.T) {
+	logger := zerolog.New(io.Discard)
+	var mu sync.Mutex
+	var at []time.Time
+	s := NewPeriodicScheduler(PeriodicSchedulerConfig{
+		Interval:       100 * time.Millisecond,
+		ExecuteOnStart: true,
+		Execute: func() error {
+			mu.Lock()
+			first := len(at) == 0
+			mu.Unlock()
+			if first {
+				time.Sleep(150 * time.Millisecond)
+			}
+			mu.Lock()
+			at = append(at, time.Now())
+			mu.Unlock()
+			return nil
+		},
+	}, &logger)
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(400 * time.Millisecond)
+	_ = s.Shutdown(context.Background())
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(at) < 2 {
+		t.Fatalf("%d calls, want the initial call and a tick", len(at))
+	}
+	if gap := at[1].Sub(at[0]); gap < 90*time.Millisecond {
+		t.Errorf("first tick %s after the initial call ended, want about one interval", gap)
+	}
+}
+
+// FailOnStartError keeps the initial call inside Start, since its result
+// decides whether Start fails.
+func TestPeriodicScheduler_FailOnStartErrorStillFailsStart(t *testing.T) {
+	logger := zerolog.New(io.Discard)
+	s := NewPeriodicScheduler(PeriodicSchedulerConfig{
+		Interval:         time.Hour,
+		ExecuteOnStart:   true,
+		FailOnStartError: true,
+		Execute:          func() error { return fmt.Errorf("unreachable") },
+	}, &logger)
+	if err := s.Start(context.Background()); err == nil {
+		t.Error("Start succeeded although the initial call failed")
+	}
+	_ = s.Shutdown(context.Background())
+}
+
+// waitForCalls waits for the initial call, which runs after Start
+// returns, and reports whether n calls were made.
+func waitForCalls(calls *atomic.Int32, n int32) bool {
+	deadline := time.Now().Add(2 * time.Second)
+	for calls.Load() < n && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	return calls.Load() == n
 }
