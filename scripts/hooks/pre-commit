@@ -7,8 +7,12 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 RESET='\033[0m'
 
-# Refuse core dumps before anything else, Go files or not.
-"$(git rev-parse --show-toplevel)/scripts/check-core-dumps.sh" --staged
+# Refuse core dumps before anything else, Go files or not. A branch cut
+# before the check existed has no script; the CI job still covers it.
+CORE_CHECK="$(git rev-parse --show-toplevel)/scripts/check-core-dumps.sh"
+if [ -x "$CORE_CHECK" ]; then
+  "$CORE_CHECK" --staged
+fi
 
 # Get staged Go files
 STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR "*.go")
