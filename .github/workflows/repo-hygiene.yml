@@ -1,7 +1,7 @@
 name: Repo-hygiene
 # Cheap guards that the Go matrix cannot catch: committed merge-conflict
-# markers (PR #340 shipped literal <<<<<<< blocks into the docs nav) and
-# a broken MkDocs build. Runs on every PR, including docs-only changes
+# markers (PR #340 shipped literal <<<<<<< blocks into the docs nav),
+# committed core dumps, and a broken MkDocs build. Runs on every PR, including docs-only changes
 # that go-test.yml's paths-ignore skips. See #343.
 on:
   pull_request:
@@ -25,6 +25,13 @@ jobs:
             exit 1
           fi
           echo "No conflict markers."
+
+  core-dumps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Refuse committed core dumps
+        run: scripts/check-core-dumps.sh
 
   docs-build:
     runs-on: ubuntu-latest

@@ -37,6 +37,14 @@ Temporary Items
 # Test binary, built with `go test -c`
 *.test
 
+# Core dumps (a test child killed by a signal in a container writes one
+# into its package directory). `core` would also hide a directory of that
+# name; scripts/check-core-dumps.sh is the check that does not rely on
+# names.
+core
+core.[0-9]*
+*.core
+
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
