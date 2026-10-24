@@ -3,6 +3,7 @@ package http
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -35,6 +36,7 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	// even if a future tracing change introduces a regression.
 	router.Use(TraceRequests)
 	router.Use(NoStore)
+	router.Use(NoReferrer)
 
 	// Always expose health check endpoint
 	router.HandleFunc("/health", h.HandleHealth).Methods("GET")
@@ -397,7 +399,13 @@ func (h *HTTPHandlers) HandleUniversalConfigTest(w http.ResponseWriter, r *http.
 // scattered across the managers that serve it.
 func (h *HTTPHandlers) adminOnly(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := h.strategy.authManager.AuthenticateAdmin(w, r); !ok {
+		key, ok := h.strategy.authManager.AuthenticateAdmin(w, r)
+		if !ok {
+			return
+		}
+		if key != SessionKeyPlaceholder && r.Method == http.MethodGet &&
+			strings.HasPrefix(r.URL.Path, "/web/") && !strings.HasPrefix(r.URL.Path, "/web/"+key+"/assets/") {
+			h.strategy.authManager.startConsoleSession(w, r, key)
 			return
 		}
 		next(w, r)

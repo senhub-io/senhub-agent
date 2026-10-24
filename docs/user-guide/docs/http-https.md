@@ -216,6 +216,8 @@ All API endpoints require a key in the URL path, except `/health`. Two keys exis
 
 ### Web Interface
 
+The administration routes accept the key as `Authorization: Bearer <admin key>` with `_` in the key position of the path (`/api/_/config/probes`), or through the console cookie set when `/web/{admin-key}/` is opened; the key in the path still works. See [Web interface](web-interface.md).
+
 The console answers the administration key only, and is served when both the `web` endpoint and `admin_key` are set.
 
 | Endpoint | Description |

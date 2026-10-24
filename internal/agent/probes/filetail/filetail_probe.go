@@ -112,7 +112,25 @@ func NewFileTailProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 		quit:         make(chan struct{}),
 	}
 	p.SetProbeType(ProbeType)
+	p.warnProtectedHomePaths()
 	return p, nil
+}
+
+// warnProtectedHomePaths names the systemd drop-in when a configured path
+// sits where the packaged unit's ProtectHome hides it. Nothing else says
+// why such a path stays empty.
+func (p *FileTailProbe) warnProtectedHomePaths() {
+	if runtime.GOOS != "linux" {
+		return
+	}
+	for _, configured := range p.config.Paths {
+		dir, hidden := hiddenByProtectHome(configured)
+		if !hidden {
+			continue
+		}
+		p.warn().Str("path", configured).Str("hidden_dir", dir).
+			Msg("Path is under a directory the systemd unit hides with ProtectHome; if the agent runs as a service, add a drop-in (systemctl edit senhub-agent) with [Service] ProtectHome=read-only, then restart")
+	}
 }
 
 // GetTargetStrategies is intentionally NOT overridden: the tailed log

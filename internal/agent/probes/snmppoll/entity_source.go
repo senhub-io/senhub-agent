@@ -127,6 +127,11 @@ type snmpEntitySource struct {
 	// polled, not one topology interval later.
 	cache     sweepResult
 	lastSweep time.Time
+	// sweepFailures counts consecutive failed sweeps; retryAt is the
+	// earliest next attempt after one, so a device that answers nothing
+	// is not walked on every cycle.
+	sweepFailures int
+	retryAt       time.Time
 	// swept marks that at least one sweep succeeded; before that the
 	// empty cache is reported with ok=false.
 	swept bool
@@ -413,26 +418,37 @@ func (s *snmpEntitySource) InterfaceNames() map[string]string {
 // reusing the probe's already-connected client. Called from Collect.
 func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 	s.mu.Lock()
-	due := s.lastSweep.IsZero() || now.Sub(s.lastSweep) >= s.interval
+	due := (s.lastSweep.IsZero() || now.Sub(s.lastSweep) >= s.interval) && !now.Before(s.retryAt)
 	s.mu.Unlock()
 	if !due {
 		return
 	}
 
-	res, ok := s.sweep(client, now)
+	bounded := newSweepClient(client, sweepBudget(s.cfg), time.Now)
+	res, ok := s.sweep(bounded, now)
+	if bounded.cut {
+		s.moduleLogger.Warn().Str("target", s.cfg.Target).Dur("budget", sweepBudget(s.cfg)).
+			Msg("topology sweep reached its budget; remaining walks skipped")
+	}
 	if !ok {
 		// Identity unresolved (device unreachable or rejecting us):
 		// keep the last good snapshot and do NOT stamp lastSweep, so
-		// the next Collect retries instead of waiting a full topology
-		// interval while the consumer's view decays (audit D3).
-		s.moduleLogger.Warn().Str("target", s.cfg.Target).
-			Msg("topology sweep failed; keeping previous snapshot and retrying next cycle")
+		// the retry does not wait a full topology interval while the
+		// consumer's view decays (audit D3). The retry backs off while
+		// failures repeat.
 		s.mu.Lock()
 		if s.failingSince.IsZero() {
 			s.failingSince = now
 		}
+		s.sweepFailures++
+		delay := sweepRetryDelay(s.cfg.Interval, s.sweepFailures)
+		// Half a cycle early: the cycle that falls on retryAt starts a
+		// little before or after it.
+		s.retryAt = now.Add(delay - s.cfg.Interval/2)
 		known := s.deviceID
 		s.mu.Unlock()
+		s.moduleLogger.Warn().Str("target", s.cfg.Target).Bool("silent", bounded.silent).Dur("retry_in", delay).
+			Msg("topology sweep failed; keeping previous snapshot")
 		if s.registry != nil {
 			s.registry.recordUnreachable(known, s.interval, now)
 		}
@@ -449,6 +465,8 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 	s.mu.Lock()
 	s.failingSince = time.Time{}
 	s.silentMarked = false
+	s.sweepFailures = 0
+	s.retryAt = time.Time{}
 	s.cache = res
 	s.deviceID = res.deviceID
 	s.ifNames = res.ifNames
