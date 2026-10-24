@@ -5,19 +5,24 @@ import (
 	"time"
 )
 
-// scheduleState keeps the process-wide probe scheduling counters. The lag map
-// is read-and-reset from BuildAgentRecords: the agentmetrics exposition
-// interval defines the collection window, so no separate timer is needed as
-// long as the builder is called once per exposition cycle.
+// scheduleState keeps the process-wide probe scheduling counters. The lag
+// maxima are windowed per reader: each exposition path (Prometheus, OTLP)
+// reads the maximum since its own previous read, so one reader's read never
+// resets what another reader is about to see.
 var scheduleState = struct {
 	mu sync.Mutex
 
-	inFlight             int64
-	collectLag           map[string]time.Duration
+	inFlight int64
+	// lagSinceStart is the maximum lag per probe since the process
+	// started. A reader seen for the first time starts from it, so its
+	// first window is not blind to the collections that ran before it read.
+	lagSinceStart        map[string]time.Duration
+	lagWindows           map[string]map[string]time.Duration
 	overruns             map[string]uint64
 	firstCollectionDelay map[string]time.Duration
 }{
-	collectLag:           map[string]time.Duration{},
+	lagSinceStart:        map[string]time.Duration{},
+	lagWindows:           map[string]map[string]time.Duration{},
 	overruns:             map[string]uint64{},
 	firstCollectionDelay: map[string]time.Duration{},
 }
@@ -56,9 +61,10 @@ func CollectionsInFlight() int64 {
 	return scheduleState.inFlight
 }
 
-// RecordCollectLag keeps the largest non-negative lag seen since the last
-// TakeCollectLagWindow. A negative lag is treated as 0: scheduling ahead of
-// plan is not a delay, and the key still exists once recorded.
+// RecordCollectLag keeps the largest non-negative lag seen, for every
+// reader window and since the process started. A negative lag is treated as
+// 0: scheduling ahead of plan is not a delay, and the key still exists once
+// recorded.
 func RecordCollectLag(probe string, lag time.Duration) {
 	probe = normalizeProbe(probe)
 	if lag < 0 {
@@ -66,23 +72,39 @@ func RecordCollectLag(probe string, lag time.Duration) {
 	}
 	scheduleState.mu.Lock()
 	defer scheduleState.mu.Unlock()
-	if cur, ok := scheduleState.collectLag[probe]; !ok || lag > cur {
-		scheduleState.collectLag[probe] = lag
+	raiseTo(scheduleState.lagSinceStart, probe, lag)
+	for _, window := range scheduleState.lagWindows {
+		raiseTo(window, probe, lag)
 	}
 }
 
-// TakeCollectLagWindow returns the max lag per probe for the window that just
-// ended and resets every stored max to zero while keeping the probe keys.
-// Keeping keys matters for dashboards: a probe that missed this window must
-// report 0, not disappear until its next lag sample.
-func TakeCollectLagWindow() map[string]float64 {
+func raiseTo(m map[string]time.Duration, probe string, lag time.Duration) {
+	if cur, ok := m[probe]; !ok || lag > cur {
+		m[probe] = lag
+	}
+}
+
+// TakeCollectLagWindow returns the max lag per probe since the previous call
+// with the same reader, and resets that reader's maxima to zero while keeping
+// the probe keys. Keeping keys matters for dashboards: a probe that missed
+// this window must report 0, not disappear until its next lag sample. A
+// reader's first call covers the time since the process started.
+func TakeCollectLagWindow(reader string) map[string]float64 {
 	scheduleState.mu.Lock()
 	defer scheduleState.mu.Unlock()
 
-	out := make(map[string]float64, len(scheduleState.collectLag))
-	for probe, lag := range scheduleState.collectLag {
+	window, ok := scheduleState.lagWindows[reader]
+	if !ok {
+		window = make(map[string]time.Duration, len(scheduleState.lagSinceStart))
+		for probe, lag := range scheduleState.lagSinceStart {
+			window[probe] = lag
+		}
+		scheduleState.lagWindows[reader] = window
+	}
+	out := make(map[string]float64, len(window))
+	for probe, lag := range window {
 		out[probe] = lag.Seconds()
-		scheduleState.collectLag[probe] = 0
+		window[probe] = 0
 	}
 	return out
 }
@@ -142,7 +164,8 @@ func ResetCollectionScheduleForTest() {
 	scheduleState.mu.Lock()
 	defer scheduleState.mu.Unlock()
 	scheduleState.inFlight = 0
-	scheduleState.collectLag = map[string]time.Duration{}
+	scheduleState.lagSinceStart = map[string]time.Duration{}
+	scheduleState.lagWindows = map[string]map[string]time.Duration{}
 	scheduleState.overruns = map[string]uint64{}
 	scheduleState.firstCollectionDelay = map[string]time.Duration{}
 }

@@ -555,6 +555,7 @@ func (s *OTLPSyncStrategy) pushPeriodic(parent context.Context) {
 	probesTotal, probesHealthy := agentstate.GetProbeCounts()
 	agentRecords := agentmetrics.BuildAgentRecords(agentmetrics.AgentMetricsSnapshot{
 		StartTime:     s.startTime,
+		Reader:        "otlp",
 		ProbesTotal:   probesTotal,
 		ProbesHealthy: probesHealthy,
 		BuildVersion:  cliArgs.Version,

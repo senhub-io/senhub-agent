@@ -544,3 +544,40 @@ func TestBuildAgentRecords_CollectSchedulingMetricsEmittedWhenTouched(t *testing
 		t.Errorf("second lag window = %v, want cpu=0 memory=0 with keys kept", lagsAfter)
 	}
 }
+
+func collectLagByProbe(recs []otelmapper.OtelRecord) map[string]float64 {
+	out := map[string]float64{}
+	for _, r := range recs {
+		if r.Name == "senhub.agent.collect.lag" {
+			out[r.Attributes["probe"]] = r.Value
+		}
+	}
+	return out
+}
+
+// Prometheus and OTLP both call the builder: a read by one must not reset
+// the window the other is about to report.
+func TestCollectLagWindowIsPerReader(t *testing.T) {
+	resetTouchedCountersForTest(t)
+	agentstate.ResetCollectionScheduleForTest()
+	t.Cleanup(agentstate.ResetCollectionScheduleForTest)
+
+	prom := AgentMetricsSnapshot{StartTime: time.Now(), Reader: "prometheus"}
+	otlp := AgentMetricsSnapshot{StartTime: time.Now(), Reader: "otlp"}
+
+	agentstate.RecordCollectLag("cpu", 4*time.Second)
+	collectLagByProbe(BuildAgentRecords(prom))
+	collectLagByProbe(BuildAgentRecords(otlp))
+
+	agentstate.RecordCollectLag("cpu", 2*time.Second)
+	if got := collectLagByProbe(BuildAgentRecords(prom))["cpu"]; got != 2 {
+		t.Fatalf("prometheus window = %v, want 2", got)
+	}
+	agentstate.RecordCollectLag("cpu", time.Second)
+	if got := collectLagByProbe(BuildAgentRecords(prom))["cpu"]; got != 1 {
+		t.Fatalf("prometheus next window = %v, want 1", got)
+	}
+	if got := collectLagByProbe(BuildAgentRecords(otlp))["cpu"]; got != 2 {
+		t.Fatalf("otlp window = %v, want 2 (the max since its own previous read)", got)
+	}
+}

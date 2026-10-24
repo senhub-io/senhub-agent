@@ -24,6 +24,11 @@ type AgentMetricsSnapshot struct {
 	// StartTime is when the agent process started. Used to compute uptime.
 	StartTime time.Time
 
+	// Reader names the exposition path building these records
+	// ("prometheus", "otlp"). Each reader has its own collect-lag window:
+	// it sees the maximum since its own previous read.
+	Reader string
+
 	// CacheEntries is the total number of distinct time series in the
 	// shared MetricCache (from MetricCache.GetCacheInfo().TotalMetrics).
 	CacheEntries int
@@ -150,9 +155,10 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 	}
 
 	// Probe scheduling self-metrics. The lag window is read-and-reset here
-	// (as opposed to a getter) so each emission window captures the max
-	// between two BuildAgentRecords calls; keys survive the reset so a
-	// probe that missed a window reports 0 instead of disappearing.
+	// (as opposed to a getter) per reader, so each emission window captures
+	// the max between two BuildAgentRecords calls of the same reader; keys
+	// survive the reset so a probe that missed a window reports 0 instead
+	// of disappearing.
 	records = append(records, otelmapper.OtelRecord{
 		Name:        "senhub.agent.collect.in_flight",
 		Unit:        "{collection}",
@@ -162,7 +168,7 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 		Description: "Number of probe collections running at this instant.",
 	})
 
-	lagWindow := agentstate.TakeCollectLagWindow()
+	lagWindow := agentstate.TakeCollectLagWindow(snap.Reader)
 	for probe, seconds := range lagWindow {
 		records = append(records, otelmapper.OtelRecord{
 			Name: "senhub.agent.collect.lag",
@@ -172,7 +178,7 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 				"probe": probe,
 			},
 			Value:       seconds,
-			Description: "Maximum, over the collection window (the interval between two emissions of agent metrics), of the actual start of a probe collection minus its planned start, by probe type. 0 when no collection started in the window.",
+			Description: "Maximum, over the window since the previous read of agent metrics by the same reader (Prometheus scrape or OTLP push), of the actual start of a probe collection minus its planned start, by probe type. 0 when no collection started in the window.",
 		})
 	}
 

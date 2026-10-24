@@ -36,7 +36,7 @@ func TestScheduleObserver(t *testing.T) {
 		t.Errorf("first collection delay = %f, want about 0.03s", firstDelay)
 	}
 
-	lagWindow := agentstate.TakeCollectLagWindow()
+	lagWindow := agentstate.TakeCollectLagWindow("test")
 	lag, ok := lagWindow[probe]
 	if !ok || lag <= 0 {
 		t.Errorf("collect lag not recorded for probe %q: %v", probe, lagWindow)

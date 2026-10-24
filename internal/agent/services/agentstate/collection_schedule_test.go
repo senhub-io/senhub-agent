@@ -41,18 +41,18 @@ func TestRecordCollectLagWindowMaxAndResetKeepKeys(t *testing.T) {
 	RecordCollectLag("cpu", -time.Second) // counts as 0; max stays 2.5s
 	RecordCollectLag("memory", 800*time.Millisecond)
 
-	got := TakeCollectLagWindow()
+	got := TakeCollectLagWindow("r")
 	if got["cpu"] != 2.5 || got["memory"] != 0.8 || len(got) != 2 {
 		t.Fatalf("first window = %v, want cpu=2.5 memory=0.8", got)
 	}
 
-	got = TakeCollectLagWindow()
+	got = TakeCollectLagWindow("r")
 	if got["cpu"] != 0 || got["memory"] != 0 || len(got) != 2 {
 		t.Fatalf("second window = %v, want cpu=0 memory=0 with keys kept", got)
 	}
 
 	RecordCollectLag("cpu", 1200*time.Millisecond)
-	got = TakeCollectLagWindow()
+	got = TakeCollectLagWindow("r")
 	if got["cpu"] != 1.2 || got["memory"] != 0 || len(got) != 2 {
 		t.Fatalf("window after new cpu sample = %v, want cpu=1.2 memory=0", got)
 	}
@@ -66,7 +66,7 @@ func TestCollectionScheduleEmptyProbeBecomesUnknown(t *testing.T) {
 	IncrementCollectOverruns("", 1)
 	RecordFirstCollectionDelay("", time.Second)
 
-	if _, ok := TakeCollectLagWindow()["unknown"]; !ok {
+	if _, ok := TakeCollectLagWindow("r")["unknown"]; !ok {
 		t.Fatal("empty probe should be recorded under unknown in the lag window")
 	}
 	if _, ok := GetCollectOverruns()["unknown"]; !ok {
@@ -107,6 +107,34 @@ func TestRecordFirstCollectionDelayKeepsMax(t *testing.T) {
 	}
 }
 
+func TestCollectLagWindowsAreIndependentPerReader(t *testing.T) {
+	ResetCollectionScheduleForTest()
+	t.Cleanup(ResetCollectionScheduleForTest)
+
+	RecordCollectLag("cpu", 3*time.Second)
+	if got := TakeCollectLagWindow("prometheus")["cpu"]; got != 3 {
+		t.Fatalf("prometheus first window = %v, want 3 (everything since the process start)", got)
+	}
+	if got := TakeCollectLagWindow("otlp")["cpu"]; got != 3 {
+		t.Fatalf("otlp first window = %v, want 3", got)
+	}
+
+	RecordCollectLag("cpu", 2*time.Second)
+	if got := TakeCollectLagWindow("prometheus")["cpu"]; got != 2 {
+		t.Fatalf("prometheus second window = %v, want 2", got)
+	}
+
+	RecordCollectLag("cpu", time.Second)
+	if got := TakeCollectLagWindow("prometheus")["cpu"]; got != 1 {
+		t.Fatalf("prometheus third window = %v, want 1", got)
+	}
+	// otlp has not read since the 3s window: it sees the max of 2s and 1s,
+	// untouched by the two prometheus reads in between.
+	if got := TakeCollectLagWindow("otlp")["cpu"]; got != 2 {
+		t.Fatalf("otlp second window = %v, want 2", got)
+	}
+}
+
 func TestResetCollectionScheduleForTestClearsAll(t *testing.T) {
 	CollectionStarted()
 	RecordCollectLag("cpu", time.Second)
@@ -119,7 +147,7 @@ func TestResetCollectionScheduleForTestClearsAll(t *testing.T) {
 	if got := CollectionsInFlight(); got != 0 {
 		t.Errorf("in-flight after reset = %d, want 0", got)
 	}
-	if got := TakeCollectLagWindow(); len(got) != 0 {
+	if got := TakeCollectLagWindow("r"); len(got) != 0 {
 		t.Errorf("lag window after reset = %v, want empty", got)
 	}
 	if got := GetCollectOverruns(); len(got) != 0 {
@@ -163,7 +191,7 @@ func TestCollectionScheduleConcurrent(t *testing.T) {
 		t.Errorf("overruns[cpu] = %d, want %d", overruns["cpu"], workers*loops)
 	}
 
-	lag := TakeCollectLagWindow()
+	lag := TakeCollectLagWindow("r")
 	if want := (16 * time.Millisecond).Seconds(); lag["cpu"] != want {
 		t.Errorf("lag[cpu] = %v, want %v", lag["cpu"], want)
 	}
