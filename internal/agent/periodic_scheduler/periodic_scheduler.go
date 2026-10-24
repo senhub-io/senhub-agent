@@ -17,11 +17,7 @@ import (
 const maxBackoffTicks = 8
 
 type PeriodicSchedulerCall func() error
-
-// PeriodicSchedulerCallContext is a call that honours the context the
-// scheduler hands it: cancelled when the scheduler stops, and carrying the
-// call deadline when CallTimeout is set.
-type PeriodicSchedulerCallContext func(ctx context.Context) error
+type PeriodicSchedulerContextCall func(ctx context.Context) error
 type PeriodicSchedulerOnStart func(quitChannel chan struct{}) error
 type PeriodicSchedulerOnShutdown func(ctx context.Context) error
 
@@ -56,9 +52,10 @@ type PeriodicSchedulerConfig struct {
 	MaxRetries int
 	// Execute to be made periodically
 	Execute PeriodicSchedulerCall
-	// ExecuteContext, when set, is made instead of Execute and receives
-	// the call context.
-	ExecuteContext PeriodicSchedulerCallContext
+	// ExecuteContext replaces Execute when set. It receives the
+	// scheduler's run context, which Shutdown cancels before waiting
+	// for the call in flight, so a call that honours it stops early.
+	ExecuteContext PeriodicSchedulerContextCall
 	// CallTimeout is the deadline of each call's context. Zero means no
 	// deadline. It bounds what a call that honours its context does; the
 	// scheduler never abandons a call that ignores it.
@@ -401,6 +398,8 @@ func (l *periodicScheduler) Shutdown(ctx context.Context) error {
 	// wait on it past the budget.
 	if l.config.ExecuteOnShutdown && settled {
 		l.logger.Info().Msg("Final call")
+		// The run context is already cancelled here; the final call
+		// is bounded by the caller's stop budget instead.
 		if err := l.doCall(ctx); err != nil {
 			return fmt.Errorf("Unable to call Execute on shutdown: %w", err)
 		}

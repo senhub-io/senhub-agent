@@ -3,6 +3,7 @@ package redis
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -165,7 +166,7 @@ func TestCollectKeysOnSuccess(t *testing.T) {
 	p := probeIntf.(*redisProbe)
 
 	client, serverErrCh := runFakeRedis(infoBody, cmdStatsBody)
-	p.dialFn = func(network, address string, timeout time.Duration) (net.Conn, error) {
+	p.dialFn = func(_ context.Context, network, address string, timeout time.Duration) (net.Conn, error) {
 		return client, nil
 	}
 
@@ -200,7 +201,7 @@ func TestCollectKeysOnConnectionFailure(t *testing.T) {
 	p := probeIntf.(*redisProbe)
 
 	dialErr := &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}
-	p.dialFn = func(network, address string, timeout time.Duration) (net.Conn, error) {
+	p.dialFn = func(_ context.Context, network, address string, timeout time.Duration) (net.Conn, error) {
 		return nil, dialErr
 	}
 
@@ -253,7 +254,7 @@ func TestDownServerWarnsOncePerOutage(t *testing.T) {
 	p.moduleLogger = logger.NewModuleLogger(&base, "probe.test")
 
 	dialErr := &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}
-	p.dialFn = func(string, string, time.Duration) (net.Conn, error) { return nil, dialErr }
+	p.dialFn = func(context.Context, string, string, time.Duration) (net.Conn, error) { return nil, dialErr }
 	for i := 0; i < 10; i++ {
 		points, err := p.Collect()
 		if err != nil {
@@ -263,7 +264,7 @@ func TestDownServerWarnsOncePerOutage(t *testing.T) {
 	}
 
 	client, serverErrCh := runFakeRedis("redis_version:7.2.0\r\nrole:master\r\n", "")
-	p.dialFn = func(string, string, time.Duration) (net.Conn, error) { return client, nil }
+	p.dialFn = func(context.Context, string, string, time.Duration) (net.Conn, error) { return client, nil }
 	if _, err := p.Collect(); err != nil {
 		t.Fatalf("Collect: %v", err)
 	}

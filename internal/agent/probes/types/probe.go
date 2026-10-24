@@ -43,9 +43,16 @@ type Probe interface {
 	EntitySource() entity.Source
 }
 
-// ContextCollector is implemented by a probe whose collection can stop on
-// a context. The poller prefers it to Collect and hands it a context that
-// ends at the collection deadline or when the probe stops.
+// ContextCollector is implemented by a probe whose collection can be
+// cancelled. ProbePoller calls CollectContext instead of Collect when the
+// probe implements it; the context ends when the agent stops, when the
+// probe is shut down (reload) or at a backstop deadline, and carries the
+// probe.collect span. The probe returns promptly once it ends, with an
+// error wrapping ctx.Err().
+//
+// It is optional because Probe is implemented outside this repository:
+// a probe that implements it keeps Collect, delegating to
+// CollectContext(context.Background()).
 type ContextCollector interface {
 	CollectContext(ctx context.Context) ([]datapoint.DataPoint, error)
 }
