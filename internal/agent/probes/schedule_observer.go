@@ -1,23 +1,18 @@
 package probes
 
 import (
-	"sync/atomic"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
 )
 
 type scheduleObserver struct {
-	probe string
-	start atomic.Int64
+	probe    string
+	instance string
 }
 
-func newScheduleObserver(probeType string) *scheduleObserver {
-	return &scheduleObserver{probe: probeType}
-}
-
-func (o *scheduleObserver) markStart() {
-	o.start.Store(time.Now().UnixNano())
+func newScheduleObserver(probeType, instance string) *scheduleObserver {
+	return &scheduleObserver{probe: probeType, instance: instance}
 }
 
 func (o *scheduleObserver) CallStarted(lag time.Duration) {
@@ -28,9 +23,7 @@ func (o *scheduleObserver) CallStarted(lag time.Duration) {
 func (o *scheduleObserver) CallEnded(first bool) {
 	agentstate.CollectionEnded()
 	if first {
-		if start := o.start.Load(); start != 0 {
-			agentstate.RecordFirstCollectionDelay(o.probe, time.Since(time.Unix(0, start)))
-		}
+		agentstate.RecordFirstCollectionEnd(o.probe, o.instance, time.Now())
 	}
 }
 

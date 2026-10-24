@@ -468,9 +468,10 @@ func TestBuildAgentRecords_CollectSchedulingMetricsEmittedWhenTouched(t *testing
 	agentstate.IncrementCollectOverruns("cpu", 3)
 	agentstate.IncrementCollectOverruns("cpu", -2)
 	agentstate.IncrementCollectOverruns("memory", 0)
-	agentstate.RecordFirstCollectionDelay("cpu", 2*time.Second)
-	agentstate.RecordFirstCollectionDelay("cpu", 3*time.Second)
-	agentstate.RecordFirstCollectionDelay("memory", 750*time.Millisecond)
+	processStart := agentstate.ProcessStart()
+	agentstate.RecordFirstCollectionEnd("cpu", "a", processStart.Add(2*time.Second))
+	agentstate.RecordFirstCollectionEnd("cpu", "b", processStart.Add(3*time.Second))
+	agentstate.RecordFirstCollectionEnd("memory", "a", processStart.Add(750*time.Millisecond))
 	agentstate.CollectionStarted()
 	agentstate.CollectionStarted()
 

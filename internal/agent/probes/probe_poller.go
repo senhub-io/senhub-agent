@@ -189,7 +189,7 @@ func NewProbePoller(
 	}
 
 	probePoller.ApplyGovernance(config)
-	probePoller.observer = newScheduleObserver(probePoller.probeType())
+	probePoller.observer = newScheduleObserver(probePoller.probeType(), probeId)
 
 	// Two probes of one type share the module logger; the scheduler's retry
 	// and error lines must say which of them failed.
@@ -262,7 +262,6 @@ func (p *ProbePoller) Start(ctx context.Context) error {
 	}
 
 	p.stopped.Store(false)
-	p.observer.markStart()
 	if err := p.scheduler.Start(ctx); err != nil {
 		return err
 	}

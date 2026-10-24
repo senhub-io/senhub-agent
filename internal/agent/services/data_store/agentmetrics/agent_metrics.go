@@ -204,7 +204,7 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 				"probe": probe,
 			},
 			Value:       seconds,
-			Description: "Time from the agent start to the end of the first collection of the probe, by probe type. Recorded once per start and per probe (the maximum across instances of the same type), then emitted unchanged.",
+			Description: "Time from the process start to the end of the first collection of the probe, by probe type. Recorded once per process and per probe instance (the maximum across instances of the same type), then emitted unchanged.",
 		})
 	}
 

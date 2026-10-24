@@ -1,6 +1,7 @@
 package agentstate
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -64,7 +65,7 @@ func TestCollectionScheduleEmptyProbeBecomesUnknown(t *testing.T) {
 
 	RecordCollectLag("", time.Second)
 	IncrementCollectOverruns("", 1)
-	RecordFirstCollectionDelay("", time.Second)
+	RecordFirstCollectionEnd("", "i", time.Now())
 
 	if _, ok := TakeCollectLagWindow("r")["unknown"]; !ok {
 		t.Fatal("empty probe should be recorded under unknown in the lag window")
@@ -92,18 +93,41 @@ func TestIncrementCollectOverrunsAccumulatesAndIgnoresNonPositive(t *testing.T) 
 	}
 }
 
-func TestRecordFirstCollectionDelayKeepsMax(t *testing.T) {
+func withProcessStart(t *testing.T, start time.Time) {
+	t.Helper()
 	ResetCollectionScheduleForTest()
-	t.Cleanup(ResetCollectionScheduleForTest)
+	prev := ProcessStart()
+	SetProcessStartForTest(start)
+	t.Cleanup(func() {
+		SetProcessStartForTest(prev)
+		ResetCollectionScheduleForTest()
+	})
+}
 
-	RecordFirstCollectionDelay("cpu", 1100*time.Millisecond)
-	RecordFirstCollectionDelay("cpu", 2200*time.Millisecond)
-	RecordFirstCollectionDelay("cpu", 1800*time.Millisecond)
-	RecordFirstCollectionDelay("memory", 500*time.Millisecond)
+func TestFirstCollectionDelayIsMeasuredFromProcessStartAndKeepsMax(t *testing.T) {
+	start := time.Date(2026, 10, 24, 8, 0, 0, 0, time.UTC)
+	withProcessStart(t, start)
+
+	RecordFirstCollectionEnd("cpu", "a", start.Add(1100*time.Millisecond))
+	RecordFirstCollectionEnd("cpu", "b", start.Add(2200*time.Millisecond))
+	RecordFirstCollectionEnd("cpu", "c", start.Add(1800*time.Millisecond))
+	RecordFirstCollectionEnd("memory", "a", start.Add(500*time.Millisecond))
 
 	got := GetFirstCollectionDelays()
 	if got["cpu"] != 2.2 || got["memory"] != 0.5 || len(got) != 2 {
 		t.Fatalf("first delays = %v, want cpu=2.2 memory=0.5", got)
+	}
+}
+
+func TestFirstCollectionDelayIsRecordedOncePerInstance(t *testing.T) {
+	start := time.Date(2026, 10, 24, 8, 0, 0, 0, time.UTC)
+	withProcessStart(t, start)
+
+	RecordFirstCollectionEnd("cpu", "a", start.Add(time.Second))
+	RecordFirstCollectionEnd("cpu", "a", start.Add(time.Hour)) // a reload of the same probe
+
+	if got := GetFirstCollectionDelays()["cpu"]; got != 1 {
+		t.Fatalf("first delay = %v, want 1 (a later call of the same instance must not count)", got)
 	}
 }
 
@@ -139,7 +163,7 @@ func TestResetCollectionScheduleForTestClearsAll(t *testing.T) {
 	CollectionStarted()
 	RecordCollectLag("cpu", time.Second)
 	IncrementCollectOverruns("cpu", 2)
-	RecordFirstCollectionDelay("cpu", 3*time.Second)
+	RecordFirstCollectionEnd("cpu", "i", time.Now())
 
 	ResetCollectionScheduleForTest()
 	t.Cleanup(ResetCollectionScheduleForTest)
@@ -175,7 +199,7 @@ func TestCollectionScheduleConcurrent(t *testing.T) {
 				CollectionEnded()
 				RecordCollectLag("cpu", time.Duration(i%17)*time.Millisecond)
 				IncrementCollectOverruns("cpu", 1)
-				RecordFirstCollectionDelay("cpu", time.Duration(i%11)*time.Millisecond)
+				RecordFirstCollectionEnd("cpu", fmt.Sprint(seed, i%11), time.Now())
 			}
 		}(w)
 	}
@@ -196,8 +220,7 @@ func TestCollectionScheduleConcurrent(t *testing.T) {
 		t.Errorf("lag[cpu] = %v, want %v", lag["cpu"], want)
 	}
 
-	delays := GetFirstCollectionDelays()
-	if want := (10 * time.Millisecond).Seconds(); delays["cpu"] != want {
-		t.Errorf("first delay[cpu] = %v, want %v", delays["cpu"], want)
+	if _, ok := GetFirstCollectionDelays()["cpu"]; !ok {
+		t.Error("first delay[cpu] not recorded")
 	}
 }

@@ -5,6 +5,10 @@ import (
 	"time"
 )
 
+// processStart is taken when the package is loaded, which for the agent is
+// the start of the process. The first-collection delay is measured from it.
+var processStart = time.Now()
+
 // scheduleState keeps the process-wide probe scheduling counters. The lag
 // maxima are windowed per reader: each exposition path (Prometheus, OTLP)
 // reads the maximum since its own previous read, so one reader's read never
@@ -19,12 +23,21 @@ var scheduleState = struct {
 	lagSinceStart        map[string]time.Duration
 	lagWindows           map[string]map[string]time.Duration
 	overruns             map[string]uint64
+	firstCollectionSeen  map[string]bool
 	firstCollectionDelay map[string]time.Duration
 }{
 	lagSinceStart:        map[string]time.Duration{},
 	lagWindows:           map[string]map[string]time.Duration{},
 	overruns:             map[string]uint64{},
+	firstCollectionSeen:  map[string]bool{},
 	firstCollectionDelay: map[string]time.Duration{},
+}
+
+// ProcessStart returns the instant the process started.
+func ProcessStart() time.Time {
+	scheduleState.mu.Lock()
+	defer scheduleState.mu.Unlock()
+	return processStart
 }
 
 // normalizeProbe replaces an empty probe type with the label used by the other
@@ -134,13 +147,21 @@ func GetCollectOverruns() map[string]uint64 {
 	return out
 }
 
-// RecordFirstCollectionDelay keeps the largest first-collection duration seen
-// for a probe type. Several configured instances of one type finish at
-// different times; the maximum is the conservative, useful value.
-func RecordFirstCollectionDelay(probe string, d time.Duration) {
+// RecordFirstCollectionEnd records, for a probe instance, the time from the
+// process start to the end of its first collection. Only the first call per
+// instance counts, so a reload of the same probe does not move the value
+// later. Several instances of one type finish at different times; the
+// maximum across them is kept.
+func RecordFirstCollectionEnd(probe, instance string, ended time.Time) {
 	probe = normalizeProbe(probe)
 	scheduleState.mu.Lock()
 	defer scheduleState.mu.Unlock()
+	key := probe + "\x00" + instance
+	if scheduleState.firstCollectionSeen[key] {
+		return
+	}
+	scheduleState.firstCollectionSeen[key] = true
+	d := max(ended.Sub(processStart), 0)
 	if cur, ok := scheduleState.firstCollectionDelay[probe]; !ok || d > cur {
 		scheduleState.firstCollectionDelay[probe] = d
 	}
@@ -167,5 +188,13 @@ func ResetCollectionScheduleForTest() {
 	scheduleState.lagSinceStart = map[string]time.Duration{}
 	scheduleState.lagWindows = map[string]map[string]time.Duration{}
 	scheduleState.overruns = map[string]uint64{}
+	scheduleState.firstCollectionSeen = map[string]bool{}
 	scheduleState.firstCollectionDelay = map[string]time.Duration{}
+}
+
+// SetProcessStartForTest replaces the process start instant.
+func SetProcessStartForTest(t time.Time) {
+	scheduleState.mu.Lock()
+	defer scheduleState.mu.Unlock()
+	processStart = t
 }
