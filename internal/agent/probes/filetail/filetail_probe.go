@@ -112,6 +112,9 @@ func NewFileTailProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 		quit:         make(chan struct{}),
 	}
 	p.SetProbeType(ProbeType)
+	if w := logparse.MultilineWarning(parsed.Multiline); w != "" {
+		moduleLogger.Warn().Msg(w)
+	}
 	return p, nil
 }
 
@@ -849,10 +852,41 @@ func (p *FileTailProbe) consume(file string, ts *tailState, startOffset int64, f
 		}
 	}
 
+	// idle sends a record in progress once the file has been quiet for
+	// the flush timeout: without it the last message of a quiet file
+	// waited for the next one, possibly days, or for the agent to stop.
+	flushTimeout := p.config.Multiline.FlushTimeout
+	var idle *time.Timer
+	var idleC <-chan time.Time
+	armIdle := func() {
+		if flushTimeout <= 0 {
+			return
+		}
+		if !asm.Pending() {
+			if idle != nil {
+				idle.Stop()
+			}
+			idleC = nil
+			return
+		}
+		if idle == nil {
+			idle = time.NewTimer(flushTimeout)
+		} else {
+			idle.Reset(flushTimeout)
+		}
+		idleC = idle.C
+	}
+	defer func() {
+		if idle != nil {
+			idle.Stop()
+		}
+	}()
+
 	feed := func(text string, readTime time.Time) {
 		for _, logical := range asm.Append(strings.TrimSuffix(text, "\r")) {
 			p.publish(p.config.Parser, logical, readTime, probeName, file)
 		}
+		armIdle()
 	}
 
 	// pollRetired reads what writers still holding a rotated file appended
@@ -943,6 +977,12 @@ read:
 			continue
 		case <-retiredTicker.C:
 			pollRetired()
+			continue
+		case <-idleC:
+			idleC = nil
+			for _, logical := range asm.Flush() {
+				p.publish(p.config.Parser, logical, time.Now(), probeName, file)
+			}
 			continue
 		case <-ticker.C:
 			if dirty {

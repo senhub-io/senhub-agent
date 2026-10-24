@@ -19,6 +19,7 @@ func init() {
 				{Key: "pattern", Kind: probes.KindString, Description: "Regular expression tested against each line", Example: `^\d{4}-\d{2}-\d{2}`},
 				{Key: "negate", Kind: probes.KindBool, Default: false, Description: "Invert the pattern match"},
 				{Key: "match", Kind: probes.KindString, Default: "after", Enum: []string{"after", "before"}, Description: "Whether a matching line starts a record or flushes the previous one"},
+				{Key: "flush_timeout", Kind: probes.KindDuration, Default: "5s", Description: "Send a record in progress once no line has come for this long; 0 waits for the next record"},
 			}},
 			{Key: "parser", Kind: probes.KindBlock, Group: "parsing", Description: "Structured parsing of each record", Fields: []probes.ParamSpec{
 				{Key: "type", Kind: probes.KindString, Default: "raw", Enum: []string{"raw", "regex", "json", "logfmt"}, Description: "Record format"},

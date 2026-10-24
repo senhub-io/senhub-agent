@@ -31,7 +31,7 @@ mode so the producing application is never blocked.
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:d874161f4070f3751bfe0bed7380330677b173bcb843e68572f888646936ccaa -->
+<!-- sha256:55b3f8e9c14d020d239ae8ba0377911c6aabf4bf6bae2256dbbcc3de68d3910c -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -43,6 +43,7 @@ mode so the producing application is never blocked.
 | `multiline.pattern` | No | - | Regular expression tested against each line. Example: `^\d{4}-\d{2}-\d{2}` |
 | `multiline.negate` | No | `false` | Invert the pattern match |
 | `multiline.match` | No | `after` | Whether a matching line starts a record or flushes the previous one. One of `after`, `before` |
+| `multiline.flush_timeout` | No | `5s` | Send a record in progress once no line has come for this long; 0 waits for the next record |
 | `parser` | No | - | Structured parsing of each record |
 | `parser.type` | No | `raw` | Record format. One of `raw`, `regex`, `json`, `logfmt` |
 | `parser.pattern` | No | - | Regular expression with named groups; required for the regex type |
@@ -94,7 +95,28 @@ continuation lines; here the same record is written with `negate: false`:
 ```
 
 Copied as is from Filebeat, `negate: true` takes every stack-trace line
-for the start of a new record.
+for the start of a new record, and folds every timestamped line that
+follows into it, until the next line without a timestamp: a busy log
+then sends nothing for hours or days. `config check` and the probe's
+start warn on that combination (`negate: true`, `match: after`, a
+pattern anchored with `^`).
+
+A record in progress is sent once no line has come for
+`flush_timeout` (5 seconds by default), so the last message of a quiet
+file goes out without waiting for the next one. A writer that pauses
+longer than that in the middle of a message has the lines after the
+pause sent as a record of their own; raise the timeout for it, or set
+`0` to wait for the next message as before:
+
+```yaml
+  multiline:
+    pattern: '^\d{4}-\d{2}-\d{2} '
+    match: after
+    flush_timeout: 30s   # a duration, or a number of seconds; 0 turns it off
+```
+
+A record that would pass `max_bytes_per_line` is sent as it stands and
+the line that did not fit starts the next one; no line is dropped.
 
 ### Structured parsing
 
