@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/subcollect"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -29,6 +30,7 @@ type rabbitProbe struct {
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
 	entitySrc    *rabbitmqEntitySource
+	failures     subcollect.Tracker
 }
 
 type rabbitConfig struct {
@@ -264,12 +266,14 @@ func (p *rabbitProbe) collectOverview(now time.Time) ([]data_store.DataPoint, bo
 	var overview overviewResponse
 	err := p.fetchJSON("/api/overview", &overview)
 	if err != nil {
-		p.moduleLogger.Warn().Err(err).Msg("rabbitmq overview fetch failed")
+		p.failures.Failed(p.moduleLogger, subcollect.Warn, "overview", err, "rabbitmq overview fetch failed")
 		baseTags := append(p.identityTags(), tags.Tag{Key: "metric_type", Value: "overview"})
 		return []data_store.DataPoint{
 			{Name: "senhub.rabbitmq.up", Value: 0, Timestamp: now, Tags: baseTags},
 		}, false, err
 	}
+
+	p.failures.Succeeded(p.moduleLogger, "overview", "rabbitmq overview fetch recovered")
 
 	// Pin the tech id before emitting overview points so they carry the same
 	// identity the entity source will use.
@@ -327,9 +331,10 @@ type nodeResponse struct {
 func (p *rabbitProbe) collectNodes(now time.Time, identityTags []tags.Tag) ([]data_store.DataPoint, error) {
 	var nodes []nodeResponse
 	if err := p.fetchJSON("/api/nodes", &nodes); err != nil {
-		p.moduleLogger.Warn().Err(err).Msg("rabbitmq nodes fetch failed")
+		p.failures.Failed(p.moduleLogger, subcollect.Warn, "nodes", err, "rabbitmq nodes fetch failed")
 		return nil, err
 	}
+	p.failures.Succeeded(p.moduleLogger, "nodes", "rabbitmq nodes fetch recovered")
 
 	var pts []data_store.DataPoint
 	for _, node := range nodes {
@@ -377,9 +382,10 @@ type queueResponse struct {
 func (p *rabbitProbe) collectQueues(now time.Time, identityTags []tags.Tag) ([]data_store.DataPoint, error) {
 	var queues []queueResponse
 	if err := p.fetchJSON("/api/queues", &queues); err != nil {
-		p.moduleLogger.Warn().Err(err).Msg("rabbitmq queues fetch failed")
+		p.failures.Failed(p.moduleLogger, subcollect.Warn, "queues", err, "rabbitmq queues fetch failed")
 		return nil, err
 	}
+	p.failures.Succeeded(p.moduleLogger, "queues", "rabbitmq queues fetch recovered")
 
 	var pts []data_store.DataPoint
 	for _, q := range queues {

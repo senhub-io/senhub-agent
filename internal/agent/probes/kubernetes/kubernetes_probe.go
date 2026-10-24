@@ -23,6 +23,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/subcollect"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -66,6 +67,7 @@ type KubernetesProbe struct {
 	*types.BaseProbe
 	cfg          probeConfig
 	moduleLogger *logger.ModuleLogger
+	subFailures  subcollect.Tracker
 	clientset    kubernetes.Interface
 	// clusterEndpoint is the API server address — a display and fallback
 	// value, NOT the identity (see cluster_uid.go).
@@ -311,11 +313,12 @@ func (p *KubernetesProbe) CollectContext(parent context.Context) ([]data_store.D
 	if p.cfg.CollectNodes {
 		pts, err := p.collectNodes(ctx, now)
 		if err != nil {
-			p.moduleLogger.Warn().Err(err).Msg("kubernetes: node collection failed")
+			p.subFailures.Failed(p.moduleLogger, subcollect.Warn, "nodes", err, "kubernetes: node collection failed")
 			if checkErr == nil {
 				checkErr = err
 			}
 		} else {
+			p.subFailures.Succeeded(p.moduleLogger, "nodes", "kubernetes: node collection recovered")
 			up = 1
 		}
 		points = append(points, pts...)
@@ -324,11 +327,12 @@ func (p *KubernetesProbe) CollectContext(parent context.Context) ([]data_store.D
 	if p.cfg.CollectPods || p.cfg.CollectContainers {
 		pts, err := p.collectPods(ctx, now)
 		if err != nil {
-			p.moduleLogger.Warn().Err(err).Msg("kubernetes: pod collection failed")
+			p.subFailures.Failed(p.moduleLogger, subcollect.Warn, "pods", err, "kubernetes: pod collection failed")
 			if checkErr == nil {
 				checkErr = err
 			}
 		} else {
+			p.subFailures.Succeeded(p.moduleLogger, "pods", "kubernetes: pod collection recovered")
 			up = 1
 		}
 		points = append(points, pts...)
@@ -337,11 +341,12 @@ func (p *KubernetesProbe) CollectContext(parent context.Context) ([]data_store.D
 	if p.cfg.CollectDeployments {
 		pts, err := p.collectDeployments(ctx, now)
 		if err != nil {
-			p.moduleLogger.Warn().Err(err).Msg("kubernetes: deployment collection failed")
+			p.subFailures.Failed(p.moduleLogger, subcollect.Warn, "deployments", err, "kubernetes: deployment collection failed")
 			if checkErr == nil {
 				checkErr = err
 			}
 		} else {
+			p.subFailures.Succeeded(p.moduleLogger, "deployments", "kubernetes: deployment collection recovered")
 			up = 1
 		}
 		points = append(points, pts...)
@@ -370,13 +375,16 @@ func (p *KubernetesProbe) CollectContext(parent context.Context) ([]data_store.D
 		// discard the ones it can. The error is logged so a permission gap
 		// surfaces instead of presenting as an empty cluster.
 		if err != nil {
-			p.moduleLogger.Warn().Err(err).Str("kind", w.name).
-				Msg("kubernetes: workload collection partially failed")
+			p.subFailures.Failed(p.moduleLogger, subcollect.Warn, w.name, err,
+				"kubernetes: workload collection partially failed")
 			if checkErr == nil {
 				checkErr = err
 			}
-		} else if len(pts) > 0 {
-			up = 1
+		} else {
+			p.subFailures.Succeeded(p.moduleLogger, w.name, "kubernetes: workload collection recovered")
+			if len(pts) > 0 {
+				up = 1
+			}
 		}
 		points = append(points, pts...)
 	}
@@ -386,10 +394,12 @@ func (p *KubernetesProbe) CollectContext(parent context.Context) ([]data_store.D
 	// message, which is the part that explains the metric.
 	if p.cfg.CollectEvents {
 		if err := p.collectEvents(ctx, now); err != nil {
-			p.moduleLogger.Warn().Err(err).Msg("kubernetes: event collection partially failed")
+			p.subFailures.Failed(p.moduleLogger, subcollect.Warn, "events", err, "kubernetes: event collection partially failed")
 			if checkErr == nil {
 				checkErr = err
 			}
+		} else {
+			p.subFailures.Succeeded(p.moduleLogger, "events", "kubernetes: event collection recovered")
 		}
 	}
 
@@ -464,19 +474,17 @@ func (p *KubernetesProbe) collectNodes(ctx context.Context, now time.Time) ([]da
 				Tags:      baseTags,
 			})
 		}
-		if pods := n.Status.Capacity.Pods(); pods != nil {
-			cap, _ := pods.AsInt64()
+		if capacity, ok := podCount(n.Status.Capacity); ok {
 			points = append(points, data_store.DataPoint{
-				Name: "k8s.node.pods.capacity", Value: float64(cap), Timestamp: now, Tags: baseTags,
+				Name: "k8s.node.pods.capacity", Value: capacity, Timestamp: now, Tags: baseTags,
 			})
 		}
-		if pods := n.Status.Allocatable.Pods(); pods != nil {
-			alloc, _ := pods.AsInt64()
+		if alloc, ok := podCount(n.Status.Allocatable); ok {
 			// k8s.node.pods.allocatable, NOT .allocated: this is the ceiling
 			// the scheduler may fill, not what is running on the node. The
 			// former name said one thing and carried another (#756).
 			points = append(points, data_store.DataPoint{
-				Name: "k8s.node.pods.allocatable", Value: float64(alloc), Timestamp: now, Tags: baseTags,
+				Name: "k8s.node.pods.allocatable", Value: alloc, Timestamp: now, Tags: baseTags,
 			})
 		}
 
@@ -524,6 +532,21 @@ func (p *KubernetesProbe) collectPods(ctx context.Context, now time.Time) ([]dat
 		}
 	}
 	return points, nil
+}
+
+// podCount reads the pods quantity of a node resource list. ok is false when
+// the node does not report it or reports a fraction: ResourceList.Pods()
+// answers an empty quantity in both cases, which would publish a ceiling of 0.
+func podCount(rl corev1.ResourceList) (float64, bool) {
+	q, present := rl[corev1.ResourcePods]
+	if !present {
+		return 0, false
+	}
+	n, exact := q.AsInt64()
+	if !exact {
+		return 0, false
+	}
+	return float64(n), true
 }
 
 func (p *KubernetesProbe) buildPodPoints(pod *corev1.Pod, now time.Time) []data_store.DataPoint {

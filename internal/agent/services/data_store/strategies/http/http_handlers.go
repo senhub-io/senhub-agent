@@ -50,6 +50,7 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	router.HandleFunc("/api/{agentkey}/info/schema/{probe}", h.HandleInfoSchema).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/info/otlp", h.HandleInfoOTLP).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/info/events", h.HandleInfoEvents).Methods("GET")
+	router.HandleFunc("/api/{agentkey}/info/self-records", h.HandleInfoSelfRecords).Methods("GET")
 
 	// The metric cache and its statistics are what a poller already
 	// reads through its own format, so the key it holds opens them.
@@ -230,6 +231,10 @@ func (h *HTTPHandlers) HandleWebOutputEditor(w http.ResponseWriter, r *http.Requ
 
 func (h *HTTPHandlers) HandleInfoEvents(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleInfoEvents(w, r)
+}
+
+func (h *HTTPHandlers) HandleInfoSelfRecords(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleInfoSelfRecords(w, r)
 }
 
 func (h *HTTPHandlers) HandleCatalogOutputs(w http.ResponseWriter, r *http.Request) {

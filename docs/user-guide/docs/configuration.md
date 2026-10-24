@@ -297,6 +297,7 @@ storage:
 | `bind_address` | `127.0.0.1` | Network interface to bind to. Loopback by default — remote pollers (PRTG, Prometheus) require an explicit `"0.0.0.0"` or interface IP |
 | `endpoints` | none | Enabled endpoint types. There is no default: an endpoint answers only when it is listed. The installer writes `["prtg", "web", "nagios", "prometheus"]` |
 | `max_cache_size` | `50000` | Maximum number of distinct series the shared metric cache holds. Past it new series are refused and counted, rather than growing memory without bound — the cache is also fed by `otlp_receiver` and `prometheus_scrape`, whose series sets come from senders you do not control. `0` means unbounded |
+| `prtg.check_result_channel` | `false` | Adds the Check Result channel (`senhub.probe.check.result`) and the unresolved-target channel (`senhub.probe.check.target.unresolved`) to PRTG sensors. Service channels (`host.service.running`) never use a lookup, with or without it. Leave it off unless the SenHub lookup files are installed on the PRTG core: a channel naming a lookup the core does not have turns the whole sensor Warning (PE272). See [Installing PRTG value lookups](web-interface.md#installing-prtg-value-lookups) |
 
 ### Available Endpoint Types
 
@@ -376,6 +377,36 @@ cache:
 | `retention_minutes` | `5` | Number of minutes a value stays served by the pull outputs (PRTG, Nagios, Prometheus, Web UI) after its probe last produced it. A probe that runs less often keeps its last value until its next run is due, whatever this setting. |
 
 Monitoring systems (PRTG, Nagios, etc.) read metrics from the cache. Set the retention period longer than the longest polling interval of your monitoring system.
+
+## Logs Section
+
+The `logs` section controls the log rail. Its `redact` block masks secrets in every log record before any output receives it, whichever probe produced the record (`filetail`, journald, syslog, Windows Event Log, OTLP receiver, and so on).
+
+```yaml
+logs:
+  redact:
+    preset: true            # default; false turns the built-in rules off
+    rules:                  # optional, applied after the preset
+      - name: card          # required, lowercase letters, digits and underscore
+        pattern: '(\b\d{4})\d{8}(\d{4}\b)'   # RE2 regular expression
+        replacement: '$1********$2'           # $1, $2... refer to capture groups
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `redact.preset` | `true` | Applies the two built-in rules described below. |
+| `redact.rules` | none | Your own rules, applied in order after the preset. Each needs a `name` (used as the `rule` label of the counter), a `pattern` (RE2 syntax) and a `replacement` (`$1`, `${name}` expansions). |
+
+The preset has two rules:
+
+- `credential_param` replaces the value of `password`, `passwd`, `pwd`, `passhash`, `apikey`, `api_key`, `token`, `access_token` and `secret` (case-insensitive, whole key) with `***`. It reads query strings (`?passhash=123&x=1` becomes `?passhash=***&x=1`), form bodies, `key=value` logs, `key: value` lines and JSON (`"secret":"abc"` becomes `"secret":"***"`). The key, the separator and the quotes stay; the value ends at `&`, a space, a quote, `,` or `;`. `tokens=5` and `mytoken=1` are left alone.
+- `authorization_header` keeps the scheme of an `Authorization:` header (`Bearer`, `Basic`, `Digest`, `Negotiate`, `NTLM`) and masks the credential: `Authorization: Basic ***`. For `Digest`, the rest of the line is masked.
+
+The text of the record body and every string attribute (and every string inside structured fields) is masked; attribute names are not. With the preset on, an attribute whose name ends in one of those keys (`password`, `db.password`, `http.request.header.authorization`) has its whole value masked, an `Authorization` value keeping its scheme (`Bearer ***`). Masking happens once, before the record is handed to the outputs, so PRTG, OTLP and the other outputs all receive the masked text.
+
+Each masked occurrence is counted in `senhub.agent.logs.redacted` (Prometheus: `senhub_agent_logs_redacted_total`), with the labels `probe` and `rule` (`credential_param`, `authorization_header`, or the name of your rule). The agent never logs the masked value or the original line.
+
+A rule whose name or pattern is invalid is reported by `config check` as an error naming the rule. At run time the agent skips that rule, logs one error, and keeps applying the others. Changes to the `logs` block are applied when the configuration is reloaded; no restart is needed.
 
 ## Configuration Examples
 
@@ -681,18 +712,22 @@ sudo /usr/local/bin/senhub-agent license remove --force  # Remove without confir
 
 ## Auto-Update
 
-The agent can check for new versions and optionally install them automatically.
+The agent checks for new versions. Whether it installs them itself depends on the platform:
+
+- **Linux:** the running agent never installs a new version. It only reports that one is available. Install it yourself with `sudo senhub-agent update`; on a `.deb` or `.rpm` install, use the package manager instead (the command refuses there). This is deliberate: the service account cannot rewrite its own binary, so a compromised agent cannot make itself persistent.
+- **Windows, MSI install:** with `enabled: true` the agent downloads the signed MSI and applies it.
+- **Windows, ZIP install:** with `enabled: true` the agent replaces its binary.
 
 ```yaml
 auto_update:
-  enabled: false          # Automatic installation of new versions
+  enabled: false          # Install new versions (Windows only; Linux reports them)
   include_beta: false     # Include beta versions in update checks
   url: "https://eu-west-1.intake.senhub.io/"
 ```
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `enabled` | `false` | Automatically install new versions when available |
+| `enabled` | `false` | Install new versions when available. Applies to Windows only; on Linux the agent only reports the new version |
 | `include_beta` | `false` | Include beta versions in update checks |
 | `url` | SenHub releases | Update server URL. The **base** the agent appends to — a value carrying `/releases` or `/download` makes every derived URL double it |
 | `version` | `latest` | Target the periodic updater tracks. `latest` resolves the newest stable; an explicit version pins to it |

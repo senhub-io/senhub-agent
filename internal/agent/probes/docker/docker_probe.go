@@ -198,6 +198,9 @@ func NewDockerProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	}
 	p.SetProbeType(ProbeType)
 	p.cgroups = newCgroupReader("")
+	p.cgroups.onSkip = func(path string, err error) {
+		moduleLogger.Debug().Err(err).Str("file", path).Msg("docker: optional cgroup file not read")
+	}
 	// Containers are distinct entities, not host-local: declare the real
 	// source so the poller registers it on Start.
 	p.SetEntitySource(p.entitySrc)

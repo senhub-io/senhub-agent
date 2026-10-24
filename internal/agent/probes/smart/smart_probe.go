@@ -25,6 +25,7 @@ import (
 	"os/exec"
 	"time"
 
+	"senhub-agent.go/internal/agent/probes/subcollect"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -114,6 +115,8 @@ type smartProbe struct {
 	// execScan / execDevice are the injection points for unit tests.
 	execScan   func(ctx context.Context, path string, useSudo bool) ([]byte, error)
 	execDevice func(ctx context.Context, path string, useSudo bool, device string) ([]byte, error)
+
+	failures subcollect.Tracker
 }
 
 // NewSmartProbe constructs the S.M.A.R.T. probe.  Config errors surface here.
@@ -234,9 +237,10 @@ func (p *smartProbe) Collect() ([]data_store.DataPoint, error) {
 		}
 		dp, err := p.collectDevice(dev, hostTags, now)
 		if err != nil {
-			p.moduleLogger.Warn().Err(err).Str("device", dev).Msg("smart: device query failed; skipping")
+			p.failures.Failed(p.moduleLogger, subcollect.Warn, "device/"+dev, err, "smart: device query failed; skipping")
 			continue
 		}
+		p.failures.Succeeded(p.moduleLogger, "device/"+dev, "smart: device query recovered")
 		readable++
 		points = append(points, dp...)
 	}
@@ -301,10 +305,11 @@ func (p *smartProbe) statePoints(found, readable int, hostTags []tags.Tag, ts ti
 	}
 
 	if readable == 0 && found > 0 {
-		p.moduleLogger.Warn().
-			Int("devices_found", found).
-			Msg("smart: every device was found but none could be read — on a non-root install /dev/sd* is root:disk 0660; " +
+		p.failures.Failed(p.moduleLogger, subcollect.Warn, "devices_unreadable", nil,
+			"smart: every device was found but none could be read — on a non-root install /dev/sd* is root:disk 0660; "+
 				"add the service user to the 'disk' group or run this probe under a root install")
+	} else {
+		p.failures.Succeeded(p.moduleLogger, "devices_unreadable", "smart: devices are readable again")
 	}
 	return points
 }

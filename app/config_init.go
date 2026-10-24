@@ -93,7 +93,7 @@ func parseInitConfigArgs(argv []string) (initConfigArgs, error) {
 			out.zabbixMetadata, err = value(&i)
 		case jsonFlag:
 			out.jsonMode = true
-		case "--ok-if-unchanged":
+		case okIfUnchangedFlag:
 			out.okIfUnchanged = true
 		case "--http-bind":
 			var raw string

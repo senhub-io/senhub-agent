@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"sync/atomic"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
@@ -33,6 +35,13 @@ type ProxmoxProbe struct {
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
 	entitySrc    *proxmoxEntitySource
+
+	// resourcesDegraded is true while /cluster/resources is failing and the
+	// per-node lists are used instead; it only exists to log each transition once.
+	resourcesDegraded atomic.Bool
+
+	denied deniedLog
+	tasks  failedTasks
 }
 
 type probeConfig struct {
@@ -193,12 +202,27 @@ func (p *ProxmoxProbe) Collect() ([]data_store.DataPoint, error) {
 	upPoint.Value = 1
 	points := []data_store.DataPoint{upPoint}
 
+	guests, guestsOK := p.fetchGuests()
+
 	for _, n := range nodes {
 		if p.cfg.Node != "" && n.Node != p.cfg.Node {
 			continue
 		}
-		points = append(points, p.collectNode(n, now)...)
+		points = append(points, p.collectNode(n, guests, guestsOK, now)...)
 	}
+	if guestsOK {
+		scoped := guests
+		if p.cfg.Node != "" {
+			scoped = nil
+			for _, g := range guests {
+				if g.Node == p.cfg.Node {
+					scoped = append(scoped, g)
+				}
+			}
+		}
+		points = append(points, p.collectBackupCoverage(scoped, now)...)
+	}
+	points = append(points, p.collectHA(now)...)
 
 	// Refresh entity snapshot so the topology rail stays current.
 	// fetchClusterName is best-effort: a standalone install or a failing
@@ -219,7 +243,7 @@ func (p *ProxmoxProbe) Collect() ([]data_store.DataPoint, error) {
 
 // collectNode gathers node-level, VM, LXC, and storage metrics.
 // Partial failures (e.g. storage unavailable) are logged but non-fatal.
-func (p *ProxmoxProbe) collectNode(n pveNode, now time.Time) []data_store.DataPoint {
+func (p *ProxmoxProbe) collectNode(n pveNode, guests []pveGuest, guestsOK bool, now time.Time) []data_store.DataPoint {
 	var points []data_store.DataPoint
 
 	nodeTags := []tags.Tag{
@@ -248,29 +272,45 @@ func (p *ProxmoxProbe) collectNode(n pveNode, now time.Time) []data_store.DataPo
 		p.moduleLogger.Warn().Err(err).Str("node", n.Node).Msg("failed to fetch node status")
 	}
 
-	// VMs (QEMU).
-	vms, err := p.fetchVMs(n.Node)
-	if err != nil {
-		p.moduleLogger.Warn().Err(err).Str("node", n.Node).Msg("failed to list VMs")
-	}
-	for _, vm := range vms {
-		points = append(points, p.collectVMStatus(n.Node, vm, "qemu", now)...)
+	// Guests (QEMU and LXC). The cluster-wide listing is the primary source:
+	// since PVE 9 the per-node qemu list no longer carries disk counters.
+	known := map[int]guestRef{}
+	if guestsOK {
+		for _, g := range guests {
+			if g.Node == n.Node {
+				known[g.VMID] = guestRef{Name: g.Name, Type: g.Type}
+				points = append(points, p.collectVMStatus(n.Node, g.pveVMListItem, g.Type, now)...)
+			}
+		}
+	} else {
+		vms, err := p.fetchVMs(n.Node)
+		if err != nil {
+			p.moduleLogger.Warn().Err(err).Str("node", n.Node).Msg("failed to list VMs")
+		}
+		for _, vm := range vms {
+			known[vm.VMID] = guestRef{Name: vm.Name, Type: "qemu"}
+			points = append(points, p.collectVMStatus(n.Node, vm, "qemu", now)...)
+		}
+		ctrs, err := p.fetchContainers(n.Node)
+		if err != nil {
+			p.moduleLogger.Warn().Err(err).Str("node", n.Node).Msg("failed to list LXC containers")
+		}
+		for _, ctr := range ctrs {
+			known[ctr.VMID] = guestRef{Name: ctr.Name, Type: "lxc"}
+			points = append(points, p.collectVMStatus(n.Node, ctr, "lxc", now)...)
+		}
 	}
 
-	// LXC containers.
-	ctrs, err := p.fetchContainers(n.Node)
-	if err != nil {
-		p.moduleLogger.Warn().Err(err).Str("node", n.Node).Msg("failed to list LXC containers")
-	}
-	for _, ctr := range ctrs {
-		points = append(points, p.collectVMStatus(n.Node, ctr, "lxc", now)...)
-	}
+	points = append(points, p.collectDisks(n.Node, now)...)
 
 	// Storage.
 	storages, err := p.fetchStorage(n.Node)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("node", n.Node).Msg("failed to list storage")
 	}
+	points = append(points, p.collectBackups(n.Node, known, storages, now)...)
+	points = append(points, p.collectFailedTasks(n.Node, now)...)
+	points = append(points, p.collectReplication(n.Node, now)...)
 	for _, st := range storages {
 		stTags := []tags.Tag{
 			{Key: "proxmox.node", Value: n.Node},
@@ -281,6 +321,9 @@ func (p *ProxmoxProbe) collectNode(n pveNode, now time.Time) []data_store.DataPo
 			data_store.DataPoint{Name: "proxmox.storage.used", Value: float64(st.Used), Timestamp: now, Tags: stTags},
 			data_store.DataPoint{Name: "proxmox.storage.total", Value: float64(st.Total), Timestamp: now, Tags: stTags},
 		)
+		if st.Active != nil {
+			points = append(points, stateSeries("proxmox.storage.status", "proxmox.storage.state", []string{"active", "inactive"}, boolState(*st.Active != 0, "active", "inactive"), stTags, now)...)
+		}
 	}
 
 	return points
@@ -297,50 +340,103 @@ func (p *ProxmoxProbe) collectVMStatus(node string, vm pveVMStatus, vmType strin
 		{Key: "metric_type", Value: "vm"},
 	}
 
-	running := float64(0)
-	if vm.Status == "running" {
-		running = 1
+	var points []data_store.DataPoint
+	add := func(name string, v *float64) {
+		if v != nil {
+			points = append(points, data_store.DataPoint{Name: name, Value: *v, Timestamp: now, Tags: vmTags})
+		}
+	}
+	scale := func(v *float64, f float64) *float64 {
+		if v == nil {
+			return nil
+		}
+		r := *v * f
+		return &r
+	}
+	var status *float64
+	if vm.Status != "" {
+		r := float64(0)
+		if vm.Status == "running" {
+			r = 1
+		}
+		status = &r
 	}
 
-	return []data_store.DataPoint{
-		{Name: "proxmox.vm.cpu.utilization", Value: float64(vm.CPU) * 100, Timestamp: now, Tags: vmTags},
-		{Name: "proxmox.vm.memory.used", Value: float64(vm.Mem), Timestamp: now, Tags: vmTags},
-		{Name: "proxmox.vm.memory.total", Value: float64(vm.MaxMem), Timestamp: now, Tags: vmTags},
-		{Name: "proxmox.vm.disk.read", Value: float64(vm.DiskRead), Timestamp: now, Tags: vmTags},
-		{Name: "proxmox.vm.disk.write", Value: float64(vm.DiskWrite), Timestamp: now, Tags: vmTags},
-		{Name: "proxmox.vm.network.in", Value: float64(vm.NetIn), Timestamp: now, Tags: vmTags},
-		{Name: "proxmox.vm.network.out", Value: float64(vm.NetOut), Timestamp: now, Tags: vmTags},
-		{Name: "proxmox.vm.status", Value: running, Timestamp: now, Tags: vmTags},
+	add("proxmox.vm.cpu.utilization", scale(vm.CPU, 100))
+	add("proxmox.vm.memory.used", vm.Mem)
+	add("proxmox.vm.memory.total", vm.MaxMem)
+	add("proxmox.vm.disk.read", vm.DiskRead)
+	add("proxmox.vm.disk.write", vm.DiskWrite)
+	add("proxmox.vm.network.in", vm.NetIn)
+	add("proxmox.vm.network.out", vm.NetOut)
+	add("proxmox.vm.status", status)
+	return points
+}
+
+// fetchGuests lists every QEMU and LXC guest of the cluster in one request.
+// ok is false when the request failed, in which case the caller falls back
+// to the per-node lists; the transition in and out of that state is logged
+// once, not at every cycle.
+func (p *ProxmoxProbe) fetchGuests() (guests []pveGuest, ok bool) {
+	err := p.apiGet("/cluster/resources?"+url.Values{"type": {"vm"}}.Encode(), &guests)
+	if err != nil {
+		if p.resourcesDegraded.CompareAndSwap(false, true) {
+			p.moduleLogger.Warn().Err(err).Msg("cluster resources unavailable, falling back to per-node guest lists (disk counters may be missing)")
+		}
+		return nil, false
 	}
+	if p.resourcesDegraded.CompareAndSwap(true, false) {
+		p.moduleLogger.Info().Msg("cluster resources available again")
+	}
+	return guests, true
 }
 
 // --- API client helpers ---
 
 func (p *ProxmoxProbe) apiGet(path string, out interface{}) error {
-	url := p.cfg.Endpoint + apiBase + path
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	_, err := p.apiGetTotal(path, out)
+	return err
+}
+
+// apiGetTotal is apiGet that also returns the envelope's "total" field, which
+// paginated endpoints such as task logs carry next to "data" (0 when absent).
+func (p *ProxmoxProbe) apiGetTotal(path string, out interface{}) (int, error) {
+	target := p.cfg.Endpoint + apiBase + path
+	req, err := http.NewRequest(http.MethodGet, target, nil)
 	if err != nil {
-		return fmt.Errorf("building request for %s: %w", path, err)
+		return 0, fmt.Errorf("building request for %s: %w", path, err)
 	}
 	req.Header.Set("Authorization", fmt.Sprintf("PVEAPIToken=%s=%s", p.cfg.TokenID, p.cfg.TokenSecret))
 
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("GET %s: %w", path, err)
+		return 0, fmt.Errorf("GET %s: %w", path, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("GET %s: unexpected status %d", path, resp.StatusCode)
+		return 0, &apiStatusError{Path: path, Status: resp.StatusCode}
 	}
 
 	var envelope struct {
-		Data json.RawMessage `json:"data"`
+		Data  json.RawMessage `json:"data"`
+		Total int             `json:"total"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
-		return fmt.Errorf("decoding %s response: %w", path, err)
+		return 0, fmt.Errorf("decoding %s response: %w", path, err)
 	}
-	return json.Unmarshal(envelope.Data, out)
+	return envelope.Total, json.Unmarshal(envelope.Data, out)
+}
+
+// apiStatusError reports a non-200 answer so callers can tell a missing
+// permission (403) from a failing server.
+type apiStatusError struct {
+	Path   string
+	Status int
+}
+
+func (e *apiStatusError) Error() string {
+	return fmt.Sprintf("GET %s: unexpected status %d", e.Path, e.Status)
 }
 
 // fetchClusterName queries GET /cluster/status and returns the cluster name
@@ -384,17 +480,27 @@ type pveNodeStatusResp struct {
 	} `json:"memory"`
 }
 
+// pveVMListItem keeps every counter as a pointer: PVE omits a field it
+// cannot report, and an absent field must not become a zero datapoint.
 type pveVMListItem struct {
-	VMID      int     `json:"vmid"`
-	Name      string  `json:"name"`
-	Status    string  `json:"status"`
-	CPU       float64 `json:"cpu"`
-	Mem       int64   `json:"mem"`
-	MaxMem    int64   `json:"maxmem"`
-	DiskRead  int64   `json:"diskread"`
-	DiskWrite int64   `json:"diskwrite"`
-	NetIn     int64   `json:"netin"`
-	NetOut    int64   `json:"netout"`
+	VMID      int      `json:"vmid"`
+	Name      string   `json:"name"`
+	Status    string   `json:"status"`
+	CPU       *float64 `json:"cpu"`
+	Mem       *float64 `json:"mem"`
+	MaxMem    *float64 `json:"maxmem"`
+	DiskRead  *float64 `json:"diskread"`
+	DiskWrite *float64 `json:"diskwrite"`
+	NetIn     *float64 `json:"netin"`
+	NetOut    *float64 `json:"netout"`
+}
+
+// pveGuest is one entry of /cluster/resources?type=vm.
+type pveGuest struct {
+	Pool string `json:"pool"`
+	pveVMListItem
+	Node string `json:"node"`
+	Type string `json:"type"`
 }
 
 // pveVMStatus is used for both QEMU VMs and LXC containers (same shape).
@@ -404,6 +510,8 @@ type pveStorageItem struct {
 	Storage string `json:"storage"`
 	Used    int64  `json:"used"`
 	Total   int64  `json:"total"`
+	Content string `json:"content"`
+	Active  *int   `json:"active"`
 }
 
 func (p *ProxmoxProbe) fetchNodes() ([]pveNode, error) {

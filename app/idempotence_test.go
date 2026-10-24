@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -311,6 +312,62 @@ func TestInstallStateDecidesNothingToDo(t *testing.T) {
 		if got != c.want {
 			t.Errorf("%s: alreadyDone = %v, want %v", c.name, got, c.want)
 		}
+	}
+}
+
+// An install replayed on a machine already in the requested state exits
+// 3, or 0 under --ok-if-unchanged, and writes nothing either way.
+func TestInstallNothingToDoExitCode(t *testing.T) {
+	for _, c := range []struct {
+		name          string
+		okIfUnchanged bool
+		want          int
+	}{
+		{"without the flag", false, cliexit.Unchanged},
+		{"with --ok-if-unchanged", true, cliexit.OK},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			cfg := filepath.Join(t.TempDir(), "agent.yaml")
+			if err := os.WriteFile(cfg, []byte(testAgentYAML), 0o600); err != nil {
+				t.Fatalf("writing config: %v", err)
+			}
+			old := time.Now().Add(-time.Hour).Truncate(time.Second)
+			if err := os.Chtimes(cfg, old, old); err != nil {
+				t.Fatalf("setting mtime: %v", err)
+			}
+			state := detectInstallState(installFakeService{state: service.StatusRunning}, cfg, installProbes{})
+			if !state.alreadyDone() {
+				t.Fatal("state is not already done")
+			}
+
+			var out bytes.Buffer
+			run := &installRun{json: true, out: &out, configPath: cfg, okIfUnchanged: c.okIfUnchanged}
+			if code := run.unchanged(); code != c.want {
+				t.Errorf("exit code = %d, want %d", code, c.want)
+			}
+
+			var report map[string]any
+			if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+				t.Fatalf("parsing report %q: %v", out.String(), err)
+			}
+			if report["exit_code"] != float64(c.want) || report["changed"] != false {
+				t.Errorf("report = %v, want exit_code %d and changed false", report, c.want)
+			}
+			if written, _ := report["written"].([]any); len(written) != 0 {
+				t.Errorf("report lists written files: %v", written)
+			}
+			raw, err := os.ReadFile(cfg)
+			if err != nil {
+				t.Fatalf("reading config: %v", err)
+			}
+			info, err := os.Stat(cfg)
+			if err != nil {
+				t.Fatalf("stat config: %v", err)
+			}
+			if string(raw) != testAgentYAML || !info.ModTime().Equal(old) {
+				t.Error("the configuration was rewritten")
+			}
+		})
 	}
 }
 

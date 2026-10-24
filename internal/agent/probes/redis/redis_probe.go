@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/subcollect"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -44,9 +45,7 @@ type redisProbe struct {
 	// dialFn is overridable in tests; defaults to a context-aware net.Dialer.
 	dialFn func(ctx context.Context, network, address string, timeout time.Duration) (net.Conn, error)
 
-	// sentinelMastersFailed is true while SENTINEL MASTERS has been failing,
-	// so the warning is logged only when the failure state changes.
-	sentinelMastersFailed bool
+	failures subcollect.Tracker
 }
 
 // NewRedisProbe constructs the probe from its raw params block.
@@ -188,6 +187,7 @@ func (p *redisProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint
 		return p.failed(ctx, err, now, "Redis INFO read failed")
 	}
 
+	p.failures.Succeeded(p.moduleLogger, p.failureKey("connection"), "Redis connection recovered")
 	info := parseInfoBlob(blob)
 
 	// Second command on the same connection: INFO commandstats.
@@ -195,11 +195,12 @@ func (p *redisProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint
 	if err := sendCommand(conn, p.cfg.Timeout, "INFO", "commandstats"); err == nil {
 		if csBlob, err := readInfo(conn, p.cfg.Timeout); err == nil {
 			cmdStats = parseCommandStats(csBlob)
+			p.failures.Succeeded(p.moduleLogger, p.failureKey("commandstats"), "Redis INFO commandstats recovered")
 		} else {
-			p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis INFO commandstats read failed")
+			p.failures.Failed(p.moduleLogger, subcollect.Warn, p.failureKey("commandstats"), err, "Redis INFO commandstats read failed")
 		}
 	} else {
-		p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis INFO commandstats send failed")
+		p.failures.Failed(p.moduleLogger, subcollect.Warn, p.failureKey("commandstats"), err, "Redis INFO commandstats send failed")
 	}
 
 	// INFO cluster — only when cluster_enabled=1 in INFO server section.
@@ -208,11 +209,12 @@ func (p *redisProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint
 		if err := sendCommand(conn, p.cfg.Timeout, "INFO", "cluster"); err == nil {
 			if cBlob, err := readInfo(conn, p.cfg.Timeout); err == nil {
 				clusterInfo = parseInfoBlob(cBlob)
+				p.failures.Succeeded(p.moduleLogger, p.failureKey("cluster"), "Redis INFO cluster recovered")
 			} else {
-				p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis INFO cluster read failed")
+				p.failures.Failed(p.moduleLogger, subcollect.Warn, p.failureKey("cluster"), err, "Redis INFO cluster read failed")
 			}
 		} else {
-			p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis INFO cluster send failed")
+			p.failures.Failed(p.moduleLogger, subcollect.Warn, p.failureKey("cluster"), err, "Redis INFO cluster send failed")
 		}
 	}
 
@@ -224,11 +226,12 @@ func (p *redisProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint
 		if err := sendCommand(conn, p.cfg.Timeout, "INFO", "sentinel"); err == nil {
 			if sBlob, err := readInfo(conn, p.cfg.Timeout); err == nil {
 				sentinelInfo = parseInfoBlob(sBlob)
+				p.failures.Succeeded(p.moduleLogger, p.failureKey("sentinel"), "Redis INFO sentinel recovered")
 			} else {
-				p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis INFO sentinel read failed")
+				p.failures.Failed(p.moduleLogger, subcollect.Warn, p.failureKey("sentinel"), err, "Redis INFO sentinel read failed")
 			}
 		} else {
-			p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis INFO sentinel send failed")
+			p.failures.Failed(p.moduleLogger, subcollect.Warn, p.failureKey("sentinel"), err, "Redis INFO sentinel send failed")
 		}
 
 		if err := sendCommand(conn, p.cfg.Timeout, "SENTINEL", "MASTERS"); err != nil {
@@ -243,7 +246,7 @@ func (p *redisProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint
 					p.logSentinelMastersFailure(err)
 					sentinelMasters = nil
 				} else {
-					p.sentinelMastersFailed = false
+					p.failures.Succeeded(p.moduleLogger, p.failureKey("sentinel_masters"), "Redis SENTINEL MASTERS recovered")
 				}
 			}
 		}
@@ -269,11 +272,13 @@ func (p *redisProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint
 }
 
 func (p *redisProbe) logSentinelMastersFailure(err error) {
-	if p.sentinelMastersFailed {
-		return
-	}
-	p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis SENTINEL MASTERS failed")
-	p.sentinelMastersFailed = true
+	p.failures.Failed(p.moduleLogger, subcollect.Warn, p.failureKey("sentinel_masters"), err, "Redis SENTINEL MASTERS failed")
+}
+
+// failureKey scopes a failure to this probe's Redis instance so the
+// sub_collection field in the log still tells instances apart.
+func (p *redisProbe) failureKey(name string) string {
+	return p.instance + " " + name
 }
 
 // baseTags returns the common tags emitted on every datapoint.
@@ -312,7 +317,7 @@ func (p *redisProbe) failed(ctx context.Context, err error, now time.Time, msg s
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return nil, fmt.Errorf("redis collection interrupted: %w", ctxErr)
 	}
-	p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg(msg)
+	p.failures.Failed(p.moduleLogger, subcollect.Warn, p.failureKey("connection"), err, msg)
 	return p.BaseProbe.EnrichDataPointsWithProbeName(p.failurePoints(err, now), p.GetName()), nil
 }
 
@@ -1134,7 +1139,7 @@ func parseFloat(s string) (float64, bool) {
 	if s == "" {
 		return 0, false
 	}
-	v, err := strconv.ParseFloat(strings.TrimSpace(s), 32)
+	v, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
 	if err != nil {
 		return 0, false
 	}
