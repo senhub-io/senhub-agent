@@ -22,5 +22,6 @@ Changes land here as they are merged.
 
 ## Fixes
 
+- **OTLP: rejected log records are reported when the logs queue is off.** When a receiver accepts a logs export but refuses some records (`partial_success`), the agent now counts them in `senhub.agent.export.rejected` and logs the receiver's reason with the logs queue disabled, as it already did with the queue enabled.
 - **Windows: `install` from the ZIP no longer runs over another install.** On a machine where a `senhub-agent` service from another install is already registered (the MSI, or a ZIP extracted elsewhere), `senhub-agent.exe install` now stops without changing anything, and says how to upgrade that install instead.
 - **`install --ok-if-unchanged`.** Run again on a machine already in the requested state, `install` exits `3` and writes nothing. With the new flag it exits `0` instead, as `config init --ok-if-unchanged` already did, for GPO, SCCM or Intune scripts that read any other code as a failure. See [Exit codes](../cli.md#exit-codes).
