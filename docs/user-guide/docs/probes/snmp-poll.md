@@ -129,9 +129,17 @@ startup, not one at a time.
 
 `retries` matters on a congested link: UDP loses packets, and each
 attempt costs one `timeout` before the device counts as unanswered.
-`topology_interval` is a slower rail, independent of `interval`, so a
-dense topology sweep never delays the traffic counters. `mib_paths` is
-read locally; the probe never fetches a MIB over the network.
+`topology_interval` is a slower rail, independent of `interval`: the
+topology is swept at most once per `topology_interval`, inside a poll
+cycle. A sweep stops its walks once it has run for `interval` (30
+seconds at least) and still reads the device identity. It stops at its
+first read that times out when the device has answered nothing yet, so
+an unreachable device costs one `timeout` and its retries per attempt;
+a poll cycle stops its walks the same way.
+After a failed sweep the next attempt comes at the next cycle, then twice
+as late each time, up to five minutes, until the device answers.
+`mib_paths` is read locally; the probe never fetches a MIB over the
+network.
 
 ### SNMPv3 (USM)
 

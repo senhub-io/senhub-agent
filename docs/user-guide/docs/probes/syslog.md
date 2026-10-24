@@ -317,6 +317,16 @@ set removes file capabilities, and an update replaces the file. See
 *.* @@syslog-server:1514 # TCP
 ```
 
+### Bind Address Not Yet Assigned at Boot
+
+**Symptom:** With `bind_address` set to a specific interface address, the probe is shown as failed after a reboot and the log has an error with `retry_in`.
+
+**Cause:** The address is assigned by DHCP and does not exist yet when the agent starts, so the bind fails.
+
+**Behaviour:** The agent does not give up. A probe that cannot start is logged at error level with `retry_in`, shown as failed, and started again on a timer. Once the address appears, the probe starts and logs `Probe started after a failed start`. Events sent before that moment are not received.
+
+**Avoiding the dependency:** Bind to `0.0.0.0` (or `::` for IPv6) and restrict who can reach the port with a firewall rule on the host. The listener then does not depend on any single address being present.
+
 ### Windows: Firewall Blocking
 
 **Symptom:** Events not received from remote sources
