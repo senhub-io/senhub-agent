@@ -627,8 +627,9 @@ func Main() {
 			serviceArgs = os.Args[2:]
 		}
 		if command == "install" {
-			// --json is a view flag of install, like of status.
-			serviceArgs = stripFlags(serviceArgs, jsonFlag)
+			// --json is a view flag of install, like of status, and
+			// --ok-if-unchanged only changes its exit code.
+			serviceArgs = stripFlags(serviceArgs, jsonFlag, okIfUnchangedFlag)
 		}
 		args := cliArgs.ParseStartArgs(serviceArgs)
 		handleServiceCommand(command, args)
@@ -666,6 +667,9 @@ Service Commands:
                          On Linux the service runs as the dedicated 'senhub' user
                          under a hardened systemd unit. Exits 3 and changes
                          nothing when the service is already installed.
+    install --ok-if-unchanged
+                         Exit 0 instead of 3 when there is nothing to do, for
+                         GPO, SCCM or Intune, which read any other code as a failure
     install --json       Print the outcome as one JSON object (status, exit_code,
                          changed, written)
     install --user USER  Service user for the Linux unit (default: senhub;
