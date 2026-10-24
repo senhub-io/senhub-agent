@@ -15,8 +15,8 @@ func TestScheduleObserver(t *testing.T) {
 	agentstate.SetProcessStartForTest(time.Now().Add(-2 * time.Second))
 	t.Cleanup(func() { agentstate.SetProcessStartForTest(prev) })
 
-	const probe = "test-probe-type"
-	obs := newScheduleObserver(probe, "instance-1")
+	probe := agentstate.ProbeKey{Name: "instance-1", Type: "test-probe-type"}
+	obs := newScheduleObserver(probe.Name, probe.Type)
 
 	obs.CallStarted(25 * time.Millisecond)
 	if got := agentstate.CollectionsInFlight(); got != 1 {

@@ -7,12 +7,11 @@ import (
 )
 
 type scheduleObserver struct {
-	probe    string
-	instance string
+	probe agentstate.ProbeKey
 }
 
-func newScheduleObserver(probeType, instance string) *scheduleObserver {
-	return &scheduleObserver{probe: probeType, instance: instance}
+func newScheduleObserver(probeName, probeType string) *scheduleObserver {
+	return &scheduleObserver{probe: agentstate.ProbeKey{Name: probeName, Type: probeType}}
 }
 
 func (o *scheduleObserver) CallStarted(lag time.Duration) {
@@ -23,7 +22,7 @@ func (o *scheduleObserver) CallStarted(lag time.Duration) {
 func (o *scheduleObserver) CallEnded(first bool) {
 	agentstate.CollectionEnded()
 	if first {
-		agentstate.RecordFirstCollectionEnd(o.probe, o.instance, time.Now())
+		agentstate.RecordFirstCollectionEnd(o.probe, time.Now())
 	}
 }
 

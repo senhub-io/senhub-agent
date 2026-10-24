@@ -462,16 +462,16 @@ func TestBuildAgentRecords_CollectSchedulingMetricsEmittedWhenTouched(t *testing
 		}
 	}
 
-	agentstate.RecordCollectLag("cpu", 1500*time.Millisecond)
-	agentstate.RecordCollectLag("cpu", -time.Second)
-	agentstate.RecordCollectLag("memory", 1000*time.Millisecond)
-	agentstate.IncrementCollectOverruns("cpu", 3)
-	agentstate.IncrementCollectOverruns("cpu", -2)
-	agentstate.IncrementCollectOverruns("memory", 0)
+	agentstate.RecordCollectLag(agentstate.ProbeKey{Name: "cpu", Type: "t"}, 1500*time.Millisecond)
+	agentstate.RecordCollectLag(agentstate.ProbeKey{Name: "cpu", Type: "t"}, -time.Second)
+	agentstate.RecordCollectLag(agentstate.ProbeKey{Name: "memory", Type: "t"}, 1000*time.Millisecond)
+	agentstate.IncrementCollectOverruns(agentstate.ProbeKey{Name: "cpu", Type: "t"}, 3)
+	agentstate.IncrementCollectOverruns(agentstate.ProbeKey{Name: "cpu", Type: "t"}, -2)
+	agentstate.IncrementCollectOverruns(agentstate.ProbeKey{Name: "memory", Type: "t"}, 0)
 	processStart := agentstate.ProcessStart()
-	agentstate.RecordFirstCollectionEnd("cpu", "a", processStart.Add(2*time.Second))
-	agentstate.RecordFirstCollectionEnd("cpu", "b", processStart.Add(3*time.Second))
-	agentstate.RecordFirstCollectionEnd("memory", "a", processStart.Add(750*time.Millisecond))
+	agentstate.RecordFirstCollectionEnd(agentstate.ProbeKey{Name: "cpu", Type: "t"}, processStart.Add(2*time.Second))
+	agentstate.RecordFirstCollectionEnd(agentstate.ProbeKey{Name: "cpu2", Type: "t"}, processStart.Add(3*time.Second))
+	agentstate.RecordFirstCollectionEnd(agentstate.ProbeKey{Name: "memory", Type: "t"}, processStart.Add(750*time.Millisecond))
 	agentstate.CollectionStarted()
 	agentstate.CollectionStarted()
 
@@ -489,13 +489,13 @@ func TestBuildAgentRecords_CollectSchedulingMetricsEmittedWhenTouched(t *testing
 		case "senhub.agent.collect.in_flight":
 			inFlight = r
 		case "senhub.agent.collect.lag":
-			lags[r.Attributes["probe"]] = r.Value
+			lags[r.Attributes["probe_name"]] = r.Value
 			lagUnit, lagType = r.Unit, r.Type
 		case "senhub.agent.collect.overruns":
-			overruns[r.Attributes["probe"]] = r.Value
+			overruns[r.Attributes["probe_name"]] = r.Value
 			overUnit, overType = r.Unit, r.Type
 		case "senhub.agent.probe.first_collection.delay":
-			delays[r.Attributes["probe"]] = r.Value
+			delays[r.Attributes["probe_name"]] = r.Value
 			delayUnit, delayType = r.Unit, r.Type
 		}
 	}
@@ -524,8 +524,8 @@ func TestBuildAgentRecords_CollectSchedulingMetricsEmittedWhenTouched(t *testing
 		t.Errorf("overruns unit/type = %q/%q, want {collection}/counter", overUnit, overType)
 	}
 
-	if delays["cpu"] != 3 || delays["memory"] != 0.75 || len(delays) != 2 {
-		t.Errorf("delays = %v, want cpu=3 memory=0.75", delays)
+	if delays["cpu"] != 2 || delays["cpu2"] != 3 || delays["memory"] != 0.75 || len(delays) != 3 {
+		t.Errorf("delays = %v, want cpu=2 cpu2=3 memory=0.75", delays)
 	}
 	if delayUnit != "s" || delayType != "gauge" {
 		t.Errorf("delay unit/type = %q/%q, want s/gauge", delayUnit, delayType)
@@ -538,7 +538,7 @@ func TestBuildAgentRecords_CollectSchedulingMetricsEmittedWhenTouched(t *testing
 	for i := range second {
 		r := &second[i]
 		if r.Name == "senhub.agent.collect.lag" {
-			lagsAfter[r.Attributes["probe"]] = r.Value
+			lagsAfter[r.Attributes["probe_name"]] = r.Value
 		}
 	}
 	if lagsAfter["cpu"] != 0 || lagsAfter["memory"] != 0 || len(lagsAfter) != 2 {
@@ -550,7 +550,7 @@ func collectLagByProbe(recs []otelmapper.OtelRecord) map[string]float64 {
 	out := map[string]float64{}
 	for _, r := range recs {
 		if r.Name == "senhub.agent.collect.lag" {
-			out[r.Attributes["probe"]] = r.Value
+			out[r.Attributes["probe_name"]] = r.Value
 		}
 	}
 	return out
@@ -566,19 +566,62 @@ func TestCollectLagWindowIsPerReader(t *testing.T) {
 	prom := AgentMetricsSnapshot{StartTime: time.Now(), Reader: "prometheus"}
 	otlp := AgentMetricsSnapshot{StartTime: time.Now(), Reader: "otlp"}
 
-	agentstate.RecordCollectLag("cpu", 4*time.Second)
+	agentstate.RecordCollectLag(agentstate.ProbeKey{Name: "cpu", Type: "t"}, 4*time.Second)
 	collectLagByProbe(BuildAgentRecords(prom))
 	collectLagByProbe(BuildAgentRecords(otlp))
 
-	agentstate.RecordCollectLag("cpu", 2*time.Second)
+	agentstate.RecordCollectLag(agentstate.ProbeKey{Name: "cpu", Type: "t"}, 2*time.Second)
 	if got := collectLagByProbe(BuildAgentRecords(prom))["cpu"]; got != 2 {
 		t.Fatalf("prometheus window = %v, want 2", got)
 	}
-	agentstate.RecordCollectLag("cpu", time.Second)
+	agentstate.RecordCollectLag(agentstate.ProbeKey{Name: "cpu", Type: "t"}, time.Second)
 	if got := collectLagByProbe(BuildAgentRecords(prom))["cpu"]; got != 1 {
 		t.Fatalf("prometheus next window = %v, want 1", got)
 	}
 	if got := collectLagByProbe(BuildAgentRecords(otlp))["cpu"]; got != 2 {
 		t.Fatalf("otlp window = %v, want 2 (the max since its own previous read)", got)
+	}
+}
+
+// Two probes of one type with different names are two series of every
+// per-probe scheduling metric, each carrying probe_name and probe_type.
+func TestSchedulingMetricsAreOneSeriesPerProbeInstance(t *testing.T) {
+	resetTouchedCountersForTest(t)
+	agentstate.ResetCollectionScheduleForTest()
+	t.Cleanup(agentstate.ResetCollectionScheduleForTest)
+
+	a := agentstate.ProbeKey{Name: "web-a", Type: "http"}
+	b := agentstate.ProbeKey{Name: "web-b", Type: "http"}
+	agentstate.RecordCollectLag(a, time.Second)
+	agentstate.RecordCollectLag(b, 3*time.Second)
+	agentstate.IncrementCollectOverruns(a, 1)
+	agentstate.IncrementCollectOverruns(b, 2)
+	start := agentstate.ProcessStart()
+	agentstate.RecordFirstCollectionEnd(a, start.Add(time.Second))
+	agentstate.RecordFirstCollectionEnd(b, start.Add(4*time.Second))
+
+	series := map[string]map[string]float64{}
+	for _, r := range BuildAgentRecords(AgentMetricsSnapshot{StartTime: time.Now()}) {
+		switch r.Name {
+		case "senhub.agent.collect.lag", "senhub.agent.collect.overruns", "senhub.agent.probe.first_collection.delay":
+			if _, old := r.Attributes["probe"]; old || r.Attributes["probe_type"] != "http" || len(r.Attributes) != 2 {
+				t.Errorf("%s attributes = %v, want exactly probe_name and probe_type=http", r.Name, r.Attributes)
+			}
+			if series[r.Name] == nil {
+				series[r.Name] = map[string]float64{}
+			}
+			series[r.Name][r.Attributes["probe_name"]] = r.Value
+		}
+	}
+	want := map[string][2]float64{
+		"senhub.agent.collect.lag":                  {1, 3},
+		"senhub.agent.collect.overruns":             {1, 2},
+		"senhub.agent.probe.first_collection.delay": {1, 4},
+	}
+	for name, v := range want {
+		got := series[name]
+		if len(got) != 2 || got["web-a"] != v[0] || got["web-b"] != v[1] {
+			t.Errorf("%s = %v, want web-a=%v web-b=%v", name, got, v[0], v[1])
+		}
 	}
 }

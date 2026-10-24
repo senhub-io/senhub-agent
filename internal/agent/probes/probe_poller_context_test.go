@@ -268,7 +268,7 @@ func TestCollectionLongerThanItsIntervalKeepsItsDataAndCountsOneOverrun(t *testi
 	if got := routed.Load(); got != 1 {
 		t.Errorf("%d datapoints routed, want the 1 of the slow collection", got)
 	}
-	if got := agentstate.GetCollectOverruns()["slow_first_test"]; got != 1 {
+	if got := agentstate.GetCollectOverruns()[agentstate.ProbeKey{Name: poller.config.Name, Type: "slow_first_test"}]; got != 1 {
 		t.Errorf("overruns = %d, want 1", got)
 	}
 }

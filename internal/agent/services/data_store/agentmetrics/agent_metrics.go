@@ -175,10 +175,11 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Unit: "s",
 			Type: "gauge",
 			Attributes: map[string]string{
-				"probe": probe,
+				"probe_name": probe.Name,
+				"probe_type": probe.Type,
 			},
 			Value:       seconds,
-			Description: "Maximum, over the window since the previous read of agent metrics by the same reader (Prometheus scrape or OTLP push), of the actual start of a probe collection minus its planned start, by probe type. 0 when no collection started in the window.",
+			Description: "Maximum, over the window since the previous read of agent metrics by the same reader (Prometheus scrape or OTLP push), of the actual start of a probe collection minus its planned start, by probe instance. 0 when no collection started in the window.",
 		})
 	}
 
@@ -188,10 +189,11 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Unit: "{collection}",
 			Type: "counter",
 			Attributes: map[string]string{
-				"probe": probe,
+				"probe_name": probe.Name,
+				"probe_type": probe.Type,
 			},
 			Value:       float64(n),
-			Description: "Cumulative count of collections that ran past their interval, by probe type, whether or not they reached their deadline. Such a collection is not cut at the interval and not run twice: the scheduler makes no further call of that probe until it returns.",
+			Description: "Cumulative count of collections that ran past their interval, by probe instance, whether or not they reached their deadline. Such a collection is not cut at the interval and not run twice: the scheduler makes no further call of that probe until it returns.",
 		})
 	}
 
@@ -201,10 +203,11 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Unit: "s",
 			Type: "gauge",
 			Attributes: map[string]string{
-				"probe": probe,
+				"probe_name": probe.Name,
+				"probe_type": probe.Type,
 			},
 			Value:       seconds,
-			Description: "Time from the process start to the end of the first collection of the probe, by probe type. Recorded once per process and per probe instance (the maximum across instances of the same type), then emitted unchanged.",
+			Description: "Time from the process start to the end of the first collection of the probe, by probe instance. Recorded once per process and per probe instance, then emitted unchanged.",
 		})
 	}
 

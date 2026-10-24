@@ -13,6 +13,9 @@ var processStart = time.Now()
 // maxima are windowed per reader: each exposition path (Prometheus, OTLP)
 // reads the maximum since its own previous read, so one reader's read never
 // resets what another reader is about to see.
+//
+// Every per-probe series is keyed by probe instance (configured name and
+// type), so two probes of one type are two series.
 var scheduleState = struct {
 	mu sync.Mutex
 
@@ -20,17 +23,21 @@ var scheduleState = struct {
 	// lagSinceStart is the maximum lag per probe since the process
 	// started. A reader seen for the first time starts from it, so its
 	// first window is not blind to the collections that ran before it read.
-	lagSinceStart        map[string]time.Duration
-	lagWindows           map[string]map[string]time.Duration
-	overruns             map[string]uint64
-	firstCollectionSeen  map[string]bool
-	firstCollectionDelay map[string]time.Duration
+	lagSinceStart        map[ProbeKey]time.Duration
+	lagWindows           map[string]map[ProbeKey]time.Duration
+	overruns             map[ProbeKey]uint64
+	firstCollectionDelay map[ProbeKey]time.Duration
 }{
-	lagSinceStart:        map[string]time.Duration{},
-	lagWindows:           map[string]map[string]time.Duration{},
-	overruns:             map[string]uint64{},
-	firstCollectionSeen:  map[string]bool{},
-	firstCollectionDelay: map[string]time.Duration{},
+	lagSinceStart:        map[ProbeKey]time.Duration{},
+	lagWindows:           map[string]map[ProbeKey]time.Duration{},
+	overruns:             map[ProbeKey]uint64{},
+	firstCollectionDelay: map[ProbeKey]time.Duration{},
+}
+
+// ProbeKey identifies a probe instance: its configured name and its type.
+type ProbeKey struct {
+	Name string
+	Type string
 }
 
 // ProcessStart returns the instant the process started.
@@ -40,14 +47,17 @@ func ProcessStart() time.Time {
 	return processStart
 }
 
-// normalizeProbe replaces an empty probe type with the label used by the other
+// normalize replaces an empty name or type with the label used by the other
 // agentstate probe-keyed metrics, so every scheduling metric shares the same
 // bounded cardinality contract.
-func normalizeProbe(probe string) string {
-	if probe == "" {
-		return "unknown"
+func (k ProbeKey) normalize() ProbeKey {
+	if k.Name == "" {
+		k.Name = "unknown"
 	}
-	return probe
+	if k.Type == "" {
+		k.Type = "unknown"
+	}
+	return k
 }
 
 // CollectionStarted increments the in-flight gauge so BuildAgentRecords can
@@ -78,8 +88,8 @@ func CollectionsInFlight() int64 {
 // reader window and since the process started. A negative lag is treated as
 // 0: scheduling ahead of plan is not a delay, and the key still exists once
 // recorded.
-func RecordCollectLag(probe string, lag time.Duration) {
-	probe = normalizeProbe(probe)
+func RecordCollectLag(probe ProbeKey, lag time.Duration) {
+	probe = probe.normalize()
 	if lag < 0 {
 		lag = 0
 	}
@@ -91,7 +101,7 @@ func RecordCollectLag(probe string, lag time.Duration) {
 	}
 }
 
-func raiseTo(m map[string]time.Duration, probe string, lag time.Duration) {
+func raiseTo(m map[ProbeKey]time.Duration, probe ProbeKey, lag time.Duration) {
 	if cur, ok := m[probe]; !ok || lag > cur {
 		m[probe] = lag
 	}
@@ -102,19 +112,19 @@ func raiseTo(m map[string]time.Duration, probe string, lag time.Duration) {
 // the probe keys. Keeping keys matters for dashboards: a probe that missed
 // this window must report 0, not disappear until its next lag sample. A
 // reader's first call covers the time since the process started.
-func TakeCollectLagWindow(reader string) map[string]float64 {
+func TakeCollectLagWindow(reader string) map[ProbeKey]float64 {
 	scheduleState.mu.Lock()
 	defer scheduleState.mu.Unlock()
 
 	window, ok := scheduleState.lagWindows[reader]
 	if !ok {
-		window = make(map[string]time.Duration, len(scheduleState.lagSinceStart))
+		window = make(map[ProbeKey]time.Duration, len(scheduleState.lagSinceStart))
 		for probe, lag := range scheduleState.lagSinceStart {
 			window[probe] = lag
 		}
 		scheduleState.lagWindows[reader] = window
 	}
-	out := make(map[string]float64, len(window))
+	out := make(map[ProbeKey]float64, len(window))
 	for probe, lag := range window {
 		out[probe] = lag.Seconds()
 		window[probe] = 0
@@ -123,24 +133,24 @@ func TakeCollectLagWindow(reader string) map[string]float64 {
 }
 
 // IncrementCollectOverruns records scheduler ticks skipped because a previous
-// collection of the same probe type was still running. Non-positive ticks are
+// collection of the same probe instance was still running. Non-positive ticks are
 // ignored so callers don't have to guard a default zero value.
-func IncrementCollectOverruns(probe string, ticks int) {
+func IncrementCollectOverruns(probe ProbeKey, ticks int) {
 	if ticks <= 0 {
 		return
 	}
-	probe = normalizeProbe(probe)
+	probe = probe.normalize()
 	scheduleState.mu.Lock()
 	scheduleState.overruns[probe] += uint64(ticks)
 	scheduleState.mu.Unlock()
 }
 
 // GetCollectOverruns returns a snapshot copy of the cumulative overrun ticks
-// per probe type.
-func GetCollectOverruns() map[string]uint64 {
+// per probe instance.
+func GetCollectOverruns() map[ProbeKey]uint64 {
 	scheduleState.mu.Lock()
 	defer scheduleState.mu.Unlock()
-	out := make(map[string]uint64, len(scheduleState.overruns))
+	out := make(map[ProbeKey]uint64, len(scheduleState.overruns))
 	for probe, n := range scheduleState.overruns {
 		out[probe] = n
 	}
@@ -150,29 +160,23 @@ func GetCollectOverruns() map[string]uint64 {
 // RecordFirstCollectionEnd records, for a probe instance, the time from the
 // process start to the end of its first collection. Only the first call per
 // instance counts, so a reload of the same probe does not move the value
-// later. Several instances of one type finish at different times; the
-// maximum across them is kept.
-func RecordFirstCollectionEnd(probe, instance string, ended time.Time) {
-	probe = normalizeProbe(probe)
+// later.
+func RecordFirstCollectionEnd(probe ProbeKey, ended time.Time) {
+	probe = probe.normalize()
 	scheduleState.mu.Lock()
 	defer scheduleState.mu.Unlock()
-	key := probe + "\x00" + instance
-	if scheduleState.firstCollectionSeen[key] {
+	if _, seen := scheduleState.firstCollectionDelay[probe]; seen {
 		return
 	}
-	scheduleState.firstCollectionSeen[key] = true
-	d := max(ended.Sub(processStart), 0)
-	if cur, ok := scheduleState.firstCollectionDelay[probe]; !ok || d > cur {
-		scheduleState.firstCollectionDelay[probe] = d
-	}
+	scheduleState.firstCollectionDelay[probe] = max(ended.Sub(processStart), 0)
 }
 
-// GetFirstCollectionDelays returns a snapshot copy of the maximum first
-// collection delay per probe type, in seconds.
-func GetFirstCollectionDelays() map[string]float64 {
+// GetFirstCollectionDelays returns a snapshot copy of the first collection
+// delay per probe instance, in seconds.
+func GetFirstCollectionDelays() map[ProbeKey]float64 {
 	scheduleState.mu.Lock()
 	defer scheduleState.mu.Unlock()
-	out := make(map[string]float64, len(scheduleState.firstCollectionDelay))
+	out := make(map[ProbeKey]float64, len(scheduleState.firstCollectionDelay))
 	for probe, d := range scheduleState.firstCollectionDelay {
 		out[probe] = d.Seconds()
 	}
@@ -185,11 +189,10 @@ func ResetCollectionScheduleForTest() {
 	scheduleState.mu.Lock()
 	defer scheduleState.mu.Unlock()
 	scheduleState.inFlight = 0
-	scheduleState.lagSinceStart = map[string]time.Duration{}
-	scheduleState.lagWindows = map[string]map[string]time.Duration{}
-	scheduleState.overruns = map[string]uint64{}
-	scheduleState.firstCollectionSeen = map[string]bool{}
-	scheduleState.firstCollectionDelay = map[string]time.Duration{}
+	scheduleState.lagSinceStart = map[ProbeKey]time.Duration{}
+	scheduleState.lagWindows = map[string]map[ProbeKey]time.Duration{}
+	scheduleState.overruns = map[ProbeKey]uint64{}
+	scheduleState.firstCollectionDelay = map[ProbeKey]time.Duration{}
 }
 
 // SetProcessStartForTest replaces the process start instant.

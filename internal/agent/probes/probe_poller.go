@@ -194,7 +194,7 @@ func NewProbePoller(
 	}
 
 	probePoller.ApplyGovernance(config)
-	probePoller.observer = newScheduleObserver(probePoller.probeType(), probeId)
+	probePoller.observer = newScheduleObserver(config.Name, probePoller.probeType())
 
 	// Two probes of one type share the module logger; the scheduler's retry
 	// and error lines must say which of them failed.
