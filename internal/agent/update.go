@@ -19,6 +19,7 @@ type UpdateOption func(*updateOptions)
 
 type updateOptions struct {
 	afterInstall func(newBinary string) (string, error)
+	refreshUnit  func(newBinary string) (string, error)
 	restart      func() (string, error)
 }
 
@@ -34,6 +35,17 @@ type updateOptions struct {
 // service on the old binary did not do what the operator asked (#723).
 func AfterInstall(hook func(newBinary string) (string, error)) UpdateOption {
 	return func(o *updateOptions) { o.afterInstall = hook }
+}
+
+// RefreshUnit registers the hook that brings the installed systemd unit up
+// to date with the new binary before the service restarts. An agent
+// upgraded with the binary alone otherwise kept the unit it was installed
+// with, and an older unit can forbid what the new binary does. It returns a
+// line to print when it changed the unit, "" when there was nothing to do.
+// Its failure is a warning, never a stop: the binary is installed and the
+// service restarts on the unit it has.
+func RefreshUnit(hook func(newBinary string) (string, error)) UpdateOption {
+	return func(o *updateOptions) { o.refreshUnit = hook }
 }
 
 // RestartService registers the hook that restarts the installed service
@@ -205,6 +217,11 @@ func installVersion(updater auto_update.AutoUpdate, args *cliArgs.ParsedArgs, lo
 		}
 	}
 
+	unitLine, unitFailed := "", false
+	if (updated || reconciled != "") && !args.DryRun && !args.NoRefreshUnit && options.refreshUnit != nil {
+		unitLine, unitFailed = refreshUnitStep(options.refreshUnit, self, log)
+	}
+
 	restarted := ""
 	if (updated || reconciled != "") && !args.DryRun && !args.NoRestart && options.restart != nil {
 		restarted, err = options.restart()
@@ -233,6 +250,24 @@ func installVersion(updater auto_update.AutoUpdate, args *cliArgs.ParsedArgs, lo
 	default:
 		fmt.Println("Already up to date.")
 	}
+	if unitLine != "" {
+		fmt.Println(unitLine)
+	}
+	if unitFailed {
+		os.Exit(cliexit.Warning)
+	}
+}
+
+// refreshUnitStep runs the unit refresh and returns the line to print and
+// whether it failed. A failure is logged and reported, and the update goes
+// on: leaving the service stopped would be worse than an older unit.
+func refreshUnitStep(hook func(newBinary string) (string, error), newBinary string, log *logger.Logger) (string, bool) {
+	line, err := hook(newBinary)
+	if err != nil {
+		log.Warn().Err(err).Msg("The systemd unit could not be refreshed; the service keeps its current unit. Run 'refresh-unit' to retry")
+		return "The systemd unit was not refreshed: " + err.Error(), true
+	}
+	return line, false
 }
 
 func checkAndPrompt(updater auto_update.AutoUpdate, includeBeta bool, log *logger.Logger) {
