@@ -51,6 +51,8 @@ type ProbePoller struct {
 	// stop budget ran out returns later; what it brings back belongs to
 	// a probe that no longer runs and is dropped.
 	stopped atomic.Bool
+	// observer reports how the scheduler started each collection.
+	observer *scheduleObserver
 }
 
 // probeCadenceSource wraps a probe entity source so it also reports the
@@ -187,6 +189,7 @@ func NewProbePoller(
 	}
 
 	probePoller.ApplyGovernance(config)
+	probePoller.observer = newScheduleObserver(probePoller.probeType())
 
 	// Two probes of one type share the module logger; the scheduler's retry
 	// and error lines must say which of them failed.
@@ -198,6 +201,7 @@ func NewProbePoller(
 		ExecuteOnStart:    true,
 		ExecuteOnShutdown: false,
 		CallTimeout:       collectDeadline(probe),
+		Observer:          probePoller.observer,
 		ExecuteContext:    probePoller.collect,
 		OnStart:           probe.OnStart,
 		OnShutdown:        probe.OnShutdown,
@@ -258,6 +262,7 @@ func (p *ProbePoller) Start(ctx context.Context) error {
 	}
 
 	p.stopped.Store(false)
+	p.observer.markStart()
 	if err := p.scheduler.Start(ctx); err != nil {
 		return err
 	}

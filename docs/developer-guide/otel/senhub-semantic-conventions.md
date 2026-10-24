@@ -2386,6 +2386,28 @@ relaying-agent identity marker, **deferred** for want of a standard key
 > mechanism; not applicable here, since the agent's metrics are
 > collected outside any active trace context). Out of scope.
 
+## 6quinquies. Agent self-metrics: probe scheduling
+
+Four metrics describe how the scheduler runs the probes. They belong to the
+agent (`senhub.agent.*`, no reserved OpenTelemetry namespace) and the `probe`
+attribute is the probe **type**, so cardinality is bounded by the registry.
+
+| Name | Type | Unit | Attributes | Meaning |
+|---|---|---|---|---|
+| `senhub.agent.collect.in_flight` | gauge | `{collection}` | none | Collections running at this instant. |
+| `senhub.agent.collect.lag` | gauge | `s` | `probe` | Maximum, over the collection window, of the actual start of a collection minus its planned start. The window is the interval between two emissions of agent metrics: the value is read and reset by each emission, so it is 0 for a probe with no collection in the window. |
+| `senhub.agent.collect.overruns` | counter | `{tick}` | `probe` | Ticks skipped because the previous collection was still running. Ticks skipped on purpose by the failure backoff are not counted. |
+| `senhub.agent.probe.first_collection.delay` | gauge | `s` | `probe` | Time from the start of the probe (sensor start) to the end of its first collection. Recorded once per start and per probe, the maximum across instances of the same type, then emitted unchanged. |
+
+The first collection of each probe waits for a stable offset (FNV-1a 64 of the
+probe id modulo `min(interval, 30 s)`), so `first_collection.delay` includes
+that offset. The planned start of the first collection is the end of that wait;
+the planned start of a later one is the tick time.
+
+Prometheus names: `senhub_agent_collect_in_flight`,
+`senhub_agent_collect_lag_seconds`, `senhub_agent_collect_overruns_total`,
+`senhub_agent_probe_first_collection_delay_seconds`.
+
 ## 7. Versioning
 
 This document does not have a version number yet. Once the complete V1 (15 probes mapped) is published in 0.1.88 it moves to SemVer 1.0.0. Any change to a name, attribute or unit is a major bump.

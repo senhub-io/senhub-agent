@@ -60,6 +60,9 @@ type AgentMetricsSnapshot struct {
 // errors via agentstate.IncrementCollectErrors, http requests via the
 // CountRequests middleware, probes.healthy via push-based
 // agentstate.RecordProbeHealth from ProbePoller.collect).
+//
+// Probe scheduling self-metrics are also emitted from agentstate; the lag
+// window is read and reset exactly once per exposition cycle.
 // attrSenderService names the service that sent the records an OTLP
 // receiver relayed, on the agent's own counters.
 const attrSenderService = "senhub.otlp_receiver.sender.service.name"
@@ -143,6 +146,59 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			},
 			Value:       float64(n),
 			Description: "Cumulative count of probe collection errors since agent start, by probe type and reason (collect, timeout, route).",
+		})
+	}
+
+	// Probe scheduling self-metrics. The lag window is read-and-reset here
+	// (as opposed to a getter) so each emission window captures the max
+	// between two BuildAgentRecords calls; keys survive the reset so a
+	// probe that missed a window reports 0 instead of disappearing.
+	records = append(records, otelmapper.OtelRecord{
+		Name:        "senhub.agent.collect.in_flight",
+		Unit:        "{collection}",
+		Type:        "gauge",
+		Attributes:  map[string]string{},
+		Value:       float64(agentstate.CollectionsInFlight()),
+		Description: "Number of probe collections running at this instant.",
+	})
+
+	lagWindow := agentstate.TakeCollectLagWindow()
+	for probe, seconds := range lagWindow {
+		records = append(records, otelmapper.OtelRecord{
+			Name: "senhub.agent.collect.lag",
+			Unit: "s",
+			Type: "gauge",
+			Attributes: map[string]string{
+				"probe": probe,
+			},
+			Value:       seconds,
+			Description: "Maximum, over the collection window (the interval between two emissions of agent metrics), of the actual start of a probe collection minus its planned start, by probe type. 0 when no collection started in the window.",
+		})
+	}
+
+	for probe, ticks := range agentstate.GetCollectOverruns() {
+		records = append(records, otelmapper.OtelRecord{
+			Name: "senhub.agent.collect.overruns",
+			Unit: "{tick}",
+			Type: "counter",
+			Attributes: map[string]string{
+				"probe": probe,
+			},
+			Value:       float64(ticks),
+			Description: "Cumulative count of scheduler ticks skipped because the previous collection of the probe was still running, by probe type.",
+		})
+	}
+
+	for probe, seconds := range agentstate.GetFirstCollectionDelays() {
+		records = append(records, otelmapper.OtelRecord{
+			Name: "senhub.agent.probe.first_collection.delay",
+			Unit: "s",
+			Type: "gauge",
+			Attributes: map[string]string{
+				"probe": probe,
+			},
+			Value:       seconds,
+			Description: "Time from the agent start to the end of the first collection of the probe, by probe type. Recorded once per start and per probe (the maximum across instances of the same type), then emitted unchanged.",
 		})
 	}
 

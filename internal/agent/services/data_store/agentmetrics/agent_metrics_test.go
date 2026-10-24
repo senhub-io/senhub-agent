@@ -21,11 +21,11 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	resetTouchedCountersForTest(t)
 
 	recs := BuildAgentRecords(snap)
-	// 33 records when neither build info nor http_requests is set and no
+	// 34 records when neither build info nor http_requests is set and no
 	// collect errors / OTLP export errors / drops / checkpoint errors
 	// have occurred yet:
-	//   6 core         (uptime, cache.entries, probes.{active,total,healthy},
-	//                   transformer.fallback)
+	//   7 core         (uptime, cache.entries, probes.{active,total,healthy},
+	//                   transformer.fallback, collect.in_flight)
 	//  11 OTLP push    (metrics.pushed, logs.pushed, spans.relayed,
 	//                   logs.relayed, metrics.relayed,
 	//                   dropped_log_records,
@@ -51,7 +51,7 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	// processed, processed{error.type=queue_full}, queue.size, capacity;
 	// plus senhub.agent.entity.attribute.conflicts and .duplicates.merged;
 	// plus senhub.agent.self_logs.published and .dropped.
-	want := 33 + 6 + 2 + len(agentstate.OTLPSignals) + len(agentstate.OTLPDropReasons)
+	want := 34 + 6 + 2 + len(agentstate.OTLPSignals) + len(agentstate.OTLPDropReasons)
 	if len(recs) != want {
 		t.Fatalf("expected %d records (no build info, no http requests, no collect errors, no checkpoint errors), got %d", want, len(recs))
 	}
@@ -67,6 +67,7 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 		"senhub.agent.probe.count",
 		"senhub.agent.probes.healthy",
 		"senhub.agent.transformer.fallback",
+		"senhub.agent.collect.in_flight",
 		"senhub.agent.otlp.metrics.pushed",
 		"senhub.agent.otlp.logs.pushed",
 		"senhub.agent.otlp.spans.relayed",
@@ -411,6 +412,7 @@ func resetTouchedCountersForTest(t *testing.T) {
 		agentstate.ResetUpdateRejectedForTest,
 		agentstate.ResetOTLPReceiverCountersForTest,
 		agentstate.ResetOTLPReceiverCoverageForTest,
+		agentstate.ResetCollectionScheduleForTest,
 	}
 	for _, reset := range resets {
 		reset()
@@ -446,5 +448,99 @@ func TestBuildAgentRecords_LogsRedactedEmittedPerProbeAndRule(t *testing.T) {
 	}
 	if unit != "{occurrence}" || typ != "counter" {
 		t.Errorf("unit/type: got %q/%q, want {occurrence}/counter", unit, typ)
+	}
+}
+
+func TestBuildAgentRecords_CollectSchedulingMetricsEmittedWhenTouched(t *testing.T) {
+	resetTouchedCountersForTest(t)
+	snap := AgentMetricsSnapshot{StartTime: time.Now()}
+
+	for _, r := range BuildAgentRecords(snap) {
+		switch r.Name {
+		case "senhub.agent.collect.lag", "senhub.agent.collect.overruns", "senhub.agent.probe.first_collection.delay":
+			t.Fatalf("%s should be absent before any probe scheduling data is recorded", r.Name)
+		}
+	}
+
+	agentstate.RecordCollectLag("cpu", 1500*time.Millisecond)
+	agentstate.RecordCollectLag("cpu", -time.Second)
+	agentstate.RecordCollectLag("memory", 1000*time.Millisecond)
+	agentstate.IncrementCollectOverruns("cpu", 3)
+	agentstate.IncrementCollectOverruns("cpu", -2)
+	agentstate.IncrementCollectOverruns("memory", 0)
+	agentstate.RecordFirstCollectionDelay("cpu", 2*time.Second)
+	agentstate.RecordFirstCollectionDelay("cpu", 3*time.Second)
+	agentstate.RecordFirstCollectionDelay("memory", 750*time.Millisecond)
+	agentstate.CollectionStarted()
+	agentstate.CollectionStarted()
+
+	recs := BuildAgentRecords(snap)
+
+	var inFlight *otelmapper.OtelRecord
+	lags := map[string]float64{}
+	overruns := map[string]float64{}
+	delays := map[string]float64{}
+	var lagUnit, lagType, overUnit, overType, delayUnit, delayType string
+
+	for i := range recs {
+		r := &recs[i]
+		switch r.Name {
+		case "senhub.agent.collect.in_flight":
+			inFlight = r
+		case "senhub.agent.collect.lag":
+			lags[r.Attributes["probe"]] = r.Value
+			lagUnit, lagType = r.Unit, r.Type
+		case "senhub.agent.collect.overruns":
+			overruns[r.Attributes["probe"]] = r.Value
+			overUnit, overType = r.Unit, r.Type
+		case "senhub.agent.probe.first_collection.delay":
+			delays[r.Attributes["probe"]] = r.Value
+			delayUnit, delayType = r.Unit, r.Type
+		}
+	}
+
+	if inFlight == nil {
+		t.Fatal("senhub.agent.collect.in_flight should always be emitted")
+	}
+	if inFlight.Unit != "{collection}" || inFlight.Type != "gauge" || len(inFlight.Attributes) != 0 {
+		t.Errorf("in_flight unit/type/attributes = %q/%q/%v, want {collection}/gauge/empty", inFlight.Unit, inFlight.Type, inFlight.Attributes)
+	}
+	if inFlight.Value != 2 {
+		t.Errorf("in_flight value = %v, want 2", inFlight.Value)
+	}
+
+	if lags["cpu"] != 1.5 || lags["memory"] != 1.0 || len(lags) != 2 {
+		t.Errorf("lags = %v, want cpu=1.5 memory=1.0", lags)
+	}
+	if lagUnit != "s" || lagType != "gauge" {
+		t.Errorf("lag unit/type = %q/%q, want s/gauge", lagUnit, lagType)
+	}
+
+	if overruns["cpu"] != 3 || len(overruns) != 1 {
+		t.Errorf("overruns = %v, want cpu=3", overruns)
+	}
+	if overUnit != "{tick}" || overType != "counter" {
+		t.Errorf("overruns unit/type = %q/%q, want {tick}/counter", overUnit, overType)
+	}
+
+	if delays["cpu"] != 3 || delays["memory"] != 0.75 || len(delays) != 2 {
+		t.Errorf("delays = %v, want cpu=3 memory=0.75", delays)
+	}
+	if delayUnit != "s" || delayType != "gauge" {
+		t.Errorf("delay unit/type = %q/%q, want s/gauge", delayUnit, delayType)
+	}
+
+	// The lag window is consumed by the BuildAgentRecords call above; a
+	// second build must still report every seen probe, but at 0.
+	second := BuildAgentRecords(snap)
+	lagsAfter := map[string]float64{}
+	for i := range second {
+		r := &second[i]
+		if r.Name == "senhub.agent.collect.lag" {
+			lagsAfter[r.Attributes["probe"]] = r.Value
+		}
+	}
+	if lagsAfter["cpu"] != 0 || lagsAfter["memory"] != 0 || len(lagsAfter) != 2 {
+		t.Errorf("second lag window = %v, want cpu=0 memory=0 with keys kept", lagsAfter)
 	}
 }
