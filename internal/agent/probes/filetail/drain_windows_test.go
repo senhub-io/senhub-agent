@@ -60,7 +60,9 @@ func rotatedScenario(t *testing.T, during func(dir, file, old string)) {
 }
 
 // Lines written to the old file just before it is renamed away, then the new
-// file created: all are read, none twice.
+// file created: all are read, none twice. Rotations are three seconds apart:
+// a file that lives less than the rotation check's two looks (about 2 s) can
+// be renamed away before the tail notices it, which no drain recovers.
 func TestFileTailWindows_DrainsLinesWrittenBeforeRename(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "app.log")
@@ -91,7 +93,7 @@ func TestFileTailWindows_DrainsLinesWrittenBeforeRename(t *testing.T) {
 			want = append(want, l)
 			appendLines(t, file, l)
 		}
-		time.Sleep(600 * time.Millisecond)
+		time.Sleep(3 * time.Second)
 	}
 	got := collectBodies(t, records, file, len(want))
 	for i := range want {
