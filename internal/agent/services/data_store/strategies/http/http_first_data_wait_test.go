@@ -168,3 +168,56 @@ func TestNagiosFirstData_WaitsThenAnswers(t *testing.T) {
 		t.Fatalf("answered after %v, want about 300ms", elapsed)
 	}
 }
+
+func TestPRTGFirstData_EventDrivenProbeAnswersAtOnce(t *testing.T) {
+	api, _, _ := firstWaitHarness(t, time.Second)
+	api.strategy.firstDataWait = 5 * time.Second
+	agentstate.SetActiveProbes([]string{"probe-id-wait"})
+	t.Cleanup(func() { agentstate.SetActiveProbes(nil) })
+	agentstate.MarkProbeEventDriven("probe-id-wait")
+
+	w := httptest.NewRecorder()
+	begin := time.Now()
+	api.HandlePRTGMetricsGET(w, firstWaitRequest(context.Background()))
+
+	if elapsed := time.Since(begin); elapsed > 500*time.Millisecond {
+		t.Fatalf("answered after %v for an event-driven probe, want immediate", elapsed)
+	}
+}
+
+func TestPRTGFirstData_FirstCycleWithNoPointsAnswersAtOnce(t *testing.T) {
+	api, _, _ := firstWaitHarness(t, time.Second)
+	api.strategy.firstDataWait = 5 * time.Second
+	agentstate.SetActiveProbes([]string{"probe-id-wait"})
+	t.Cleanup(func() { agentstate.SetActiveProbes(nil) })
+	agentstate.RecordProbeCycle("probe-id-wait", 0)
+
+	w := httptest.NewRecorder()
+	begin := time.Now()
+	api.HandlePRTGMetricsGET(w, firstWaitRequest(context.Background()))
+
+	if elapsed := time.Since(begin); elapsed > 500*time.Millisecond {
+		t.Fatalf("answered after %v although the first collection finished empty", elapsed)
+	}
+}
+
+func TestPRTGFirstData_WaitEndsWhenFirstCycleFinishesEmpty(t *testing.T) {
+	api, _, _ := firstWaitHarness(t, time.Second)
+	api.strategy.firstDataWait = 5 * time.Second
+	agentstate.SetActiveProbes([]string{"probe-id-wait"})
+	t.Cleanup(func() { agentstate.SetActiveProbes(nil) })
+
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		agentstate.RecordProbeCycle("probe-id-wait", 0)
+	}()
+
+	w := httptest.NewRecorder()
+	begin := time.Now()
+	api.HandlePRTGMetricsGET(w, firstWaitRequest(context.Background()))
+	elapsed := time.Since(begin)
+
+	if elapsed < 250*time.Millisecond || elapsed > 2*time.Second {
+		t.Fatalf("answered after %v, want about 300ms (when the first cycle ended, not at the wait limit)", elapsed)
+	}
+}

@@ -19,10 +19,11 @@ const (
 )
 
 // waitForFirstData holds a pull request for a running probe that has no
-// data yet until its first points land, the wait elapses or the client
-// goes. It returns at once for a probe the agent does not run, one whose
-// last cycle failed, one that already has data, or once the start window
-// is over. The caller reads the cache afterwards whatever the outcome.
+// data yet until its first points land, its first collection finishes,
+// the wait elapses or the client goes. It returns at once for a probe the
+// agent does not run, one whose last cycle failed, one that already has
+// data, an event-driven one (no first collection to wait for), one whose
+// first collection already finished, or once the start window is over. The caller reads the cache afterwards whatever the outcome.
 func (h *HTTPSyncStrategy) waitForFirstData(ctx context.Context, probeName string) {
 	window, wait := h.firstDataWindow, h.firstDataWait
 	if window <= 0 {
@@ -35,9 +36,10 @@ func (h *HTTPSyncStrategy) waitForFirstData(ctx context.Context, probeName strin
 		return
 	}
 	state, running := agentstate.ProbeRunStateByName(probeName)
-	if !running || state.Health == "failed" {
+	if !running || state.Health == "failed" || state.EventDriven || !state.LastCycle.IsZero() {
 		return
 	}
+	cycled, _ := agentstate.FirstCycleSignalByName(probeName)
 	ready := h.cache.FirstDataSignal(probeName)
 	select {
 	case <-ready:
@@ -51,6 +53,7 @@ func (h *HTTPSyncStrategy) waitForFirstData(ctx context.Context, probeName strin
 	select {
 	case <-ready:
 		got = true
+	case <-cycled:
 	case <-timer.C:
 	case <-ctx.Done():
 	}

@@ -113,6 +113,7 @@ var probeCycles = map[string]probeCycle{}
 func RecordProbeCycle(probeID string, points int) {
 	probeStateMu.Lock()
 	probeCycles[probeID] = probeCycle{at: time.Now(), points: points}
+	closeFirstCycleSignalLocked(probeID)
 	probeStateMu.Unlock()
 }
 
@@ -183,9 +184,14 @@ func SetActiveProbes(probeIDs []string) {
 		if _, alive := newSet[id]; !alive {
 			delete(probeHealth, id)
 			delete(probeLastError, id)
+		}
+	}
+	for id := range probeCycles {
+		if _, alive := newSet[id]; !alive {
 			delete(probeCycles, id)
 		}
 	}
+	pruneProbeKindLocked(newSet)
 }
 
 // RecordProbeHealth publishes a probe's current health to the shared map.
@@ -246,6 +252,9 @@ type ProbeRunState struct {
 	// and LastPoints how many; zero until it has.
 	LastCycle  time.Time
 	LastPoints int
+	// EventDriven is true for a probe whose data arrives through a
+	// callback or a listener rather than a first collection.
+	EventDriven bool
 }
 
 // GetProbeRunState reports the live state of a probe by its ID (from
@@ -259,7 +268,8 @@ func GetProbeRunState(probeID string) ProbeRunState {
 		}
 		return ProbeRunState{}
 	}
-	state := ProbeRunState{Running: true, LastCycle: probeCycles[probeID].at, LastPoints: probeCycles[probeID].points}
+	_, eventDriven := probeEventDriven[probeID]
+	state := ProbeRunState{Running: true, EventDriven: eventDriven, LastCycle: probeCycles[probeID].at, LastPoints: probeCycles[probeID].points}
 	switch probeHealth[probeID] {
 	case probeHealthOK:
 		state.Health = "ok"

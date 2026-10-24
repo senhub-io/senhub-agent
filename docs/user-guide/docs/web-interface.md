@@ -258,7 +258,7 @@ This returns only the metrics for the virtual server named `vs_web`. The Sensor 
 
 #### Right after the agent restarts
 
-Right after the agent starts, a probe has not collected yet. For the first two minutes, a request for a running probe that has no data waits up to 10 seconds for the probe's first collection and answers as soon as it has data, so the sensor reads normally. A probe whose first collection takes longer than 10 seconds still answers with no channel: PRTG shows that one reading as "The returned JSON does not match the expected structure (No channel found). (code: PE231)", and the sensor is back to normal at the next reading. Once the two minutes have passed, a probe with no data answers at once. No action is needed.
+Right after the agent starts, a probe has not collected yet. For the first two minutes, a request for a running probe that has no data waits up to 10 seconds for the probe's first collection and answers as soon as it has data, so the sensor reads normally. A probe whose first collection takes longer than 10 seconds still answers with no channel: PRTG shows that one reading as "The returned JSON does not match the expected structure (No channel found). (code: PE231)", and the sensor is back to normal at the next reading. Once the two minutes have passed, a probe with no data answers at once. A probe that receives its data as events (syslog, event log, OTLP receiver) has no first collection to wait for, and a probe whose first collection finished with nothing to report answers at once too. No action is needed.
 
 #### Installing PRTG value lookups
 
