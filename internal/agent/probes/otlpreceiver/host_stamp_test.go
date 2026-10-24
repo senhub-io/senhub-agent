@@ -18,7 +18,7 @@ import (
 	"senhub-agent.go/internal/agent/services/common"
 )
 
-var testHost = hostStamp{id: "6a6d1121-4a85-4e64-a222-746f7bc9c04c", name: "sha901"}
+var testHost = hostStamp{id: "6a6d1121-4a85-4e64-a222-746f7bc9c04c", name: "node-01"}
 
 func resourceWith(kv ...string) *resourcepb.Resource {
 	r := &resourcepb.Resource{}
