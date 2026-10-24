@@ -99,7 +99,9 @@ func init() {
 	// (ConfigurationManager.parseParams).
 	data_store.RegisterKnownBlockParams("http", "prtg", []string{"check_result_channel"})
 	data_store.RegisterKnownBlockParams("http", "prometheus", []string{"include_probe_tags", "expose_host_metrics"})
-	data_store.RegisterKnownBlockParams("http", "tls", []string{"enabled", "min_tls_version", "cert_file", "key_file"})
+	// cipher_suites is written by config init (configuration.TLSConfig)
+	// even though nothing reads it; a generated file must not warn.
+	data_store.RegisterKnownBlockParams("http", "tls", []string{"enabled", "min_tls_version", "cert_file", "key_file", "cipher_suites"})
 
 	data_store.RegisterKnownParams("prtg", []string{
 		"data_retention_period", "interval", "probe_name", "probe_type",

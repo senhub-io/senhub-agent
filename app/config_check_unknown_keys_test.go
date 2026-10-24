@@ -37,6 +37,7 @@ func TestConfigCheckWarnsOnUnknownKeysOutsideParams(t *testing.T) {
 		want    string // empty: no finding expected
 	}{
 		{"valid", "      port: 18080\n      prtg:\n        check_result_channel: true\n", "    custom_tags: {a: b}\n", ""},
+		{"tls as config init writes it", "      port: 18443\n      tls:\n        enabled: true\n        min_tls_version: \"1.2\"\n        cipher_suites: []\n", "", ""},
 		{"probe level typo", "      port: 18080\n", "    intervall: 30\n", `Probe "cpu": key "intervall" is not read at the probe level`},
 		{"http level", "      port: 18080\n      bogus: 1\n", "", `param "bogus" is not read by the http strategy`},
 		{"prtg sub-block", "      port: 18080\n      prtg:\n        bogus: 1\n", "", `param "prtg.bogus" is not read by the http strategy`},
