@@ -7,9 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gopkg.in/yaml.v2"
-
 	"senhub-agent.go/internal/agent/services/configuration/secret"
+	"senhub-agent.go/internal/yamlcompat"
 )
 
 // managedFragmentHeader marks a probes.d fragment written by the web
@@ -128,10 +127,10 @@ func DeleteProbeFragment(configPath, name string) (string, error) {
 }
 
 // writeManagedProbeFragment serialises one probe as a one-element list
-// under the managed header, atomically. yaml.v2 is used deliberately:
-// the loader reads with it, so what is written is what is read.
+// under the managed header, atomically. It goes through yamlcompat so that
+// what is written is read back by the loader as the same document.
 func writeManagedProbeFragment(path string, p ProbeConfig) error {
-	body, err := yaml.Marshal([]ProbeConfig{p})
+	body, err := yamlcompat.Marshal([]ProbeConfig{p})
 	if err != nil {
 		return fmt.Errorf("encoding probe %q: %w", p.Name, err)
 	}

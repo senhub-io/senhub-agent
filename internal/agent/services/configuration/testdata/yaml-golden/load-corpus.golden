@@ -1,0 +1,1699 @@
+##### examples/example-config-enterprise-license.yaml
+configuration.LocalConfigurationData{
+  ConfigVersion: int(2)
+  Agent: configuration.LocalAgentConfig{
+    Key: string("test-agent-enterprise-12345")
+    License: string("{\n  \"tier\": \"enterprise\",\n  \"authorized_probes\": [\"*\"],\n  \"expires_at\": \"2026-12-31T23:59:59Z\",\n  \"issued_at\": \"2025-01-01T00:00:00Z\",\n  \"subject\": \"customer-enterprise-megacorp\"\n}\n")
+    GlobalTags: nil(map[string]string)
+  }
+  Storage: []configuration.StorageConfig[
+    configuration.StorageConfig{
+      Name: string("http")
+      Params: map[string]interface {}{
+        string("bind_address")
+        =>string("0.0.0.0")
+        string("endpoints")
+        =>[]interface {}[
+          string("prtg")
+          string("web")
+          string("nagios")
+          string("senhub")
+        ]
+        string("port")
+        =>int(8080)
+      }
+    }
+  ]
+  Probes: []configuration.ProbeConfig[
+    configuration.ProbeConfig{
+      Name: string("cpu")
+      Type: string("cpu")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(30)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("memory")
+      Type: string("memory")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(30)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("logicaldisk")
+      Type: string("logicaldisk")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(60)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("network")
+      Type: string("network")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(60)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("datacenter-redfish")
+      Type: string("redfish")
+      Params: map[string]interface {}{
+        string("endpoint")
+        =>string("https://idrac.example.com")
+        string("interval")
+        =>int(300)
+        string("password")
+        =>string("password123")
+        string("username")
+        =>string("admin")
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("citrix-production")
+      Type: string("citrix")
+      Params: map[string]interface {}{
+        string("director")
+        =>map[string]interface {}{
+          string("auth")
+          =>map[string]interface {}{
+            string("password")
+            =>string("password")
+            string("username")
+            =>string("DOMAIN\\admin")
+          }
+          string("url")
+          =>string("https://citrix-director.company.com")
+          string("verify_ssl")
+          =>bool(true)
+        }
+        string("interval")
+        =>int(120)
+        string("timeout")
+        =>int(30)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("netscaler-adc")
+      Type: string("netscaler")
+      Params: map[string]interface {}{
+        string("base_url")
+        =>string("https://netscaler.company.com")
+        string("insecure_skip_verify")
+        =>bool(false)
+        string("interval")
+        =>int(60)
+        string("password")
+        =>string("password123")
+        string("timeout")
+        =>int(30)
+        string("username")
+        =>string("nsroot")
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("ping-gateway")
+      Type: string("ping_gateway")
+      Params: map[string]interface {}{
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("website-monitoring")
+      Type: string("ping_webapp")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(60)
+        string("url")
+        =>string("https://www.example.com")
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("website-load-test")
+      Type: string("load_webapp")
+      Params: map[string]interface {}{
+        string("timeout")
+        =>int(30)
+        string("url")
+        =>string("https://www.example.com")
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("syslog-collector")
+      Type: string("syslog")
+      Params: map[string]interface {}{
+        string("port")
+        =>int(514)
+        string("protocol")
+        =>string("udp")
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("custom-events")
+      Type: string("event")
+      Params: map[string]interface {}{
+        string("port")
+        =>int(5656)
+        string("protocol")
+        =>string("tcp")
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("wifi-monitor")
+      Type: string("wifi_signal_strength")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(60)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+  ]
+  AutoUpdate: &configuration.AutoUpdateConfig{
+    Enabled: bool(true)
+    IncludeBeta: bool(false)
+    URL: string("https://eu-west-1.intake.senhub.io")
+    Version: string("")
+  }
+  Cache: &configuration.CacheConfig{
+    RetentionMinutes: int(10)
+  }
+  Entities: nil(*configuration.EntitiesConfig)
+  Governance: nil(map[string]interface {})
+}
+##### examples/example-config-free-tier.yaml
+configuration.LocalConfigurationData{
+  ConfigVersion: int(2)
+  Agent: configuration.LocalAgentConfig{
+    Key: string("00000000-0000-4000-8000-000000000000")
+    License: string("")
+    GlobalTags: nil(map[string]string)
+  }
+  Storage: []configuration.StorageConfig[
+    configuration.StorageConfig{
+      Name: string("http")
+      Params: map[string]interface {}{
+        string("bind_address")
+        =>string("127.0.0.1")
+        string("endpoints")
+        =>[]interface {}[
+          string("prtg")
+          string("web")
+          string("nagios")
+        ]
+        string("port")
+        =>int(8080)
+      }
+    }
+  ]
+  Probes: []configuration.ProbeConfig[
+    configuration.ProbeConfig{
+      Name: string("cpu")
+      Type: string("cpu")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(30)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("memory")
+      Type: string("memory")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(30)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("logicaldisk")
+      Type: string("logicaldisk")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(60)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("network")
+      Type: string("network")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(60)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+  ]
+  AutoUpdate: &configuration.AutoUpdateConfig{
+    Enabled: bool(false)
+    IncludeBeta: bool(false)
+    URL: string("https://eu-west-1.intake.senhub.io")
+    Version: string("")
+  }
+  Cache: &configuration.CacheConfig{
+    RetentionMinutes: int(5)
+  }
+  Entities: nil(*configuration.EntitiesConfig)
+  Governance: nil(map[string]interface {})
+}
+##### examples/example-config-grace-period.yaml
+configuration.LocalConfigurationData{
+  ConfigVersion: int(2)
+  Agent: configuration.LocalAgentConfig{
+    Key: string("test-agent-grace-12345")
+    License: string("{\n  \"tier\": \"pro\",\n  \"authorized_probes\": [\"redfish\", \"citrix\", \"netscaler\"],\n  \"expires_at\": \"2025-11-04T10:00:00Z\",\n  \"issued_at\": \"2024-11-04T00:00:00Z\",\n  \"subject\": \"customer-grace-test\"\n}\n")
+    GlobalTags: nil(map[string]string)
+  }
+  Storage: []configuration.StorageConfig[
+    configuration.StorageConfig{
+      Name: string("http")
+      Params: map[string]interface {}{
+        string("bind_address")
+        =>string("127.0.0.1")
+        string("endpoints")
+        =>[]interface {}[
+          string("prtg")
+          string("web")
+        ]
+        string("port")
+        =>int(8080)
+      }
+    }
+  ]
+  Probes: []configuration.ProbeConfig[
+    configuration.ProbeConfig{
+      Name: string("cpu")
+      Type: string("cpu")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(30)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("memory")
+      Type: string("memory")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(30)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("datacenter-redfish")
+      Type: string("redfish")
+      Params: map[string]interface {}{
+        string("endpoint")
+        =>string("https://idrac.example.com")
+        string("interval")
+        =>int(300)
+        string("password")
+        =>string("password123")
+        string("username")
+        =>string("admin")
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("citrix-production")
+      Type: string("citrix")
+      Params: map[string]interface {}{
+        string("director")
+        =>map[string]interface {}{
+          string("auth")
+          =>map[string]interface {}{
+            string("password")
+            =>string("password")
+            string("username")
+            =>string("DOMAIN\\admin")
+          }
+          string("url")
+          =>string("https://citrix-director.company.com")
+          string("verify_ssl")
+          =>bool(true)
+        }
+        string("interval")
+        =>int(120)
+        string("timeout")
+        =>int(30)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("netscaler-adc")
+      Type: string("netscaler")
+      Params: map[string]interface {}{
+        string("base_url")
+        =>string("https://netscaler.company.com")
+        string("interval")
+        =>int(60)
+        string("password")
+        =>string("password123")
+        string("username")
+        =>string("nsroot")
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+  ]
+  AutoUpdate: &configuration.AutoUpdateConfig{
+    Enabled: bool(false)
+    IncludeBeta: bool(false)
+    URL: string("https://eu-west-1.intake.senhub.io")
+    Version: string("")
+  }
+  Cache: &configuration.CacheConfig{
+    RetentionMinutes: int(5)
+  }
+  Entities: nil(*configuration.EntitiesConfig)
+  Governance: nil(map[string]interface {})
+}
+##### examples/example-config-pro-license.yaml
+configuration.LocalConfigurationData{
+  ConfigVersion: int(2)
+  Agent: configuration.LocalAgentConfig{
+    Key: string("test-agent-pro-12345")
+    License: string("{\n  \"tier\": \"pro\",\n  \"authorized_probes\": [\"redfish\", \"citrix\", \"netscaler\", \"ping_webapp\"],\n  \"expires_at\": \"2025-12-31T23:59:59Z\",\n  \"issued_at\": \"2025-01-01T00:00:00Z\",\n  \"subject\": \"customer-acme-corp\"\n}\n")
+    GlobalTags: nil(map[string]string)
+  }
+  Storage: []configuration.StorageConfig[
+    configuration.StorageConfig{
+      Name: string("http")
+      Params: map[string]interface {}{
+        string("bind_address")
+        =>string("127.0.0.1")
+        string("endpoints")
+        =>[]interface {}[
+          string("prtg")
+          string("web")
+          string("nagios")
+        ]
+        string("port")
+        =>int(8080)
+      }
+    }
+  ]
+  Probes: []configuration.ProbeConfig[
+    configuration.ProbeConfig{
+      Name: string("cpu")
+      Type: string("cpu")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(30)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("memory")
+      Type: string("memory")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(30)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("logicaldisk")
+      Type: string("logicaldisk")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(60)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("network")
+      Type: string("network")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(60)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("datacenter-redfish")
+      Type: string("redfish")
+      Params: map[string]interface {}{
+        string("collections")
+        =>[]interface {}[
+          string("system")
+          string("thermal")
+          string("power")
+        ]
+        string("endpoint")
+        =>string("https://idrac.example.com")
+        string("interval")
+        =>int(300)
+        string("password")
+        =>string("password123")
+        string("username")
+        =>string("admin")
+        string("verify_ssl")
+        =>bool(true)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("citrix-production")
+      Type: string("citrix")
+      Params: map[string]interface {}{
+        string("director")
+        =>map[string]interface {}{
+          string("auth")
+          =>map[string]interface {}{
+            string("password")
+            =>string("password")
+            string("username")
+            =>string("DOMAIN\\admin")
+          }
+          string("url")
+          =>string("https://citrix-director.company.com")
+          string("verify_ssl")
+          =>bool(true)
+        }
+        string("interval")
+        =>int(120)
+        string("timeout")
+        =>int(30)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("netscaler-adc")
+      Type: string("netscaler")
+      Params: map[string]interface {}{
+        string("base_url")
+        =>string("https://netscaler.company.com")
+        string("insecure_skip_verify")
+        =>bool(false)
+        string("interval")
+        =>int(60)
+        string("password")
+        =>string("password123")
+        string("timeout")
+        =>int(30)
+        string("username")
+        =>string("nsroot")
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("website-monitoring")
+      Type: string("ping_webapp")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(60)
+        string("url")
+        =>string("https://www.example.com")
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+  ]
+  AutoUpdate: &configuration.AutoUpdateConfig{
+    Enabled: bool(false)
+    IncludeBeta: bool(false)
+    URL: string("https://eu-west-1.intake.senhub.io")
+    Version: string("")
+  }
+  Cache: &configuration.CacheConfig{
+    RetentionMinutes: int(5)
+  }
+  Entities: nil(*configuration.EntitiesConfig)
+  Governance: nil(map[string]interface {})
+}
+##### docs/probes/citrix/configuration-examples.yaml
+configuration.LocalConfigurationData{
+  ConfigVersion: int(3)
+  Agent: configuration.LocalAgentConfig{
+    Key: string("your-agent-key-here")
+    License: string("")
+    GlobalTags: nil(map[string]string)
+  }
+  Storage: []configuration.StorageConfig[
+    configuration.StorageConfig{
+      Name: string("http")
+      Params: map[string]interface {}{
+        string("bind_address")
+        =>string("0.0.0.0")
+        string("cache")
+        =>map[string]interface {}{
+          string("retention_minutes")
+          =>int(45)
+        }
+        string("endpoints")
+        =>[]interface {}[
+          string("prtg")
+          string("senhub")
+          string("web")
+          string("nagios")
+        ]
+        string("port")
+        =>int(8080)
+      }
+    }
+  ]
+  Probes: []configuration.ProbeConfig[
+    configuration.ProbeConfig{
+      Name: string("citrix")
+      Type: string("citrix")
+      Params: map[string]interface {}{
+        string("debug_identifiers")
+        =>bool(false)
+        string("director")
+        =>map[string]interface {}{
+          string("auth")
+          =>map[string]interface {}{
+            string("password")
+            =>string("stub:citrix.director_password")
+            string("username")
+            =>string("DOMAIN\\svc-monitoring")
+          }
+          string("url")
+          =>string("https://citrix-director.company.com")
+          string("verify_ssl")
+          =>bool(true)
+        }
+        string("interval")
+        =>int(120)
+        string("retry")
+        =>map[string]interface {}{
+          string("backoff_factor")
+          =>float64(2)
+          string("max_attempts")
+          =>int(3)
+        }
+        string("timeout")
+        =>int(30)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("cpu")
+      Type: string("cpu")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(30)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("memory")
+      Type: string("memory")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(30)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("network")
+      Type: string("network")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(60)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("logicaldisk")
+      Type: string("logicaldisk")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(30)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+  ]
+  AutoUpdate: nil(*configuration.AutoUpdateConfig)
+  Cache: nil(*configuration.CacheConfig)
+  Entities: nil(*configuration.EntitiesConfig)
+  Governance: nil(map[string]interface {})
+}
+##### docs/probes/netscaler/configuration-examples.yaml
+configuration.LocalConfigurationData{
+  ConfigVersion: int(3)
+  Agent: configuration.LocalAgentConfig{
+    Key: string("")
+    License: string("")
+    GlobalTags: nil(map[string]string)
+  }
+  Storage: nil([]configuration.StorageConfig)
+  Probes: []configuration.ProbeConfig[
+    configuration.ProbeConfig{
+      Name: string("netscaler-test")
+      Type: string("netscaler")
+      Params: map[string]interface {}{
+        string("base_url")
+        =>string("https://netscaler.company.com")
+        string("interval")
+        =>int(60)
+        string("password")
+        =>string("stub:netscaler-test.password")
+        string("username")
+        =>string("monitoring-user")
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+  ]
+  AutoUpdate: nil(*configuration.AutoUpdateConfig)
+  Cache: nil(*configuration.CacheConfig)
+  Entities: nil(*configuration.EntitiesConfig)
+  Governance: nil(map[string]interface {})
+}
+##### testdata/yaml-corpus/coercions.yaml
+configuration.LocalConfigurationData{
+  ConfigVersion: int(3)
+  Agent: configuration.LocalAgentConfig{
+    Key: string("12345")
+    License: string("")
+    GlobalTags: map[string]string{
+      string("bool")
+      =>string("true")
+      string("flt")
+      =>string("1.50")
+      string("hexa")
+      =>string("0x1F")
+      string("nothing")
+      =>string("")
+      string("sci")
+      =>string("1e3")
+      string("tilde")
+      =>string("")
+    }
+  }
+  Storage: nil([]configuration.StorageConfig)
+  Probes: []configuration.ProbeConfig[
+    configuration.ProbeConfig{
+      Name: string("42")
+      Type: string("demo")
+      Params: map[string]interface {}{
+        string("empty_map")
+        =>map[string]interface {}{
+        }
+        string("interval")
+        =>string("30")
+        string("key_with_colon")
+        =>string("a:b")
+        string("list_of_lists")
+        =>[]interface {}[
+          []interface {}[
+            int(1)
+            int(2)
+          ]
+          []interface {}[
+            bool(true)
+            bool(false)
+          ]
+          []interface {}[
+          ]
+        ]
+      }
+      CustomTags: map[string]string{
+        string("a")
+        =>string("0x1F")
+        string("b")
+        =>string("1e3")
+        string("c")
+        =>string("")
+        string("d")
+        =>string("")
+        string("e")
+        =>string("true")
+        string("f")
+        =>string("2024-01-02")
+        string("g")
+        =>string("off")
+      }
+      Governance: nil(map[string]interface {})
+      Enabled: &bool(true)
+      LogStrategies: []string[
+        string("otlp")
+        string("3")
+      ]
+    }
+  ]
+  AutoUpdate: &configuration.AutoUpdateConfig{
+    Enabled: bool(true)
+    IncludeBeta: bool(false)
+    URL: string("2024-01-02")
+    Version: string("")
+  }
+  Cache: &configuration.CacheConfig{
+    RetentionMinutes: int(5)
+  }
+  Entities: nil(*configuration.EntitiesConfig)
+  Governance: nil(map[string]interface {})
+}
+##### testdata/yaml-corpus/comments-only.yaml
+configuration.LocalConfigurationData{
+  ConfigVersion: int(0)
+  Agent: configuration.LocalAgentConfig{
+    Key: string("")
+    License: string("")
+    GlobalTags: nil(map[string]string)
+  }
+  Storage: []configuration.StorageConfig[
+  ]
+  Probes: []configuration.ProbeConfig[
+  ]
+  AutoUpdate: nil(*configuration.AutoUpdateConfig)
+  Cache: nil(*configuration.CacheConfig)
+  Entities: nil(*configuration.EntitiesConfig)
+  Governance: nil(map[string]interface {})
+}
+##### testdata/yaml-corpus/dup-keys-in-params.yaml
+configuration.LocalConfigurationData{
+  ConfigVersion: int(2)
+  Agent: configuration.LocalAgentConfig{
+    Key: string("k")
+    License: string("")
+    GlobalTags: nil(map[string]string)
+  }
+  Storage: nil([]configuration.StorageConfig)
+  Probes: []configuration.ProbeConfig[
+    configuration.ProbeConfig{
+      Name: string("p")
+      Type: string("demo")
+      Params: map[string]interface {}{
+        string("a")
+        =>int(3)
+        string("b")
+        =>int(2)
+        string("nested")
+        =>map[string]interface {}{
+          string("x")
+          =>int(2)
+        }
+      }
+      CustomTags: map[string]string{
+        string("t")
+        =>string("two")
+      }
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+  ]
+  AutoUpdate: nil(*configuration.AutoUpdateConfig)
+  Cache: nil(*configuration.CacheConfig)
+  Entities: nil(*configuration.EntitiesConfig)
+  Governance: nil(map[string]interface {})
+}
+##### testdata/yaml-corpus/dup-keys-in-struct.yaml
+configuration.LocalConfigurationData{
+  ConfigVersion: int(2)
+  Agent: configuration.LocalAgentConfig{
+    Key: string("k2")
+    License: string("")
+    GlobalTags: nil(map[string]string)
+  }
+  Storage: nil([]configuration.StorageConfig)
+  Probes: []configuration.ProbeConfig[
+    configuration.ProbeConfig{
+      Name: string("q")
+      Type: string("demo")
+      Params: map[string]interface {}{
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+  ]
+  AutoUpdate: nil(*configuration.AutoUpdateConfig)
+  Cache: &configuration.CacheConfig{
+    RetentionMinutes: int(9)
+  }
+  Entities: nil(*configuration.EntitiesConfig)
+  Governance: nil(map[string]interface {})
+}
+##### testdata/yaml-corpus/dup-keys-toplevel.yaml
+configuration.LocalConfigurationData{
+  ConfigVersion: int(2)
+  Agent: configuration.LocalAgentConfig{
+    Key: string("second")
+    License: string("")
+    GlobalTags: nil(map[string]string)
+  }
+  Storage: nil([]configuration.StorageConfig)
+  Probes: []configuration.ProbeConfig[
+    configuration.ProbeConfig{
+      Name: string("p")
+      Type: string("demo")
+      Params: map[string]interface {}{
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+  ]
+  AutoUpdate: nil(*configuration.AutoUpdateConfig)
+  Cache: nil(*configuration.CacheConfig)
+  Entities: nil(*configuration.EntitiesConfig)
+  Governance: nil(map[string]interface {})
+}
+##### testdata/yaml-corpus/empty-sections.yaml
+configuration.LocalConfigurationData{
+  ConfigVersion: int(3)
+  Agent: configuration.LocalAgentConfig{
+    Key: string("k")
+    License: string("")
+    GlobalTags: nil(map[string]string)
+  }
+  Storage: []configuration.StorageConfig[
+  ]
+  Probes: []configuration.ProbeConfig[
+  ]
+  AutoUpdate: nil(*configuration.AutoUpdateConfig)
+  Cache: nil(*configuration.CacheConfig)
+  Entities: nil(*configuration.EntitiesConfig)
+  Governance: nil(map[string]interface {})
+}
+##### testdata/yaml-corpus/empty.yaml
+configuration.LocalConfigurationData{
+  ConfigVersion: int(0)
+  Agent: configuration.LocalAgentConfig{
+    Key: string("")
+    License: string("")
+    GlobalTags: nil(map[string]string)
+  }
+  Storage: []configuration.StorageConfig[
+  ]
+  Probes: []configuration.ProbeConfig[
+  ]
+  AutoUpdate: nil(*configuration.AutoUpdateConfig)
+  Cache: nil(*configuration.CacheConfig)
+  Entities: nil(*configuration.EntitiesConfig)
+  Governance: nil(map[string]interface {})
+}
+##### testdata/yaml-corpus/err-quoted-bool-enabled.yaml
+ERROR: parsing <DIR>/agent.yaml: yaml: unmarshal errors:
+  line 7: cannot unmarshal !!str `no` into bool
+##### testdata/yaml-corpus/err-syntax.yaml
+ERROR: parsing <DIR>/agent.yaml: yaml: line 2: did not find expected ',' or ']'
+##### testdata/yaml-corpus/err-type-mismatch.yaml
+ERROR: parsing <DIR>/agent.yaml: yaml: unmarshal errors:
+  line 5: cannot unmarshal !!str `many` into int
+##### testdata/yaml-corpus/null-document.yaml
+configuration.LocalConfigurationData{
+  ConfigVersion: int(0)
+  Agent: configuration.LocalAgentConfig{
+    Key: string("")
+    License: string("")
+    GlobalTags: nil(map[string]string)
+  }
+  Storage: []configuration.StorageConfig[
+  ]
+  Probes: []configuration.ProbeConfig[
+  ]
+  AutoUpdate: nil(*configuration.AutoUpdateConfig)
+  Cache: nil(*configuration.CacheConfig)
+  Entities: nil(*configuration.EntitiesConfig)
+  Governance: nil(map[string]interface {})
+}
+##### testdata/yaml-corpus/scalar-document.yaml
+ERROR: parsing <DIR>/agent.yaml: yaml: unmarshal errors:
+  line 1: cannot unmarshal !!str `just a ...` into struct { Probes []interface {} "yaml:\"probes\""; Storage []interface {} "yaml:\"storage\"" }
+##### testdata/yaml-corpus/tricky-monolithic.yaml
+configuration.LocalConfigurationData{
+  ConfigVersion: int(2)
+  Agent: configuration.LocalAgentConfig{
+    Key: string("tricky-key")
+    License: string("")
+    GlobalTags: map[string]string{
+      string("env")
+      =>string("prod")
+      string("flag")
+      =>string("no")
+      string("on-call")
+      =>string("yes")
+      string("tier")
+      =>string("3")
+    }
+  }
+  Storage: []configuration.StorageConfig[
+    configuration.StorageConfig{
+      Name: string("http")
+      Params: map[string]interface {}{
+        string("bind_address")
+        =>string("127.0.0.1")
+        string("cache")
+        =>map[string]interface {}{
+          string("retention_minutes")
+          =>int(45)
+        }
+        string("endpoints")
+        =>[]interface {}[
+          string("prtg")
+          string("web")
+          string("nagios")
+        ]
+        string("port")
+        =>int(8080)
+        string("tls")
+        =>map[string]interface {}{
+          string("cipher_suites")
+          =>[]interface {}[
+            string("A")
+            string("B")
+          ]
+          string("enabled")
+          =>bool(true)
+        }
+      }
+    }
+    configuration.StorageConfig{
+      Name: string("otlp")
+      Params: map[string]interface {}{
+        string("endpoint")
+        =>string("127.0.0.1:4317")
+        string("headers")
+        =>map[string]interface {}{
+          string("x-flag")
+          =>bool(false)
+          string("x-tenant")
+          =>int(42)
+        }
+        string("insecure")
+        =>bool(true)
+        string("protocol")
+        =>string("grpc")
+      }
+    }
+  ]
+  Probes: []configuration.ProbeConfig[
+    configuration.ProbeConfig{
+      Name: string("bools")
+      Type: string("demo")
+      Params: map[string]interface {}{
+        string("False_key")
+        =>bool(false)
+        string("NO_key")
+        =>bool(false)
+        string("TRUE_key")
+        =>bool(true)
+        string("Yes_key")
+        =>bool(true)
+        string("flow")
+        =>map[string]interface {}{
+          string("a")
+          =>bool(true)
+          string("b")
+          =>bool(false)
+        }
+        string("keep")
+        =>bool(false)
+        string("list_of_maps")
+        =>[]interface {}[
+          map[string]interface {}{
+            string("enabled")
+            =>bool(true)
+          }
+          map[string]interface {}{
+            string("enabled")
+            =>bool(false)
+          }
+        ]
+        string("n_key")
+        =>bool(false)
+        string("nested")
+        =>map[string]interface {}{
+          string("deep")
+          =>bool(true)
+          string("list")
+          =>[]interface {}[
+            bool(true)
+            bool(false)
+            bool(true)
+            bool(false)
+            string("yes")
+          ]
+        }
+        string("off_key")
+        =>bool(false)
+        string("on_key")
+        =>bool(true)
+        string("quoted_yes")
+        =>string("yes")
+        string("single_on")
+        =>string("on")
+        string("true_key")
+        =>bool(true)
+        string("verify_ssl")
+        =>bool(true)
+        string("y_key")
+        =>bool(true)
+      }
+      CustomTags: map[string]string{
+        string("a")
+        =>string("yes")
+        string("b")
+        =>string("5")
+        string("c")
+        =>string("1.5")
+        string("d")
+        =>string("x")
+      }
+      Governance: nil(map[string]interface {})
+      Enabled: &bool(true)
+      LogStrategies: []string[
+        string("otlp")
+        string("event")
+      ]
+    }
+    configuration.ProbeConfig{
+      Name: string("scalars")
+      Type: string("demo")
+      Params: map[string]interface {}{
+        string("Null_word")
+        =>nil(interface {})
+        string("big")
+        =>uint64(18446744073709551615)
+        string("binary")
+        =>int(5)
+        string("binary_tag")
+        =>string("hello")
+        string("bool_keyed")
+        =>map[string]interface {}{
+        }
+        string("colon_str")
+        =>string("a: b")
+        string("date")
+        =>string("2024-01-02")
+        string("datetime")
+        =>string("2024-01-02T03:04:05Z")
+        string("datetime_space")
+        =>string("2024-01-02 03:04:05")
+        string("empty")
+        =>nil(interface {})
+        string("empty_string")
+        =>string("")
+        string("float")
+        =>float64(1.5)
+        string("hash_str")
+        =>string("x # y")
+        string("hex")
+        =>int(31)
+        string("inf")
+        =>float64(+Inf)
+        string("int_key_map")
+        =>map[string]interface {}{
+        }
+        string("long")
+        =>string("aaaaaaaaaa bbbbbbbbbb cccccccccc dddddddddd eeeeeeeeee ffffffffff gggggggggg hhhhhhhhhh iiiiiiiiii jjjjjjjjjj kkkkkkkkkk")
+        string("multi_folded")
+        =>string("folded one folded two\n")
+        string("multi_literal")
+        =>string("line one\nline two\n")
+        string("nan")
+        =>float64(NaN)
+        string("neg")
+        =>int(-7)
+        string("null_word")
+        =>nil(interface {})
+        string("numeric_keys")
+        =>map[string]interface {}{
+          string("two")
+          =>int(2)
+        }
+        string("octal")
+        =>int(493)
+        string("octal_new")
+        =>int(15)
+        string("plus")
+        =>int(7)
+        string("quoted_date")
+        =>string("2024-01-02")
+        string("sci")
+        =>float64(1000)
+        string("sci2")
+        =>float64(0.0015)
+        string("sexagesimal")
+        =>string("1:30")
+        string("str_keys_only")
+        =>map[string]interface {}{
+          string("a")
+          =>int(1)
+          string("b")
+          =>[]interface {}[
+            int(1)
+            int(2)
+            map[string]interface {}{
+              string("c")
+              =>int(3)
+            }
+          ]
+        }
+        string("str_tag")
+        =>string("123")
+        string("tilde")
+        =>nil(interface {})
+        string("time_like")
+        =>string("12:30:45")
+        string("toobig")
+        =>float64(1e+20)
+        string("underscored")
+        =>int(1000)
+        string("unicode")
+        =>string("é à ü 日本")
+        string("version")
+        =>float64(1.1)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("anchors")
+      Type: string("demo")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(30)
+        string("mode")
+        =>string("fast")
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("anchors-merge")
+      Type: string("demo")
+      Params: map[string]interface {}{
+        string("extra")
+        =>[]interface {}[
+          int(1)
+          int(2)
+        ]
+        string("interval")
+        =>int(30)
+        string("mode")
+        =>string("slow")
+      }
+      CustomTags: nil(map[string]string)
+      Governance: map[string]interface {}{
+        string("criticality")
+        =>string("low")
+        string("owner")
+        =>map[string]interface {}{
+          string("escalate")
+          =>bool(true)
+          string("team")
+          =>string("ops")
+        }
+      }
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+  ]
+  AutoUpdate: &configuration.AutoUpdateConfig{
+    Enabled: bool(true)
+    IncludeBeta: bool(false)
+    URL: string("https://example.com/releases")
+    Version: string("")
+  }
+  Cache: &configuration.CacheConfig{
+    RetentionMinutes: int(5)
+  }
+  Entities: nil(*configuration.EntitiesConfig)
+  Governance: map[string]interface {}{
+    string("criticality")
+    =>string("high")
+    string("labels")
+    =>[]interface {}[
+      map[string]interface {}{
+        string("app")
+        =>string("billing")
+        string("since")
+        =>string("2024-01-02")
+      }
+      map[string]interface {}{
+        string("active")
+        =>bool(true)
+        string("app")
+        =>string("legacy")
+      }
+    ]
+    string("owner")
+    =>map[string]interface {}{
+      string("contacts")
+      =>[]interface {}[
+        string("a@example.com")
+        string("b@example.com")
+      ]
+      string("team")
+      =>string("sre")
+    }
+  }
+}
+##### examples/example-config-multi-file
+configuration.LocalConfigurationData{
+  ConfigVersion: int(2)
+  Agent: configuration.LocalAgentConfig{
+    Key: string("example-multi-file-agent-key")
+    License: string("")
+    GlobalTags: nil(map[string]string)
+  }
+  Storage: []configuration.StorageConfig[
+    configuration.StorageConfig{
+      Name: string("http")
+      Params: map[string]interface {}{
+        string("bind_address")
+        =>string("127.0.0.1")
+        string("endpoints")
+        =>[]interface {}[
+          string("prtg")
+          string("web")
+          string("nagios")
+          string("prometheus")
+        ]
+        string("port")
+        =>int(8080)
+      }
+    }
+    configuration.StorageConfig{
+      Name: string("otlp")
+      Params: map[string]interface {}{
+        string("compression")
+        =>string("gzip")
+        string("endpoint")
+        =>string("127.0.0.1:4317")
+        string("protocol")
+        =>string("grpc")
+        string("resource")
+        =>map[string]interface {}{
+          string("deployment.environment")
+          =>string("dev")
+          string("service.name")
+          =>string("senhub-agent-example")
+        }
+        string("signals")
+        =>map[string]interface {}{
+          string("logs")
+          =>map[string]interface {}{
+            string("enabled")
+            =>bool(false)
+          }
+          string("metrics")
+          =>map[string]interface {}{
+            string("enabled")
+            =>bool(true)
+            string("interval")
+            =>string("30s")
+          }
+          string("traces")
+          =>map[string]interface {}{
+            string("enabled")
+            =>bool(false)
+          }
+        }
+        string("tls")
+        =>map[string]interface {}{
+          string("enabled")
+          =>bool(false)
+        }
+      }
+    }
+  ]
+  Probes: []configuration.ProbeConfig[
+    configuration.ProbeConfig{
+      Name: string("cpu")
+      Type: string("cpu")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(30)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("memory")
+      Type: string("memory")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(30)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("network")
+      Type: string("network")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(60)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("logicaldisk")
+      Type: string("logicaldisk")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(30)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+  ]
+  AutoUpdate: &configuration.AutoUpdateConfig{
+    Enabled: bool(false)
+    IncludeBeta: bool(false)
+    URL: string("https://eu-west-1.intake.senhub.io/releases")
+    Version: string("")
+  }
+  Cache: &configuration.CacheConfig{
+    RetentionMinutes: int(5)
+  }
+  Entities: nil(*configuration.EntitiesConfig)
+  Governance: nil(map[string]interface {})
+}
+##### packaging/nfpm/conf
+configuration.LocalConfigurationData{
+  ConfigVersion: int(3)
+  Agent: configuration.LocalAgentConfig{
+    Key: string("")
+    License: string("")
+    GlobalTags: nil(map[string]string)
+  }
+  Storage: []configuration.StorageConfig[
+    configuration.StorageConfig{
+      Name: string("http")
+      Params: map[string]interface {}{
+        string("bind_address")
+        =>string("127.0.0.1")
+        string("endpoints")
+        =>[]interface {}[
+          string("prtg")
+          string("web")
+          string("nagios")
+          string("prometheus")
+        ]
+        string("port")
+        =>int(8080)
+      }
+    }
+  ]
+  Probes: []configuration.ProbeConfig[
+    configuration.ProbeConfig{
+      Name: string("cpu")
+      Type: string("cpu")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(30)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("memory")
+      Type: string("memory")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(30)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("network")
+      Type: string("network")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(60)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("logicaldisk")
+      Type: string("logicaldisk")
+      Params: map[string]interface {}{
+        string("interval")
+        =>int(30)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+  ]
+  AutoUpdate: &configuration.AutoUpdateConfig{
+    Enabled: bool(false)
+    IncludeBeta: bool(false)
+    URL: string("https://eu-west-1.intake.senhub.io")
+    Version: string("")
+  }
+  Cache: &configuration.CacheConfig{
+    RetentionMinutes: int(5)
+  }
+  Entities: nil(*configuration.EntitiesConfig)
+  Governance: nil(map[string]interface {})
+}
+##### testdata/yaml-corpus/tricky-multi
+configuration.LocalConfigurationData{
+  ConfigVersion: int(3)
+  Agent: configuration.LocalAgentConfig{
+    Key: string("multi-key")
+    License: string("")
+    GlobalTags: map[string]string{
+      string("zone")
+      =>string("eu")
+    }
+  }
+  Storage: []configuration.StorageConfig[
+    configuration.StorageConfig{
+      Name: string("http")
+      Params: map[string]interface {}{
+        string("endpoints")
+        =>[]interface {}[
+          string("nagios")
+        ]
+        string("port")
+        =>int(9090)
+      }
+    }
+    configuration.StorageConfig{
+      Name: string("otlp")
+      Params: map[string]interface {}{
+        string("endpoint")
+        =>string("collector:4317")
+        string("headers")
+        =>map[string]interface {}{
+          string("x")
+          =>int(2)
+        }
+        string("insecure")
+        =>bool(true)
+      }
+    }
+  ]
+  Probes: []configuration.ProbeConfig[
+    configuration.ProbeConfig{
+      Name: string("web")
+      Type: string("demo")
+      Params: map[string]interface {}{
+        string("opts")
+        =>map[string]interface {}{
+          string("backoff")
+          =>float64(1.5)
+          string("retries")
+          =>int(3)
+          string("since")
+          =>string("2024-05-06")
+        }
+        string("paths")
+        =>[]interface {}[
+          string("/a")
+          string("/b")
+        ]
+        string("verify")
+        =>bool(true)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: &bool(false)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("other")
+      Type: string("demo")
+      Params: map[string]interface {}{
+        string("dollar")
+        =>string("$literal")
+        string("target")
+        =>string("fallback")
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+    configuration.ProbeConfig{
+      Name: string("dup")
+      Type: string("demo")
+      Params: map[string]interface {}{
+        string("a")
+        =>int(2)
+      }
+      CustomTags: nil(map[string]string)
+      Governance: nil(map[string]interface {})
+      Enabled: nil(*bool)
+      LogStrategies: nil([]string)
+    }
+  ]
+  AutoUpdate: nil(*configuration.AutoUpdateConfig)
+  Cache: &configuration.CacheConfig{
+    RetentionMinutes: int(7)
+  }
+  Entities: nil(*configuration.EntitiesConfig)
+  Governance: map[string]interface {}{
+    string("owner")
+    =>map[string]interface {}{
+      string("team")
+      =>string("sre")
+    }
+    string("tags")
+    =>[]interface {}[
+      string("a")
+      string("b")
+    ]
+  }
+}

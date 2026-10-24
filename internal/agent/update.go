@@ -6,12 +6,12 @@ import (
 	"sort"
 
 	goversion "github.com/hashicorp/go-version"
-	"gopkg.in/yaml.v2"
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/auto_update"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/cliexit"
+	"senhub-agent.go/internal/yamlcompat"
 )
 
 // UpdateOption customises the update command.
@@ -305,7 +305,7 @@ func readIncludeBetaFromConfig(configPath string) bool {
 			IncludeBeta bool `yaml:"include_beta"`
 		} `yaml:"auto_update"`
 	}
-	if err := yaml.Unmarshal(data, &raw); err != nil {
+	if err := yamlcompat.Unmarshal(data, &raw); err != nil {
 		return false
 	}
 	return raw.AutoUpdate.IncludeBeta

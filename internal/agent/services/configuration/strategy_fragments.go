@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"gopkg.in/yaml.v2"
+	"senhub-agent.go/internal/yamlcompat"
 )
 
 // One output is one file under strategies.d/ with the strategy name as
@@ -67,7 +67,7 @@ func ListStrategyFragments(configPath string) ([]StrategyFragment, error) {
 			return nil, fmt.Errorf("reading %s: %w", path, err)
 		}
 		var single map[string]StorageConfigParams
-		if err := yaml.Unmarshal(raw, &single); err != nil {
+		if err := yamlcompat.Unmarshal(raw, &single); err != nil {
 			out = append(out, StrategyFragment{Name: strings.TrimSuffix(strings.TrimSuffix(name, ".disabled"), ".yaml"), Path: path, Enabled: enabled, Error: err.Error()})
 			continue
 		}
@@ -223,7 +223,7 @@ func writeManagedStrategyFragment(path, name string, params StorageConfigParams)
 }
 
 func writeManagedStrategyFragmentAs(path, name string, params StorageConfigParams, mode os.FileMode) error {
-	body, err := yaml.Marshal(map[string]StorageConfigParams{name: params})
+	body, err := yamlcompat.Marshal(map[string]StorageConfigParams{name: params})
 	if err != nil {
 		return fmt.Errorf("encoding output %q: %w", name, err)
 	}

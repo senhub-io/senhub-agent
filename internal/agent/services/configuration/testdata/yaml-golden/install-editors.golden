@@ -1,0 +1,56 @@
+ApplyInstallOverrides err=<nil>
+SetLicenseField err=<nil>
+SetAgentGovernance err=<nil>
+WriteOTLPStrategyFragment err=<nil>
+EnsureZabbixStrategyFragment err=<nil>
+SetStrategyScalarReport err=<nil>
+EnsureAdminKey err=<nil>
+SealInlineSecrets err=<nil>
+MigrateLicenseToSidecar err=<nil>
+secret names: [veeam-prod.director.auth.password veeam-prod.password]
+===== agent.yaml =====
+# the agent
+config_version: 3
+agent:
+  key: "" # identity
+  global_tags:
+    env: prod
+    site: eu
+  license: ""
+cache:
+  retention_minutes: 5
+governance:
+  criticality: high
+  labels:
+    - a
+    - b
+  owner:
+    team: sre
+===== license.jwt =====
+jwt-value
+===== probes.d/10-veeam.yaml =====
+- name: veeam-prod
+  type: veeam
+  params:
+    endpoint: https://vbr:9419
+    username: svc
+    password: ${secret:veeam-prod.password}
+    director:
+      auth:
+        password: ${secret:veeam-prod.director.auth.password}
+    list: [a, b]
+===== strategies.d/10-otlp.yaml =====
+# SenHub Agent — OTLP export strategy (provisioned by 'config init').
+# Pushes metrics and logs to an OpenTelemetry collector (or an
+# OTLP-compatible backend: VictoriaMetrics, Grafana Alloy, ...).
+otlp:
+  endpoint: collector:4317
+  protocol: grpc
+  insecure: true
+===== strategies.d/20-zabbix.yaml =====
+# SenHub Agent — Zabbix output (provisioned by 'config init').
+# Registers this host by autoregistration and pushes its values as an
+# active agent. Prepare the server once with 'senhub-agent zabbix setup'.
+zabbix:
+  server: "zbx.example.com"
+  host_metadata: "linux"

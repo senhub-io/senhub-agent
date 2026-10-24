@@ -14,7 +14,7 @@ Regenerate with `make third-party-notices`.
 
 | Licence | Components |
 |---|---|
-| Apache-2.0 | 58 |
+| Apache-2.0 | 57 |
 | MIT | 39 |
 | BSD-3-Clause | 28 |
 | BSD-2-Clause | 7 |
@@ -22,7 +22,7 @@ Regenerate with `make third-party-notices`.
 | ISC | 1 |
 | Zlib | 1 |
 
-Total: 137 components.
+Total: 136 components.
 
 ## Detail
 
@@ -153,7 +153,6 @@ Total: 137 components.
 | `gopkg.in/mcuadros/go-syslog.v2` | v2.3.0 | MIT |
 | `gopkg.in/natefinch/lumberjack.v2` | v2.2.1 | MIT |
 | `gopkg.in/tomb.v1` | v1.0.0-20141024135613-dd632973f1e7 | BSD-3-Clause |
-| `gopkg.in/yaml.v2` | v2.4.0 | Apache-2.0 |
 | `gopkg.in/yaml.v3` | v3.0.1 | MIT |
 | `k8s.io/api` | v0.36.2 | Apache-2.0 |
 | `k8s.io/apimachinery` | v0.36.2 | Apache-2.0 |

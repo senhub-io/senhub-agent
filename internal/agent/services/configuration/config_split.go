@@ -19,9 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v2"
-
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/yamlcompat"
 )
 
 // MigrateResult summarises what MigrateToMultiFile did.
@@ -134,7 +133,7 @@ func MigrateToMultiFile(configPath string, log *logger.ModuleLogger) (result Mig
 
 	// Parse the source as a free-form map.
 	var srcMap map[string]interface{}
-	if err := yaml.Unmarshal(raw, &srcMap); err != nil {
+	if err := yamlcompat.Unmarshal(raw, &srcMap); err != nil {
 		abandonSplit(configPath, backupPath, log)
 		return result, fmt.Errorf("parse source: %w", err)
 	}
@@ -145,7 +144,7 @@ func MigrateToMultiFile(configPath string, log *logger.ModuleLogger) (result Mig
 	delete(srcMap, "storage")
 
 	// New agent.yaml (globals only).
-	globalsYAML, err := yaml.Marshal(srcMap)
+	globalsYAML, err := yamlcompat.Marshal(srcMap)
 	if err != nil {
 		abandonSplit(configPath, backupPath, log)
 		return result, fmt.Errorf("marshal globals: %w", err)
@@ -172,7 +171,7 @@ func MigrateToMultiFile(configPath string, log *logger.ModuleLogger) (result Mig
 
 	// probes.d/00-host.yaml — the whole probes list as a YAML array.
 	if probesRaw != nil {
-		probesYAML, err := yaml.Marshal(probesRaw)
+		probesYAML, err := yamlcompat.Marshal(probesRaw)
 		if err != nil {
 			abandonSplit(configPath, backupPath, log)
 			return result, fmt.Errorf("marshal probes: %w", err)
@@ -220,7 +219,7 @@ func HasMonolithicMarkers(raw []byte) bool {
 		Probes  []interface{} `yaml:"probes"`
 		Storage []interface{} `yaml:"storage"`
 	}
-	if err := yaml.Unmarshal(raw, &probe); err != nil {
+	if err := yamlcompat.Unmarshal(raw, &probe); err != nil {
 		// If we cannot parse, assume monolithic so the migrate path
 		// surfaces the parse error rather than silently exiting "ok".
 		return true
@@ -228,10 +227,10 @@ func HasMonolithicMarkers(raw []byte) bool {
 	return probe.Probes != nil || probe.Storage != nil
 }
 
-// splitStrategies turns a yaml.v2 free-form `storage:` value into
-// per-strategy files under strategiesDir. yaml.v2 unmarshals a
-// list-of-maps as []interface{} of map[interface{}]interface{}; we
-// coerce each entry into a {Name, Params} pair and emit one file per
+// splitStrategies turns a free-form `storage:` value into per-strategy
+// files under strategiesDir. A list of maps arrives as []interface{} of
+// string-keyed or interface-keyed maps; we coerce each entry into a
+// {Name, Params} pair and emit one file per
 // strategy, named NN-<name>.yaml where NN preserves source order.
 func splitStrategies(storageRaw interface{}, strategiesDir, timestamp string) (int, error) {
 	if storageRaw == nil {
@@ -250,7 +249,7 @@ func splitStrategies(storageRaw interface{}, strategiesDir, timestamp string) (i
 	for i, raw := range list {
 		m, ok := raw.(map[interface{}]interface{})
 		if !ok {
-			// yaml.v3 returns map[string]interface{} — accept both.
+			// String-keyed maps are what the decoder yields today.
 			if mss, ok2 := raw.(map[string]interface{}); ok2 {
 				m = make(map[interface{}]interface{}, len(mss))
 				for k, v := range mss {
@@ -292,7 +291,7 @@ func splitStrategies(storageRaw interface{}, strategiesDir, timestamp string) (i
 		path := filepath.Join(strategiesDir, filename)
 
 		single := map[string]interface{}{name: e.params}
-		body, err := yaml.Marshal(single)
+		body, err := yamlcompat.Marshal(single)
 		if err != nil {
 			return 0, fmt.Errorf("marshal strategy %q: %w", name, err)
 		}
@@ -305,7 +304,7 @@ func splitStrategies(storageRaw interface{}, strategiesDir, timestamp string) (i
 	return len(order), nil
 }
 
-// coerceMap normalises yaml.v2's map[interface{}]interface{} into the
+// coerceMap normalises a map[interface{}]interface{} into the
 // map[string]interface{} the rest of the agent expects.
 func coerceMap(raw interface{}) (map[string]interface{}, bool) {
 	if raw == nil {
