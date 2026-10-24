@@ -306,6 +306,7 @@ Checks performed:
 - License validity and agent binding
 - Probe types against the registry
 - Required probe parameters (endpoint, credentials)
+- Keys nothing reads, each a warning (exit `1`) because the agent starts and ignores them: a key of a probe entry outside `params`, a key inside `params`, a key of a storage strategy, and a key inside the `prtg`, `prometheus` or `tls` block of the `http` output
 - Storage strategy names
 
 Fragments under `probes.d/` and `strategies.d/` are covered when a multi-file layout is present.

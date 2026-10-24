@@ -125,18 +125,35 @@ func TestFileTail_HealthyTailIsNeverRestarted(t *testing.T) {
 	file := filepath.Join(dir, "access.log")
 	writeFile(t, file, backlog(40))
 
-	p, _ := stallProbe(t, file)
+	p, logs := stallProbe(t, file)
 	defer stopFileTail(t, p)
 	first := tailStateOf(t, p, file)
 
-	appendLines(t, file, newFileLines(20)...)
-	waitEmitted(p, 20, 30*time.Second)
+	// Appended once the tail is certain to react to a write: a line landing
+	// in the library's blind window is read only after the startup check
+	// restarts the tail, which is the restart this test must not see.
+	ready := awaitTailWatching(t, p, file)
+	lines := newFileLines(20)
+	appendLines(t, file, lines...)
+	want := ready + uint64(len(lines))
+	if got := waitEmitted(p, want, 30*time.Second); got != want {
+		t.Fatalf("emitted %d of %d lines", got, want)
+	}
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Every scan below finds a tail that has read the whole file, whatever
+	// the grace period and however late the scans run.
+	if ts := tailStateOf(t, p, file); ts.offset.Load() != info.Size() {
+		t.Fatalf("offset %d, want the file size %d", ts.offset.Load(), info.Size())
+	}
 	for i := 0; i < 6; i++ {
 		p.scanAndTail()
 		time.Sleep(60 * time.Millisecond)
 	}
 	if tailStateOf(t, p, file) != first {
-		t.Fatal("a healthy tail was restarted")
+		t.Fatalf("a healthy tail was restarted; emitted=%d logs=%s", p.emitted.Load(), logs.b.String())
 	}
 	if _, err := p.Collect(); err != nil {
 		t.Fatalf("Collect: %v", err)

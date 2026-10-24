@@ -91,11 +91,16 @@ func TestFileTail_ReopenAfterRotationBookmarksTheNewFileStart(t *testing.T) {
 			}
 
 			first := startFileTail(t, cfg)
+			// The tail must be watching the idle file before it is
+			// rotated; a few readiness lines are the price of knowing.
+			ready := awaitTailWatching(t, first, file)
+			info, err := os.Stat(file)
+			if err != nil {
+				t.Fatal(err)
+			}
 			waitBookmarkOnDisk(t, bookmarkPath, file, func(e bookmarkEntry) bool {
-				return e.Offset == int64(len(old))
+				return e.Offset == info.Size()
 			}, 30*time.Second)
-			// Let the watch settle on the idle file before rotating it.
-			time.Sleep(200 * time.Millisecond)
 
 			tc.rotate(t, file)
 			waitBookmarkOnDisk(t, bookmarkPath, file, func(e bookmarkEntry) bool {
@@ -103,8 +108,8 @@ func TestFileTail_ReopenAfterRotationBookmarksTheNewFileStart(t *testing.T) {
 			}, 30*time.Second)
 
 			stopFileTail(t, first)
-			if got := first.emitted.Load(); got != 0 {
-				t.Fatalf("first run emitted %d records, want 0: nothing was written", got)
+			if got := first.emitted.Load(); got != ready {
+				t.Fatalf("first run emitted %d records, want the %d readiness lines only", got, ready)
 			}
 
 			// Written while the agent is down, as a busy log does between a
