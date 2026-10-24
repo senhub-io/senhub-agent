@@ -29,6 +29,7 @@ Which commands use which codes:
 | `config init` | | invalid value, port in use, nothing written | configuration already present |
 | `config set` | | unknown key, invalid value | the key already holds the value |
 | `install` | | any error | service installed and enabled, unit as `install` writes it, configuration present, binary current |
+| `update` | the binary is installed and the service restarted, but the systemd unit could not be refreshed | the binary could not be installed, or the service does not run it | |
 
 Any other command exits `0` on success and `2` on failure. Before this contract, failures exited `1`; a script that tests only for a non-zero code is unaffected, one that compares with `1` must now compare with `2`.
 
@@ -438,13 +439,14 @@ sudo /usr/local/bin/senhub-agent update 0.6.0 --dry-run
 sudo /usr/local/bin/senhub-agent update 0.6.0 --registry-url https://releases.example.com
 ```
 
-Downloads and installs the specified version. On Linux, when the systemd service is running, it is then restarted and the command checks that the new process runs the binary just installed, printing the version it runs; if it does not, the command fails. Updating replaces the binary and needs the same privileges as the service commands. On Windows, the MSI restarts the service itself.
+Downloads and installs the specified version. On Linux, when the unit was written by `install`, the new binary then brings it up to date (as `refresh-unit --yes` would, keeping the `User=`, `ExecStart` and your drop-ins under `senhub-agent.service.d/`) and systemd is reloaded. A unit owned by the `.deb`/`.rpm` package is left to the package. If the refresh fails, the update goes on, the service restarts on its current unit, and the command exits `1` with the reason. When the systemd service is running, it is then restarted and the command checks that the new process runs the binary just installed, printing the version it runs; if it does not, the command fails. Updating replaces the binary and needs the same privileges as the service commands. On Windows, the MSI restarts the service itself.
 
 | Flag | Description |
 |------|-------------|
 | `--dry-run`, `-d` | Do not install; print the version that would be installed |
 | `--registry-url URL` | Release registry to download from, instead of the built-in one |
 | `--no-restart` | Install the binary and leave the running service as it is, for a script that restarts it itself. Until the service restarts it keeps running the previous version, whatever `senhub-agent version` says: that command reads the file on disk |
+| `--no-refresh-unit` | Leave the systemd unit as it is, for an operator who manages it with their own tooling (Ansible or other). Run `refresh-unit` yourself, or ship the unit, when a version changes it |
 | `--verbose`, `-v` | Enable verbose logging |
 
 ## Zabbix
