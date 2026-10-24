@@ -29,6 +29,12 @@ type PeriodicSchedulerConfig struct {
 	FailOnStartError bool
 	// interval between calls
 	Interval time.Duration
+	// InitialDelay is how long the goroutine waits before its first
+	// call, or before its first tick when no initial call is made. The
+	// ticker starts after that call, so the delay is a phase every
+	// later cycle keeps. A stop during the wait ends the goroutine
+	// without a call. Zero means no wait.
+	InitialDelay time.Duration
 	// MaxRetries is the consecutive-failure threshold after which the
 	// scheduler backs off (skipping ticks, exponentially up to
 	// maxBackoffTicks) while CONTINUING to retry. Zero or negative
@@ -188,6 +194,18 @@ func (l *periodicScheduler) run(initialCall bool) {
 				l.logger.Warn().Msg("scheduler goroutine exited without quit signal — probe is now stalled")
 			}
 		}()
+
+		if l.config.InitialDelay > 0 {
+			timer := time.NewTimer(l.config.InitialDelay)
+			select {
+			case <-timer.C:
+			case <-runCtx.Done():
+				timer.Stop()
+				stopped = true
+				l.logger.Info().Msg("Scheduler goroutine terminating on cancellation before its first call")
+				return
+			}
+		}
 
 		if initialCall && runCtx.Err() == nil {
 			l.logger.Info().Msg("Initial call")

@@ -193,6 +193,7 @@ func NewProbePoller(
 	schedulerLogger := moduleLogger.With().Str("probe", probe.GetName()).Logger()
 	scheduler := periodic_scheduler.NewPeriodicScheduler(periodic_scheduler.PeriodicSchedulerConfig{
 		Interval:          probe.GetInterval(),
+		InitialDelay:      StartOffset(probeId, probe.GetInterval()),
 		MaxRetries:        3,
 		ExecuteOnStart:    true,
 		ExecuteOnShutdown: false,

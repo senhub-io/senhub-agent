@@ -892,6 +892,75 @@ func TestPeriodicScheduler_FirstTickFollowsTheInitialCall(t *testing.T) {
 	}
 }
 
+// The initial call waits for InitialDelay, and the ticker keeps the phase
+// that call set.
+func TestPeriodicScheduler_InitialCallWaitsForTheDelay(t *testing.T) {
+	logger := zerolog.New(io.Discard)
+	const delay = 150 * time.Millisecond
+	var mu sync.Mutex
+	var at []time.Time
+	s := NewPeriodicScheduler(PeriodicSchedulerConfig{
+		Interval:       100 * time.Millisecond,
+		InitialDelay:   delay,
+		ExecuteOnStart: true,
+		Execute: func() error {
+			mu.Lock()
+			at = append(at, time.Now())
+			mu.Unlock()
+			return nil
+		},
+	}, &logger)
+	began := time.Now()
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(delay + 250*time.Millisecond)
+	_ = s.Shutdown(context.Background())
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(at) < 2 {
+		t.Fatalf("%d calls, want the initial call and a tick", len(at))
+	}
+	if first := at[0].Sub(began); first < delay {
+		t.Errorf("initial call %s after Start, want at least %s", first, delay)
+	}
+	if gap := at[1].Sub(at[0]); gap < 90*time.Millisecond {
+		t.Errorf("first tick %s after the initial call, want about one interval", gap)
+	}
+}
+
+// A stop during the wait returns at once and makes no call.
+func TestPeriodicScheduler_StopDuringTheInitialDelayMakesNoCall(t *testing.T) {
+	logger := zerolog.New(io.Discard)
+	var calls atomic.Int32
+	s := NewPeriodicScheduler(PeriodicSchedulerConfig{
+		Interval:       time.Hour,
+		InitialDelay:   time.Hour,
+		ExecuteOnStart: true,
+		Execute: func() error {
+			calls.Add(1)
+			return nil
+		},
+	}, &logger)
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	began := time.Now()
+	if err := s.Shutdown(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if took := time.Since(began); took > time.Second {
+		t.Errorf("Shutdown took %s during the initial delay", took)
+	}
+	if n := calls.Load(); n != 0 {
+		t.Errorf("%d calls made after a stop during the delay, want 0", n)
+	}
+}
+
 // FailOnStartError keeps the initial call inside Start, since its result
 // decides whether Start fails.
 func TestPeriodicScheduler_FailOnStartErrorStillFailsStart(t *testing.T) {
