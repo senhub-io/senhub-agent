@@ -47,7 +47,7 @@ func TestTheSenderHostIsStatedOnlyWhenItIsKnown(t *testing.T) {
 		{"remote sender is never stamped", originRemote, resourceWith("service.name", "intake"), "", ""},
 		// A pod name beside a machine id would give one record two
 		// contradicting identities: the set is all or nothing.
-		{"a partial host set is left alone", originUDS, resourceWith("host.name", "squash-ima-lmlqv"), "", "squash-ima-lmlqv"},
+		{"a partial host set is left alone", originUDS, resourceWith("host.name", "app-7d9f8-lmlqv"), "", "app-7d9f8-lmlqv"},
 		{"the sender's own id wins", originUDS, resourceWith("host.id", "abc"), "abc", ""},
 		// A loopback peer that is itself a relay is not the origin.
 		{"a relaying proxy on loopback", originTCPLoopback, resourceWith("telemetry.relay.host.id", "x"), "", ""},
