@@ -34,7 +34,7 @@ Any other command exits `0` on success and `2` on failure. Before this contract,
 
 `install` also takes `--json` (`status`, `exit_code`, `changed`, `config_path`, `written`); its progress text then goes to stderr. A service that is installed but whose unit drifted, or that no longer starts at boot, is not "unchanged": `install` rewrites the unit and enables the service, exits `0`, and restarts nothing (restart the service to apply a changed unit). A unit owned by the `.deb`/`.rpm` package is never rewritten; the package manager updates it. On Windows the service registration and the single binary are the state.
 
-A command that exits `3` has written nothing: no file is rewritten, and its modification time is unchanged. A script that provisions a machine can run `config init`, `config set` and `install` again and treat `0` and `3` as success.
+A command that exits `3` has written nothing: no file is rewritten, and its modification time is unchanged. A script that provisions a machine can run `config init`, `config set` and `install` again and treat `0` and `3` as success. For a tool that reads any code other than `0` as a failure (a GPO startup script, an SCCM or Intune script), `config init` and `install` take `--ok-if-unchanged`: they exit `0` instead of `3`, still write nothing and still print that there was nothing to do. A real conflict keeps its own code: `install` exits `2` when a `senhub-agent` service from the MSI or from another folder is already registered.
 
 ## JSON output
 
@@ -76,6 +76,7 @@ senhub-agent config set http.port 9080 --json; echo "exit $?"
 | Command | Description |
 |---------|-------------|
 | `install` | Install as system service. On a machine where the service is already installed, the configuration is present and (Linux) the system binary is the one running, it changes nothing and exits `3` |
+| `install --ok-if-unchanged` | Same, but exits `0` instead of `3` when there is nothing to do |
 | `uninstall` | Remove the system service and delete the configuration directory, including the sealed secret store and the agent key. Irreversible; prompts first |
 | `uninstall --yes` | Same, without confirmation |
 | `refresh-unit` | Linux: bring the installed systemd unit up to date with the one embedded in this binary |
