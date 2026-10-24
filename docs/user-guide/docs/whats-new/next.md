@@ -22,5 +22,6 @@ Changes land here as they are merged.
 
 ## Fixes
 
+- **filetail: a path under /home, /root or /run/user now logs a warning.** The systemd unit sets `ProtectHome=true`, which hides these directories from the service, so such a path was silently never read. The probe now warns at start and names the fix, a drop-in with `ProtectHome=read-only`, documented in [File Tail](../probes/filetail.md#files-under-home-root-or-runuser).
 - **Windows: `install` from the ZIP no longer runs over another install.** On a machine where a `senhub-agent` service from another install is already registered (the MSI, or a ZIP extracted elsewhere), `senhub-agent.exe install` now stops without changing anything, and says how to upgrade that install instead.
 - **`install --ok-if-unchanged`.** Run again on a machine already in the requested state, `install` exits `3` and writes nothing. With the new flag it exits `0` instead, as `config init --ok-if-unchanged` already did, for GPO, SCCM or Intune scripts that read any other code as a failure. See [Exit codes](../cli.md#exit-codes).
