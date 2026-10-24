@@ -2,6 +2,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -145,6 +146,10 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 	var state installState
 	run := newInstallRun(command == "install" && hasArg(jsonFlag), configPath)
 	if command == "install" {
+		if msg := existingServiceConflict(registeredServiceImagePath(), executablePath, hostMsiManaged()); msg != "" {
+			fmt.Fprintln(os.Stderr, msg)
+			os.Exit(run.finish(cliexit.Failure, errors.New("a senhub-agent service from another install is already registered")))
+		}
 		probe, probeErr := service.New(&program{done: make(chan bool, 1), args: args}, svcConfig)
 		if probeErr == nil {
 			state = detectInstallState(probe, configPath, installProbes{
