@@ -119,20 +119,10 @@ func statusConverter(t *testing.T, params map[string]interface{}) *FormatConvert
 	cache.AddDataPointsWithTransformer([]datapoint.DataPoint{
 		{Name: unresolvedTargetMetric, Value: 1.0, Timestamp: now, Tags: []tags.Tag{{Key: "probe_name", Value: "Lab-TCP"}, {Key: "probe_type", Value: "tcp_dial"}}},
 		{Name: "senhub.probe.check.duration", Value: 0.01, Timestamp: now, Tags: []tags.Tag{{Key: "probe_name", Value: "Lab-TCP"}, {Key: "probe_type", Value: "tcp_dial"}}},
-		{Name: serviceRunningMetric, Value: 0.0, Timestamp: now, Tags: []tags.Tag{{Key: "probe_name", Value: "Lab-Units"}, {Key: "probe_type", Value: "systemd"}, {Key: "systemd.unit", Value: "nginx.service"}, {Key: "host.service.name", Value: "nginx"}}},
 	}, registry)
 	fc := NewFormatConverter(registry, moduleLogger, cache)
 	fc.checkResultChannel = NewConfigurationManager(nil, params, moduleLogger).IsPRTGCheckResultChannel
 	return fc
-}
-
-func channelWithLookupOrName(channels []PRTGChannel, lookup, name string) *PRTGChannel {
-	for i := range channels {
-		if channels[i].ValueLookup == lookup || strings.Contains(channels[i].Channel, name) {
-			return &channels[i]
-		}
-	}
-	return nil
 }
 
 func TestPRTGLeavesUnresolvedTargetOutByDefault(t *testing.T) {
@@ -155,35 +145,59 @@ func TestPRTGServesUnresolvedTargetWithItsLookupWhenEnabled(t *testing.T) {
 	t.Fatalf("no channel with lookup %q in %+v", unresolvedTargetMetric, channels)
 }
 
-// By default a stopped service must still turn the sensor Error, through
-// a channel limit, without naming a lookup the core may lack.
-func TestPRTGServiceChannelUsesALimitByDefault(t *testing.T) {
-	channels := statusConverter(t, map[string]interface{}{}).GetMetricsForProbeWithFilter("Lab-Units", MetricFilter{ShowTags: true})
-	if len(channels) != 1 {
-		t.Fatalf("got %d channels, want the service channel: %+v", len(channels), channels)
-	}
-	c := channels[0]
-	if c.ValueLookup != "" {
-		t.Errorf("ValueLookup = %q, want none by default", c.ValueLookup)
-	}
-	if c.Value != 0 {
-		t.Errorf("Value = %v, want 0 for a stopped service", c.Value)
-	}
-	if c.LimitMode != 1 || c.LimitMinError <= 0 || c.LimitMinError >= 1 {
-		t.Errorf("limit = mode %d min error %v, want mode 1 with an error below 1", c.LimitMode, c.LimitMinError)
-	}
+func serviceConverter(t *testing.T, params map[string]interface{}) *FormatConverter {
+	t.Helper()
+	baseLogger := createTestLogger()
+	moduleLogger := logger.NewModuleLogger(baseLogger, "test")
+	cache := NewMetricCache(5*time.Minute, moduleLogger)
+	registry := transformers.NewTransformerRegistry(baseLogger)
+	now := time.Now()
+	cache.AddDataPointsWithTransformer([]datapoint.DataPoint{
+		{Name: serviceRunningMetric, Value: 0.0, Timestamp: now, Tags: []tags.Tag{{Key: "probe_name", Value: "Lab-Units"}, {Key: "probe_type", Value: "systemd"}, {Key: "systemd.unit", Value: "nginx.service"}, {Key: "host.service.name", Value: "nginx"}}},
+		{Name: serviceRunningMetric, Value: 0.0, Timestamp: now, Tags: []tags.Tag{{Key: "probe_name", Value: "Lab-Services"}, {Key: "probe_type", Value: "winservices"}, {Key: "windows.service.name", Value: "Spooler"}, {Key: "host.service.name", Value: "Spooler"}}},
+	}, registry)
+	fc := NewFormatConverter(registry, moduleLogger, cache)
+	fc.checkResultChannel = NewConfigurationManager(nil, params, moduleLogger).IsPRTGCheckResultChannel
+	return fc
 }
 
-func TestPRTGServiceChannelUsesItsLookupWhenEnabled(t *testing.T) {
-	params := map[string]interface{}{"prtg": map[string]interface{}{"check_result_channel": true}}
-	c := channelWithLookupOrName(statusConverter(t, params).GetMetricsForProbeWithFilter("Lab-Units", MetricFilter{ShowTags: true}), serviceRunningMetric, "nginx")
-	if c == nil {
-		t.Fatal("service channel missing")
-	}
-	if c.ValueLookup != serviceRunningMetric {
-		t.Errorf("ValueLookup = %q, want %q: the lookup name stays as shipped in 0.6.4", c.ValueLookup, serviceRunningMetric)
-	}
-	if c.LimitMode != 0 {
-		t.Errorf("LimitMode = %d, want none when the lookup carries the state", c.LimitMode)
+// Up to 0.6.3 a "Service X Running" channel was a plain number, and PRTG
+// fixes a channel's type when it creates it: a lookup sent later on that
+// channel turns the sensor Warning (PE272) even with the lookup file
+// installed. So the channel never names a lookup, with or without
+// prtg.check_result_channel, and a stopped service turns the sensor
+// Error through a limit below 1.
+func TestPRTGServiceChannelNeverCarriesALookup(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		params map[string]interface{}
+	}{
+		{"default", map[string]interface{}{}},
+		{"check_result_channel", map[string]interface{}{"prtg": map[string]interface{}{"check_result_channel": true}}},
+	} {
+		for _, probe := range []string{"Lab-Units", "Lab-Services"} {
+			t.Run(tc.name+"/"+probe, func(t *testing.T) {
+				channels := serviceConverter(t, tc.params).GetMetricsForProbeWithFilter(probe, MetricFilter{ShowTags: true})
+				if len(channels) != 1 {
+					t.Fatalf("got %d channels, want the service channel: %+v", len(channels), channels)
+				}
+				c := channels[0]
+				if !strings.HasPrefix(c.Channel, "Service ") || !strings.HasSuffix(c.Channel, " Running") {
+					t.Fatalf("channel = %q, want Service <name> Running", c.Channel)
+				}
+				if c.ValueLookup != "" {
+					t.Errorf("ValueLookup = %q, want none", c.ValueLookup)
+				}
+				if c.Float == nil || *c.Float != 1 {
+					t.Errorf("Float = %v, want 1 as up to 0.6.3", c.Float)
+				}
+				if c.Value != 0 {
+					t.Errorf("Value = %v, want 0 for a stopped service", c.Value)
+				}
+				if c.LimitMode != 1 || c.LimitMinError <= 0 || c.LimitMinError >= 1 {
+					t.Errorf("limit = mode %d min error %v, want mode 1 with an error below 1", c.LimitMode, c.LimitMinError)
+				}
+			})
+		}
 	}
 }
