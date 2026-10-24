@@ -256,6 +256,10 @@ http://agent-server:8080/api/{key}/prtg/metrics/{probe}?tags=vserver_name:vs_web
 
 This returns only the metrics for the virtual server named `vs_web`. The Sensor URLs tab builds this filter from the tags the probe reports.
 
+#### Right after the agent restarts
+
+Until a probe has completed its first collection, its sensor URL answers with no channel. PRTG shows that one reading as "The returned JSON does not match the expected structure (No channel found). (code: PE231)", and the sensor is back to normal at the next reading. The first collection follows the start within the probe's own collection time; no action is needed.
+
 #### Installing PRTG value lookups
 
 SenHub Agent provides custom PRTG lookup files that translate numeric status values into meaningful text (for instance "Up" instead of "1"):
