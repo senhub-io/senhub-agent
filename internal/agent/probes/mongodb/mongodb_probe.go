@@ -149,17 +149,26 @@ func (p *mongoDBProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
-// Collect runs one poll cycle. A connection or command failure emits
-// senhub.mongodb.up=0 and returns nil (observable outage).
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
 func (p *mongoDBProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext runs one poll cycle. A connection or command failure emits
+// senhub.mongodb.up=0 and returns nil (observable outage).
+func (p *mongoDBProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 
 	var points []data_store.DataPoint
 	up := float64(1)
 	var checkErr error
 
-	status, err := p.runServerStatus()
+	status, err := p.runServerStatus(ctx)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("mongodb collection interrupted: %w", ctxErr)
+		}
 		up = 0
 		checkErr = err
 		p.entitySrc.setReachable(false, "")
@@ -171,11 +180,11 @@ func (p *mongoDBProbe) Collect() ([]data_store.DataPoint, error) {
 		//  - if already pinned (instance_name or prior replSetGetStatus), skip.
 		//  - try replSetGetStatus to get a stable tech id.
 		//  - fall back to host:port when replSetGetStatus is unavailable (standalone).
-		p.maybeResolveEntityID()
+		p.maybeResolveEntityID(ctx)
 		p.entitySrc.setReachable(true, version)
 		points = append(points, p.buildServerStatusPoints(status, now)...)
 
-		dbPoints, dbErr := p.collectDatabaseStats(now)
+		dbPoints, dbErr := p.collectDatabaseStats(ctx, now)
 		if dbErr != nil {
 			p.failures.Failed(p.moduleLogger, subcollect.Warn, "dbStats", dbErr, "MongoDB dbStats collection failed")
 		} else {
@@ -184,6 +193,9 @@ func (p *mongoDBProbe) Collect() ([]data_store.DataPoint, error) {
 		}
 	}
 
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("mongodb collection interrupted: %w", ctxErr)
+	}
 	points = append(points, data_store.DataPoint{
 		Name:      "senhub.mongodb.up",
 		Value:     up,
@@ -204,12 +216,12 @@ func (p *mongoDBProbe) Collect() ([]data_store.DataPoint, error) {
 // successful serverStatus. Skips the replSetGetStatus round-trip when the id
 // is already pinned (instance_name set at construction, or prior successful
 // call). Subsequent calls after pinning are no-ops.
-func (p *mongoDBProbe) maybeResolveEntityID() {
+func (p *mongoDBProbe) maybeResolveEntityID(ctx context.Context) {
 	if p.entitySrc.isPinned() {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
+	ctx, cancel := context.WithTimeout(ctx, p.cfg.Timeout)
 	defer cancel()
 
 	techID, err := p.fetchReplSetID(ctx)
@@ -289,11 +301,11 @@ func isNotReplicaSetError(err error) bool {
 // serverStatus helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-func (p *mongoDBProbe) runServerStatus() (bson.M, error) {
+func (p *mongoDBProbe) runServerStatus(ctx context.Context) (bson.M, error) {
 	if p.serverStatusFn != nil {
 		return p.serverStatusFn()
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
+	ctx, cancel := context.WithTimeout(ctx, p.cfg.Timeout)
 	defer cancel()
 
 	result := bson.M{}
@@ -467,8 +479,8 @@ var skipDatabases = map[string]bool{
 	"config": true,
 }
 
-func (p *mongoDBProbe) collectDatabaseStats(now time.Time) ([]data_store.DataPoint, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
+func (p *mongoDBProbe) collectDatabaseStats(ctx context.Context, now time.Time) ([]data_store.DataPoint, error) {
+	ctx, cancel := context.WithTimeout(ctx, p.cfg.Timeout)
 	defer cancel()
 
 	dbNames, err := p.client.ListDatabaseNames(ctx, bson.D{})
@@ -482,7 +494,7 @@ func (p *mongoDBProbe) collectDatabaseStats(now time.Time) ([]data_store.DataPoi
 			continue
 		}
 
-		dbPts, err := p.runDBStats(dbName, now)
+		dbPts, err := p.runDBStats(ctx, dbName, now)
 		if err != nil {
 			p.failures.Failed(p.moduleLogger, subcollect.Warn, "dbStats/"+dbName, err, "dbStats failed")
 			continue
@@ -493,8 +505,8 @@ func (p *mongoDBProbe) collectDatabaseStats(now time.Time) ([]data_store.DataPoi
 	return pts, nil
 }
 
-func (p *mongoDBProbe) runDBStats(dbName string, now time.Time) ([]data_store.DataPoint, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
+func (p *mongoDBProbe) runDBStats(ctx context.Context, dbName string, now time.Time) ([]data_store.DataPoint, error) {
+	ctx, cancel := context.WithTimeout(ctx, p.cfg.Timeout)
 	defer cancel()
 
 	result := bson.M{}

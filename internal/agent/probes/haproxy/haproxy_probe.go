@@ -166,11 +166,17 @@ func (p *haproxyProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
-// Collect fetches the stats CSV and emits one set of datapoints per
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
+func (p *haproxyProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext fetches the stats CSV and emits one set of datapoints per
 // frontend and backend row. Server rows are included for bytes/errors
 // but session counts are frontend/backend only.
 // senhub.haproxy.up is always emitted — even on error.
-func (p *haproxyProbe) Collect() ([]data_store.DataPoint, error) {
+func (p *haproxyProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 
 	statusTags := p.baseStatusTags()
@@ -179,7 +185,10 @@ func (p *haproxyProbe) Collect() ([]data_store.DataPoint, error) {
 
 	up := float64(1)
 
-	rows, err := p.fetchCSV()
+	rows, err := p.fetchCSV(ctx)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("haproxy collection interrupted: %w", ctxErr)
+	}
 	if err != nil {
 		p.failures.Failed(p.moduleLogger, subcollect.Warn, "stats", err, "haproxy stats fetch failed")
 		p.entitySrc.setReachable(false)
@@ -229,8 +238,8 @@ func (p *haproxyProbe) identityTags() []tags.Tag {
 
 // fetchCSV issues the HTTP GET, optionally with BasicAuth, and returns
 // the parsed rows (excluding the header comment line).
-func (p *haproxyProbe) fetchCSV() ([][]string, error) {
-	req, err := http.NewRequest(http.MethodGet, p.cfg.Endpoint, nil)
+func (p *haproxyProbe) fetchCSV(ctx context.Context) ([][]string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.cfg.Endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("building request: %w", err)
 	}

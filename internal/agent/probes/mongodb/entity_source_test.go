@@ -350,7 +350,7 @@ func TestMaybeResolveEntityID_ReplicaSet(t *testing.T) {
 	p.fetchReplSetID = stubFetch("mongodb:rs0/mongo.example.com:27017")
 
 	p.entitySrc.setReachable(true, "7.0.0")
-	p.maybeResolveEntityID()
+	p.maybeResolveEntityID(context.Background())
 
 	obs, ok := p.entitySrc.Observe()
 	if !ok {
@@ -371,7 +371,7 @@ func TestMaybeResolveEntityID_Standalone(t *testing.T) {
 	p.fetchReplSetID = stubFetch("") // standalone: no replSet, no error.
 
 	p.entitySrc.setReachable(true, "7.0.0")
-	p.maybeResolveEntityID()
+	p.maybeResolveEntityID(context.Background())
 
 	obs, ok := p.entitySrc.Observe()
 	if !ok {
@@ -400,7 +400,7 @@ func TestMaybeResolveEntityID_TransportErrorDeferredTechID(t *testing.T) {
 	}
 
 	p.entitySrc.setReachable(true, "7.0.0")
-	p.maybeResolveEntityID()
+	p.maybeResolveEntityID(context.Background())
 
 	if _, ok := p.entitySrc.Observe(); ok {
 		t.Error("Observe() must return ok=false when id resolution failed; should retry next cycle")
@@ -429,7 +429,7 @@ func TestMaybeResolveEntityID_InstanceNameSkipsFetch(t *testing.T) {
 	}
 
 	p.entitySrc.setReachable(true, "7.0.0")
-	p.maybeResolveEntityID()
+	p.maybeResolveEntityID(context.Background())
 
 	obs, ok := p.entitySrc.Observe()
 	if !ok {

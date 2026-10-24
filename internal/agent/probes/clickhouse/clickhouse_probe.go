@@ -198,7 +198,13 @@ func (p *ClickHouseProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
-// Collect reads the system tables and maps the known ClickHouse rows to
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
+func (p *ClickHouseProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext reads the system tables and maps the known ClickHouse rows to
 // OTel-canonical names. A failing read is recorded as up=0; Collect
 // always returns nil so the framework does not mark the probe unhealthy.
 //
@@ -207,12 +213,15 @@ func (p *ClickHouseProbe) OnShutdown(_ context.Context) error {
 // pinned the id is immutable. When the server does not expose a UUID (pre-
 // 21.x or the query fails) the entity source falls back to host:port on the
 // next Observe call, which is the documented db degraded fallback.
-func (p *ClickHouseProbe) Collect() ([]data_store.DataPoint, error) {
+func (p *ClickHouseProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 
 	up := float64(1)
-	rows, collectErr := p.fetchSystemRows()
+	rows, collectErr := p.fetchSystemRows(ctx)
 	if collectErr != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("clickhouse collection interrupted: %w", ctxErr)
+		}
 		up = 0
 		p.entitySrc.setReachable(false, "")
 		p.moduleLogger.Warn().Err(collectErr).Str("endpoint", p.config.Endpoint).Msg("clickhouse collection failed")
@@ -220,7 +229,10 @@ func (p *ClickHouseProbe) Collect() ([]data_store.DataPoint, error) {
 		// Try to pin the instance id on the first successful collect.
 		// isPinned() is a no-op check when instance_name was already set.
 		if !p.entitySrc.isPinned() {
-			uuid, uuidErr := p.fetchServerUUID()
+			uuid, uuidErr := p.fetchServerUUID(ctx)
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, fmt.Errorf("clickhouse collection interrupted: %w", ctxErr)
+			}
 			if uuidErr != nil {
 				p.moduleLogger.Debug().Err(uuidErr).Msg("clickhouse serverUUID unavailable; falling back to host:port")
 			}
@@ -281,8 +293,8 @@ func (p *ClickHouseProbe) Collect() ([]data_store.DataPoint, error) {
 
 // fetchSystemRows runs systemQuery and returns the values keyed by
 // "<table>.<name>".
-func (p *ClickHouseProbe) fetchSystemRows() (map[string]float64, error) {
-	body, err := p.query(systemQuery)
+func (p *ClickHouseProbe) fetchSystemRows(ctx context.Context) (map[string]float64, error) {
+	body, err := p.query(ctx, systemQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -304,8 +316,8 @@ func (p *ClickHouseProbe) fetchSystemRows() (map[string]float64, error) {
 // query POSTs one SQL statement to the HTTP interface and returns the
 // answer. ClickHouse puts the reason for a refusal in the body, so it is
 // carried into the error.
-func (p *ClickHouseProbe) query(sql string) (string, error) {
-	req, err := http.NewRequest(http.MethodPost, p.config.Endpoint+"/", strings.NewReader(sql))
+func (p *ClickHouseProbe) query(ctx context.Context, sql string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.config.Endpoint+"/", strings.NewReader(sql))
 	if err != nil {
 		return "", fmt.Errorf("building query request: %w", err)
 	}
@@ -333,8 +345,8 @@ func (p *ClickHouseProbe) query(sql string) (string, error) {
 // "a1b2c3d4-e5f6-7890-abcd-ef1234567890"). Returns "" + non-nil error when
 // the server is unreachable or does not support serverUUID() (pre-21.x).
 // The caller pins the result via entitySrc.pinTechID.
-func (p *ClickHouseProbe) fetchServerUUID() (string, error) {
-	body, err := p.query("SELECT serverUUID()")
+func (p *ClickHouseProbe) fetchServerUUID(ctx context.Context) (string, error) {
+	body, err := p.query(ctx, "SELECT serverUUID()")
 	if err != nil {
 		return "", fmt.Errorf("serverUUID: %w", err)
 	}

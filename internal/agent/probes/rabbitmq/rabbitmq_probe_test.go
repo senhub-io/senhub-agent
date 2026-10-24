@@ -2,6 +2,7 @@ package rabbitmq
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -344,7 +345,7 @@ func TestFetchJSON_InvalidJSON(t *testing.T) {
 		Field int `json:"field"`
 	}
 	var s strict
-	if err := p.fetchJSON("/api/overview", &s); err == nil {
+	if err := p.fetchJSON(context.Background(), "/api/overview", &s); err == nil {
 		t.Error("fetchJSON should fail on invalid JSON body")
 	}
 }

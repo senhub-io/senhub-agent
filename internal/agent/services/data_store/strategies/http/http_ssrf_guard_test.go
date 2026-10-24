@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -56,7 +57,7 @@ func TestConnectivityTest_BlocksCloudMetadata(t *testing.T) {
 	cm := newConnGuardTestCM()
 	config := map[string]interface{}{"url": "http://169.254.169.254/latest/meta-data/"}
 
-	result := cm.testWebAppConnectivity(config, 2)
+	result := cm.testWebAppConnectivity(context.Background(), config, 2)
 
 	if result.Passed {
 		t.Fatalf("connectivity test to 169.254.169.254 passed; metadata endpoint must be blocked")
@@ -102,7 +103,7 @@ func TestConnectivityTest_DoesNotFollowRedirect(t *testing.T) {
 	cm := newConnGuardTestCM()
 	config := map[string]interface{}{"url": srv.URL + "/redir"}
 
-	result := cm.testWebAppConnectivity(config, 5)
+	result := cm.testWebAppConnectivity(context.Background(), config, 5)
 
 	if !result.Passed {
 		t.Errorf("a redirecting-but-reachable target must pass; got error %q", result.Error)

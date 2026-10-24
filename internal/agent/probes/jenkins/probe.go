@@ -111,7 +111,11 @@ func NewJenkinsProbe(rawConfig map[string]interface{}, baseLogger *logger.Logger
 		cfg.InstanceName,
 		host,
 		port,
-		func() (string, error) { return fetchInstanceIdentity(probe.getJSON) },
+		func() (string, error) {
+			return fetchInstanceIdentity(func(path string, out interface{}) error {
+				return probe.getJSON(context.Background(), path, out)
+			})
+		},
 		hostIDFn,
 	)
 	probe.SetEntitySource(probe.entitySource)
@@ -190,16 +194,25 @@ func (p *jenkinsProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
-// Collect runs one cycle. A failing controller is a measurement
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
+func (p *jenkinsProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext runs one cycle. A failing controller is a measurement
 // (senhub.jenkins.up=0), never a collection error — mirroring the
 // always-emit-up contract of the other active-check probes.
-func (p *jenkinsProbe) Collect() ([]data_store.DataPoint, error) {
+func (p *jenkinsProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 	var points []data_store.DataPoint
 
-	jobs, jobsErr := p.fetchJobs()
-	nodes, nodesErr := p.fetchNodes()
-	queue, queueErr := p.fetchQueue()
+	jobs, jobsErr := p.fetchJobs(ctx)
+	nodes, nodesErr := p.fetchNodes(ctx)
+	queue, queueErr := p.fetchQueue(ctx)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("jenkins collection interrupted: %w", ctxErr)
+	}
 
 	identityTags := p.baseTags()
 
@@ -457,25 +470,25 @@ func normalizeJobStatus(result, color string) string {
 
 // --- HTTP plumbing ---------------------------------------------------------
 
-func (p *jenkinsProbe) fetchJobs() ([]job, error) {
+func (p *jenkinsProbe) fetchJobs(ctx context.Context) ([]job, error) {
 	var resp jobsResponse
-	if err := p.getJSON("/api/json?tree="+url.QueryEscape(jobsTree), &resp); err != nil {
+	if err := p.getJSON(ctx, "/api/json?tree="+url.QueryEscape(jobsTree), &resp); err != nil {
 		return nil, err
 	}
 	return resp.Jobs, nil
 }
 
-func (p *jenkinsProbe) fetchNodes() ([]computer, error) {
+func (p *jenkinsProbe) fetchNodes(ctx context.Context) ([]computer, error) {
 	var resp computerResponse
-	if err := p.getJSON("/computer/api/json", &resp); err != nil {
+	if err := p.getJSON(ctx, "/computer/api/json", &resp); err != nil {
 		return nil, err
 	}
 	return resp.Computers, nil
 }
 
-func (p *jenkinsProbe) fetchQueue() (queueResponse, error) {
+func (p *jenkinsProbe) fetchQueue(ctx context.Context) (queueResponse, error) {
 	var resp queueResponse
-	if err := p.getJSON("/queue/api/json", &resp); err != nil {
+	if err := p.getJSON(ctx, "/queue/api/json", &resp); err != nil {
 		return queueResponse{}, err
 	}
 	return resp, nil
@@ -484,9 +497,9 @@ func (p *jenkinsProbe) fetchQueue() (queueResponse, error) {
 // getJSON issues an authenticated GET against the controller and decodes the
 // JSON body into out. BasicAuth (username:api_token) is sent only when a
 // username is configured, so an anonymous-read controller works too.
-func (p *jenkinsProbe) getJSON(path string, out interface{}) error {
+func (p *jenkinsProbe) getJSON(ctx context.Context, path string, out interface{}) error {
 	full := p.cfg.Endpoint + path
-	req, err := http.NewRequest(http.MethodGet, full, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, full, nil)
 	if err != nil {
 		return fmt.Errorf("building request for %s: %w", path, err)
 	}

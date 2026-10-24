@@ -31,7 +31,7 @@ func identityGetJSONForServer(srv *httptest.Server) func(string, interface{}) er
 			cfg:    jenkinsConfig{Endpoint: srv.URL},
 			client: srv.Client(),
 		}
-		return p.getJSON(path, out)
+		return p.getJSON(context.Background(), path, out)
 	}
 }
 
@@ -60,7 +60,7 @@ func TestNewJenkinsProbe_BasicAuthFromConfig(t *testing.T) {
 		"api_token": apiToken,
 	})
 	var resp jobsResponse
-	if err := p.getJSON("/api/json", &resp); err != nil {
+	if err := p.getJSON(context.Background(), "/api/json", &resp); err != nil {
 		t.Fatalf("getJSON: %v", err)
 	}
 
@@ -315,7 +315,7 @@ func TestGetJSON_CapturesXJenkinsVersionHeader(t *testing.T) {
 	}
 
 	var resp jobsResponse
-	if err := p.getJSON("/api/json", &resp); err != nil {
+	if err := p.getJSON(context.Background(), "/api/json", &resp); err != nil {
 		t.Fatalf("getJSON: %v", err)
 	}
 	if got, want := p.entitySource.currentVersion(), "2.426.1"; got != want {

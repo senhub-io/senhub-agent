@@ -23,9 +23,11 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/IBM/sarama"
@@ -158,10 +160,103 @@ func (p *kafkaProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
-// Collect runs one collection cycle against the Kafka cluster.
-// On connection failure it emits senhub.kafka.up=0 and returns nil.
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
 func (p *kafkaProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext runs one collection cycle against the Kafka cluster.
+// On connection failure it emits senhub.kafka.up=0 and returns nil.
+//
+// sarama takes no context, so the cycle runs aside: when ctx ends the
+// connections are closed, which fails every call still in flight, and the
+// cycle returns the context error without waiting for them. A dial that is
+// already underway cannot be interrupted and ends at sarama's own dial
+// timeout, its result discarded.
+func (p *kafkaProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
+	type outcome struct {
+		points []data_store.DataPoint
+		err    error
+	}
+	session := &closerSet{}
+	done := make(chan outcome, 1)
+	go func() {
+		points, err := p.collectCycle(ctx, session)
+		done <- outcome{points, err}
+	}()
+
+	select {
+	case res := <-done:
+		return res.points, res.err
+	case <-ctx.Done():
+		p.closeSession(session)
+		return nil, fmt.Errorf("kafka collection interrupted: %w", ctx.Err())
+	}
+}
+
+// closerSet is the connections of one cycle. Closing it twice, or adding to
+// it once closed, is safe: the cycle and its canceller race to close.
+type closerSet struct {
+	mu     sync.Mutex
+	closed bool
+	items  []namedCloser
+}
+
+type namedCloser struct {
+	name string
+	io.Closer
+}
+
+// add registers c. When the set is already closed it closes c at once
+// instead and reports added=false with the outcome of that close.
+func (s *closerSet) add(name string, c io.Closer) (added bool, closeErr error) {
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return false, c.Close()
+	}
+	s.items = append(s.items, namedCloser{name: name, Closer: c})
+	s.mu.Unlock()
+	return true, nil
+}
+
+func (s *closerSet) take() []namedCloser {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closed = true
+	items := s.items
+	s.items = nil
+	return items
+}
+
+// track registers a connection with the cycle's session. It reports false,
+// with the connection closed, when the session was already closed because
+// the cycle was cancelled.
+func (p *kafkaProbe) track(s *closerSet, name string, c io.Closer) bool {
+	added, closeErr := s.add(name, c)
+	if closeErr != nil {
+		p.moduleLogger.Warn().Err(closeErr).Str("connection", name).Msg("kafka: error closing connection")
+	}
+	return added
+}
+
+func (p *kafkaProbe) closeSession(s *closerSet) {
+	for _, c := range s.take() {
+		if err := c.Close(); err != nil {
+			p.moduleLogger.Warn().Err(err).Str("connection", c.name).Msg("kafka: error closing connection")
+		}
+	}
+}
+
+func (p *kafkaProbe) collectCycle(ctx context.Context, session *closerSet) ([]data_store.DataPoint, error) {
 	now := time.Now()
+	interrupted := func() error {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("kafka collection interrupted: %w", err)
+		}
+		return nil
+	}
 
 	sarCfg, err := p.buildSaramaConfig()
 	if err != nil {
@@ -172,30 +267,36 @@ func (p *kafkaProbe) Collect() ([]data_store.DataPoint, error) {
 
 	admin, err := p.newAdmin(p.cfg.Brokers, sarCfg)
 	if err != nil {
+		if ierr := interrupted(); ierr != nil {
+			return nil, ierr
+		}
 		p.failures.Failed(p.moduleLogger, subcollect.Warn, "connect_admin", err, "kafka: cannot connect (admin)")
 		p.entitySrc.notifyFailure()
 		return p.failurePoints(0, now, err), nil
 	}
+	defer p.closeSession(session)
+	if !p.track(session, "admin", admin) {
+		return nil, fmt.Errorf("kafka collection interrupted: %w", context.Cause(ctx))
+	}
 	p.failures.Succeeded(p.moduleLogger, "connect_admin", "kafka: admin connection recovered")
-	defer func() {
-		if cerr := admin.Close(); cerr != nil {
-			p.moduleLogger.Warn().Err(cerr).Msg("kafka: error closing admin client")
-		}
-	}()
 
 	client, err := p.newClient(p.cfg.Brokers, sarCfg)
 	if err != nil {
+		if ierr := interrupted(); ierr != nil {
+			return nil, ierr
+		}
 		p.failures.Failed(p.moduleLogger, subcollect.Warn, "connect_client", err, "kafka: cannot connect (client)")
 		p.entitySrc.notifyFailure()
 		return p.failurePoints(0, now, err), nil
 	}
+	if !p.track(session, "client", client) {
+		return nil, fmt.Errorf("kafka collection interrupted: %w", context.Cause(ctx))
+	}
 	p.failures.Succeeded(p.moduleLogger, "connect_client", "kafka: client connection recovered")
-	defer func() {
-		if cerr := client.Close(); cerr != nil {
-			p.moduleLogger.Warn().Err(cerr).Msg("kafka: error closing client")
-		}
-	}()
 
+	if ierr := interrupted(); ierr != nil {
+		return nil, ierr
+	}
 	// Broker is reachable; notify the entity source so it can pin the tech id.
 	p.entitySrc.notifySuccess("")
 
@@ -229,6 +330,9 @@ func (p *kafkaProbe) Collect() ([]data_store.DataPoint, error) {
 		points = append(points, groupPoints...)
 	}
 
+	if ierr := interrupted(); ierr != nil {
+		return nil, ierr
+	}
 	enriched := p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName())
 	return enriched, nil
 }

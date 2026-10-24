@@ -1,6 +1,7 @@
 package proxmox
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"sort"
@@ -55,7 +56,7 @@ func backupOK(status string) bool {
 // listed on the backup-capable storages (vmid and creation time) can, so
 // the age takes the newest of the two sources; the last status only comes
 // from tasks that name their guest and is absent otherwise.
-func (p *ProxmoxProbe) collectBackups(node string, known map[int]guestRef, storages []pveStorageItem, now time.Time) []data_store.DataPoint {
+func (p *ProxmoxProbe) collectBackups(ctx context.Context, node string, known map[int]guestRef, storages []pveStorageItem, now time.Time) []data_store.DataPoint {
 	if len(known) == 0 {
 		return nil
 	}
@@ -68,7 +69,7 @@ func (p *ProxmoxProbe) collectBackups(node string, known map[int]guestRef, stora
 
 	var tasks []pveTask
 	q := url.Values{"typefilter": {"vzdump"}, "limit": {strconv.Itoa(maxBackupTasks)}}
-	if err := p.apiGet(fmt.Sprintf("/nodes/%s/tasks?%s", node, q.Encode()), &tasks); err != nil {
+	if err := p.apiGet(ctx, fmt.Sprintf("/nodes/%s/tasks?%s", node, q.Encode()), &tasks); err != nil {
 		if !p.denied.isDenied(p.moduleLogger, err, node+"/tasks", "Sys.Audit on /nodes/"+node) {
 			p.moduleLogger.Warn().Err(err).Str("node", node).Msg("failed to list backup tasks")
 		}
@@ -100,7 +101,7 @@ func (p *ProxmoxProbe) collectBackups(node string, known map[int]guestRef, stora
 		listed++
 		var vols []pveBackupVolume
 		path := fmt.Sprintf("/nodes/%s/storage/%s/content?content=backup", node, url.PathEscape(st.Storage))
-		if err := p.apiGet(path, &vols); err != nil {
+		if err := p.apiGet(ctx, path, &vols); err != nil {
 			if !p.denied.isDenied(p.moduleLogger, err, node+"/storage/"+st.Storage+"/content", "Datastore.Audit on /storage/"+st.Storage) {
 				p.moduleLogger.Warn().Err(err).Str("node", node).Str("storage", st.Storage).Msg("failed to list backup archives")
 			}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"senhub-agent.go/internal/agent/lifecycle"
@@ -90,6 +91,11 @@ type periodicScheduler struct {
 	// cancels it on an Execute error (#258).
 	runCtx    context.Context
 	runCancel context.CancelFunc
+	// inflightCancel mirrors runCancel for Shutdown to reach without the
+	// lifecycle lock: Start holds that lock while the initial call runs,
+	// and a Shutdown queued behind it could otherwise only cancel that
+	// call by waiting for it to end.
+	inflightCancel atomic.Pointer[context.CancelFunc]
 	// releaseStopChannel closes the OnStart hook channel when the
 	// scheduler stops before its context does.
 	releaseStopChannel func()
@@ -134,6 +140,8 @@ func (l *periodicScheduler) Start(ctx context.Context) error {
 	l.logger.Info().Msg("Starting")
 	l.started = true
 	l.runCtx, l.runCancel = context.WithCancel(ctx)
+	cancel := l.runCancel
+	l.inflightCancel.Store(&cancel)
 
 	if l.config.OnStart != nil {
 		l.logger.Info().Msg("On start call")
@@ -372,8 +380,13 @@ func (l *periodicScheduler) run(initialCall bool) {
 }
 
 func (l *periodicScheduler) Shutdown(ctx context.Context) error {
+	if cancel := l.inflightCancel.Load(); cancel != nil {
+		(*cancel)()
+	}
+
 	l.lifecycleMutex.Lock()
 	defer l.lifecycleMutex.Unlock()
+	l.inflightCancel.Store(nil)
 
 	if !l.started {
 		return nil

@@ -135,7 +135,7 @@ func (cm *ConfigurationManager) ValidateUniversalConfig(ctx context.Context, req
 
 	// Step 2: Connectivity Validation (if requested)
 	if req.Validation == ValidationConnectivity || req.Validation == ValidationFull {
-		connectivityResult := cm.validateProbeConnectivity(req.Probe, req.Config, req.Target, req.Timeout)
+		connectivityResult := cm.validateProbeConnectivity(ctx, req.Probe, req.Config, req.Target, req.Timeout)
 		response.Tests["connectivity"] = connectivityResult
 
 		if !connectivityResult.Passed {
@@ -266,7 +266,7 @@ func (cm *ConfigurationManager) validateProbeSchema(probeName string, config map
 }
 
 // validateProbeConnectivity tests network connectivity to the target system
-func (cm *ConfigurationManager) validateProbeConnectivity(probeName string, config map[string]interface{}, target string, timeout int) ValidationTestResult {
+func (cm *ConfigurationManager) validateProbeConnectivity(ctx context.Context, probeName string, config map[string]interface{}, target string, timeout int) ValidationTestResult {
 	startTime := time.Now()
 
 	cm.logger.Debug().
@@ -282,9 +282,9 @@ func (cm *ConfigurationManager) validateProbeConnectivity(probeName string, conf
 	// For network-based probes, test connectivity
 	switch probeName {
 	case "redfish":
-		result = cm.testRedfishConnectivity(config, timeout)
+		result = cm.testRedfishConnectivity(ctx, config, timeout)
 	case "ping_webapp", "load_webapp":
-		result = cm.testWebAppConnectivity(config, timeout)
+		result = cm.testWebAppConnectivity(ctx, config, timeout)
 	default:
 		// A local probe, or a receiver such as syslog, has no target to
 		// reach: the test collection that follows is the check, and for
@@ -504,7 +504,7 @@ func (cm *ConfigurationManager) validateSyslogProbeSchema(config map[string]inte
 // Helper methods for connectivity testing
 
 // testRedfishConnectivity tests connectivity to a Redfish endpoint
-func (cm *ConfigurationManager) testRedfishConnectivity(config map[string]interface{}, timeout int) ValidationTestResult {
+func (cm *ConfigurationManager) testRedfishConnectivity(ctx context.Context, config map[string]interface{}, timeout int) ValidationTestResult {
 	result := ValidationTestResult{Passed: false}
 
 	endpoint, exists := config["endpoint"]
@@ -524,7 +524,12 @@ func (cm *ConfigurationManager) testRedfishConnectivity(config map[string]interf
 
 	// Try to reach the Redfish service root
 	testURL := strings.TrimRight(endpointStr, "/") + "/redfish/v1/"
-	resp, err := client.Get(testURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, testURL, nil)
+	if err != nil {
+		result.Error = fmt.Sprintf("connectivity test failed: %v", err)
+		return result
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		result.Error = fmt.Sprintf("connectivity test failed: %v", err)
 		return result
@@ -550,7 +555,7 @@ func (cm *ConfigurationManager) testRedfishConnectivity(config map[string]interf
 }
 
 // testWebAppConnectivity tests connectivity to a web application
-func (cm *ConfigurationManager) testWebAppConnectivity(config map[string]interface{}, timeout int) ValidationTestResult {
+func (cm *ConfigurationManager) testWebAppConnectivity(ctx context.Context, config map[string]interface{}, timeout int) ValidationTestResult {
 	result := ValidationTestResult{Passed: false}
 
 	url, exists := config["url"]
@@ -568,7 +573,12 @@ func (cm *ConfigurationManager) testWebAppConnectivity(config map[string]interfa
 	// Test HTTP connectivity
 	client := newConnectivityClient(time.Duration(timeout) * time.Second)
 
-	resp, err := client.Get(urlStr)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
+	if err != nil {
+		result.Error = fmt.Sprintf("connectivity test failed: %v", err)
+		return result
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		result.Error = fmt.Sprintf("connectivity test failed: %v", err)
 		return result

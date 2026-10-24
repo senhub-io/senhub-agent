@@ -2,6 +2,7 @@ package proxmox
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"strconv"
 	"strings"
@@ -109,11 +110,11 @@ func backupCoverage(jobs []pveBackupJob, guests []pveGuest) (enabledJobs, unprot
 	return enabledJobs, unprotected
 }
 
-func (p *ProxmoxProbe) collectBackupCoverage(guests []pveGuest, now time.Time) []data_store.DataPoint {
+func (p *ProxmoxProbe) collectBackupCoverage(ctx context.Context, guests []pveGuest, now time.Time) []data_store.DataPoint {
 	var jobs []pveBackupJob
 	path := "/cluster/backup"
 
-	if err := p.apiGet(path, &jobs); err != nil {
+	if err := p.apiGet(ctx, path, &jobs); err != nil {
 		if !p.denied.isDenied(p.moduleLogger, err, "cluster/backup", "Sys.Audit on /") {
 			p.moduleLogger.Warn().Err(err).Msg("failed to list backup jobs")
 		}

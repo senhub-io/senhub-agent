@@ -1,6 +1,7 @@
 package proxmox
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"sort"
@@ -96,14 +97,14 @@ type pveTaskLogLine struct {
 
 // collectFailedTasks counts the tasks that failed since the previous cycle,
 // per task type, and publishes each of them once as an ERROR log record.
-func (p *ProxmoxProbe) collectFailedTasks(node string, now time.Time) []data_store.DataPoint {
+func (p *ProxmoxProbe) collectFailedTasks(ctx context.Context, node string, now time.Time) []data_store.DataPoint {
 	var tasks []pveTask
 	q := url.Values{
 		"errors": {"1"},
 		"since":  {strconv.FormatInt(now.Add(-failedTaskLookback).Unix(), 10)},
 		"limit":  {strconv.Itoa(maxFailedTasks)},
 	}
-	if err := p.apiGet(fmt.Sprintf("/nodes/%s/tasks?%s", node, q.Encode()), &tasks); err != nil {
+	if err := p.apiGet(ctx, fmt.Sprintf("/nodes/%s/tasks?%s", node, q.Encode()), &tasks); err != nil {
 		if !p.denied.isDenied(p.moduleLogger, err, node+"/tasks", "Sys.Audit on /nodes/"+node) {
 			p.moduleLogger.Warn().Err(err).Str("node", node).Msg("failed to list failed tasks")
 		}
@@ -119,7 +120,7 @@ func (p *ProxmoxProbe) collectFailedTasks(node string, now time.Time) []data_sto
 	for i, t := range fresh {
 		body := t.Status
 		if i < maxFailedTaskLogs {
-			if tail := p.fetchTaskLogTail(node, t.UPID); tail != "" {
+			if tail := p.fetchTaskLogTail(ctx, node, t.UPID); tail != "" {
 				body = tail
 			}
 		}
@@ -145,10 +146,10 @@ func (p *ProxmoxProbe) collectFailedTasks(node string, now time.Time) []data_sto
 
 // fetchTaskLogTail returns the last lines of a task log, or "" when it cannot
 // be read; the caller then falls back to the task's status text.
-func (p *ProxmoxProbe) fetchTaskLogTail(node, upid string) string {
+func (p *ProxmoxProbe) fetchTaskLogTail(ctx context.Context, node, upid string) string {
 	base := fmt.Sprintf("/nodes/%s/tasks/%s/log", node, url.PathEscape(upid))
 	var first []pveTaskLogLine
-	total, err := p.apiGetTotal(base+"?limit=1", &first)
+	total, err := p.apiGetTotal(ctx, base+"?limit=1", &first)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("node", node).Str("upid", upid).Msg("failed to read task log")
 		return ""
@@ -159,7 +160,7 @@ func (p *ProxmoxProbe) fetchTaskLogTail(node, upid string) string {
 	}
 	var lines []pveTaskLogLine
 	q := url.Values{"start": {strconv.Itoa(start)}, "limit": {strconv.Itoa(failedTaskLogLines)}}
-	if err := p.apiGet(base+"?"+q.Encode(), &lines); err != nil {
+	if err := p.apiGet(ctx, base+"?"+q.Encode(), &lines); err != nil {
 		p.moduleLogger.Warn().Err(err).Str("node", node).Str("upid", upid).Msg("failed to read task log")
 		return ""
 	}

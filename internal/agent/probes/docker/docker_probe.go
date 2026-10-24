@@ -381,7 +381,7 @@ func (p *dockerProbe) CollectContext(ctx context.Context) ([]data_store.DataPoin
 // the socket dial itself fails (engine not running); a non-2xx status or a
 // JSON error is a real error.
 func (p *dockerProbe) listContainers(ctx context.Context) ([]containerListItem, bool, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.api.URL(p.client, "/containers/json?all=true"), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.api.URL(ctx, p.client, "/containers/json?all=true"), nil)
 	if err != nil {
 		return nil, true, fmt.Errorf("building containers/json request: %w", err)
 	}
@@ -414,7 +414,7 @@ func (p *dockerProbe) listContainers(ctx context.Context) ([]containerListItem, 
 // the container has stopped (HTTP 409) or disappeared (HTTP 404) — both cases
 // are normal race conditions in a dynamic environment.
 func (p *dockerProbe) fetchStats(ctx context.Context, id string) (*containerStats, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.api.URL(p.client, "/containers/"+id+"/stats?stream=false"), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.api.URL(ctx, p.client, "/containers/"+id+"/stats?stream=false"), nil)
 	if err != nil {
 		return nil, fmt.Errorf("building stats request for container %s: %w", id, err)
 	}
