@@ -95,6 +95,12 @@ func init() {
 		"tls_min_version", "total_metrics", "unit", "url",
 	}, nil)
 
+	// The sub-blocks the http strategy reads key by key
+	// (ConfigurationManager.parseParams).
+	data_store.RegisterKnownBlockParams("http", "prtg", []string{"check_result_channel"})
+	data_store.RegisterKnownBlockParams("http", "prometheus", []string{"include_probe_tags", "expose_host_metrics"})
+	data_store.RegisterKnownBlockParams("http", "tls", []string{"enabled", "min_tls_version", "cert_file", "key_file"})
+
 	data_store.RegisterKnownParams("prtg", []string{
 		"data_retention_period", "interval", "probe_name", "probe_type",
 		"server_url",
