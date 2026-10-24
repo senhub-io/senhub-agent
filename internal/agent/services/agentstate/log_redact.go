@@ -70,8 +70,8 @@ var builtinRedactRules = []redactRule{
 	},
 	{
 		// The line after the licence: `SystemID: SYSTEMID-<5 groups of 8>`.
-		// Everything after the prefix is masked, so a format with more or
-		// longer groups does not leave its tail in clear.
+		// The whole identifier after the prefix is masked, so a format with
+		// more or longer groups does not leave its tail in clear.
 		name:        "prtg_system_id",
 		re:          regexp.MustCompile(`\bSYSTEMID-[A-Z0-9]+(?:-[A-Z0-9]+)*`),
 		replacement: "SYSTEMID-***",
