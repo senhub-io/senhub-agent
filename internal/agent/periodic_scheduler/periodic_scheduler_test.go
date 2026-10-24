@@ -893,15 +893,16 @@ func TestPeriodicScheduler_FirstTickFollowsTheInitialCall(t *testing.T) {
 	}
 }
 
-// The initial call waits for InitialDelay, and the ticker keeps the phase
-// that call set.
-func TestPeriodicScheduler_InitialCallWaitsForTheDelay(t *testing.T) {
+// The initial call runs at once; InitialDelay then sets the phase the
+// ticker keeps, so the first tick comes the delay plus one interval later.
+func TestPeriodicScheduler_InitialCallRunsAtOnceAndTheDelaySetsThePhase(t *testing.T) {
 	logger := zerolog.New(io.Discard)
 	const delay = 150 * time.Millisecond
+	const interval = 100 * time.Millisecond
 	var mu sync.Mutex
 	var at []time.Time
 	s := NewPeriodicScheduler(PeriodicSchedulerConfig{
-		Interval:       100 * time.Millisecond,
+		Interval:       interval,
 		InitialDelay:   delay,
 		ExecuteOnStart: true,
 		Execute: func() error {
@@ -915,7 +916,7 @@ func TestPeriodicScheduler_InitialCallWaitsForTheDelay(t *testing.T) {
 	if err := s.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(delay + 250*time.Millisecond)
+	time.Sleep(delay + interval + 150*time.Millisecond)
 	_ = s.Shutdown(context.Background())
 
 	mu.Lock()
@@ -923,16 +924,16 @@ func TestPeriodicScheduler_InitialCallWaitsForTheDelay(t *testing.T) {
 	if len(at) < 2 {
 		t.Fatalf("%d calls, want the initial call and a tick", len(at))
 	}
-	if first := at[0].Sub(began); first < delay {
-		t.Errorf("initial call %s after Start, want at least %s", first, delay)
+	if first := at[0].Sub(began); first > 60*time.Millisecond {
+		t.Errorf("initial call %s after Start, want it at once", first)
 	}
-	if gap := at[1].Sub(at[0]); gap < 90*time.Millisecond {
-		t.Errorf("first tick %s after the initial call, want about one interval", gap)
+	if gap := at[1].Sub(at[0]); gap < delay+interval-20*time.Millisecond {
+		t.Errorf("first tick %s after the initial call, want the delay plus one interval (%s)", gap, delay+interval)
 	}
 }
 
-// A stop during the wait returns at once and makes no call.
-func TestPeriodicScheduler_StopDuringTheInitialDelayMakesNoCall(t *testing.T) {
+// A stop during the phase wait returns at once, after the initial call.
+func TestPeriodicScheduler_StopDuringTheInitialDelayReturnsAtOnce(t *testing.T) {
 	logger := zerolog.New(io.Discard)
 	var calls atomic.Int32
 	s := NewPeriodicScheduler(PeriodicSchedulerConfig{
@@ -955,10 +956,10 @@ func TestPeriodicScheduler_StopDuringTheInitialDelayMakesNoCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	if took := time.Since(began); took > time.Second {
-		t.Errorf("Shutdown took %s during the initial delay", took)
+		t.Errorf("Shutdown took %s during the phase wait", took)
 	}
-	if n := calls.Load(); n != 0 {
-		t.Errorf("%d calls made after a stop during the delay, want 0", n)
+	if n := calls.Load(); n != 1 {
+		t.Errorf("%d calls, want only the initial call", n)
 	}
 }
 
