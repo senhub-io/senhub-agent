@@ -1,6 +1,8 @@
 package transformers
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -300,3 +302,85 @@ func TestOtelMappingViolation_Predicate(t *testing.T) {
 		})
 	}
 }
+
+// TestYAMLDefinitions_CheckResultEmittersDeclareIt fails when a probe that
+// emits dbcommon.CheckResultMetric has no definition for it: the OTLP
+// strategy then logs "Metric has no OTel mapping" for a series the probe
+// really produces. Probe directories and definition files differ only by
+// underscores (httpcheck / http_check), so they are matched on that.
+func TestYAMLDefinitions_CheckResultEmittersDeclareIt(t *testing.T) {
+	probesDir := filepath.Join("..", "..", "..", "probes")
+	dirs, err := os.ReadDir(probesDir)
+	if err != nil {
+		t.Fatalf("read probes dir: %v", err)
+	}
+
+	defs := map[string]ProbeDefinition{}
+	entries, err := definitionFiles.ReadDir("definitions")
+	if err != nil {
+		t.Fatalf("read definitions: %v", err)
+	}
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".yaml") {
+			continue
+		}
+		data, err := definitionFiles.ReadFile("definitions/" + e.Name())
+		if err != nil {
+			t.Fatalf("read %s: %v", e.Name(), err)
+		}
+		var def ProbeDefinition
+		if yaml.Unmarshal(data, &def) != nil {
+			continue
+		}
+		key := strings.ReplaceAll(strings.TrimSuffix(e.Name(), ".yaml"), "_", "")
+		defs[key] = def
+	}
+
+	emitters := 0
+	for _, d := range dirs {
+		if !d.IsDir() || d.Name() == "dbcommon" {
+			continue
+		}
+		files, _ := filepath.Glob(filepath.Join(probesDir, d.Name(), "*.go"))
+		emits := false
+		for _, f := range files {
+			if strings.HasSuffix(f, "_test.go") {
+				continue
+			}
+			src, err := os.ReadFile(f)
+			if err != nil {
+				t.Fatalf("read %s: %v", f, err)
+			}
+			if strings.Contains(string(src), "CheckResultMetric") {
+				emits = true
+				break
+			}
+		}
+		if !emits {
+			continue
+		}
+		emitters++
+		def, ok := defs[d.Name()]
+		if !ok {
+			t.Errorf("probe %s emits %s but has no definition file", d.Name(), checkResultSeries)
+			continue
+		}
+		found := false
+		for _, m := range def.Metrics {
+			if m.Name == checkResultSeries {
+				found = true
+				if why := otelMappingViolation(m); why != "" {
+					t.Errorf("probe %s: %s: %s", d.Name(), checkResultSeries, why)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("probe %s emits %s but its definition does not declare it", d.Name(), checkResultSeries)
+		}
+	}
+	if emitters == 0 {
+		t.Fatal("no probe emitting the check result found: the guard scans nothing")
+	}
+}
+
+const checkResultSeries = "senhub.probe.check.result"
