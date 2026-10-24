@@ -17,6 +17,7 @@ import (
 const maxBackoffTicks = 8
 
 type PeriodicSchedulerCall func() error
+type PeriodicSchedulerContextCall func(ctx context.Context) error
 type PeriodicSchedulerOnStart func(quitChannel chan struct{}) error
 type PeriodicSchedulerOnShutdown func(ctx context.Context) error
 
@@ -37,6 +38,10 @@ type PeriodicSchedulerConfig struct {
 	MaxRetries int
 	// Execute to be made periodically
 	Execute PeriodicSchedulerCall
+	// ExecuteContext replaces Execute when set. It receives the
+	// scheduler's run context, which Shutdown cancels before waiting
+	// for the call in flight, so a call that honours it stops early.
+	ExecuteContext PeriodicSchedulerContextCall
 	// Call to always be made on start (optional)
 	OnStart PeriodicSchedulerOnStart
 	// Call to always be made on shutdown (optional)
@@ -127,7 +132,7 @@ func (l *periodicScheduler) Start(ctx context.Context) error {
 	if l.config.ExecuteOnStart {
 		l.logger.Info().Msg("Initial call")
 		// Do onStart call
-		if err := l.doCall(); err != nil {
+		if err := l.doCall(l.runCtx); err != nil {
 			if l.config.FailOnStartError {
 				return fmt.Errorf("Initial call failed: %w", err)
 			}
@@ -145,15 +150,14 @@ func (l *periodicScheduler) Start(ctx context.Context) error {
 	return nil
 }
 
-func (l *periodicScheduler) doCall() error {
+func (l *periodicScheduler) doCall(ctx context.Context) error {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 
-	if err := l.config.Execute(); err != nil {
-		return err
+	if l.config.ExecuteContext != nil {
+		return l.config.ExecuteContext(ctx)
 	}
-
-	return nil
+	return l.config.Execute()
 }
 
 func (l *periodicScheduler) setupIntervalCall() error {
@@ -220,7 +224,7 @@ func (l *periodicScheduler) setupIntervalCall() error {
 				l.logger.Debug().
 					Int("error_count", errorCount).
 					Msg("scheduler tick → calling doCall")
-				err := l.doCall()
+				err := l.doCall(runCtx)
 				if err != nil {
 					errorCount++
 					if l.config.MaxRetries > 0 && errorCount >= l.config.MaxRetries {
@@ -315,7 +319,9 @@ func (l *periodicScheduler) Shutdown(ctx context.Context) error {
 
 	if l.config.ExecuteOnShutdown {
 		l.logger.Info().Msg("Final call")
-		if err := l.doCall(); err != nil {
+		// The run context is already cancelled here; the final call
+		// is bounded by the caller's stop budget instead.
+		if err := l.doCall(ctx); err != nil {
 			return fmt.Errorf("Unable to call Execute on shutdown: %w", err)
 		}
 	}

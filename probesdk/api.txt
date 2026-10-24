@@ -353,6 +353,8 @@ alias BaseProbe = senhub-agent.go/internal/agent/probes/types.BaseProbe
   method (*senhub-agent.go/internal/agent/probes/types.BaseProbe) SetName(name string)
   method (*senhub-agent.go/internal/agent/probes/types.BaseProbe) SetProbeType(probeType string)
 func BoolParam(m map[string]interface{}, key string) (bool, bool)
+alias ContextCollector = senhub-agent.go/internal/agent/probes/types.ContextCollector
+  imethod CollectContext(ctx context.Context) ([]senhub-agent.go/internal/agent/types/datapoint.DataPoint, error)
 func DurationParam(m map[string]interface{}, key string) (time.Duration, bool)
 var ErrCredentialsRejected error
 func FloatParam(m map[string]interface{}, key string) (float64, bool)

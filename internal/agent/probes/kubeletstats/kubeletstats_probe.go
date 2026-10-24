@@ -178,6 +178,13 @@ func (p *KubeletStatsProbe) OnShutdown(_ context.Context) error {
 }
 
 func (p *KubeletStatsProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext scrapes the kubelet under the poller's context. An
+// interrupted scrape returns the context error and is not counted as a
+// scrape error: the kubelet did not fail, the cycle was stopped.
+func (p *KubeletStatsProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	if p.httpClient == nil {
 		client, err := buildHTTPClient(p.caFile, p.cfg.InsecureSkipVerify)
 		if err != nil {
@@ -186,7 +193,10 @@ func (p *KubeletStatsProbe) Collect() ([]data_store.DataPoint, error) {
 		p.httpClient = client
 	}
 
-	summary, reason, err := p.scrapeSummary()
+	summary, reason, err := p.scrapeSummary(ctx)
+	if err != nil && ctx.Err() != nil {
+		return nil, fmt.Errorf("kubelet_stats scrape interrupted: %w", ctx.Err())
+	}
 	if err != nil {
 		if p.moduleLogger != nil {
 			p.moduleLogger.Warn().Err(err).
@@ -240,10 +250,10 @@ func (p *KubeletStatsProbe) scrapeErrorPoints(now time.Time) []data_store.DataPo
 	return points
 }
 
-func (p *KubeletStatsProbe) scrapeSummary() (*summary, string, error) {
+func (p *KubeletStatsProbe) scrapeSummary(ctx context.Context) (*summary, string, error) {
 	summaryURL := strings.TrimRight(p.endpoint, "/") + "/stats/summary"
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, summaryURL, nil)

@@ -348,6 +348,14 @@ func (p *mysqlProbe) OnShutdown(_ context.Context) error {
 // senhub.db.up so that monitoring systems see a 0 when the engine is
 // unreachable, rather than a missing series.
 func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext is Collect under the poller's context. A cycle whose
+// context ends returns its error before it publishes or records
+// anything: the server did not go down, and an interrupted UUID, version
+// or role query must not be pinned as the answer.
+func (p *mysqlProbe) CollectContext(parent context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 	instance := fmt.Sprintf("%s:%d", p.cfg.Host, p.cfg.Port)
 	commonTags := p.commonTags(instance)
@@ -356,7 +364,7 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	up := float64(0)
 	var points []data_store.DataPoint
 
-	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
+	ctx, cancel := context.WithTimeout(parent, p.cfg.Timeout)
 	defer cancel()
 
 	// Ping the server. The connection is established here (not in OnStart)
@@ -369,6 +377,9 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 	if err := p.db.PingContext(ctx); err != nil {
+		if parent.Err() != nil {
+			return nil, fmt.Errorf("mysql collection interrupted: %w", parent.Err())
+		}
 		p.moduleLogger.Warn().Err(err).Str("instance", instance).Msg("mysql ping failed")
 		points = append(points, p.dp("senhub.db.up", 0, now, string(dbcommon.MetricTypeOverview), commonTags))
 		points = append(points, p.dp(dbcommon.CheckResultMetric, float64(dbcommon.ClassifyError(err)), now, "status", commonTags))
@@ -385,6 +396,9 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	// that keeps failing falls back like MariaDB after maxUUIDFailures.
 	if !p.uuidFetched && !p.entitySrc.isIDPinned() {
 		uuid, err := p.queryServerUUID(ctx)
+		if err != nil && parent.Err() != nil {
+			return nil, fmt.Errorf("mysql collection interrupted: %w", parent.Err())
+		}
 		switch {
 		case err == nil:
 			p.uuidFailures = 0
@@ -412,6 +426,9 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	// SHOW GLOBAL STATUS
 	status, err := p.collectStatus(ctx)
 	if err != nil {
+		if parent.Err() != nil {
+			return nil, fmt.Errorf("mysql collection interrupted: %w", parent.Err())
+		}
 		p.moduleLogger.Warn().Err(err).Str("instance", instance).Msg("mysql SHOW GLOBAL STATUS failed")
 		points = append(points, p.dp("senhub.db.up", up, now, string(dbcommon.MetricTypeOverview), commonTags))
 		points = append(points, p.dp(dbcommon.CheckResultMetric, float64(dbcommon.ClassifyError(err)), now, "status", commonTags))
@@ -421,6 +438,9 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	// SHOW GLOBAL VARIABLES
 	vars, err := p.collectVariables(ctx)
 	if err != nil {
+		if parent.Err() != nil {
+			return nil, fmt.Errorf("mysql collection interrupted: %w", parent.Err())
+		}
 		p.moduleLogger.Warn().Err(err).Str("instance", instance).Msg("mysql SHOW GLOBAL VARIABLES failed")
 	}
 
@@ -596,10 +616,13 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 
 	// ─── Replication ──────────────────────────────────────────────────────────
-	replCtx, replCancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
+	replCtx, replCancel := context.WithTimeout(parent, p.cfg.Timeout)
 	defer replCancel()
 
 	role, replicaRows, replicaStatus := p.collectReplication(replCtx)
+	if err := parent.Err(); err != nil {
+		return nil, fmt.Errorf("mysql collection interrupted: %w", err)
+	}
 	p.entitySrc.updateRole(role)
 
 	roleTags := append([]tags.Tag{{Key: "role", Value: role.String()}}, allCommonTags...)

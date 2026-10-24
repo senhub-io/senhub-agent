@@ -192,7 +192,7 @@ func NewProbePoller(
 		MaxRetries:        3,
 		ExecuteOnStart:    true,
 		ExecuteOnShutdown: false,
-		Execute:           probePoller.collect,
+		ExecuteContext:    probePoller.collect,
 		OnStart:           probe.OnStart,
 		OnShutdown:        probe.OnShutdown,
 	}, &schedulerLogger)
@@ -339,11 +339,14 @@ func (p *ProbePoller) GovernanceAttributes() map[string]any {
 // provider). When enabled, span duration captures Collect() latency and
 // attributes carry probe identity + emitted datapoints — useful for
 // detecting probes that have grown slow or stopped emitting.
-func (p *ProbePoller) collect() error {
+func (p *ProbePoller) collect(runCtx context.Context) error {
 	p.moduleLogger.Debug().Msg("Collecting data")
 
+	if runCtx == nil {
+		runCtx = context.Background()
+	}
 	tracer := otel.Tracer(probeTracerScope)
-	ctx, span := tracer.Start(context.Background(), "probe.collect")
+	ctx, span := tracer.Start(runCtx, "probe.collect")
 	span.SetAttributes(
 		attribute.String("probe.name", p.Probe.GetName()),
 		attribute.String("probe.type", p.probeType()),
@@ -351,7 +354,14 @@ func (p *ProbePoller) collect() error {
 	)
 	defer span.End()
 
-	data, err := p.Probe.Collect()
+	data, err := p.collectOnce(ctx)
+	if err != nil && runCtx.Err() != nil && errors.Is(err, context.Canceled) {
+		// The probe is being stopped: an interrupted cycle is not a
+		// failure of the target and must not count as one.
+		span.SetStatus(codes.Unset, "")
+		p.moduleLogger.Debug().Err(err).Msg("Collection cancelled by shutdown")
+		return nil
+	}
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -377,6 +387,35 @@ func (p *ProbePoller) collect() error {
 
 	p.moduleLogger.Debug().Msg("Using default strategy router")
 	return p.addDataPointCtx(ctx, data, &defaultStrategyRouter{})
+}
+
+// minCollectBudget is the floor of the backstop deadline a cancellable
+// collection runs under. It sits above every timeout a probe applies to
+// its own requests, so the backstop only ever ends a collection that
+// hangs.
+const minCollectBudget = 5 * time.Minute
+
+// collectBudget is the backstop deadline of one cancellable collection:
+// two intervals, so a cycle that has already lost its next tick is still
+// allowed to finish, and never under minCollectBudget.
+func collectBudget(interval time.Duration) time.Duration {
+	if budget := 2 * interval; budget > minCollectBudget {
+		return budget
+	}
+	return minCollectBudget
+}
+
+// collectOnce runs one collection: CollectContext under the run context
+// and the backstop deadline when the probe can be cancelled, Collect as
+// it always was otherwise.
+func (p *ProbePoller) collectOnce(ctx context.Context) ([]datapoint.DataPoint, error) {
+	cc, ok := p.Probe.(types.ContextCollector)
+	if !ok {
+		return p.Probe.Collect()
+	}
+	collectCtx, cancel := context.WithTimeout(ctx, collectBudget(p.Probe.GetInterval()))
+	defer cancel()
+	return cc.CollectContext(collectCtx)
 }
 
 // recordDelivery tells the status channel what the cycle delivered. A

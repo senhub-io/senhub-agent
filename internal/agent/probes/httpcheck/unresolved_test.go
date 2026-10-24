@@ -1,6 +1,7 @@
 package httpcheck
 
 import (
+	"context"
 	"net"
 	"syscall"
 	"testing"
@@ -14,7 +15,7 @@ func TestUnresolvedLocalHTTPTarget(t *testing.T) {
 	p := newTestProbe(t, map[string]interface{}{"targets": []interface{}{local, remote}})
 	p.entitySrc.hostID = "host-1"
 	p.entitySrc.agentID = func() string { return "agent-1" }
-	p.check = func(target string) httpResult {
+	p.check = func(_ context.Context, target string) httpResult {
 		return httpResult{target: target, err: &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}}
 	}
 	points, err := p.Collect()

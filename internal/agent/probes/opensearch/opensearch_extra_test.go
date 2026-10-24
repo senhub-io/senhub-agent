@@ -141,7 +141,7 @@ func TestFetchNodeStats_MalformedJSON(t *testing.T) {
 	op := p.(*opensearchProbe)
 	op.client = srv.Client()
 
-	_, fetchErr := op.fetchNodeStats()
+	_, fetchErr := op.fetchNodeStats(context.Background())
 	if fetchErr == nil {
 		t.Fatal("fetchNodeStats() should fail on malformed JSON")
 	}
@@ -345,7 +345,7 @@ func TestCollect_TLSVerifyFailureWithDefaultClient(t *testing.T) {
 	op := p.(*opensearchProbe)
 
 	var health clusterHealth
-	tlsErr := op.getJSON("/_cluster/health", &health)
+	tlsErr := op.getJSON(context.Background(), "/_cluster/health", &health)
 	if tlsErr == nil {
 		t.Fatal("expected TLS verification error against self-signed test certificate")
 	}
