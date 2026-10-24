@@ -418,33 +418,14 @@ func collectDeadline(probe types.Probe) time.Duration {
 	return max(deadline, 0)
 }
 
-// minCollectBudget is the floor of the backstop deadline a cancellable
-// collection runs under. It sits above every timeout a probe applies to
-// its own requests, so the backstop only ever ends a collection that
-// hangs.
-const minCollectBudget = 5 * time.Minute
-
-// collectBudget is the backstop deadline of one cancellable collection:
-// two intervals, so a cycle that has already lost its next tick is still
-// allowed to finish, and never under minCollectBudget.
-func collectBudget(interval time.Duration) time.Duration {
-	if budget := 2 * interval; budget > minCollectBudget {
-		return budget
-	}
-	return minCollectBudget
-}
-
-// collectOnce runs one collection: CollectContext under the run context
-// and the backstop deadline when the probe can be cancelled, Collect as
-// it always was otherwise.
+// collectOnce runs one collection: CollectContext under the call context,
+// whose deadline the scheduler sets, when the probe can be cancelled,
+// Collect as it always was otherwise.
 func (p *ProbePoller) collectOnce(ctx context.Context) ([]datapoint.DataPoint, error) {
-	cc, ok := p.Probe.(types.ContextCollector)
-	if !ok {
-		return p.Probe.Collect()
+	if cc, ok := p.Probe.(types.ContextCollector); ok {
+		return cc.CollectContext(ctx)
 	}
-	collectCtx, cancel := context.WithTimeout(ctx, collectBudget(p.Probe.GetInterval()))
-	defer cancel()
-	return cc.CollectContext(collectCtx)
+	return p.Probe.Collect()
 }
 
 // recordDelivery tells the status channel what the cycle delivered. A

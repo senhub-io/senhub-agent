@@ -29,7 +29,7 @@ the OTLP receiver counters once that probe has received traffic.
 | `senhub_agent_collect_errors_total` | counter | Probe collection errors since start, per probe type and failure reason | `probe`, `reason` |
 | `senhub_agent_collect_in_flight` | gauge | Probe collections running at this instant | – |
 | `senhub_agent_collect_lag_seconds` | gauge | Maximum, over the interval between two emissions of agent metrics, of the actual start of a collection minus its planned start, per probe type | `probe` |
-| `senhub_agent_collect_overruns_total` | counter | Scheduler ticks skipped because the previous collection of the probe was still running, per probe type | `probe` |
+| `senhub_agent_collect_overruns_total` | counter | Collections still running when their deadline passed (the shorter of the probe interval and its own timeout), per probe type | `probe` |
 | `senhub_agent_probe_first_collection_delay_seconds` | gauge | Time from the agent start to the end of the probe's first collection, recorded once per start and per probe type (the maximum across instances of the type) | `probe` |
 | `senhub_agent_logs_redacted_total` | counter | Secrets masked in log records since start, per probe and masking rule (`credential_param`, `authorization_header` or a rule of `logs.redact.rules`); emitted once something has been masked | `probe`, `rule` |
 | `senhub_agent_transformer_fallback_total` | counter | Datapoints processed without a transformer definition (no unit injection or corrections) | – |

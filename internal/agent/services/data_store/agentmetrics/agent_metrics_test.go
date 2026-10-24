@@ -519,8 +519,8 @@ func TestBuildAgentRecords_CollectSchedulingMetricsEmittedWhenTouched(t *testing
 	if overruns["cpu"] != 3 || len(overruns) != 1 {
 		t.Errorf("overruns = %v, want cpu=3", overruns)
 	}
-	if overUnit != "{tick}" || overType != "counter" {
-		t.Errorf("overruns unit/type = %q/%q, want {tick}/counter", overUnit, overType)
+	if overUnit != "{collection}" || overType != "counter" {
+		t.Errorf("overruns unit/type = %q/%q, want {collection}/counter", overUnit, overType)
 	}
 
 	if delays["cpu"] != 3 || delays["memory"] != 0.75 || len(delays) != 2 {

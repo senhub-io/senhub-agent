@@ -193,38 +193,21 @@ func TestContextCollectorIsCancelledWhenTheAgentStops(t *testing.T) {
 	}
 }
 
-func TestContextCollectorRunsUnderTheBackstopDeadline(t *testing.T) {
-	probe := newCtxProbe(time.Hour, false)
+func TestScheduledContextCollectorRunsUnderTheIntervalDeadline(t *testing.T) {
+	const interval = 400 * time.Millisecond
+	probe := newCtxProbe(interval, false)
 	poller := newPollerFor(t, "ctx_deadline_test", probe, nil)
 
-	before := time.Now()
-	if err := poller.collect(context.Background()); err != nil {
-		t.Fatalf("collect: %v", err)
+	if err := poller.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
 	}
 	select {
 	case dl := <-probe.deadline:
-		want := before.Add(collectBudget(time.Hour))
-		if dl.Before(want) || dl.After(want.Add(time.Minute)) {
-			t.Fatalf("deadline %v, want about %v", dl, want)
+		if left := time.Until(dl); left > interval || left < interval-200*time.Millisecond {
+			t.Fatalf("deadline %v away, want about the %v interval", left, interval)
 		}
-	default:
-		t.Fatal("CollectContext received a context without a deadline")
-	}
-}
-
-func TestCollectBudgetNeverUnderTheFloor(t *testing.T) {
-	for _, tc := range []struct {
-		interval, want time.Duration
-	}{
-		{0, minCollectBudget},
-		{10 * time.Second, minCollectBudget},
-		{time.Minute, minCollectBudget},
-		{10 * time.Minute, 20 * time.Minute},
-		{time.Hour, 2 * time.Hour},
-	} {
-		if got := collectBudget(tc.interval); got != tc.want {
-			t.Errorf("collectBudget(%v) = %v, want %v", tc.interval, got, tc.want)
-		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("CollectContext was never called")
 	}
 }
 

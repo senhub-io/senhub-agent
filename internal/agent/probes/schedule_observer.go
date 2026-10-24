@@ -34,6 +34,6 @@ func (o *scheduleObserver) CallEnded(first bool) {
 	}
 }
 
-func (o *scheduleObserver) TicksSkipped(n int) {
-	agentstate.IncrementCollectOverruns(o.probe, n)
+func (o *scheduleObserver) CallOverran() {
+	agentstate.IncrementCollectOverruns(o.probe, 1)
 }

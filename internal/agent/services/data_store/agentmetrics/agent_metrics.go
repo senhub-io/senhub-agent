@@ -176,16 +176,16 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 		})
 	}
 
-	for probe, ticks := range agentstate.GetCollectOverruns() {
+	for probe, n := range agentstate.GetCollectOverruns() {
 		records = append(records, otelmapper.OtelRecord{
 			Name: "senhub.agent.collect.overruns",
-			Unit: "{tick}",
+			Unit: "{collection}",
 			Type: "counter",
 			Attributes: map[string]string{
 				"probe": probe,
 			},
-			Value:       float64(ticks),
-			Description: "Cumulative count of scheduler ticks skipped because the previous collection of the probe was still running, by probe type.",
+			Value:       float64(n),
+			Description: "Cumulative count of collections still running when their deadline passed (the shorter of the probe interval and the probe's own timeout), by probe type. Such a collection is neither abandoned nor run twice: the scheduler makes no further call of that probe until it returns.",
 		})
 	}
 

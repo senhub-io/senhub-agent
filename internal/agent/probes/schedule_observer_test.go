@@ -42,10 +42,10 @@ func TestScheduleObserver(t *testing.T) {
 		t.Errorf("collect lag not recorded for probe %q: %v", probe, lagWindow)
 	}
 
-	obs.TicksSkipped(3)
+	obs.CallOverran()
 	overruns := agentstate.GetCollectOverruns()
-	if got := overruns[probe]; got != 3 {
-		t.Errorf("collect overruns for probe %q = %d, want 3", probe, got)
+	if got := overruns[probe]; got != 1 {
+		t.Errorf("collect overruns for probe %q = %d, want 1", probe, got)
 	}
 
 	before := firstDelay

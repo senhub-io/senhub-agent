@@ -12,10 +12,10 @@ import (
 )
 
 type fakeObserver struct {
-	mu      sync.Mutex
-	started []time.Duration
-	ended   []bool
-	skipped []int
+	mu       sync.Mutex
+	started  []time.Duration
+	ended    []bool
+	overruns int
 }
 
 func (f *fakeObserver) CallStarted(lag time.Duration) {
@@ -30,19 +30,18 @@ func (f *fakeObserver) CallEnded(first bool) {
 	f.ended = append(f.ended, first)
 }
 
-func (f *fakeObserver) TicksSkipped(n int) {
+func (f *fakeObserver) CallOverran() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.skipped = append(f.skipped, n)
+	f.overruns++
 }
 
-func (f *fakeObserver) snapshot() ([]time.Duration, []bool, []int) {
+func (f *fakeObserver) snapshot() ([]time.Duration, []bool, int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	started := append([]time.Duration(nil), f.started...)
 	ended := append([]bool(nil), f.ended...)
-	skipped := append([]int(nil), f.skipped...)
-	return started, ended, skipped
+	return started, ended, f.overruns
 }
 
 func waitForAtomicCalls(t *testing.T, calls *atomic.Int32, n int32) {
@@ -173,54 +172,16 @@ func TestPeriodicSchedulerObserverLag(t *testing.T) {
 	}
 }
 
-func TestPeriodicSchedulerObserverTicksSkipped(t *testing.T) {
+func TestPeriodicSchedulerObserverNoOverrunWhenFast(t *testing.T) {
 	logger := zerolog.New(io.Discard)
 	obs := &fakeObserver{}
-	var calls atomic.Int32
-
-	s := NewPeriodicScheduler(PeriodicSchedulerConfig{
-		ExecuteOnStart: true,
-		Interval:       30 * time.Millisecond,
-		Execute: func() error {
-			n := calls.Add(1) - 1
-			if n == 1 {
-				time.Sleep(150 * time.Millisecond)
-			}
-			return nil
-		},
-		Observer: obs,
-	}, &logger)
-
-	if err := s.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = s.Shutdown(context.Background()) }()
-
-	waitForAtomicCalls(t, &calls, 4)
-
-	_, _, skipped := obs.snapshot()
-	total := 0
-	for _, n := range skipped {
-		total += n
-	}
-	if total < 2 {
-		t.Errorf("TicksSkipped total = %d, want >= 2", total)
-	}
-}
-
-func TestPeriodicSchedulerObserverNoSkipsWhenFast(t *testing.T) {
-	logger := zerolog.New(io.Discard)
-	obs := &fakeObserver{}
-	var calls atomic.Int32
 
 	s := NewPeriodicScheduler(PeriodicSchedulerConfig{
 		ExecuteOnStart: true,
 		Interval:       40 * time.Millisecond,
-		Execute: func() error {
-			calls.Add(1)
-			return nil
-		},
-		Observer: obs,
+		CallTimeout:    40 * time.Millisecond,
+		Execute:        func() error { return nil },
+		Observer:       obs,
 	}, &logger)
 
 	if err := s.Start(context.Background()); err != nil {
@@ -230,9 +191,8 @@ func TestPeriodicSchedulerObserverNoSkipsWhenFast(t *testing.T) {
 	time.Sleep(250 * time.Millisecond)
 	_ = s.Shutdown(context.Background())
 
-	_, _, skipped := obs.snapshot()
-	if len(skipped) != 0 {
-		t.Errorf("TicksSkipped = %v, want none", skipped)
+	if _, _, overruns := obs.snapshot(); overruns != 0 {
+		t.Errorf("overruns = %d, want 0", overruns)
 	}
 }
 
