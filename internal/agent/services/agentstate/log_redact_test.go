@@ -464,3 +464,75 @@ func TestRedactAttributeByCredentialKey(t *testing.T) {
 		t.Fatalf("preset off must leave keyed attributes alone, got %q", off.Attributes["password"])
 	}
 }
+
+// PRTG writes its licence key and system id in clear in Core.log and
+// CoreActivationLog.log on every core start. A probe that ships those
+// files must never carry them, whatever its own configuration.
+func TestRedactPresetMasksThePRTGLicence(t *testing.T) {
+	setupRedactionTest(t)
+	if errs := ConfigureLogRedaction(true, nil); len(errs) != 0 {
+		t.Fatalf("ConfigureLogRedaction errors: %v", errs)
+	}
+
+	const key = "ABC123-DEF456-GHI789-JKL012-MNO345-PQR678-STU901-VWX234-YZA567-BCD890"
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "licence line",
+			in:   `2026-10-20 09:30:01.000001 INFO  TId 1 Core> Paessler PRTG Enterprise licensed for "Example" (` + key + `) Edt=7`,
+			want: `2026-10-20 09:30:01.000001 INFO  TId 1 Core> Paessler PRTG Enterprise licensed for "Example" (***) Edt=7`,
+		},
+		{
+			name: "system id line",
+			in:   "2026-10-20 09:30:01.000002 INFO  TId 1 Core> SystemID: SYSTEMID-ABCDEF12-34567890-ABCDEF12-34567890-ABCDEF12",
+			want: "2026-10-20 09:30:01.000002 INFO  TId 1 Core> SystemID: SYSTEMID-***",
+		},
+		{
+			name: "both inside a folded multiline record",
+			in:   "Core> licensed for \"Example\" (" + key + ")\nCore> SystemID: SYSTEMID-ABCDEF12-34567890-ABCDEF12-34567890-ABCDEF12",
+			want: "Core> licensed for \"Example\" (***)\nCore> SystemID: SYSTEMID-***",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := redactLogRecord(LogRecord{Body: tc.in, ProducerProbeName: "prtg-logs"})
+			if rec.Body != tc.want {
+				t.Fatalf("Body = %q, want %q", rec.Body, tc.want)
+			}
+		})
+	}
+
+	counts := map[string]uint64{}
+	for _, c := range LogRedactedCounts() {
+		if c.Probe == "prtg-logs" {
+			counts[c.Rule] = c.Count
+		}
+	}
+	if counts["prtg_license_key"] != 2 || counts["prtg_system_id"] != 2 {
+		t.Fatalf("counters = %v, want 2 masked keys and 2 masked system ids", counts)
+	}
+
+	for _, keep := range []string{
+		"Core> sensor 2413 ABC123-DEF456 scanned",
+		"guid 0f4c2a51-9b7e-4d3a-8c61-2e5f7a9b0d13",
+		"ABC123-DEF456-GHI789-JKL012-MNO345-PQR678-STU901-VWX234-YZA567",
+		"abc123-def456-ghi789-jkl012-mno345-pqr678-stu901-vwx234-yza567-bcd890",
+		"SYSTEMID-ABCDEF12-34567890",
+	} {
+		if rec := redactLogRecord(LogRecord{Body: keep, ProducerProbeName: "prtg-logs"}); rec.Body != keep {
+			t.Errorf("Body = %q, want unchanged %q", rec.Body, keep)
+		}
+	}
+}
+
+func TestRedactPRTGRuleNamesAreReserved(t *testing.T) {
+	for _, name := range []string{"prtg_license_key", "prtg_system_id"} {
+		errs := ValidateLogRedactRules([]LogRedactRule{{Name: name, Pattern: "x", Replacement: "y"}})
+		if len(errs) != 1 || !strings.Contains(errs[0].Error(), "reserved") {
+			t.Errorf("custom rule %q: errors %v, want it reserved", name, errs)
+		}
+	}
+}
