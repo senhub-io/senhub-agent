@@ -59,6 +59,37 @@ var builtinRedactRules = []redactRule{
 		replacement: "${1}${2}${4}***",
 		precheck:    authorizationHeaderPrecheck,
 	},
+	{
+		// PRTG writes its licence key in clear in Core.log and
+		// CoreActivationLog.log on every core start:
+		// `licensed for "<name>" (XXXXXX-XXXXXX-...)`, ten groups of six.
+		name:        "prtg_license_key",
+		re:          regexp.MustCompile(`\b[A-Z0-9]{6}(?:-[A-Z0-9]{6}){9}\b`),
+		replacement: "***",
+		precheck:    prtgLicenseKeyPrecheck,
+	},
+	{
+		// The line after the licence: `SystemID: SYSTEMID-<5 groups of 8>`.
+		name:        "prtg_system_id",
+		re:          regexp.MustCompile(`\bSYSTEMID-[A-Z0-9]{8}(?:-[A-Z0-9]{8}){4}\b`),
+		replacement: "SYSTEMID-***",
+		precheck:    func(s string) bool { return strings.Contains(s, "SYSTEMID-") },
+	},
+}
+
+// prtgLicenseKeyPrecheck skips the key pattern on lines that cannot hold
+// one: the key alone carries nine dashes.
+func prtgLicenseKeyPrecheck(s string) bool { return len(s) >= 69 && strings.Count(s, "-") >= 9 }
+
+// builtinRedactRuleName reports whether name belongs to the preset, so a
+// custom rule cannot take it.
+func builtinRedactRuleName(name string) bool {
+	for _, r := range builtinRedactRules {
+		if r.name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // ValidateLogRedactRules returns one error per rule that cannot be used,
@@ -150,7 +181,7 @@ func compileCustomRules(rules []LogRedactRule) ([]redactRule, []error) {
 			errs = append(errs, fmt.Errorf("log redaction rule %q: name must match ^[a-z0-9_]+$", r.Name))
 			continue
 		}
-		if r.Name == "credential_param" || r.Name == "authorization_header" {
+		if builtinRedactRuleName(r.Name) {
 			errs = append(errs, fmt.Errorf("log redaction rule %q: reserved name", r.Name))
 			continue
 		}
