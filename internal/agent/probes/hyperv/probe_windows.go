@@ -34,6 +34,7 @@ import (
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/tags"
 )
@@ -319,7 +320,7 @@ func (p *HypervProbe) buildVMPoints(vms []msvmComputerSystem, sumByName map[stri
 		// entity's full composite identity, so a consumer holding the entity
 		// can find its series instead of matching on a renameable label.
 		if guid := vm.Name; guid != "" {
-			vmTags = append(vmTags, tags.Tag{Key: "vmid", Value: guid})
+			vmTags = append(vmTags, tags.Tag{Key: entity.KeyVMID, Value: guid})
 		}
 
 		// hyperv.vm.state — 1 when the VM is running, 0 otherwise.

@@ -294,7 +294,7 @@ func (p *WinServicesProbe) buildServiceDatapoints(s serviceState, ts time.Time, 
 	if hostID != "" {
 		serviceTags = append(serviceTags,
 			tags.Tag{Key: "host.id", Value: hostID},
-			tags.Tag{Key: "host.service.name", Value: s.name},
+			tags.Tag{Key: hostservice.KeyName, Value: s.name},
 		)
 	}
 	if hostName != "" {
@@ -308,7 +308,7 @@ func (p *WinServicesProbe) buildServiceDatapoints(s serviceState, ts time.Time, 
 	// that cannot join the graph, and may lag it by one collection.
 	stateTags := serviceTags
 	if s.triggerStart != nil {
-		stateTags = append(append([]tags.Tag(nil), serviceTags...), tags.Tag{Key: "host.service.trigger_start", Value: strconv.FormatBool(*s.triggerStart)})
+		stateTags = append(append([]tags.Tag(nil), serviceTags...), tags.Tag{Key: hostservice.KeyTriggerStart, Value: strconv.FormatBool(*s.triggerStart)})
 	}
 	points := []data_store.DataPoint{
 		{Name: hostservice.RunningMetric, Value: hostservice.RunningWindows(s.state), Timestamp: ts, Tags: stateTags},

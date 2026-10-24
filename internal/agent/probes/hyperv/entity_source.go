@@ -164,8 +164,8 @@ func buildHypervObservation(
 		// attribute, not the edge.
 		vmEntityType := entity.TypeComputeVM
 		vmEntityID := map[string]any{
-			"host.id": hypervHostID,
-			"vmid":    vm.GUID,
+			"host.id":      hypervHostID,
+			entity.KeyVMID: vm.GUID,
 		}
 		vmEntityAttrs := map[string]any{
 			// The VM's hypervisor platform — reuse the AT11 host.virtualization

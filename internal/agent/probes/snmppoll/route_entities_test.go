@@ -15,7 +15,7 @@ func routeEntityByDestNextHop(t *testing.T, obs entity.Observation, dest, nextHo
 		if e.Type != entityTypeNetworkRoute {
 			continue
 		}
-		if e.ID[idKeyRouteDestination] == dest && e.ID[attrNextHopIP] == nextHop {
+		if e.ID["route.destination"] == dest && e.ID["next_hop.ip"] == nextHop {
 			return e
 		}
 	}
@@ -29,8 +29,8 @@ func nextHopViaExistsFor(obs entity.Observation, routeID map[string]any) bool {
 			continue
 		}
 		if rel.FromID[idKeyNetworkDevice] == routeID[idKeyNetworkDevice] &&
-			rel.FromID[idKeyRouteDestination] == routeID[idKeyRouteDestination] &&
-			rel.FromID[attrNextHopIP] == routeID[attrNextHopIP] {
+			rel.FromID["route.destination"] == routeID["route.destination"] &&
+			rel.FromID["next_hop.ip"] == routeID["next_hop.ip"] {
 			return true
 		}
 	}
@@ -151,7 +151,7 @@ func TestAppendRouteEntities_ConnectedRoutes(t *testing.T) {
 		obs := entity.Observation{}
 		appendRouteEntities(&obs, "dev1", self, []routeRow{row}, ifaces, map[string]bool{})
 		e := routeEntityByDestNextHop(t, obs, "10.0.1.0/24", "0.0.0.0")
-		if got := e.ID[attrNextHopIP]; got != "0.0.0.0" {
+		if got := e.ID["next_hop.ip"]; got != "0.0.0.0" {
 			t.Errorf("next_hop.ip = %v, want 0.0.0.0", got)
 		}
 		if got := e.Attributes[idKeyInterfaceName]; got != "Ethernet5" {
@@ -170,7 +170,7 @@ func TestAppendRouteEntities_ConnectedRoutes(t *testing.T) {
 		obs := entity.Observation{}
 		appendRouteEntities(&obs, "dev1", self, []routeRow{row}, ifaces, map[string]bool{})
 		e := routeEntityByDestNextHop(t, obs, "2001:db8:1::/64", "::")
-		if got := e.ID[attrNextHopIP]; got != "::" {
+		if got := e.ID["next_hop.ip"]; got != "::" {
 			t.Errorf("next_hop.ip = %v, want ::", got)
 		}
 		if got := e.Attributes[idKeyInterfaceName]; got != "Ethernet5" {
@@ -316,7 +316,7 @@ func TestRouteEntities_DropRoutesCarryNoEgress(t *testing.T) {
 			}
 		}
 		for _, r := range obs.Relations {
-			if r.Type == relNextHopVia && r.FromID[idKeyRouteDestination] == e.ID[idKeyRouteDestination] {
+			if r.Type == relNextHopVia && r.FromID["route.destination"] == e.ID["route.destination"] {
 				t.Errorf("route without a next hop has next_hop_via: %+v", r)
 			}
 		}
@@ -329,7 +329,7 @@ func TestRouteEntities_DropRoutesCarryNoEgress(t *testing.T) {
 func TestLinkPrivateNextHops(t *testing.T) {
 	route := func(dst, nh string) entity.Entity {
 		return entity.Entity{Type: entityTypeNetworkRoute,
-			ID:         map[string]any{idKeyNetworkDevice: "serial:9:R1", idKeyRouteDestination: dst, attrNextHopIP: nh},
+			ID:         map[string]any{idKeyNetworkDevice: "serial:9:R1", "route.destination": dst, "next_hop.ip": nh},
 			Attributes: map[string]any{attrRouteType: "remote"}}
 	}
 	obs := entity.Observation{
