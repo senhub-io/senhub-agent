@@ -191,7 +191,7 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 				"probe": probe,
 			},
 			Value:       float64(n),
-			Description: "Cumulative count of collections still running when their deadline passed (the shorter of the probe interval and the probe's own timeout), by probe type. Such a collection is neither abandoned nor run twice: the scheduler makes no further call of that probe until it returns.",
+			Description: "Cumulative count of collections that ran past their interval, by probe type, whether or not they reached their deadline. Such a collection is not cut at the interval and not run twice: the scheduler makes no further call of that probe until it returns.",
 		})
 	}
 

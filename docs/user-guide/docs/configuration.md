@@ -157,6 +157,7 @@ Each probe entry defines a monitoring target. The agent collects metrics at regu
 | `params` | Yes | Probe-specific parameters |
 | `custom_tags` | No | Additional key-value tags attached to all metrics from this probe |
 | `governance` | No | Who owns what this probe observes, how critical it is, where it is, and which application chain it belongs to. Stamped on this probe's entities, metrics and logs. See [Governance per probe](#governance-per-probe). |
+| `collect_timeout` | No | Deadline of one collection, as a duration (`90s`) or a number of seconds. Replaces the default, shorter or longer. The default is the probe's `interval` or five minutes, whichever is longer, so a collection longer than its interval is not cut. A collection that runs past its interval is counted in `senhub.agent.collect.overruns` and never run twice. A negative or unreadable value is refused by `agent config check` and the probe does not start. |
 | `enabled` | No | Set to `false` to stop the probe without deleting its configuration. Absent means enabled, so existing files are unaffected. A disabled probe collects nothing and reports no topology. |
 
 ### Turning a probe off
