@@ -409,6 +409,9 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 			s.logExporter = logExp
 		}
 	}
+	if logExp == nil && s.exporters.log != nil {
+		s.exporters.log = &reportingLogExporter{Exporter: s.exporters.log, reporter: s.psReporter}
+	}
 
 	// Entity events ride the log signal, so the pipeline (provider + both
 	// loggers) is built when either logs or entities are enabled.

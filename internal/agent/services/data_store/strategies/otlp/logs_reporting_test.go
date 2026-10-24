@@ -1,0 +1,64 @@
+package otlp
+
+import (
+	"context"
+	"strings"
+	"testing"
+	"time"
+
+	"senhub-agent.go/internal/agent/services/agentstate"
+)
+
+// TestLogsRejectionIsReportedWithTheQueueOff pins that a consumer
+// refusing part of a logs batch is counted and logged when no
+// dead-letter queue sits in front of the exporter, the way it is with
+// the queue on.
+func TestLogsRejectionIsReportedWithTheQueueOff(t *testing.T) {
+	agentstate.ResetExportRejectedForTest()
+
+	s := newTestStrategy(t, map[string]interface{}{
+		"endpoint":    startRejectingLogsServer(t),
+		"tls":         map[string]interface{}{"enabled": false},
+		"persistence": map[string]interface{}{"enabled": false},
+		"logs": map[string]interface{}{
+			"enabled":       true,
+			"batch_size":    1,
+			"batch_timeout": "1h",
+		},
+	})
+	var buf syncBuffer
+	s.psReporter = newPartialSuccessReporter(bufferModuleLogger(&buf), "export")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := s.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Shutdown(context.Background()) })
+
+	if s.logsQueue != nil {
+		t.Fatal("the logs queue is on; the test needs it off")
+	}
+	s.logs.emit(ctx, agentstate.LogRecord{
+		Timestamp:         time.Unix(1_700_000_000, 0),
+		Severity:          9,
+		SeverityText:      "INFO",
+		Body:              "record the consumer partly refuses",
+		ProducerProbeName: "syslog",
+	})
+	_ = s.logs.provider.ForceFlush(ctx)
+
+	var counted uint64
+	for _, row := range agentstate.GetExportRejected() {
+		if row.Signal == "logs" {
+			counted = row.Count
+		}
+	}
+	if counted != 6 {
+		t.Errorf("export.rejected{signal=logs} = %d, want 6", counted)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "has_segment") || !strings.Contains(out, `"origin":"export"`) {
+		t.Errorf("the rejection was not logged by the export reporter:\n%s", out)
+	}
+}
