@@ -18,7 +18,7 @@ type FormatConverter struct {
 	logger              *logger.ModuleLogger
 	cache               *MetricCache
 	// checkResultChannel reports whether PRTG output carries the Check
-	// Result channel and the status lookups added after 0.6.3; nil means
+	// Result and unresolved-target channels added after 0.6.3; nil means
 	// it does not.
 	checkResultChannel func() bool
 }
@@ -216,9 +216,11 @@ func (f *FormatConverter) transformToPRTGChannelWithFilter(key string, metric Ca
 		Value:   value,
 	}
 
-	// Without the option, a service channel keeps its 0/1 value and
-	// carries its error state as a PRTG limit instead of a lookup.
-	if metric.MetricName == serviceRunningMetric && valueLookup != "" && !f.prtgLookupsEnabled() {
+	// A service channel never names a lookup, with or without the option:
+	// up to 0.6.3 a channel of the same name was a plain number, and PRTG
+	// cannot put a lookup on a channel it created as a decimal (PE272 on
+	// every sensor added before 0.6.4). The error state is a PRTG limit.
+	if metric.MetricName == serviceRunningMetric && valueLookup != "" {
 		channel.LimitMode = 1
 		channel.LimitMinError = 0.5
 		channel.LimitErrorMsg = "Service not running"
