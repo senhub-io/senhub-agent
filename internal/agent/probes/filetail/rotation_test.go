@@ -3,6 +3,7 @@ package filetail
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -60,6 +61,21 @@ func TestFileTail_RestartWithOffsetPastEndAndMatchingFingerprintReadsFromZero(t 
 	}
 }
 
+// rotationPickupTimeout bounds how long a rotated file may take to be read.
+// On Windows the tail polls, and Go resolves the identity of a file stat'd
+// by path only when it is first compared, by reopening the path: a rename
+// and create inside the first poll make the old stat name the new file, so
+// a new file already longer than the offset read is taken for an append of
+// the old one. The probe's stall check then restarts the tail from the
+// first byte, after its grace (stallGrace) plus up to one rescan: no line is
+// lost, but the pickup takes up to about 45 s (ent#646).
+var rotationPickupTimeout = func() time.Duration {
+	if runtime.GOOS == "windows" {
+		return 75 * time.Second
+	}
+	return 30 * time.Second
+}()
+
 // A running probe whose file is rotated by rename-and-create keeps reading
 // the new file, and the bookmark pairs the new file's offset with the new
 // file's own fingerprint.
@@ -74,10 +90,12 @@ func TestFileTail_CreateModeRotationKeepsCollecting(t *testing.T) {
 		"bookmark_path": bookmarkPath,
 	})
 	defer stopFileTail(t, p)
-	time.Sleep(300 * time.Millisecond)
 
 	for round := 0; round < 2; round++ {
-		time.Sleep(300 * time.Millisecond)
+		// The tail must be watching the file it is about to lose, not just
+		// have had time to start: the first round's file is the one it
+		// opened, the second round's is the one it reopened.
+		awaitTailWatching(t, p, file)
 		before := p.emitted.Load()
 		if err := os.Rename(file, file+".1"); err != nil {
 			t.Fatal(err)
@@ -87,7 +105,7 @@ func TestFileTail_CreateModeRotationKeepsCollecting(t *testing.T) {
 		appendLines(t, file, lines...)
 
 		want := before + uint64(len(lines))
-		if got := waitEmitted(p, want, 30*time.Second); got != want {
+		if got := waitEmitted(p, want, rotationPickupTimeout); got != want {
 			t.Fatalf("round %d: emitted %d, want %d", round, got, want)
 		}
 		info, err := os.Stat(file)
@@ -123,7 +141,7 @@ func TestFileTail_CopytruncateKeepsCollecting(t *testing.T) {
 		lines := newFileLines(10 - 5*round)
 		appendLines(t, file, lines...)
 		want := before + uint64(len(lines))
-		if got := waitEmitted(p, want, 30*time.Second); got != want {
+		if got := waitEmitted(p, want, rotationPickupTimeout); got != want {
 			t.Fatalf("round %d: emitted %d, want %d", round, got, want)
 		}
 	}
