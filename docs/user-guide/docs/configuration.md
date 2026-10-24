@@ -394,17 +394,25 @@ logs:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `redact.preset` | `true` | Applies the two built-in rules described below. |
+| `redact.preset` | `true` | Applies the built-in rules described below. |
 | `redact.rules` | none | Your own rules, applied in order after the preset. Each needs a `name` (used as the `rule` label of the counter), a `pattern` (RE2 syntax) and a `replacement` (`$1`, `${name}` expansions). |
 
-The preset has two rules:
+The preset has these rules:
 
 - `credential_param` replaces the value of `password`, `passwd`, `pwd`, `passhash`, `apikey`, `api_key`, `token`, `access_token` and `secret` (case-insensitive, whole key) with `***`. It reads query strings (`?passhash=123&x=1` becomes `?passhash=***&x=1`), form bodies, `key=value` logs, `key: value` lines and JSON (`"secret":"abc"` becomes `"secret":"***"`). The key, the separator and the quotes stay; the value ends at `&`, a space, a quote, `,` or `;`. `tokens=5` and `mytoken=1` are left alone.
 - `authorization_header` keeps the scheme of an `Authorization:` header (`Bearer`, `Basic`, `Digest`, `Negotiate`, `NTLM`) and masks the credential: `Authorization: Basic ***`. For `Digest`, the rest of the line is masked.
+- `prtg_license_key` masks a PRTG licence key, ten groups of six capital letters or digits joined by dashes, which PRTG writes in clear in `Core.log` and `CoreActivationLog.log` on every core start: `licensed for "<name>" (***)`.
+- `prtg_system_id` masks the PRTG system id written on the next line, the whole identifier after `SYSTEMID-` (groups of capitals and digits joined by dashes): `SystemID: SYSTEMID-***`.
+- `private_key` masks the body of a PEM private key block and keeps its armour lines: `-----BEGIN RSA PRIVATE KEY-----***-----END RSA PRIVATE KEY-----`. A block cut short is masked to the end of the record. Public keys and certificates are left alone.
+- `jwt` masks a JSON Web Token: three base64url segments whose first two start with `eyJ`.
+- `aws_access_key_id` masks an AWS access key id, `AKIA` or `ASIA` followed by sixteen capitals or digits.
+- `aws_secret_access_key` masks the forty-character value written after `aws_secret_access_key` (`=` or `:`, quoted or not), which `credential_param` does not catch.
+
+The preset rule names are reserved: a custom rule cannot use them.
 
 The text of the record body and every string attribute (and every string inside structured fields) is masked; attribute names are not. With the preset on, an attribute whose name ends in one of those keys (`password`, `db.password`, `http.request.header.authorization`) has its whole value masked, an `Authorization` value keeping its scheme (`Bearer ***`). Masking happens once, before the record is handed to the outputs, so PRTG, OTLP and the other outputs all receive the masked text.
 
-Each masked occurrence is counted in `senhub.agent.logs.redacted` (Prometheus: `senhub_agent_logs_redacted_total`), with the labels `probe` and `rule` (`credential_param`, `authorization_header`, or the name of your rule). The agent never logs the masked value or the original line.
+Each masked occurrence is counted in `senhub.agent.logs.redacted` (Prometheus: `senhub_agent_logs_redacted_total`), with the labels `probe` and `rule` (one of the preset rules above, or the name of your rule). The counter is cumulative since the agent started and goes back to zero when it restarts; a series appears once its rule has masked something. The agent never logs the masked value or the original line.
 
 A rule whose name or pattern is invalid is reported by `config check` as an error naming the rule. At run time the agent skips that rule, logs one error, and keeps applying the others. Changes to the `logs` block are applied when the configuration is reloaded; no restart is needed.
 
