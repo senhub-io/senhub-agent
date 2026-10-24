@@ -203,6 +203,14 @@ cd C:\SenHub\
 
 This registers `SenHub Agent` as a Windows Service with automatic restart on failure. A UUID agent key is generated automatically and saved to the configuration file.
 
+The service name (`senhub-agent`) and the data folder (`%ProgramData%\SenHub`) are fixed, so one machine runs one agent. If a `senhub-agent` service from another install is already registered, `install` stops without changing anything and says which way to go: a newer MSI over an MSI install, or `update` or `uninstall` for an agent installed from another folder. Running `install` again from the folder the service already runs from changes nothing, prints that there is nothing to do and exits `3`. A deployment tool that reads any code other than `0` as a failure replays it with `--ok-if-unchanged`, which exits `0` in that case. In a GPO startup script, an SCCM script or an Intune PowerShell script:
+
+```powershell
+C:\SenHub\senhub-agent.exe install --ok-if-unchanged
+```
+
+The MSI needs no flag: `msiexec` over an installed MSI is an upgrade or a repair, and the installer already treats a kept configuration as a success.
+
 To install with HTTPS enabled on the local API:
 
 ```powershell
