@@ -80,8 +80,10 @@ minisign -Vm senhub-agent-linux-amd64.zip \
 ```
 
 That public key is the one the agent itself embeds to verify its own
-auto-updates. There is no `SHA256SUMS` file: minisign is the
-verification path. Each release also publishes a manifest with the
+auto-updates. A stable release also carries a `SHA256SUMS` file, signed
+the same way (`SHA256SUMS.minisig`), for tools that check a digest:
+verify the list with minisign first, then the archive against it
+(`sha256sum -c --ignore-missing SHA256SUMS`). Each release also publishes a manifest with the
 checksum, size and signature address of every file, and a stable address
 for the newest release of each channel; see
 [Downloading and verifying releases](releases.md).
@@ -525,6 +527,28 @@ sudo /usr/local/bin/senhub-agent update 0.6.0
 ```
 
 On an MSI-managed Windows install, auto-update applies a new signed MSI rather than swapping the binary in place — see the note under [MSI installer](#msi-installer-recommended).
+
+#### Upgrading from the ZIP
+
+Each ZIP carries a `README.txt` with these commands. A machine installed by the MSI or by a `.deb`/`.rpm` package is upgraded the same way it was installed (a newer MSI over the older one, or the package manager), never from the ZIP. A machine installed from the ZIP without access to the release server is upgraded by replacing the binary while the service is stopped; the configuration is kept.
+
+Windows, from an elevated PowerShell in the install folder:
+
+```powershell
+.\senhub-agent.exe stop
+# copy the new senhub-agent.exe and senhub-console.exe over the old ones
+.\senhub-agent.exe start
+.\senhub-agent.exe version
+```
+
+Linux:
+
+```bash
+sudo /usr/local/bin/senhub-agent stop
+sudo install -m 0755 -o root -g root ./senhub-agent /usr/local/bin/senhub-agent
+sudo /usr/local/bin/senhub-agent start
+sudo /usr/local/bin/senhub-agent version
+```
 
 ## Post-Installation Checklist
 
