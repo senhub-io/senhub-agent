@@ -10,16 +10,22 @@ import (
 )
 
 // waitBookmarkOnDisk polls the bookmark file, as a crash would leave it,
-// until the entry of file satisfies ok.
+// until the entry of file satisfies ok. A read that fails is retried: on
+// Windows, opening the file while the probe replaces it fails with a sharing
+// violation for that instant.
 func waitBookmarkOnDisk(t *testing.T, bookmarkPath, file string, ok func(bookmarkEntry) bool, within time.Duration) bookmarkEntry {
 	t.Helper()
 	var last bookmarkEntry
+	var lastErr error
 	deadline := time.Now().Add(within)
 	for time.Now().Before(deadline) {
 		store, err := newBookmark(bookmarkPath)
 		if err != nil {
-			t.Fatal(err)
+			lastErr = err
+			time.Sleep(20 * time.Millisecond)
+			continue
 		}
+		lastErr = nil
 		if e, found := store.Get(file); found {
 			last = e
 			if ok(e) {
@@ -27,6 +33,9 @@ func waitBookmarkOnDisk(t *testing.T, bookmarkPath, file string, ok func(bookmar
 			}
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+	if lastErr != nil {
+		t.Fatalf("bookmark of %s unreadable after %v: %v", file, within, lastErr)
 	}
 	t.Fatalf("bookmark of %s on disk = %+v after %v, never reached the expected state", file, last, within)
 	return last
