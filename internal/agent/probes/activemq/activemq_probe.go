@@ -190,11 +190,18 @@ func (p *activemqProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
-// Collect queries the broker and emits all metrics. A broker that cannot
-// be reached still emits senhub.activemq.up=0 and returns nil (the error
-// is logged, not propagated — it is a measurement, not a collection failure).
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
 func (p *activemqProbe) Collect() ([]data_store.DataPoint, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext queries the broker and emits all metrics. A broker that
+// cannot be reached still emits senhub.activemq.up=0 and returns nil (the
+// error is logged, not propagated — it is a measurement, not a collection
+// failure). A cycle whose parent context ends returns that error instead.
+func (p *activemqProbe) CollectContext(parent context.Context) ([]data_store.DataPoint, error) {
+	ctx, cancel := context.WithTimeout(parent, p.cfg.Timeout)
 	defer cancel()
 
 	now := time.Now()
@@ -202,6 +209,9 @@ func (p *activemqProbe) Collect() ([]data_store.DataPoint, error) {
 
 	brokerPoints, _, err := p.collectBroker(ctx, now)
 	if err != nil {
+		if parentErr := parent.Err(); parentErr != nil {
+			return nil, fmt.Errorf("activemq collection interrupted: %w", parentErr)
+		}
 		p.moduleLogger.Warn().Err(err).Msg("activemq broker query failed")
 		p.entitySrc.setReachable(false, "")
 		// Degrade the entity id to the fallback now — the tech id is unavailable.
@@ -256,6 +266,9 @@ func (p *activemqProbe) Collect() ([]data_store.DataPoint, error) {
 		}
 	}
 
+	if parentErr := parent.Err(); parentErr != nil {
+		return nil, fmt.Errorf("activemq collection interrupted: %w", parentErr)
+	}
 	p.entitySrc.setReachable(true, "")
 	p.entitySrc.updateSnapshot(dests)
 
@@ -319,6 +332,9 @@ func (p *activemqProbe) collectBroker(ctx context.Context, now time.Time) ([]dat
 	// a Jolokia error here is non-fatal — the entity id falls back on failure.
 	brokerID, err := p.client.readString(ctx, mbean, "BrokerId")
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, "", fmt.Errorf("reading BrokerId: %w", err)
+		}
 		p.moduleLogger.Debug().Err(err).Msg("BrokerId attribute unavailable; entity id will use fallback")
 		brokerID = ""
 	}

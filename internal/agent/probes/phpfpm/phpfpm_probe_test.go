@@ -1,6 +1,7 @@
 package phpfpm
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -164,7 +165,7 @@ func TestFetchStatus_JsonSuffix(t *testing.T) {
 
 	probe, _ := NewPHPFPMProbe(map[string]interface{}{"endpoint": srv.URL + "/fpm-status"}, newTestLogger(t))
 	p := probe.(*phpFPMProbe)
-	_, err := p.fetchStatus()
+	_, err := p.fetchStatus(context.Background())
 	if err != nil {
 		t.Fatalf("fetchStatus() error = %v", err)
 	}
@@ -184,7 +185,7 @@ func TestFetchStatus_AlreadyHasJson(t *testing.T) {
 
 	probe, _ := NewPHPFPMProbe(map[string]interface{}{"endpoint": srv.URL + "/fpm-status?json"}, newTestLogger(t))
 	p := probe.(*phpFPMProbe)
-	_, err := p.fetchStatus()
+	_, err := p.fetchStatus(context.Background())
 	if err != nil {
 		t.Fatalf("fetchStatus() error = %v", err)
 	}

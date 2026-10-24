@@ -101,13 +101,22 @@ func (p *MemcachedProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
-// Collect connects to Memcached, sends "stats\r\n", parses the response
-// and emits datapoints. senhub.memcached.up is always emitted.
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
 func (p *MemcachedProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext connects to Memcached, sends "stats\r\n", parses the response
+// and emits datapoints. senhub.memcached.up is always emitted.
+func (p *MemcachedProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 	addr := fmt.Sprintf("%s:%d", p.cfg.Host, p.cfg.Port)
 
-	statsMap, err := p.fetchStats(addr)
+	statsMap, err := p.fetchStats(ctx, addr)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("memcached collection interrupted: %w", ctxErr)
+	}
 
 	upValue := float64(1)
 	if err != nil {
@@ -149,12 +158,20 @@ func (p *MemcachedProbe) Collect() ([]data_store.DataPoint, error) {
 
 // fetchStats dials Memcached, sends "stats\r\n", and returns a map of
 // key→value from the STAT lines.
-func (p *MemcachedProbe) fetchStats(addr string) (map[string]string, error) {
-	conn, err := net.DialTimeout("tcp", addr, p.cfg.Timeout)
+func (p *MemcachedProbe) fetchStats(ctx context.Context, addr string) (map[string]string, error) {
+	conn, err := (&net.Dialer{Timeout: p.cfg.Timeout}).DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to %s: %w", addr, err)
 	}
 	defer conn.Close()
+
+	// The end of the cycle's context interrupts a blocked read or write.
+	stop := context.AfterFunc(ctx, func() {
+		if err := conn.Close(); err != nil {
+			p.moduleLogger.Warn().Err(err).Str("addr", addr).Msg("memcached connection close on cancellation failed")
+		}
+	})
+	defer stop()
 
 	deadline := time.Now().Add(p.cfg.Timeout)
 	if err := conn.SetDeadline(deadline); err != nil {

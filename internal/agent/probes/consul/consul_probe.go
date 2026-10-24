@@ -199,10 +199,16 @@ func upsertTag(in []tags.Tag, override tags.Tag) []tags.Tag {
 	return append(in, override)
 }
 
-// Collect fetches all Consul API endpoints and assembles datapoints.
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
+func (p *ConsulProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext fetches all Consul API endpoints and assembles datapoints.
 // It always emits senhub.consul.up and returns nil — a connection
 // failure is a measurement, not a collection error.
-func (p *ConsulProbe) Collect() ([]data_store.DataPoint, error) {
+func (p *ConsulProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 	baseTags := []tags.Tag{
 		{Key: "metric_type", Value: "overview"},
@@ -220,7 +226,7 @@ func (p *ConsulProbe) Collect() ([]data_store.DataPoint, error) {
 	var checkErr error
 
 	// 1. Prometheus metrics from /v1/agent/metrics?format=prometheus
-	promPoints, err := p.collectPrometheusMetrics(now, baseTags)
+	promPoints, err := p.collectPrometheusMetrics(ctx, now, baseTags)
 	if err != nil {
 		if checkErr == nil {
 			checkErr = err
@@ -235,7 +241,7 @@ func (p *ConsulProbe) Collect() ([]data_store.DataPoint, error) {
 	// 2. Leader status, version, and stable node id from /v1/agent/self.
 	// nodeID (Config.NodeID) is the tech-reported persistent UUID used as
 	// the service.instance.id in the entity rail.
-	selfPoints, ver, nid, err := p.collectAgentSelf(now, baseTags)
+	selfPoints, ver, nid, err := p.collectAgentSelf(ctx, now, baseTags)
 	if err != nil {
 		if checkErr == nil {
 			checkErr = err
@@ -250,7 +256,7 @@ func (p *ConsulProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 
 	// 3. Health check counts per state.
-	healthPoints, err := p.collectHealthChecks(now)
+	healthPoints, err := p.collectHealthChecks(ctx, now)
 	if err != nil {
 		if checkErr == nil {
 			checkErr = err
@@ -262,6 +268,9 @@ func (p *ConsulProbe) Collect() ([]data_store.DataPoint, error) {
 		points = append(points, healthPoints...)
 	}
 
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("consul collection interrupted: %w", ctxErr)
+	}
 	// Update the entity rail.
 	if up == 1 {
 		p.entitySrc.setReachable(true, nodeID, version)
@@ -299,8 +308,8 @@ func (p *ConsulProbe) Collect() ([]data_store.DataPoint, error) {
 // the response body, capped at maxBodyBytes. The caller must close the
 // body via the returned ReadCloser — here we return raw bytes directly
 // to simplify callers.
-func (p *ConsulProbe) get(url string) ([]byte, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+func (p *ConsulProbe) get(ctx context.Context, url string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("building request for %s: %w", url, err)
 	}
@@ -327,9 +336,9 @@ func (p *ConsulProbe) get(url string) ([]byte, error) {
 
 // collectPrometheusMetrics parses /v1/agent/metrics?format=prometheus and
 // extracts the specific Consul metrics we expose.
-func (p *ConsulProbe) collectPrometheusMetrics(now time.Time, base []tags.Tag) ([]data_store.DataPoint, error) {
+func (p *ConsulProbe) collectPrometheusMetrics(ctx context.Context, now time.Time, base []tags.Tag) ([]data_store.DataPoint, error) {
 	url := p.cfg.Endpoint + "/v1/agent/metrics?format=prometheus"
-	body, err := p.get(url)
+	body, err := p.get(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -414,9 +423,9 @@ func (p *ConsulProbe) collectPrometheusMetrics(now time.Time, base []tags.Tag) (
 // collectAgentSelf parses /v1/agent/self and emits consul.leader.
 // It returns the Consul version and the stable node UUID (Config.NodeID)
 // for the entity snapshot. nodeID may be empty if the field is absent.
-func (p *ConsulProbe) collectAgentSelf(now time.Time, base []tags.Tag) ([]data_store.DataPoint, string, string, error) {
+func (p *ConsulProbe) collectAgentSelf(ctx context.Context, now time.Time, base []tags.Tag) ([]data_store.DataPoint, string, string, error) {
 	u := p.cfg.Endpoint + "/v1/agent/self"
-	body, err := p.get(u)
+	body, err := p.get(ctx, u)
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -442,12 +451,12 @@ func (p *ConsulProbe) collectAgentSelf(now time.Time, base []tags.Tag) ([]data_s
 // collectHealthChecks calls /v1/health/state/{state} for each of
 // critical, warning, passing and emits consul.health.checks with a
 // state tag.
-func (p *ConsulProbe) collectHealthChecks(now time.Time) ([]data_store.DataPoint, error) {
+func (p *ConsulProbe) collectHealthChecks(ctx context.Context, now time.Time) ([]data_store.DataPoint, error) {
 	var points []data_store.DataPoint
 
 	for _, state := range healthStates {
 		u := p.cfg.Endpoint + "/v1/health/state/" + state
-		body, err := p.get(u)
+		body, err := p.get(ctx, u)
 		if err != nil {
 			return nil, fmt.Errorf("health state %s: %w", state, err)
 		}

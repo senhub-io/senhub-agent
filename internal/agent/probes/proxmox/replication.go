@@ -1,6 +1,7 @@
 package proxmox
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -21,9 +22,9 @@ type pveReplicationJob struct {
 	Error     string          `json:"error"`
 }
 
-func (p *ProxmoxProbe) collectReplication(node string, now time.Time) []data_store.DataPoint {
+func (p *ProxmoxProbe) collectReplication(ctx context.Context, node string, now time.Time) []data_store.DataPoint {
 	var jobs []pveReplicationJob
-	if err := p.apiGet(fmt.Sprintf("/nodes/%s/replication", node), &jobs); err != nil {
+	if err := p.apiGet(ctx, fmt.Sprintf("/nodes/%s/replication", node), &jobs); err != nil {
 		if !p.denied.isDenied(p.moduleLogger, err, node+"/replication", "Sys.Audit on /nodes/"+node) {
 			p.moduleLogger.Warn().Err(err).Str("node", node).Msg("failed to read replication status")
 		}

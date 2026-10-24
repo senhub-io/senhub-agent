@@ -2,6 +2,7 @@ package proxmox
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"sort"
 	"strconv"
@@ -61,9 +62,9 @@ func haQuorate(raw json.RawMessage) *float64 {
 	return &v
 }
 
-func (p *ProxmoxProbe) collectHA(now time.Time) []data_store.DataPoint {
+func (p *ProxmoxProbe) collectHA(ctx context.Context, now time.Time) []data_store.DataPoint {
 	var entries []pveHAEntry
-	if err := p.apiGet("/cluster/ha/status/current", &entries); err != nil {
+	if err := p.apiGet(ctx, "/cluster/ha/status/current", &entries); err != nil {
 		if !p.denied.isDenied(p.moduleLogger, err, "cluster/ha/status", "Sys.Audit on /") {
 			p.moduleLogger.Warn().Err(err).Msg("failed to read HA status")
 		}

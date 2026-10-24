@@ -64,7 +64,7 @@ func TestPingOnce_ResolveError_ReportsLossAndNoPackets(t *testing.T) {
 	})
 
 	// host:port is invalid for a ping target; NewPinger rejects it before any socket work.
-	res := p.pingOnce("localhost:0")
+	res := p.pingOnce(context.Background(), "localhost:0")
 
 	if res.err == nil {
 		t.Fatal("pingOnce() error = nil, want a resolving error")
@@ -88,7 +88,7 @@ func TestCollect_Seam_PartialLossAndUnresolvedHost(t *testing.T) {
 		"targets": []interface{}{"unresolved.example", "partial.example"},
 	})
 
-	p.ping = func(target string) pingResult {
+	p.ping = func(_ context.Context, target string) pingResult {
 		switch target {
 		case "unresolved.example":
 			return pingResult{

@@ -184,19 +184,28 @@ func (p *rabbitProbe) classifyCheckError(err error) dbcommon.CheckResult {
 	return dbcommon.ClassifyError(err)
 }
 
-// Collect fetches /api/overview, /api/nodes, and /api/queues.
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
+func (p *rabbitProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext fetches /api/overview, /api/nodes, and /api/queues.
 // On any HTTP or parse error the probe emits up=0 and returns nil
 // (a reachability failure is a measurement, not a collection error).
 //
 // Entity identity: on first successful contact the broker's Erlang node name
 // (from /api/overview "node" field) is pinned as the service.instance.id.
 // Before the id is pinned the entity rail returns ok=false (no entity emitted).
-func (p *rabbitProbe) Collect() ([]data_store.DataPoint, error) {
+func (p *rabbitProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 	var points []data_store.DataPoint
 	var checkErr error
 
-	overviewPoints, reachable, err := p.collectOverview(now)
+	overviewPoints, reachable, err := p.collectOverview(ctx, now)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("rabbitmq collection interrupted: %w", ctxErr)
+	}
 	points = append(points, overviewPoints...)
 	if err != nil {
 		checkErr = err
@@ -206,13 +215,13 @@ func (p *rabbitProbe) Collect() ([]data_store.DataPoint, error) {
 		p.entitySrc.setReachable(true, "")
 		idTags := p.identityTags()
 
-		nodePoints, err := p.collectNodes(now, idTags)
+		nodePoints, err := p.collectNodes(ctx, now, idTags)
 		points = append(points, nodePoints...)
 		if err != nil && checkErr == nil {
 			checkErr = err
 		}
 
-		queuePoints, err := p.collectQueues(now, idTags)
+		queuePoints, err := p.collectQueues(ctx, now, idTags)
 		points = append(points, queuePoints...)
 		if err != nil && checkErr == nil {
 			checkErr = err
@@ -221,6 +230,9 @@ func (p *rabbitProbe) Collect() ([]data_store.DataPoint, error) {
 		p.entitySrc.setReachable(false, "")
 	}
 
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("rabbitmq collection interrupted: %w", ctxErr)
+	}
 	idTags := p.identityTags()
 	checkTags := make([]tags.Tag, 0, len(idTags)+1)
 	checkTags = append(checkTags, idTags...)
@@ -262,9 +274,9 @@ type overviewResponse struct {
 
 // collectOverview fetches /api/overview and returns the datapoints and whether
 // the broker was reachable.
-func (p *rabbitProbe) collectOverview(now time.Time) ([]data_store.DataPoint, bool, error) {
+func (p *rabbitProbe) collectOverview(ctx context.Context, now time.Time) ([]data_store.DataPoint, bool, error) {
 	var overview overviewResponse
-	err := p.fetchJSON("/api/overview", &overview)
+	err := p.fetchJSON(ctx, "/api/overview", &overview)
 	if err != nil {
 		p.failures.Failed(p.moduleLogger, subcollect.Warn, "overview", err, "rabbitmq overview fetch failed")
 		baseTags := append(p.identityTags(), tags.Tag{Key: "metric_type", Value: "overview"})
@@ -328,9 +340,9 @@ type nodeResponse struct {
 	Uptime      *int64 `json:"uptime"`
 }
 
-func (p *rabbitProbe) collectNodes(now time.Time, identityTags []tags.Tag) ([]data_store.DataPoint, error) {
+func (p *rabbitProbe) collectNodes(ctx context.Context, now time.Time, identityTags []tags.Tag) ([]data_store.DataPoint, error) {
 	var nodes []nodeResponse
-	if err := p.fetchJSON("/api/nodes", &nodes); err != nil {
+	if err := p.fetchJSON(ctx, "/api/nodes", &nodes); err != nil {
 		p.failures.Failed(p.moduleLogger, subcollect.Warn, "nodes", err, "rabbitmq nodes fetch failed")
 		return nil, err
 	}
@@ -379,9 +391,9 @@ type queueResponse struct {
 	Consumers              *int64 `json:"consumers"`
 }
 
-func (p *rabbitProbe) collectQueues(now time.Time, identityTags []tags.Tag) ([]data_store.DataPoint, error) {
+func (p *rabbitProbe) collectQueues(ctx context.Context, now time.Time, identityTags []tags.Tag) ([]data_store.DataPoint, error) {
 	var queues []queueResponse
-	if err := p.fetchJSON("/api/queues", &queues); err != nil {
+	if err := p.fetchJSON(ctx, "/api/queues", &queues); err != nil {
 		p.failures.Failed(p.moduleLogger, subcollect.Warn, "queues", err, "rabbitmq queues fetch failed")
 		return nil, err
 	}
@@ -422,9 +434,9 @@ func dp(name string, value float64, ts time.Time, baseTags []tags.Tag) data_stor
 
 // fetchJSON performs a BasicAuth GET to path (relative to the configured
 // endpoint) and JSON-decodes the response body into dst.
-func (p *rabbitProbe) fetchJSON(path string, dst interface{}) error {
+func (p *rabbitProbe) fetchJSON(ctx context.Context, path string, dst interface{}) error {
 	url := p.cfg.Endpoint + path
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("building request for %s: %w", url, err)
 	}

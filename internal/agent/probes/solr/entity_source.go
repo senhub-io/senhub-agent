@@ -130,6 +130,9 @@ func (s *solrEntitySource) tryPinClusterIDOrHostPort(ctx context.Context) {
 		s.mu.Unlock()
 		return
 	}
+	if ctx.Err() != nil {
+		return
+	}
 	// Standalone Solr (CLUSTERSTATUS unavailable) or fetch error: pin host:port
 	// as the documented db degraded fallback. This is a one-way latch.
 	s.mu.Lock()

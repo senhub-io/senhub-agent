@@ -1,6 +1,7 @@
 package proxmox
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -138,11 +139,11 @@ func poolState(health string) (state string, ok bool) {
 // collectDisks reads physical disk SMART health and ZFS pool state of one
 // node. Both need Sys.Audit on /nodes/<node>; a token without it gets 403
 // and the node simply contributes nothing.
-func (p *ProxmoxProbe) collectDisks(node string, now time.Time) []data_store.DataPoint {
+func (p *ProxmoxProbe) collectDisks(ctx context.Context, node string, now time.Time) []data_store.DataPoint {
 	var points []data_store.DataPoint
 
 	var disks []pveDisk
-	if err := p.apiGet(fmt.Sprintf("/nodes/%s/disks/list", node), &disks); err != nil {
+	if err := p.apiGet(ctx, fmt.Sprintf("/nodes/%s/disks/list", node), &disks); err != nil {
 		if !p.denied.isDenied(p.moduleLogger, err, node+"/disks/list", "Sys.Audit on /nodes/"+node) {
 			p.moduleLogger.Warn().Err(err).Str("node", node).Msg("failed to list physical disks")
 		}
@@ -172,7 +173,7 @@ func (p *ProxmoxProbe) collectDisks(node string, now time.Time) []data_store.Dat
 	}
 
 	var pools []pveZFSPool
-	if err := p.apiGet(fmt.Sprintf("/nodes/%s/disks/zfs", node), &pools); err != nil {
+	if err := p.apiGet(ctx, fmt.Sprintf("/nodes/%s/disks/zfs", node), &pools); err != nil {
 		if !p.denied.isDenied(p.moduleLogger, err, node+"/disks/zfs", "Sys.Audit on /nodes/"+node) {
 			p.moduleLogger.Warn().Err(err).Str("node", node).Msg("failed to list ZFS pools")
 		}
