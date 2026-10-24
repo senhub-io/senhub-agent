@@ -69,7 +69,10 @@ func TestConfigCheckWarnsOnUnknownKeysOutsideParams(t *testing.T) {
 				t.Errorf("%s/%s: want no error, got %d (%v):\n%s", c.name, layout, outcome.errors, outcome.loadErr, out)
 			}
 			if c.want == "" {
-				if strings.Contains(out, "is not read") || outcome.exitCode() != 0 {
+				// The test binary is not root-owned on a CI runner, so the
+				// binary-ownership warning may raise the exit code; only a
+				// finding about the configuration counts here.
+				if strings.Contains(out, "is not read") || configWarnings(out) != 0 {
 					t.Errorf("%s/%s: valid configuration reported a finding (exit %d):\n%s", c.name, layout, outcome.exitCode(), out)
 				}
 				continue
@@ -82,4 +85,16 @@ func TestConfigCheckWarnsOnUnknownKeysOutsideParams(t *testing.T) {
 			}
 		}
 	}
+}
+
+// configWarnings counts the [WARN] lines of a config check output that are
+// about the configuration, leaving out the ones the test environment raises.
+func configWarnings(out string) int {
+	n := 0
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "[WARN]") && !isEnvironmentalWarning(line) {
+			n++
+		}
+	}
+	return n
 }
