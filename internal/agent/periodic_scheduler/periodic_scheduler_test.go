@@ -961,6 +961,101 @@ func TestPeriodicScheduler_StopDuringTheInitialDelayMakesNoCall(t *testing.T) {
 	}
 }
 
+// A call made through ExecuteContext carries the call deadline, and the
+// context ends when the scheduler stops.
+func TestPeriodicScheduler_CallContextCarriesTheDeadline(t *testing.T) {
+	logger := zerolog.New(io.Discard)
+	type seen struct {
+		deadline time.Time
+		ok       bool
+	}
+	got := make(chan seen, 1)
+	s := NewPeriodicScheduler(PeriodicSchedulerConfig{
+		Interval:       time.Hour,
+		ExecuteOnStart: true,
+		CallTimeout:    5 * time.Second,
+		ExecuteContext: func(ctx context.Context) error {
+			d, ok := ctx.Deadline()
+			got <- seen{d, ok}
+			return nil
+		},
+	}, &logger)
+	began := time.Now()
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Shutdown(context.Background()) }()
+	select {
+	case r := <-got:
+		if !r.ok {
+			t.Fatal("call context has no deadline")
+		}
+		if r.deadline.Before(began.Add(4*time.Second)) || r.deadline.After(began.Add(6*time.Second)) {
+			t.Errorf("deadline %s from start, want about 5s", r.deadline.Sub(began))
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no call made")
+	}
+}
+
+func TestPeriodicScheduler_CallContextEndsOnShutdown(t *testing.T) {
+	logger := zerolog.New(io.Discard)
+	started := make(chan struct{})
+	ended := make(chan error, 1)
+	s := NewPeriodicScheduler(PeriodicSchedulerConfig{
+		Interval:       time.Hour,
+		ExecuteOnStart: true,
+		ExecuteContext: func(ctx context.Context) error {
+			close(started)
+			<-ctx.Done()
+			ended <- ctx.Err()
+			return ctx.Err()
+		},
+	}, &logger)
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	if err := s.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-ended:
+		if err != context.Canceled {
+			t.Errorf("context ended with %v, want Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("call context not cancelled by Shutdown")
+	}
+}
+
+func TestPeriodicScheduler_CallTimeoutEndsASlowCall(t *testing.T) {
+	logger := zerolog.New(io.Discard)
+	ended := make(chan error, 1)
+	s := NewPeriodicScheduler(PeriodicSchedulerConfig{
+		Interval:       time.Hour,
+		ExecuteOnStart: true,
+		CallTimeout:    50 * time.Millisecond,
+		ExecuteContext: func(ctx context.Context) error {
+			<-ctx.Done()
+			ended <- ctx.Err()
+			return ctx.Err()
+		},
+	}, &logger)
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Shutdown(context.Background()) }()
+	select {
+	case err := <-ended:
+		if err != context.DeadlineExceeded {
+			t.Errorf("context ended with %v, want DeadlineExceeded", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("call context never reached its deadline")
+	}
+}
+
 // FailOnStartError keeps the initial call inside Start, since its result
 // decides whether Start fails.
 func TestPeriodicScheduler_FailOnStartErrorStillFailsStart(t *testing.T) {

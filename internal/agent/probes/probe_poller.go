@@ -197,7 +197,8 @@ func NewProbePoller(
 		MaxRetries:        3,
 		ExecuteOnStart:    true,
 		ExecuteOnShutdown: false,
-		Execute:           probePoller.collect,
+		CallTimeout:       collectDeadline(probe),
+		ExecuteContext:    probePoller.collect,
 		OnStart:           probe.OnStart,
 		OnShutdown:        probe.OnShutdown,
 	}, &schedulerLogger)
@@ -345,11 +346,11 @@ func (p *ProbePoller) GovernanceAttributes() map[string]any {
 // provider). When enabled, span duration captures Collect() latency and
 // attributes carry probe identity + emitted datapoints — useful for
 // detecting probes that have grown slow or stopped emitting.
-func (p *ProbePoller) collect() error {
+func (p *ProbePoller) collect(parent context.Context) error {
 	p.moduleLogger.Debug().Msg("Collecting data")
 
 	tracer := otel.Tracer(probeTracerScope)
-	ctx, span := tracer.Start(context.Background(), "probe.collect")
+	ctx, span := tracer.Start(parent, "probe.collect")
 	span.SetAttributes(
 		attribute.String("probe.name", p.Probe.GetName()),
 		attribute.String("probe.type", p.probeType()),
@@ -357,7 +358,13 @@ func (p *ProbePoller) collect() error {
 	)
 	defer span.End()
 
-	data, err := p.Probe.Collect()
+	var data []datapoint.DataPoint
+	var err error
+	if cc, ok := p.Probe.(types.ContextCollector); ok {
+		data, err = cc.CollectContext(ctx)
+	} else {
+		data, err = p.Probe.Collect()
+	}
 	if p.stopped.Load() {
 		p.moduleLogger.Debug().Msg("Collection ended after the probe stopped; result dropped")
 		return nil
@@ -387,6 +394,19 @@ func (p *ProbePoller) collect() error {
 
 	p.moduleLogger.Debug().Msg("Using default strategy router")
 	return p.addDataPointCtx(ctx, data, &defaultStrategyRouter{})
+}
+
+// collectDeadline is the deadline of one collection: the probe's interval,
+// or its own timeout when that is shorter. Zero means no deadline, for a
+// probe without an interval and without a timeout.
+func collectDeadline(probe types.Probe) time.Duration {
+	deadline := probe.GetInterval()
+	if tp, ok := probe.(types.CollectTimeoutProbe); ok {
+		if own := tp.CollectTimeout(); own > 0 && (deadline <= 0 || own < deadline) {
+			deadline = own
+		}
+	}
+	return max(deadline, 0)
 }
 
 // recordDelivery tells the status channel what the cycle delivered. A

@@ -17,6 +17,11 @@ import (
 const maxBackoffTicks = 8
 
 type PeriodicSchedulerCall func() error
+
+// PeriodicSchedulerCallContext is a call that honours the context the
+// scheduler hands it: cancelled when the scheduler stops, and carrying the
+// call deadline when CallTimeout is set.
+type PeriodicSchedulerCallContext func(ctx context.Context) error
 type PeriodicSchedulerOnStart func(quitChannel chan struct{}) error
 type PeriodicSchedulerOnShutdown func(ctx context.Context) error
 
@@ -43,6 +48,13 @@ type PeriodicSchedulerConfig struct {
 	MaxRetries int
 	// Execute to be made periodically
 	Execute PeriodicSchedulerCall
+	// ExecuteContext, when set, is made instead of Execute and receives
+	// the call context.
+	ExecuteContext PeriodicSchedulerCallContext
+	// CallTimeout is the deadline of each call's context. Zero means no
+	// deadline. It bounds what a call that honours its context does; the
+	// scheduler never abandons a call that ignores it.
+	CallTimeout time.Duration
 	// Call to always be made on start (optional)
 	OnStart PeriodicSchedulerOnStart
 	// Call to always be made on shutdown (optional)
@@ -133,7 +145,7 @@ func (l *periodicScheduler) Start(ctx context.Context) error {
 	if initialCall && l.config.FailOnStartError {
 		initialCall = false
 		l.logger.Info().Msg("Initial call")
-		if err := l.doCall(); err != nil {
+		if err := l.doCall(l.runCtx); err != nil {
 			return fmt.Errorf("Initial call failed: %w", err)
 		}
 	}
@@ -142,15 +154,20 @@ func (l *periodicScheduler) Start(ctx context.Context) error {
 	return nil
 }
 
-func (l *periodicScheduler) doCall() error {
+func (l *periodicScheduler) doCall(parent context.Context) error {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 
-	if err := l.config.Execute(); err != nil {
-		return err
+	if l.config.ExecuteContext == nil {
+		return l.config.Execute()
 	}
-
-	return nil
+	ctx := parent
+	if l.config.CallTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(parent, l.config.CallTimeout)
+		defer cancel()
+	}
+	return l.config.ExecuteContext(ctx)
 }
 
 // run starts the goroutine that makes the initial call, when asked, and
@@ -209,7 +226,7 @@ func (l *periodicScheduler) run(initialCall bool) {
 
 		if initialCall && runCtx.Err() == nil {
 			l.logger.Info().Msg("Initial call")
-			if err := l.doCall(); err != nil {
+			if err := l.doCall(runCtx); err != nil {
 				// The first collect failing is the moment an operator
 				// most needs to hear about.
 				l.logger.Error().Err(err).Msg("Initial call failed")
@@ -253,7 +270,7 @@ func (l *periodicScheduler) run(initialCall bool) {
 				l.logger.Debug().
 					Int("error_count", errorCount).
 					Msg("scheduler tick → calling doCall")
-				err := l.doCall()
+				err := l.doCall(runCtx)
 				if err != nil {
 					errorCount++
 					if l.config.MaxRetries > 0 && errorCount >= l.config.MaxRetries {
@@ -345,7 +362,7 @@ func (l *periodicScheduler) Shutdown(ctx context.Context) error {
 	// wait on it past the budget.
 	if l.config.ExecuteOnShutdown && settled {
 		l.logger.Info().Msg("Final call")
-		if err := l.doCall(); err != nil {
+		if err := l.doCall(ctx); err != nil {
 			return fmt.Errorf("Unable to call Execute on shutdown: %w", err)
 		}
 	}

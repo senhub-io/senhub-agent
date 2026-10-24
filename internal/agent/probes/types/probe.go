@@ -43,6 +43,20 @@ type Probe interface {
 	EntitySource() entity.Source
 }
 
+// ContextCollector is implemented by a probe whose collection can stop on
+// a context. The poller prefers it to Collect and hands it a context that
+// ends at the collection deadline or when the probe stops.
+type ContextCollector interface {
+	CollectContext(ctx context.Context) ([]datapoint.DataPoint, error)
+}
+
+// CollectTimeoutProbe is implemented by a probe that has its own timeout
+// for one collection. The collection deadline is the shorter of that and
+// the probe's interval.
+type CollectTimeoutProbe interface {
+	CollectTimeout() time.Duration
+}
+
 // ProbeWithCallback extends Probe for event-driven collection
 type ProbeWithCallback interface {
 	Probe
