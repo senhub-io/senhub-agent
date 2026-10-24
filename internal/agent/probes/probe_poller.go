@@ -53,6 +53,10 @@ type ProbePoller struct {
 	stopped atomic.Bool
 	// observer reports how the scheduler started each collection.
 	observer *scheduleObserver
+	// callDeadline is the deadline of each collection's context and
+	// collectTimeout the probe's own collect_timeout (zero when unset).
+	callDeadline   time.Duration
+	collectTimeout time.Duration
 }
 
 // probeCadenceSource wraps a probe entity source so it also reports the
@@ -193,6 +197,8 @@ func NewProbePoller(
 		moduleLogger: moduleLogger,
 	}
 
+	probePoller.collectTimeout = collectTimeout
+	probePoller.callDeadline = collectDeadline(collectTimeout, probe.GetInterval())
 	probePoller.ApplyGovernance(config)
 	probePoller.observer = newScheduleObserver(config.Name, probePoller.probeType())
 
@@ -205,7 +211,7 @@ func NewProbePoller(
 		MaxRetries:        3,
 		ExecuteOnStart:    true,
 		ExecuteOnShutdown: false,
-		CallTimeout:       collectDeadline(collectTimeout, probe.GetInterval()),
+		CallTimeout:       probePoller.callDeadline,
 		Observer:          probePoller.observer,
 		ExecuteContext:    probePoller.collect,
 		OnStart:           probe.OnStart,
@@ -383,6 +389,7 @@ func (p *ProbePoller) collect(runCtx context.Context) error {
 		return nil
 	}
 	if err != nil {
+		err = p.nameCutDeadline(ctx, err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		agentstate.IncrementCollectErrors(p.probeType(), collectErrorReason(err))
@@ -455,6 +462,22 @@ func (p *ProbePoller) collectOnce(ctx context.Context) ([]datapoint.DataPoint, e
 		return cc.CollectContext(ctx)
 	}
 	return p.Probe.Collect()
+}
+
+// nameCutDeadline says which setting cut a collection. A bare "context
+// deadline exceeded" does not tell the operator that a deadline exists, nor
+// which knob moves it. Only the call's own deadline qualifies: a timeout the
+// probe applied inside a call that is still alive keeps its own message.
+func (p *ProbePoller) nameCutDeadline(ctx context.Context, err error) error {
+	if p.callDeadline <= 0 || !errors.Is(err, context.DeadlineExceeded) || !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return err
+	}
+	const what = "collection cut at its deadline (collect_timeout, or the interval with a 5 min floor)"
+	p.moduleLogger.Warn().
+		Dur("deadline", p.callDeadline).
+		Dur("collect_timeout", p.collectTimeout).
+		Msg(what)
+	return fmt.Errorf("%s, deadline %s: %w", what, p.callDeadline, err)
 }
 
 // recordDelivery tells the status channel what the cycle delivered. A

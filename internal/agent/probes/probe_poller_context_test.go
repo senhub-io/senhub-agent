@@ -364,3 +364,70 @@ func TestCancelledCycleIsNotACollectError(t *testing.T) {
 		t.Fatalf("a cycle cancelled by shutdown reported %v, want nil", err)
 	}
 }
+
+func newDeadlineTestPoller(t *testing.T, probeType string, probe types.Probe, collectTimeout string) *ProbePoller {
+	t.Helper()
+	probeConstructors[probeType] = func(_ map[string]interface{}, _ *logger.Logger) (types.Probe, error) {
+		return probe, nil
+	}
+	t.Cleanup(func() { delete(probeConstructors, probeType) })
+	cfg := configuration.ProbeConfig{Name: probeType + "-1", Type: probeType}
+	if collectTimeout != "" {
+		cfg.CollectTimeout = collectTimeout
+	}
+	poller, err := NewProbePoller(
+		cfg,
+		logger.NewLogger(&cliArgs.ParsedArgs{}),
+		func([]datapoint.DataPoint, data_store.StrategyRouter) error { return nil },
+	)
+	if err != nil {
+		t.Fatalf("NewProbePoller: %v", err)
+	}
+	t.Cleanup(func() { _ = poller.Shutdown(context.Background()) })
+	return poller
+}
+
+// A collection cut by the call's deadline names the setting and the
+// deadline instead of a bare "context deadline exceeded".
+func TestCollectCutAtItsDeadlineNamesTheSetting(t *testing.T) {
+	probe := newCtxProbe(time.Hour, true)
+	poller := newDeadlineTestPoller(t, "cut_deadline_test", probe, "150ms")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	err := poller.collect(ctx)
+
+	if err == nil {
+		t.Fatal("the cut collection returned no error")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("err = %v, want it to keep wrapping context.DeadlineExceeded", err)
+	}
+	for _, want := range []string{"collect_timeout", "5 min floor", "150ms"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %q, want it to contain %q", err, want)
+		}
+	}
+}
+
+// A timeout the probe applied itself inside a live call is not the call's
+// deadline and keeps its own message.
+func TestOwnTimeoutInsideALiveCallIsNotRenamed(t *testing.T) {
+	probe := &ownTimeoutProbe{BaseProbe: &types.BaseProbe{}}
+	poller := newDeadlineTestPoller(t, "own_timeout_test", probe, "")
+
+	err := poller.collect(context.Background())
+	if err == nil || strings.Contains(err.Error(), "collect_timeout") {
+		t.Errorf("err = %v, want the probe's own error untouched", err)
+	}
+}
+
+type ownTimeoutProbe struct{ *types.BaseProbe }
+
+func (p *ownTimeoutProbe) ShouldStart() bool                  { return true }
+func (p *ownTimeoutProbe) GetInterval() time.Duration         { return time.Hour }
+func (p *ownTimeoutProbe) OnStart(chan struct{}) error        { return nil }
+func (p *ownTimeoutProbe) OnShutdown(_ context.Context) error { return nil }
+func (p *ownTimeoutProbe) Collect() ([]datapoint.DataPoint, error) {
+	return nil, fmt.Errorf("target did not answer: %w", context.DeadlineExceeded)
+}
