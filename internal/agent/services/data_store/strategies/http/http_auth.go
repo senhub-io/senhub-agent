@@ -32,6 +32,9 @@ type AuthenticationManager struct {
 	adminMu     sync.RWMutex
 	adminKey    string
 	agentConfig configuration.AgentConfiguration
+	// pathKeyNotice warns once per process: a script polling the
+	// administration API would otherwise repeat the same line forever.
+	pathKeyNotice sync.Once
 }
 
 // NewAuthenticationManager creates a new authentication manager. An
@@ -129,6 +132,15 @@ func (a *AuthenticationManager) resolve(r *http.Request, admin bool) (string, in
 
 	if a.ValidateAdminKey(key) {
 		a.logger.Debug().Msg("Administration key presented in the URL path")
+		// /web/<admin-key>/ is how a console session starts; only the API
+		// form is a caller that should move to the Authorization header.
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			a.pathKeyNotice.Do(func() {
+				a.logger.Warn().
+					Str("path", pathForLog(r.URL.Path, key)).
+					Msg("The administration key in an /api/ URL path is deprecated: send it as Authorization: Bearer <admin key> to /api/_/... instead")
+			})
+		}
 	}
 	return key, http.StatusOK
 }
