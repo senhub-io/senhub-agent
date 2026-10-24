@@ -75,11 +75,10 @@ func (a *Assembler) Append(line string) []string {
 		a.push(line)
 		return out
 	}
-	if len(a.pending) == 0 {
-		// Continuation with nothing started yet (file opens mid-stack):
-		// emit the orphan line on its own rather than swallow it.
-		return []string{Truncate(line, a.maxLen)}
-	}
+	// A continuation with nothing started (the file opened mid-message,
+	// or the start was already sent by an idle flush) opens a record of
+	// its own: the continuations after it fold into it, as they would
+	// into a record that had its first line.
 	if a.full(line) {
 		// The record would pass the cap: send it, and carry on with this
 		// line as the start of the next one, rather than dropping every

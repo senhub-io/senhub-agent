@@ -103,10 +103,14 @@ pattern anchored with `^`).
 
 A record in progress is sent once no line has come for
 `flush_timeout` (5 seconds by default), so the last message of a quiet
-file goes out without waiting for the next one. A writer that pauses
-longer than that in the middle of a message has the lines after the
-pause sent as a record of their own; raise the timeout for it, or set
-`0` to wait for the next message as before:
+file goes out without waiting for the next one. When a writer pauses
+longer than that in the middle of a message, the message is split in
+two: what came before the pause is sent when the timeout passes, and
+the lines after the pause, which carry no timestamp of their own, fold
+together into a second record. That record is sent when the next
+message starts, or once no line has come for `flush_timeout` again;
+its time is that of its first line. Raise the timeout for a writer
+that pauses, or set `0` to wait for the next message as before:
 
 ```yaml
   multiline:

@@ -91,7 +91,8 @@ func TestFileTail_QuietFileSendsTheLastRecord(t *testing.T) {
 
 // A stack trace written line by line keeps folding while each line comes
 // within the flush timeout. A pause longer than the timeout sends what
-// came so far; a continuation after it stands on its own.
+// came so far; the continuations after it fold together into a second
+// record, sent at the next start or after the next timeout.
 func TestFileTail_SlowStackTraceStaysOneRecordWithinTheTimeout(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "app.log")
 	records := agentstate.SubscribeLogs(4096)
@@ -107,12 +108,14 @@ func TestFileTail_SlowStackTraceStaysOneRecordWithinTheTimeout(t *testing.T) {
 	appendLines(t, file, "2026-10-20 09:30:05.000001 INFO  TId 2 Core> next")
 	time.Sleep(2 * time.Second)
 	appendLines(t, file, "   late continuation")
+	time.Sleep(300 * time.Millisecond)
+	appendLines(t, file, "   at Frame.Three()")
 
 	got := bodiesFor(records, file, 2500*time.Millisecond)
 	want := []string{
 		"2026-10-20 09:30:01.000001 ERROR TId 1 Core> failed:\n   at Frame.One()\n   at Frame.Two()",
 		"2026-10-20 09:30:05.000001 INFO  TId 2 Core> next",
-		"   late continuation",
+		"   late continuation\n   at Frame.Three()",
 	}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("records\n got %q\nwant %q", got, want)

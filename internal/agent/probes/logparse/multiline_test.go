@@ -55,13 +55,20 @@ func TestMultiline_AfterFoldsStacktrace(t *testing.T) {
 	}
 }
 
-func TestMultiline_OrphanContinuationEmittedAlone(t *testing.T) {
+func TestMultiline_OrphanContinuationsFoldTogether(t *testing.T) {
 	a := NewAssembler(mlConfig(t, `^START`, "after", false), 0)
-	// File opens mid-message: first line is a continuation with nothing
-	// started — must not be swallowed.
-	got := a.Append("  trailing fragment")
-	if !reflect.DeepEqual(got, []string{"  trailing fragment"}) {
-		t.Errorf("orphan got %v", got)
+	// File opens mid-message, or the start of the message was already
+	// sent by an idle flush: the continuations are kept, and fold together
+	// until the next start.
+	var got []string
+	for _, l := range []string{"  trailing fragment", "  second fragment", "START next"} {
+		got = append(got, a.Append(l)...)
+	}
+	if want := []string{"  trailing fragment\n  second fragment"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if got := a.Flush(); !reflect.DeepEqual(got, []string{"START next"}) {
+		t.Errorf("flush got %q", got)
 	}
 }
 
@@ -114,7 +121,7 @@ func TestTruncate(t *testing.T) {
 // a record" (negate: true). Under this assembler that spelling means the
 // reverse: the first line without a timestamp opens a record, and every
 // timestamped line after it is folded into that record until the next
-// line without one.
+// line without one; the timestamped lines ahead of it fold together.
 func TestMultiline_FilebeatNegateHoldsTimestampedLines(t *testing.T) {
 	lines := []string{
 		"2026-10-20 09:29:58.123456 INFO  TId 1234 Core> sensor scan done\r",
@@ -133,8 +140,8 @@ func TestMultiline_FilebeatNegateHoldsTimestampedLines(t *testing.T) {
 
 	filebeat := NewAssembler(mlConfig(t, `^\d{4}-\d{2}-\d{2} `, "after", true), 0)
 	got := feed(filebeat)
-	if len(got) != 2 {
-		t.Fatalf("negate: true emitted %d records before the flush, want the 2 lines ahead of the continuation: %q", len(got), got)
+	if len(got) != 1 || strings.Count(got[0], "\n") != 1 {
+		t.Fatalf("negate: true should send the 2 lines ahead of the continuation as one record before the flush, got %q", got)
 	}
 	held := filebeat.Flush()
 	if len(held) != 1 || strings.Count(held[0], "\n") != 2 || !strings.HasPrefix(held[0], "   at ") {
