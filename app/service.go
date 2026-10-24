@@ -2,6 +2,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -141,10 +142,15 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 
 	// A second install on a machine that already is in the requested state
 	// changes nothing: no binary copy, no unit write, no configuration
-	// touch. It says so and exits with the Unchanged code.
+	// touch. It says so and exits with the Unchanged code, or OK under
+	// --ok-if-unchanged.
 	var state installState
-	run := newInstallRun(command == "install" && hasArg(jsonFlag), configPath)
+	run := newInstallRun(command == "install" && hasArg(jsonFlag), hasArg(okIfUnchangedFlag), configPath)
 	if command == "install" {
+		if msg := existingServiceConflict(registeredServiceImagePath(), executablePath, hostMsiManaged()); msg != "" {
+			fmt.Fprintln(os.Stderr, msg)
+			os.Exit(run.finish(cliexit.Failure, errors.New("a senhub-agent service from another install is already registered")))
+		}
 		probe, probeErr := service.New(&program{done: make(chan bool, 1), args: args}, svcConfig)
 		if probeErr == nil {
 			state = detectInstallState(probe, configPath, installProbes{
@@ -154,8 +160,12 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			})
 			if state.alreadyDone() {
 				fmt.Printf("The service is already installed and the configuration is present at %s; nothing to do.\n", configPath)
-				fmt.Println("To change the installed unit use 'refresh-unit' (Linux); to change the binary use 'update'.")
-				os.Exit(run.finish(cliexit.Unchanged, nil))
+				if runtime.GOOS == "linux" {
+					fmt.Println("To change the installed unit use 'refresh-unit'; to change the binary use 'update'.")
+				} else {
+					fmt.Println("To change the binary use 'update'.")
+				}
+				os.Exit(run.unchanged())
 			}
 		}
 	}

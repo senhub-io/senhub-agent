@@ -256,6 +256,10 @@ http://agent-server:8080/api/{key}/prtg/metrics/{probe}?tags=vserver_name:vs_web
 
 This returns only the metrics for the virtual server named `vs_web`. The Sensor URLs tab builds this filter from the tags the probe reports.
 
+#### Right after the agent restarts
+
+Until a probe has completed its first collection, its sensor URL answers with no channel. PRTG shows that one reading as "The returned JSON does not match the expected structure (No channel found). (code: PE231)", and the sensor is back to normal at the next reading. The first collection follows the start within the probe's own collection time; no action is needed.
+
 #### Installing PRTG value lookups
 
 SenHub Agent provides custom PRTG lookup files that translate numeric status values into meaningful text (for instance "Up" instead of "1"):
@@ -276,7 +280,7 @@ SenHub Agent provides custom PRTG lookup files that translate numeric status val
 
 After loading the lookups, PRTG sensors display human-readable status values instead of raw numbers.
 
-A channel that names a lookup the PRTG core does not have turns the whole sensor Warning (PE272). This is why the Check Result channel, which every database, application and active-check probe can report, and the unresolved-target channel of `http_check` and `tcp_dial` are off by default, and why service channels (`systemd`, `winservices`) show a plain value by default: 1 when the service runs, 0 when it does not, with an error limit below 1 so a stopped service turns the sensor Error. Install the lookups first, then turn it on in the `http` output. With the multi-file layout (the default since 0.1.93, and what the MSI and the packages install), add it in `strategies.d/00-http.yaml`, at the same level as `port`:
+A channel that names a lookup the PRTG core does not have turns the whole sensor Warning (PE272). This is why the Check Result channel, which every database, application and active-check probe can report, and the unresolved-target channel of `http_check` and `tcp_dial` are off by default. Service channels (`systemd`, `winservices`) never use a lookup: they show 1 when the service runs, 0 when it does not, with an error limit below 1 so a stopped service turns the sensor Error. Up to 0.6.3 the "Service X Running" channel of `winservices` was a plain number, and PRTG cannot add a lookup to a channel it created that way. Install the lookups first, then turn it on in the `http` output. With the multi-file layout (the default since 0.1.93, and what the MSI and the packages install), add it in `strategies.d/00-http.yaml`, at the same level as `port`:
 
 ```yaml
 http:
@@ -297,7 +301,7 @@ storage:
 
 Before 0.6.5 the agent ignores the key, so it can be added ahead of an automatic update. Only `config check` on 0.6.4 or earlier reports it, as a parameter the `http` output does not read.
 
-The Check Result channel then references the `senhub.probe.check.result` lookup, the unresolved-target channel `senhub.probe.check.target.unresolved`, and service channels `host.service.running`. PRTG applies a channel's limits only when it creates the channel: a service channel created by 0.6.4 with its lookup keeps no limit after the option is turned off, so delete it or re-add the sensor. The ZIP file contains lookup files in the PRTG `.ovl` format:
+The Check Result channel then references the `senhub.probe.check.result` lookup, and the unresolved-target channel `senhub.probe.check.target.unresolved`. PRTG applies a channel's lookup and limits only when it creates the channel: a service channel created by 0.6.4 keeps the `host.service.running` lookup it was created with and has no error limit. Re-add the sensor to get the limit. The ZIP file contains lookup files in the PRTG `.ovl` format:
 
 ```
 senhub-prtg-lookups.zip

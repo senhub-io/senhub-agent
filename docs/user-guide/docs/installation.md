@@ -80,8 +80,10 @@ minisign -Vm senhub-agent-linux-amd64.zip \
 ```
 
 That public key is the one the agent itself embeds to verify its own
-auto-updates. There is no `SHA256SUMS` file: minisign is the
-verification path. Each release also publishes a manifest with the
+auto-updates. A stable release also carries a `SHA256SUMS` file, signed
+the same way (`SHA256SUMS.minisig`), for tools that check a digest:
+verify the list with minisign first, then the archive against it
+(`sha256sum -c --ignore-missing SHA256SUMS`). Each release also publishes a manifest with the
 checksum, size and signature address of every file, and a stable address
 for the newest release of each channel; see
 [Downloading and verifying releases](releases.md).
@@ -200,6 +202,14 @@ cd C:\SenHub\
 ```
 
 This registers `SenHub Agent` as a Windows Service with automatic restart on failure. A UUID agent key is generated automatically and saved to the configuration file.
+
+The service name (`senhub-agent`) and the data folder (`%ProgramData%\SenHub`) are fixed, so one machine runs one agent. If a `senhub-agent` service from another install is already registered, `install` stops without changing anything and says which way to go: a newer MSI over an MSI install, or `update` or `uninstall` for an agent installed from another folder. Running `install` again from the folder the service already runs from changes nothing, prints that there is nothing to do and exits `3`. A deployment tool that reads any code other than `0` as a failure replays it with `--ok-if-unchanged`, which exits `0` in that case. In a GPO startup script, an SCCM script or an Intune PowerShell script:
+
+```powershell
+C:\SenHub\senhub-agent.exe install --ok-if-unchanged
+```
+
+The MSI needs no flag: `msiexec` over an installed MSI is an upgrade or a repair, and the installer already treats a kept configuration as a success.
 
 To install with HTTPS enabled on the local API:
 
@@ -525,6 +535,51 @@ sudo /usr/local/bin/senhub-agent update 0.6.0
 ```
 
 On an MSI-managed Windows install, auto-update applies a new signed MSI rather than swapping the binary in place — see the note under [MSI installer](#msi-installer-recommended).
+
+#### Upgrading from the ZIP
+
+Each ZIP carries a `README.txt` with these commands. A machine installed by the MSI or by a `.deb`/`.rpm` package is upgraded the same way it was installed (a newer MSI over the older one, or the package manager), never from the ZIP. A machine installed from the ZIP without access to the release server is upgraded by replacing the binary while the service is stopped; the configuration is kept.
+
+Windows, from an elevated PowerShell in the install folder:
+
+```powershell
+.\senhub-agent.exe stop
+# copy the new senhub-agent.exe and senhub-console.exe over the old ones
+.\senhub-agent.exe start
+.\senhub-agent.exe version
+```
+
+Linux:
+
+```bash
+sudo /usr/local/bin/senhub-agent stop
+sudo install -m 0755 -o root -g root ./senhub-agent /usr/local/bin/senhub-agent
+sudo /usr/local/bin/senhub-agent start
+sudo /usr/local/bin/senhub-agent version
+```
+
+#### Going back to an earlier version on Windows
+
+The MSI does not downgrade. Installing an older MSI over a newer one fails with code 1603 and "A newer version of SenHub Agent is already installed", and leaves the installed agent and `%ProgramData%\SenHub\` untouched. Two ways back exist.
+
+Uninstall, then install the older MSI. Uninstalling deletes `%ProgramData%\SenHub\`, the agent key and the sealed secret store included, so copy that folder first and restore it once the older version is installed:
+
+```powershell
+Stop-Service senhub-agent
+Copy-Item -Recurse C:\ProgramData\SenHub C:\SenHub-backup
+msiexec /x senhub-agent-<newer-version>-amd64.msi /qn
+msiexec /i senhub-agent-<older-version>-amd64.msi /qn
+Stop-Service senhub-agent
+Remove-Item -Recurse -Force C:\ProgramData\SenHub
+Copy-Item -Recurse C:\SenHub-backup C:\ProgramData\SenHub
+Start-Service senhub-agent
+```
+
+The copy holds the agent key and the secrets: delete it once the agent runs. The agent key does not change, so PRTG and the other consumers need no change.
+
+Or replace the binaries with the older version's ZIP. Stop the service, copy the older `senhub-agent.exe` and `senhub-console.exe` over the installed ones in `C:\Program Files\SenHub Agent\`, and start the service again. The configuration is kept. Windows still lists the newer MSI version, so the next upgrade needs an MSI newer than that one. If `auto_update.enabled` is `true`, set it to `false` while the older binary runs, or the agent installs the newer MSI again.
+
+Either way, the older agent loads the configuration only if it supports its `config_version` (see [Config versions](configuration.md#config-versions)).
 
 ## Post-Installation Checklist
 
