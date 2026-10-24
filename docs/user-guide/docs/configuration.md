@@ -397,12 +397,16 @@ logs:
 | `redact.preset` | `true` | Applies the built-in rules described below. |
 | `redact.rules` | none | Your own rules, applied in order after the preset. Each needs a `name` (used as the `rule` label of the counter), a `pattern` (RE2 syntax) and a `replacement` (`$1`, `${name}` expansions). |
 
-The preset has four rules:
+The preset has these rules:
 
 - `credential_param` replaces the value of `password`, `passwd`, `pwd`, `passhash`, `apikey`, `api_key`, `token`, `access_token` and `secret` (case-insensitive, whole key) with `***`. It reads query strings (`?passhash=123&x=1` becomes `?passhash=***&x=1`), form bodies, `key=value` logs, `key: value` lines and JSON (`"secret":"abc"` becomes `"secret":"***"`). The key, the separator and the quotes stay; the value ends at `&`, a space, a quote, `,` or `;`. `tokens=5` and `mytoken=1` are left alone.
 - `authorization_header` keeps the scheme of an `Authorization:` header (`Bearer`, `Basic`, `Digest`, `Negotiate`, `NTLM`) and masks the credential: `Authorization: Basic ***`. For `Digest`, the rest of the line is masked.
 - `prtg_license_key` masks a PRTG licence key, ten groups of six capital letters or digits joined by dashes, which PRTG writes in clear in `Core.log` and `CoreActivationLog.log` on every core start: `licensed for "<name>" (***)`.
 - `prtg_system_id` masks the PRTG system id written on the next line: `SystemID: SYSTEMID-***`.
+- `private_key` masks the body of a PEM private key block and keeps its armour lines: `-----BEGIN RSA PRIVATE KEY-----***-----END RSA PRIVATE KEY-----`. A block cut short is masked to the end of the record. Public keys and certificates are left alone.
+- `jwt` masks a JSON Web Token: three base64url segments whose first two start with `eyJ`.
+- `aws_access_key_id` masks an AWS access key id, `AKIA` or `ASIA` followed by sixteen capitals or digits.
+- `aws_secret_access_key` masks the forty-character value written after `aws_secret_access_key` (`=` or `:`, quoted or not), which `credential_param` does not catch.
 
 The preset rule names are reserved: a custom rule cannot use them.
 

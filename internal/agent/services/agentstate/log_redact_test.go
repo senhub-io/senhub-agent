@@ -528,11 +528,84 @@ func TestRedactPresetMasksThePRTGLicence(t *testing.T) {
 	}
 }
 
-func TestRedactPRTGRuleNamesAreReserved(t *testing.T) {
-	for _, name := range []string{"prtg_license_key", "prtg_system_id"} {
+func TestRedactPresetRuleNamesAreReserved(t *testing.T) {
+	for _, name := range []string{"prtg_license_key", "prtg_system_id", "private_key", "jwt", "aws_access_key_id", "aws_secret_access_key"} {
 		errs := ValidateLogRedactRules([]LogRedactRule{{Name: name, Pattern: "x", Replacement: "y"}})
 		if len(errs) != 1 || !strings.Contains(errs[0].Error(), "reserved") {
 			t.Errorf("custom rule %q: errors %v, want it reserved", name, errs)
+		}
+	}
+}
+
+func TestRedactPresetMasksKeysAndTokens(t *testing.T) {
+	setupRedactionTest(t)
+	if errs := ConfigureLogRedaction(true, nil); len(errs) != 0 {
+		t.Fatalf("ConfigureLogRedaction errors: %v", errs)
+	}
+
+	const jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "pem private key",
+			in:   "loaded key\n-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA1c3\nabcDEF==\n-----END RSA PRIVATE KEY-----\ndone",
+			want: "loaded key\n-----BEGIN RSA PRIVATE KEY-----***-----END RSA PRIVATE KEY-----\ndone",
+		},
+		{
+			name: "pem private key cut short",
+			in:   "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0",
+			want: "-----BEGIN PRIVATE KEY-----***",
+		},
+		{
+			name: "jwt in a log line",
+			in:   "session " + jwt + " issued",
+			want: "session *** issued",
+		},
+		{
+			name: "aws access key id",
+			in:   "using key AKIAIOSFODNN7EXAMPLE for s3",
+			want: "using key *** for s3",
+		},
+		{
+			name: "aws temporary key id",
+			in:   "creds ASIAY34FZKBOKMUTVV7A",
+			want: "creds ***",
+		},
+		{
+			name: "aws secret access key",
+			in:   "aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+			want: "aws_secret_access_key = ***",
+		},
+		{
+			name: "aws secret access key in json",
+			in:   `{"aws_secret_access_key":"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"}`,
+			want: `{"aws_secret_access_key":"***"}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := redactLogRecord(LogRecord{Body: tc.in, ProducerProbeName: "app-logs"})
+			if rec.Body != tc.want {
+				t.Fatalf("Body = %q, want %q", rec.Body, tc.want)
+			}
+		})
+	}
+
+	for _, keep := range []string{
+		"-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqh\n-----END PUBLIC KEY-----",
+		"-----BEGIN CERTIFICATE-----\nMIIDdzCCAl+g\n-----END CERTIFICATE-----",
+		"payload eyJhbGciOiJIUzI1NiJ9 seen",
+		"a.b.c eyJ.eyJ.x",
+		"key AKIA1234 too short",
+		"akiaiosfodnn7example lowercase",
+		"secret_access_key = short",
+		"aws_secret_access_key = notfortycharacters",
+	} {
+		if rec := redactLogRecord(LogRecord{Body: keep, ProducerProbeName: "app-logs"}); rec.Body != keep {
+			t.Errorf("Body = %q, want unchanged %q", rec.Body, keep)
 		}
 	}
 }

@@ -75,6 +75,39 @@ var builtinRedactRules = []redactRule{
 		replacement: "SYSTEMID-***",
 		precheck:    func(s string) bool { return strings.Contains(s, "SYSTEMID-") },
 	},
+	{
+		// A PEM private key block, the armour lines kept. A block cut
+		// short (a record truncated at its cap) is masked to the end.
+		name:        "private_key",
+		re:          regexp.MustCompile(`(-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----)(?:[\s\S]*?(-----END [A-Z0-9 ]*PRIVATE KEY-----)|[\s\S]*$)`),
+		replacement: "${1}***${2}",
+		precheck:    func(s string) bool { return strings.Contains(s, "PRIVATE KEY-----") },
+	},
+	{
+		// A JSON Web Token: three base64url segments, header and payload
+		// both JSON objects, so both start with "eyJ".
+		name:        "jwt",
+		re:          regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{4,}\.eyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{8,}`),
+		replacement: "***",
+		precheck:    func(s string) bool { return strings.Contains(s, "eyJ") },
+	},
+	{
+		// An AWS access key id: AKIA (long-term) or ASIA (temporary) and
+		// sixteen capitals or digits.
+		name:        "aws_access_key_id",
+		re:          regexp.MustCompile(`\b(?:AKIA|ASIA)[A-Z0-9]{16}\b`),
+		replacement: "***",
+		precheck:    func(s string) bool { return strings.Contains(s, "AKIA") || strings.Contains(s, "ASIA") },
+	},
+	{
+		// The secret key carries no marker of its own; it is recognised by
+		// the name it is written under, which credential_param leaves alone
+		// (the "secret" in it is not a whole word).
+		name:        "aws_secret_access_key",
+		re:          regexp.MustCompile(`(?i)(["']?\baws_secret_access_key["']?\s*[=:]\s*["']?)([A-Za-z0-9/+=]{40})`),
+		replacement: "${1}***",
+		precheck:    func(s string) bool { return containsFold(s, "aws_secret_access_key") },
+	},
 }
 
 // prtgLicenseKeyPrecheck skips the key pattern on lines that cannot hold
