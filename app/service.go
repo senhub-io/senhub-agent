@@ -160,7 +160,11 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			})
 			if state.alreadyDone() {
 				fmt.Printf("The service is already installed and the configuration is present at %s; nothing to do.\n", configPath)
-				fmt.Println("To change the installed unit use 'refresh-unit' (Linux); to change the binary use 'update'.")
+				if runtime.GOOS == "linux" {
+					fmt.Println("To change the installed unit use 'refresh-unit'; to change the binary use 'update'.")
+				} else {
+					fmt.Println("To change the binary use 'update'.")
+				}
 				os.Exit(run.unchanged())
 			}
 		}
