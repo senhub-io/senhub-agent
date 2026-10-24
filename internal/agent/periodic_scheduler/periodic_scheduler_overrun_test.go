@@ -11,10 +11,10 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// A collection that ignores its context and outlives the deadline is not
+// A collection that ignores its context and outlives the interval is not
 // abandoned and not run twice: it is counted once as an overrun, no second
 // call starts while it runs, and the next call follows its return.
-func TestCallPastItsDeadlineIsAnOverrunAndNeverRunsTwice(t *testing.T) {
+func TestCallPastTheIntervalIsAnOverrunAndNeverRunsTwice(t *testing.T) {
 	logger := zerolog.New(io.Discard)
 	obs := &fakeObserver{}
 	release := make(chan struct{})
@@ -105,5 +105,75 @@ func TestCallHonouringItsContextReturnsAtTheDeadline(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	if _, _, overruns := obs.snapshot(); overruns != 0 {
 		t.Errorf("overruns = %d, want 0 for a call that honours its context", overruns)
+	}
+}
+
+// A call longer than the interval but inside its deadline is counted as an
+// overrun without being cut, and is never run twice.
+func TestCallPastTheIntervalButInsideItsDeadlineIsCountedNotCut(t *testing.T) {
+	logger := zerolog.New(io.Discard)
+	obs := &fakeObserver{}
+	var calls atomic.Int32
+	var cut atomic.Bool
+
+	s := NewPeriodicScheduler(PeriodicSchedulerConfig{
+		ExecuteOnStart: true,
+		Interval:       30 * time.Millisecond,
+		CallTimeout:    5 * time.Second,
+		ExecuteContext: func(ctx context.Context) error {
+			if calls.Add(1) > 1 {
+				return nil
+			}
+			select {
+			case <-time.After(200 * time.Millisecond):
+			case <-ctx.Done():
+				cut.Store(true)
+			}
+			return nil
+		},
+		Observer: obs,
+	}, &logger)
+
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Shutdown(context.Background()) }()
+
+	waitForAtomicCalls(t, &calls, 2)
+	if cut.Load() {
+		t.Error("the call was cancelled before its deadline")
+	}
+	if _, _, overruns := obs.snapshot(); overruns != 1 {
+		t.Errorf("overruns = %d, want 1", overruns)
+	}
+}
+
+// A call that is not cancellable (Execute) and outlives the interval is
+// counted too, with no deadline set.
+func TestPlainCallPastTheIntervalIsAnOverrun(t *testing.T) {
+	logger := zerolog.New(io.Discard)
+	obs := &fakeObserver{}
+	var calls atomic.Int32
+
+	s := NewPeriodicScheduler(PeriodicSchedulerConfig{
+		ExecuteOnStart: true,
+		Interval:       30 * time.Millisecond,
+		Execute: func() error {
+			if calls.Add(1) == 1 {
+				time.Sleep(150 * time.Millisecond)
+			}
+			return nil
+		},
+		Observer: obs,
+	}, &logger)
+
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Shutdown(context.Background()) }()
+
+	waitForAtomicCalls(t, &calls, 2)
+	if _, _, overruns := obs.snapshot(); overruns != 1 {
+		t.Errorf("overruns = %d, want 1", overruns)
 	}
 }

@@ -57,13 +57,6 @@ type ContextCollector interface {
 	CollectContext(ctx context.Context) ([]datapoint.DataPoint, error)
 }
 
-// CollectTimeoutProbe is implemented by a probe that has its own timeout
-// for one collection. The collection deadline is the shorter of that and
-// the probe's interval.
-type CollectTimeoutProbe interface {
-	CollectTimeout() time.Duration
-}
-
 // ProbeWithCallback extends Probe for event-driven collection
 type ProbeWithCallback interface {
 	Probe

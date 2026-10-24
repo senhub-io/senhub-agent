@@ -102,6 +102,11 @@ func NewProbePoller(
 ) (*ProbePoller, error) {
 	probeId := GenerateProbeId(config)
 
+	collectTimeout, err := CollectTimeoutOf(config)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create module-specific logger for probe poller using probe type
 	// Type is the technical identifier (e.g., "citrix", "cpu"), ensures consistent logging
 	probeModuleName := fmt.Sprintf("probe.%s", config.Type)
@@ -200,7 +205,7 @@ func NewProbePoller(
 		MaxRetries:        3,
 		ExecuteOnStart:    true,
 		ExecuteOnShutdown: false,
-		CallTimeout:       collectDeadline(probe),
+		CallTimeout:       collectDeadline(collectTimeout, probe.GetInterval()),
 		Observer:          probePoller.observer,
 		ExecuteContext:    probePoller.collect,
 		OnStart:           probe.OnStart,
@@ -404,17 +409,42 @@ func (p *ProbePoller) collect(runCtx context.Context) error {
 	return p.addDataPointCtx(ctx, data, &defaultStrategyRouter{})
 }
 
-// collectDeadline is the deadline of one collection: the probe's interval,
-// or its own timeout when that is shorter. Zero means no deadline, for a
-// probe without an interval and without a timeout.
-func collectDeadline(probe types.Probe) time.Duration {
-	deadline := probe.GetInterval()
-	if tp, ok := probe.(types.CollectTimeoutProbe); ok {
-		if own := tp.CollectTimeout(); own > 0 && (deadline <= 0 || own < deadline) {
-			deadline = own
-		}
+// minCollectDeadline is the shortest default deadline of one collection.
+// A collection legitimately longer than its interval (a slow IBM i
+// collector, a large SNMP sweep, a slow API) must not lose its data every
+// cycle, so a short interval does not shorten the deadline below this.
+const minCollectDeadline = 5 * time.Minute
+
+// collectDeadline is the deadline of one collection: the probe's
+// collect_timeout when it sets one (shorter or longer than the default),
+// else the longer of its interval and minCollectDeadline. Zero means no
+// deadline, for a probe without an interval and without a collect_timeout.
+func collectDeadline(override, interval time.Duration) time.Duration {
+	if override > 0 {
+		return override
 	}
-	return max(deadline, 0)
+	if interval <= 0 {
+		return 0
+	}
+	return max(interval, minCollectDeadline)
+}
+
+// CollectTimeoutOf reads the collect_timeout of a probe entry: absent or
+// zero is no override. A value that is neither a duration ("90s") nor a
+// number of seconds, or that is negative, is an error naming the key.
+func CollectTimeoutOf(config configuration.ProbeConfig) (time.Duration, error) {
+	if config.CollectTimeout == nil {
+		return 0, nil
+	}
+	const key = "collect_timeout"
+	d, ok := types.DurationParam(map[string]interface{}{key: config.CollectTimeout}, key)
+	if !ok {
+		return 0, fmt.Errorf("probe %q: %s: want a duration (\"90s\") or a number of seconds, got %v", config.Name, key, config.CollectTimeout)
+	}
+	if d < 0 {
+		return 0, fmt.Errorf("probe %q: %s: must not be negative, got %v", config.Name, key, config.CollectTimeout)
+	}
+	return d, nil
 }
 
 // collectOnce runs one collection: CollectContext under the call context,

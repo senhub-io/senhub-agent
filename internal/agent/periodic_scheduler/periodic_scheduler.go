@@ -2,7 +2,6 @@ package periodic_scheduler
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -28,7 +27,7 @@ type PeriodicSchedulerOnShutdown func(ctx context.Context) error
 type CallObserver interface {
 	CallStarted(lag time.Duration) // actual start minus planned start, >= 0
 	CallEnded(first bool)          // first is true for the initial call only
-	CallOverran()                  // a call was still running after its deadline; reported once per call
+	CallOverran()                  // a call was still running after a full interval; reported once per call
 }
 
 type PeriodicSchedulerConfig struct {
@@ -59,9 +58,10 @@ type PeriodicSchedulerConfig struct {
 	// for the call in flight, so a call that honours it stops early.
 	ExecuteContext PeriodicSchedulerContextCall
 	// CallTimeout is the deadline of each call's context. Zero means no
-	// deadline. A call still running when it passes is neither abandoned
-	// nor run twice: the scheduler reports an overrun and, its loop being
-	// single-threaded, makes no further call until this one returns.
+	// deadline. It is independent of Interval: a call running past the
+	// interval but not past its deadline is not cut. The loop being
+	// single-threaded, no further call starts until this one returns,
+	// and the observer is told once the call has outlived the interval.
 	CallTimeout time.Duration
 	// Observer receives scheduling events for this scheduler. Nil
 	// disables all observer notifications.
@@ -176,15 +176,16 @@ func (l *periodicScheduler) doCall(parent context.Context) error {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 
-	if l.config.CallTimeout <= 0 {
-		return l.invoke(parent)
+	ctx := parent
+	if l.config.CallTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(parent, l.config.CallTimeout)
+		defer cancel()
 	}
-	ctx, cancel := context.WithTimeout(parent, l.config.CallTimeout)
-	finished := make(chan struct{})
-	defer cancel()
-	defer close(finished)
-	if l.config.Observer != nil {
-		go l.watchOverrun(ctx, finished)
+	if l.config.Observer != nil && l.config.Interval > 0 {
+		finished := make(chan struct{})
+		defer close(finished)
+		go l.watchOverrun(finished)
 	}
 	return l.invoke(ctx)
 }
@@ -196,20 +197,11 @@ func (l *periodicScheduler) invoke(ctx context.Context) error {
 	return l.config.Execute()
 }
 
-// watchOverrun reports a call that is still running once its deadline has
-// passed. The short grace lets a call that honours its context unwind
-// without being counted.
-func (l *periodicScheduler) watchOverrun(ctx context.Context, finished <-chan struct{}) {
-	select {
-	case <-finished:
-		return
-	case <-ctx.Done():
-	}
-	if !errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return
-	}
-	grace := min(max(l.config.CallTimeout/10, 10*time.Millisecond), time.Second)
-	timer := time.NewTimer(grace)
+// watchOverrun reports a call that is still running once a full interval
+// has passed since it began: it delays the next tick. The call is neither
+// cut nor repeated; its own deadline, if any, is a separate matter.
+func (l *periodicScheduler) watchOverrun(finished <-chan struct{}) {
+	timer := time.NewTimer(l.config.Interval)
 	defer timer.Stop()
 	select {
 	case <-finished:

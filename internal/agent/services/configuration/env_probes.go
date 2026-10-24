@@ -49,7 +49,7 @@ func SetProbeTypeLookup(known func(probeType string) bool) { probeTypeLookup = k
 // parameter; PARAMS__<KEY> reaches a parameter that bears the same name.
 var probeLevelFields = map[string]bool{
 	"type": true, "enabled": true, "log_strategies": true,
-	"custom_tags": true, "governance": true,
+	"custom_tags": true, "governance": true, "collect_timeout": true,
 }
 
 type envSetting struct {
@@ -313,7 +313,7 @@ func mergeEnvProbe(data *LocalConfigurationData, g envProbe, log *logger.ModuleL
 }
 
 // applyProbeLevel sets the fields of the probe entry that sit beside
-// params: enabled, log_strategies, custom_tags, governance.
+// params: enabled, log_strategies, custom_tags, governance, collect_timeout.
 func applyProbeLevel(p *ProbeConfig, governance *map[string]interface{}, s envSetting, seen map[string]string) error {
 	key := strings.Join(s.segments, ".")
 	if prev, dup := seen[key]; dup {
@@ -331,6 +331,11 @@ func applyProbeLevel(p *ProbeConfig, governance *map[string]interface{}, s envSe
 			return fmt.Errorf("%s: %w", s.variable, err)
 		}
 		p.Enabled = &b
+	case "collect_timeout":
+		if len(s.segments) > 1 {
+			return fmt.Errorf("%s: collect_timeout is a single value", s.variable)
+		}
+		p.CollectTimeout = s.value
 	case "log_strategies":
 		if len(s.segments) > 1 {
 			return fmt.Errorf("%s: log_strategies is a single list", s.variable)
