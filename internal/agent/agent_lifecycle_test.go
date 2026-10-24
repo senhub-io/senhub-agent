@@ -257,31 +257,23 @@ func TestServiceSetIncludesUpdaterOnlyWhenEnabled(t *testing.T) {
 // TestProbesStartAfterEveryOtherService pins that the probe pool comes
 // last. Start brings the services up one after the other, so whatever
 // follows the sensor waits for every probe to start: a probe slow to
-// start then kept the extensions, remote management among them, from
-// connecting at all.
+// start then kept the updater from running at all.
 func TestProbesStartAfterEveryOtherService(t *testing.T) {
 	a := agent{
-		logger:     noopLogger(),
-		store:      stubStore{},
-		sensors:    stubSensor{},
-		updater:    stubUpdater{},
-		extensions: []Service{stubExtension{}},
+		logger:  noopLogger(),
+		store:   stubStore{},
+		sensors: stubSensor{},
+		updater: stubUpdater{},
 	}
 
 	set := a.services()
 	if last := set[len(set)-1]; last.GetName() != "Sensor" {
 		t.Errorf("last service is %q, want Sensor", last.GetName())
 	}
-	if set[len(set)-2].GetName() != "Extension" {
-		t.Errorf("service before the sensor is %q, want the extension", set[len(set)-2].GetName())
+	if set[len(set)-2].GetName() != "AutoUpdate" {
+		t.Errorf("service before the sensor is %q, want AutoUpdate", set[len(set)-2].GetName())
 	}
 }
-
-type stubExtension struct{}
-
-func (stubExtension) GetName() string                { return "Extension" }
-func (stubExtension) Start(context.Context) error    { return nil }
-func (stubExtension) Shutdown(context.Context) error { return nil }
 
 // TestStopBudgetIsTheSumOfTheServices pins what app/cli.go relies on to
 // size the process-wide stop deadline: services stop in turn, so the

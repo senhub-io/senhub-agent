@@ -202,8 +202,8 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 // stop before the consumer (data store) and the configuration provider
 // outlives everything that reads it. The probes come last: a probe whose
 // start is slow must not keep the status channel, the entity detector,
-// the updater or an extension (remote management among them) from
-// running, and those keep reporting while the probes stop.
+// or the updater from running, and those keep reporting while the
+// probes stop.
 func (a agent) services() []Service {
 	servicesToStart := []Service{
 		a.localConfiguration,
