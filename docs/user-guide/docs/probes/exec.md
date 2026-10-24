@@ -53,6 +53,8 @@ output contracts are supported:
 `env` entries are added on top of the agent's own environment, which the
 program inherits.
 
+A command still running when the agent stops is ended the same way as on a timeout, with all its children (a job object on Windows).
+
 ## Nagios contract
 
 ```

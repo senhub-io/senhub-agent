@@ -24,6 +24,16 @@ func killProcessGroup(cmd *exec.Cmd) error {
 	return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 }
 
+// procTree tracks one run's process tree. On Unix the process group
+// is enough, so there is nothing to attach.
+type procTree struct{}
+
+func (t *procTree) attach(cmd *exec.Cmd) error { return nil }
+
+func (t *procTree) kill(cmd *exec.Cmd) error { return killProcessGroup(cmd) }
+
+func (t *procTree) close() {}
+
 // checkExecutable refuses targets anyone on the host could rewrite:
 // the probe runs as the agent user (root on Linux), so a
 // world-writable script is a privilege escalation handed to every
