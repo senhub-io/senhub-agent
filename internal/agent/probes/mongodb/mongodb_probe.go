@@ -24,6 +24,7 @@ import (
 	mongooptions "go.mongodb.org/mongo-driver/mongo/options"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/subcollect"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -65,6 +66,11 @@ type mongoDBProbe struct {
 
 	// entitySrc feeds the Toise topology inventory (db entity).
 	entitySrc *mongodbEntitySource
+
+	failures subcollect.Tracker
+
+	// serverStatusFn replaces the serverStatus command in tests.
+	serverStatusFn func() (bson.M, error)
 }
 
 // NewMongoDBProbe builds a mongodb probe from its raw params block.
@@ -166,8 +172,9 @@ func (p *mongoDBProbe) CollectContext(ctx context.Context) ([]data_store.DataPoi
 		up = 0
 		checkErr = err
 		p.entitySrc.setReachable(false, "")
-		p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("MongoDB serverStatus failed")
+		p.failures.Failed(p.moduleLogger, subcollect.Warn, "serverStatus", err, "MongoDB serverStatus failed")
 	} else {
+		p.failures.Succeeded(p.moduleLogger, "serverStatus", "MongoDB serverStatus recovered")
 		version, _ := status["version"].(string)
 		// Resolve the db entity identity on the first successful collect:
 		//  - if already pinned (instance_name or prior replSetGetStatus), skip.
@@ -179,8 +186,9 @@ func (p *mongoDBProbe) CollectContext(ctx context.Context) ([]data_store.DataPoi
 
 		dbPoints, dbErr := p.collectDatabaseStats(ctx, now)
 		if dbErr != nil {
-			p.moduleLogger.Warn().Err(dbErr).Msg("MongoDB dbStats collection failed")
+			p.failures.Failed(p.moduleLogger, subcollect.Warn, "dbStats", dbErr, "MongoDB dbStats collection failed")
 		} else {
+			p.failures.Succeeded(p.moduleLogger, "dbStats", "MongoDB dbStats collection recovered")
 			points = append(points, dbPoints...)
 		}
 	}
@@ -294,6 +302,9 @@ func isNotReplicaSetError(err error) bool {
 // ─────────────────────────────────────────────────────────────────────────────
 
 func (p *mongoDBProbe) runServerStatus(ctx context.Context) (bson.M, error) {
+	if p.serverStatusFn != nil {
+		return p.serverStatusFn()
+	}
 	ctx, cancel := context.WithTimeout(ctx, p.cfg.Timeout)
 	defer cancel()
 
@@ -485,9 +496,10 @@ func (p *mongoDBProbe) collectDatabaseStats(ctx context.Context, now time.Time) 
 
 		dbPts, err := p.runDBStats(ctx, dbName, now)
 		if err != nil {
-			p.moduleLogger.Warn().Err(err).Str("database", dbName).Msg("dbStats failed")
+			p.failures.Failed(p.moduleLogger, subcollect.Warn, "dbStats/"+dbName, err, "dbStats failed")
 			continue
 		}
+		p.failures.Succeeded(p.moduleLogger, "dbStats/"+dbName, "dbStats recovered")
 		pts = append(pts, dbPts...)
 	}
 	return pts, nil

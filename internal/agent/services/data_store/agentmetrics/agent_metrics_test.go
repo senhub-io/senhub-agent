@@ -18,10 +18,7 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	// collect.errors is emitted only once an error has occurred (per-label,
 	// emitted-when-touched), so keep the global counter clean for this
 	// always-on-core-metrics count.
-	agentstate.ResetCollectErrorsForTest()
-	t.Cleanup(agentstate.ResetCollectErrorsForTest)
-	agentstate.ResetOTLPExportErrorsBySignalForTest()
-	t.Cleanup(agentstate.ResetOTLPExportErrorsBySignalForTest)
+	resetTouchedCountersForTest(t)
 
 	recs := BuildAgentRecords(snap)
 	// 33 records when neither build info nor http_requests is set and no
@@ -394,5 +391,60 @@ func TestOTLPReceiverCoverageDoesNotClaimTheSendersServiceName(t *testing.T) {
 	}
 	if !seen {
 		t.Fatal("no coverage counter built")
+	}
+}
+
+// resetTouchedCountersForTest clears every emitted-when-touched counter
+// so a test counting records does not depend on which tests ran first.
+func resetTouchedCountersForTest(t *testing.T) {
+	t.Helper()
+	resets := []func(){
+		agentstate.ResetCollectErrorsForTest,
+		agentstate.ResetOTLPExportErrorsBySignalForTest,
+		agentstate.ResetOTLPCountersForTest,
+		agentstate.ResetExportSendFailedForTest,
+		agentstate.ResetExportRejectedForTest,
+		agentstate.ResetHTTPCacheDroppedForTest,
+		agentstate.ResetLicenseInvalidForTest,
+		agentstate.ResetPushBufferDroppedForTest,
+		agentstate.ResetStrategyFailuresForTest,
+		agentstate.ResetUpdateRejectedForTest,
+		agentstate.ResetOTLPReceiverCountersForTest,
+		agentstate.ResetOTLPReceiverCoverageForTest,
+	}
+	for _, reset := range resets {
+		reset()
+		t.Cleanup(reset)
+	}
+}
+
+func TestBuildAgentRecords_LogsRedactedEmittedPerProbeAndRule(t *testing.T) {
+	agentstate.ResetLogRedactionForTest()
+	t.Cleanup(agentstate.ResetLogRedactionForTest)
+
+	snap := AgentMetricsSnapshot{StartTime: time.Now()}
+	for _, r := range BuildAgentRecords(snap) {
+		if r.Name == "senhub.agent.logs.redacted" {
+			t.Fatalf("logs.redacted should not be emitted before anything was masked")
+		}
+	}
+
+	agentstate.PublishLog(agentstate.LogRecord{Body: "GET /x?passhash=1&token=2", ProducerProbeName: "web-a"})
+	agentstate.PublishLog(agentstate.LogRecord{Body: "password: p", ProducerProbeName: "web-b"})
+
+	seen := map[string]float64{}
+	var unit, typ string
+	for _, r := range BuildAgentRecords(snap) {
+		if r.Name != "senhub.agent.logs.redacted" {
+			continue
+		}
+		seen[r.Attributes["probe"]+"/"+r.Attributes["rule"]] = r.Value
+		unit, typ = r.Unit, r.Type
+	}
+	if seen["web-a/credential_param"] != 2 || seen["web-b/credential_param"] != 1 || len(seen) != 2 {
+		t.Errorf("series = %v, want web-a=2 and web-b=1 on credential_param", seen)
+	}
+	if unit != "{occurrence}" || typ != "counter" {
+		t.Errorf("unit/type: got %q/%q, want {occurrence}/counter", unit, typ)
 	}
 }

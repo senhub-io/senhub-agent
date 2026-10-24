@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/subcollect"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -63,6 +64,7 @@ type NTPProbe struct {
 	moduleLogger *logger.ModuleLogger
 	query        queryFunc
 	entitySrc    *ntpEntitySource
+	failures     subcollect.Tracker
 }
 
 // NewNTPProbe constructs the probe. Config errors surface here.
@@ -262,10 +264,9 @@ func (p *NTPProbe) buildDatapoints(res serverResult, ts time.Time) []data_store.
 	up := float64(1)
 	if res.err != nil {
 		up = 0
-		p.moduleLogger.Warn().
-			Err(res.err).
-			Str("server", res.server).
-			Msg("ntp measurement failed")
+		p.failures.Failed(p.moduleLogger, subcollect.Warn, res.server, res.err, "ntp measurement failed")
+	} else {
+		p.failures.Succeeded(p.moduleLogger, res.server, "ntp measurement recovered")
 	}
 
 	points := []data_store.DataPoint{

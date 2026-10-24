@@ -1,11 +1,15 @@
 package smart
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/rs/zerolog"
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/probes/types"
@@ -425,5 +429,66 @@ func TestSmartPublishesFoundAndReadableCounts(t *testing.T) {
 	}
 	if got["senhub.smart.devices.readable"] != 1 {
 		t.Errorf("devices.readable = %v, want 1", got["senhub.smart.devices.readable"])
+	}
+}
+
+func TestFailingDeviceWarnsOncePerOutage(t *testing.T) {
+	deviceMap := map[string][]byte{"/dev/sda": []byte(syntheticATADevice)}
+	p := newTestSmartProbe(
+		smartConfig{
+			Devices:        []string{"/dev/sda", "/dev/sdb"},
+			Interval:       300 * time.Second,
+			ExcludeDevices: map[string]bool{},
+		},
+		nil, deviceMap,
+	)
+	var buf bytes.Buffer
+	base := zerolog.New(&buf).Level(zerolog.DebugLevel)
+	p.moduleLogger = logger.NewModuleLogger(&base, "probe.smart")
+
+	sdbDown := true
+	p.execDevice = func(_ context.Context, _ string, _ bool, device string) ([]byte, error) {
+		if device == "/dev/sdb" && sdbDown {
+			return nil, errors.New("input/output error")
+		}
+		if device == "/dev/sdb" {
+			return []byte(syntheticATADevice), nil
+		}
+		return deviceMap[device], nil
+	}
+
+	for i := 0; i < 10; i++ {
+		if _, err := p.Collect(); err != nil {
+			t.Fatalf("Collect: %v", err)
+		}
+	}
+	sdbDown = false
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	if got := strings.Count(buf.String(), `"level":"warn"`); got != 1 {
+		t.Errorf("%d warnings over 10 failed cycles, want 1\n%s", got, buf.String())
+	}
+	if got := strings.Count(buf.String(), `"level":"info"`); got != 1 {
+		t.Errorf("%d recovery lines, want 1\n%s", got, buf.String())
+	}
+}
+
+func TestUnreadableDevicesWarnOncePerOutage(t *testing.T) {
+	var buf bytes.Buffer
+	base := zerolog.New(&buf).Level(zerolog.DebugLevel)
+	p := &smartProbe{BaseProbe: &types.BaseProbe{}, moduleLogger: logger.NewModuleLogger(&base, "probe.smart")}
+
+	for i := 0; i < 10; i++ {
+		p.statePoints(2, 0, nil, time.Now())
+	}
+	p.statePoints(2, 2, nil, time.Now())
+
+	if got := strings.Count(buf.String(), `"level":"warn"`); got != 1 {
+		t.Errorf("%d warnings over 10 unreadable cycles, want 1\n%s", got, buf.String())
+	}
+	if got := strings.Count(buf.String(), `"level":"info"`); got != 1 {
+		t.Errorf("%d recovery lines, want 1\n%s", got, buf.String())
 	}
 }

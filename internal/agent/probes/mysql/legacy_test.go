@@ -305,6 +305,17 @@ func TestReplicaThreadStateReadsShowReplicaStatus(t *testing.T) {
 	}
 }
 
+func TestReplicaThreadStateReadsReplicaColumnNames(t *testing.T) {
+	ioOK, sqlOK, lag := replicaThreadState(map[string]string{
+		"Replica_IO_Running":    "Yes",
+		"Replica_SQL_Running":   "Yes",
+		"Seconds_Behind_Source": "7",
+	})
+	if ioOK != 1 || sqlOK != 1 || lag != 7 {
+		t.Errorf("got io=%v sql=%v lag=%v, want 1 1 7", ioOK, sqlOK, lag)
+	}
+}
+
 // TestMaxReplicationLagIsConfigurable pins the parameter itself: the
 // threshold is the operator's, and the default is the value the
 // postgresql probe has always used.

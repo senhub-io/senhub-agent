@@ -112,7 +112,7 @@ func NewICMPCheckProbe(config map[string]interface{}, baseLogger *logger.Logger)
 // say. Windows has no unprivileged ICMP datagram sockets. On Linux,
 // datagram ICMP is gated by net.ipv4.ping_group_range, which stock
 // Ubuntu/Debian servers ship DISABLED ("1 0") — even root gets
-// permission denied on SOCK_DGRAM ICMP (#357, found on sha901). Root
+// permission denied on SOCK_DGRAM ICMP (#357, found on an internal host). Root
 // installs (`install --user root`) therefore get privileged raw
 // sockets, the mode that just works. Under the default hardened unit
 // (#223, #280) the daemon is non-root and stays in unprivileged mode;

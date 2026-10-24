@@ -33,6 +33,7 @@ import (
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
 
+	"senhub-agent.go/internal/agent/probes/subcollect"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -77,6 +78,7 @@ type PromScrapeProbe struct {
 	scrape       scrapeFunc
 	client       *http.Client
 	metricRe     *regexp.Regexp
+	failures     subcollect.Tracker
 }
 
 type scrapeConfig struct {
@@ -269,10 +271,9 @@ func (p *PromScrapeProbe) buildDatapoints(res scrapeResult, ts time.Time) []data
 	up := float64(1)
 	if res.err != nil {
 		up = 0
-		p.moduleLogger.Warn().
-			Err(res.err).
-			Str("target", res.target).
-			Msg("prometheus_scrape target failed")
+		p.failures.Failed(p.moduleLogger, subcollect.Warn, res.target, res.err, "prometheus_scrape target failed")
+	} else {
+		p.failures.Succeeded(p.moduleLogger, res.target, "prometheus_scrape target recovered")
 	}
 
 	points := []data_store.DataPoint{

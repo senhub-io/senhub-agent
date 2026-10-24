@@ -658,6 +658,7 @@ func checkConfig(configPath string) checkOutcome {
 	}
 
 	errorCount += reportAgentGovernanceProblems(config.Governance)
+	errorCount += reportLogsProblems(config.Logs)
 
 	errorCount, warnings = reportNagiosFile(configPath, errorCount, warnings)
 
@@ -932,6 +933,16 @@ func reportGovernanceProblems(p configuration.ProbeConfig) (errors int) {
 	}
 	if _, err := p.ParseGovernance(); err != nil {
 		fmt.Printf("         [ERROR] Probe %q: governance: %v\n", p.Name, err)
+		errors++
+	}
+	return errors
+}
+
+// reportLogsProblems checks the `logs:` block: a masking rule whose
+// name or pattern cannot be used is an error naming the rule.
+func reportLogsProblems(c *configuration.LogsConfig) (errors int) {
+	for _, err := range configuration.ValidateLogsConfig(c) {
+		fmt.Printf("  [ERROR] Logs: %v\n", err)
 		errors++
 	}
 	return errors

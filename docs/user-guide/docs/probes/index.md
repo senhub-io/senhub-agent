@@ -630,6 +630,27 @@ Each probe targets one class of system and turns its state into typed metrics an
     <span class="probe-desc">Execution verdict, duration and output of each job run</span>
   </a>
 
+  <a href="azure_monitor/" class="probe-card" data-family="cloud" data-tier="pro">
+    <img class="probe-logo probe-logo-si" src="../assets/probe-logos/azure_monitor.svg" alt="" loading="lazy">
+    <span class="probe-name">Azure Monitor</span>
+    <span class="probe-tier-badge pro">Pro</span>
+    <span class="probe-desc">Platform metrics of every resource a subscription holds, found through Resource Graph</span>
+  </a>
+
+  <a href="azure_log_query/" class="probe-card" data-family="cloud" data-tier="pro">
+    <img class="probe-logo probe-logo-si" src="../assets/probe-logos/azure_log_query.svg" alt="" loading="lazy">
+    <span class="probe-name">Azure Log Query</span>
+    <span class="probe-tier-badge pro">Pro</span>
+    <span class="probe-desc">One KQL query on a Log Analytics workspace, each row a metric</span>
+  </a>
+
+  <a href="entra_id/" class="probe-card" data-family="cloud" data-tier="pro">
+    <img class="probe-logo probe-logo-si" src="../assets/probe-logos/azure_container_apps.svg" alt="" loading="lazy">
+    <span class="probe-name">Microsoft Entra ID</span>
+    <span class="probe-tier-badge pro">Pro</span>
+    <span class="probe-desc">Credential expiry, directory sync, users, licences and security posture of a tenant</span>
+  </a>
+
 </div>
 
 <p class="catalog-empty" id="catalog-empty" style="display:none">No probes match your search.</p>

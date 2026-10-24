@@ -1,10 +1,5 @@
 [
   {
-    "channel": "SNMP tinstance Check Result",
-    "value": 53.5,
-    "valuelookup": "senhub.probe.check.result"
-  },
-  {
     "channel": "SNMP tinstance Discovered Devices",
     "value": 76.5,
     "float": 1,

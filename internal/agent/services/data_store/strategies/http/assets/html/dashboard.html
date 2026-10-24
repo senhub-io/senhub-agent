@@ -16,7 +16,13 @@
         .kv dd .btn { vertical-align: middle; margin-left: 6px; }
         .card .loading { color: var(--muted); font-size: var(--fs-sm); padding: var(--s2) 0; }
         .card .empty-line { color: var(--muted); font-size: var(--fs-sm); padding: var(--s2) 0; }
-        .tbl td .reason { color: var(--err); font-family: inherit; font-size: var(--fs-xs); white-space: normal; }
+        .tbl td.name { min-width: 120px; overflow-wrap: normal; word-break: normal; }
+        .tbl td.name a { color: inherit; }
+        .tbl td.name a:hover { color: var(--accent-ink); }
+        .series-card { grid-column: 1 / -1; }
+        .series-card .kv, .series-card .tbl { max-width: 560px; }
+        .tbl tr.go, .orow.go { cursor: pointer; }
+        .orow.go:hover { background: var(--well); }
         .orow .d .bad { color: var(--err); }
         .orow .d .warn { color: var(--warn); }
         #agent-watch { margin-top: var(--s3); font-size: var(--fs-xs); color: var(--warn); }
@@ -60,7 +66,7 @@
             <div class="steps" id="gs-steps"></div>
         </div>
 
-        <div class="grid g2 mb4">
+        <div class="grid g2 mb4 ov-top">
             <div class="card">
                 <div class="card-h">
                     <h2>Probes <span class="count" id="probes-count"></span></h2>
@@ -97,6 +103,11 @@
             <div class="card">
                 <div class="card-h"><h2>Recent events</h2><span class="count small" id="events-count"></span></div>
                 <div class="events" id="events-body"><div class="loading">Loading events...</div></div>
+            </div>
+
+            <div class="card series-card">
+                <div class="card-h"><h2>Series exported</h2><span id="series-pill"></span></div>
+                <div id="series-body"><div class="loading">Loading series...</div></div>
             </div>
         </div>
 

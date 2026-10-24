@@ -231,19 +231,6 @@ func (p *MemcachedProbe) buildDataPoints(stats map[string]string, now time.Time,
 		})
 	}
 
-	addCounterFloat := func(name, statKey, metricType string) {
-		val, ok := parseFloat(stats, statKey)
-		if !ok {
-			return
-		}
-		points = append(points, data_store.DataPoint{
-			Name:      name,
-			Value:     float64(val),
-			Timestamp: now,
-			Tags:      append(commonTags, tags.Tag{Key: "metric_type", Value: metricType}),
-		})
-	}
-
 	addTagged := func(name, statKey, metricType, tagKey, tagVal string) {
 		val, ok := parseInt(stats, statKey)
 		if !ok {
@@ -314,9 +301,6 @@ func (p *MemcachedProbe) buildDataPoints(stats map[string]string, now time.Time,
 	// CPU — discriminated by "state"
 	addTaggedFloat("memcached.cpu.usage", "rusage_user", "cpu", "state", "user")
 	addTaggedFloat("memcached.cpu.usage", "rusage_system", "cpu", "state", "system")
-
-	// Suppress unused warnings — addCounterFloat is an alias
-	_ = addCounterFloat
 
 	return points
 }

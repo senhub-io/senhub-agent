@@ -10,6 +10,7 @@ package solr
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -281,7 +282,8 @@ func checkResultValue(err error) float64 {
 	if err == nil {
 		return float64(dbcommon.CheckOK)
 	}
-	if httpErr, ok := err.(*solrHTTPError); ok {
+	var httpErr *solrHTTPError
+	if errors.As(err, &httpErr) {
 		return float64(dbcommon.ClassifyHTTPStatus(httpErr.code))
 	}
 	return float64(dbcommon.ClassifyError(err))

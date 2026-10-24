@@ -241,7 +241,7 @@ func TestCollect_NoCorrelationTagsBeforeSweep(t *testing.T) {
 }
 
 // TestCollect_UpReflectsAnswers pins the reachability fix found during
-// the v3 runtime validation on sha901: UDP connect cannot fail for an
+// the v3 runtime validation on an internal host: UDP connect cannot fail for an
 // unreachable or auth-failing device, so up must be judged on actual
 // responses. With every request erroring, answered must be false.
 func TestCollect_UpReflectsAnswers(t *testing.T) {

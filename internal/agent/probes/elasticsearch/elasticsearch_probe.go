@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/subcollect"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -32,6 +33,7 @@ type elasticsearchProbe struct {
 	client       *http.Client
 	// entitySrc feeds the Toise topology inventory (search.engine entity).
 	entitySrc *elasticsearchEntitySource
+	failures  subcollect.Tracker
 }
 
 type esConfig struct {
@@ -165,7 +167,7 @@ func (p *elasticsearchProbe) CollectContext(ctx context.Context) ([]data_store.D
 		return nil, fmt.Errorf("elasticsearch collection interrupted: %w", ctx.Err())
 	}
 	if err != nil {
-		p.moduleLogger.Warn().Err(err).Msg("elasticsearch cluster health fetch failed")
+		p.failures.Failed(p.moduleLogger, subcollect.Warn, "cluster_health", err, "elasticsearch cluster health fetch failed")
 		p.entitySrc.setReachable(false)
 		upTags := p.tagsWithMetricType("status")
 		points = append(points,
@@ -174,6 +176,8 @@ func (p *elasticsearchProbe) CollectContext(ctx context.Context) ([]data_store.D
 		)
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
+
+	p.failures.Succeeded(p.moduleLogger, "cluster_health", "elasticsearch cluster health fetch recovered")
 
 	// Pin the stable cluster id on first successful reach.  The entity source
 	// suppresses the db entity until this is called at least once.
@@ -192,11 +196,12 @@ func (p *elasticsearchProbe) CollectContext(ctx context.Context) ([]data_store.D
 		return nil, fmt.Errorf("elasticsearch collection interrupted: %w", ctx.Err())
 	}
 	if err != nil {
-		p.moduleLogger.Warn().Err(err).Msg("elasticsearch node stats fetch failed")
+		p.failures.Failed(p.moduleLogger, subcollect.Warn, "node_stats", err, "elasticsearch node stats fetch failed")
 		// Return what we have (cluster health is available).
 		points = append(points, p.checkResultPoint(now, err, upTags))
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
+	p.failures.Succeeded(p.moduleLogger, "node_stats", "elasticsearch node stats fetch recovered")
 	points = append(points, p.buildNodeStatsPoints(nodeStats, now)...)
 	points = append(points, p.checkResultPoint(now, nil, upTags))
 

@@ -403,7 +403,7 @@ func (p *ZookeeperProbe) upPoint(v float64, ts time.Time) data_store.DataPoint {
 }
 
 func parseFloat(s string) (float64, error) {
-	v, err := strconv.ParseFloat(strings.TrimSpace(s), 32)
+	v, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
 	if err != nil {
 		return 0, err
 	}

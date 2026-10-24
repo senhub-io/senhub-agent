@@ -44,7 +44,7 @@ func collectARP(client snmpClient) ([]arpEntry, error) {
 	primary, pErr := client.WalkRaw(ipNetToPhysicalEntry)
 	legacy, lErr := client.WalkRaw(ipNetToMediaEntry)
 	if pErr != nil && lErr != nil {
-		return nil, fmt.Errorf("ARP walks: primary %w; legacy %v", pErr, lErr)
+		return nil, fmt.Errorf("ARP walks: primary %w; legacy %w", pErr, lErr)
 	}
 	return parseARPTables(primary, legacy), nil
 }

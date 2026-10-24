@@ -328,7 +328,16 @@ A rule applies to relayed spans whose resource attribute `key` equals
 
 Entity events (the infrastructure graph: hosts, interfaces, services and
 their relationships) ride the OTLP **log** signal, so this signal has no
-endpoint or batch knobs of its own — it reuses the log transport.
+endpoint or batch knobs of its own — it reuses the log transport. What the
+agent reports, what is off by default and how a consumer reads a deletion
+are on the [Topology](topology.md) page.
+
+Because they are log records, a collector that forwards every log record
+to a log store stores the entity events too, where they have no message
+and inflate the volume. Split them on their event name in the collector,
+as shown in [OpenTelemetry Collector](#opentelemetry-collector-recommended):
+`entity.state` and `entity.delete` go to the topology backend, every other
+record to the log store.
 
 When `entities.enabled` is off, the output logs one warning at start,
 `entity emission is off on this OTLP output`, so an empty topology can be
@@ -666,8 +675,9 @@ to work in agents where the operator has not enabled OTLP.
 
 ### OpenTelemetry Collector (recommended)
 
-A minimal collector that accepts OTLP/gRPC and forwards to
-VictoriaMetrics + VictoriaLogs:
+A minimal collector that accepts OTLP/gRPC and forwards metrics to
+VictoriaMetrics, log records to VictoriaLogs and entity events to a
+topology backend:
 
 ```yaml
 receivers:
@@ -675,6 +685,22 @@ receivers:
     protocols:
       grpc:
         endpoint: "0.0.0.0:4317"
+
+processors:
+  # Entity events are log records whose event name is entity.state or
+  # entity.delete (the OpenTelemetry entity-events convention). Split on
+  # the event name, not on the instrumentation scope: the scope carries
+  # the discovery method and varies.
+  filter/entities_only:
+    error_mode: ignore
+    logs:
+      log_record:
+        - 'event_name != "entity.state" and event_name != "entity.delete"'
+  filter/entities_excluded:
+    error_mode: ignore
+    logs:
+      log_record:
+        - 'event_name == "entity.state" or event_name == "entity.delete"'
 
 exporters:
   prometheusremotewrite:
@@ -685,6 +711,9 @@ exporters:
   otlphttp/logs:
     logs_endpoint: "http://victorialogs.internal:9428/insert/opentelemetry/v1/logs"
 
+  otlphttp/topology:
+    logs_endpoint: "http://topology.internal:4318/v1/logs"
+
 service:
   pipelines:
     metrics:
@@ -692,8 +721,19 @@ service:
       exporters: [prometheusremotewrite]
     logs:
       receivers: [otlp]
+      processors: [filter/entities_excluded]
       exporters: [otlphttp/logs]
+    logs/entities:
+      receivers: [otlp]
+      processors: [filter/entities_only]
+      exporters: [otlphttp/topology]
 ```
+
+The `filter` processor drops what its condition matches, so each pipeline
+keeps the other half. The `event_name` path needs a recent
+`opentelemetry-collector-contrib`; this configuration runs on 0.158.0.
+Without the split, every entity event is also stored in VictoriaLogs,
+with no message (`missing _msg field`).
 
 `resource_to_telemetry_conversion: enabled: true` ensures the OTel
 resource attributes (service.name, service.instance.id, etc.) become

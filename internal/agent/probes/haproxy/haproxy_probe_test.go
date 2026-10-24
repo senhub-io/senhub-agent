@@ -1,12 +1,16 @@
 package haproxy
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/rs/zerolog"
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/probes/types"
@@ -232,5 +236,103 @@ func TestFetchCSV_HTMLPageNamesTheCSVForm(t *testing.T) {
 	_, err := probe.fetchCSV(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "/stats;csv") {
 		t.Errorf("error = %v, want it to point at the ;csv form", err)
+	}
+}
+
+func TestDownTargetWarnsOncePerOutage(t *testing.T) {
+	var down atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if down.Load() {
+			http.Error(w, "down", http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte(sampleCSV))
+	}))
+	defer srv.Close()
+	p := makeTestProbe(srv.URL)
+
+	var buf bytes.Buffer
+	base := zerolog.New(&buf).Level(zerolog.DebugLevel)
+	p.moduleLogger = logger.NewModuleLogger(&base, "probe.test")
+
+	down.Store(true)
+	for i := 0; i < 10; i++ {
+		points, err := p.Collect()
+		if err != nil {
+			t.Fatalf("Collect must not return an error for a down target, got: %v", err)
+		}
+		if got := metricOrMissing(points, "senhub.haproxy.up"); got != 0 {
+			t.Fatalf("%s = %v while the target is down, want 0", "senhub.haproxy.up", got)
+		}
+	}
+	down.Store(false)
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	if got := strings.Count(buf.String(), `"level":"warn"`); got != 1 {
+		t.Errorf("%d warnings over 10 failed cycles, want 1\n%s", got, buf.String())
+	}
+	if got := strings.Count(buf.String(), `"level":"info"`); got != 1 {
+		t.Errorf("%d recovery lines, want 1\n%s", got, buf.String())
+	}
+}
+
+func metricOrMissing(points []data_store.DataPoint, name string) float64 {
+	if v := findMetricValue(points, name); v != nil {
+		return *v
+	}
+	return -1
+}
+
+// HAProxy documents econ and eresp as [..BS]: a frontend row has no value for
+// them and the CSV leaves the cell empty. Emitting 0 there reports "no
+// connection errors" for a measurement that does not exist.
+func TestBuildDatapoints_EmptyCellsAreNotZero(t *testing.T) {
+	row := func(name, svname, rowType string, cells map[int]string) []string {
+		r := make([]string, colType+1)
+		r[colPxname], r[colSvname], r[colType] = name, svname, rowType
+		for i, v := range cells {
+			r[i] = v
+		}
+		return r
+	}
+	rows := [][]string{
+		row("fe", "FRONTEND", "0", map[int]string{colScur: "12", colStot: "40", colBin: "5000", colBout: "1024", colEreq: "5", colReqRate: "3"}),
+		row("be", "BACKEND", "1", map[int]string{colScur: "3", colStot: "20", colBin: "2000", colBout: "512", colEcon: "2", colEresp: "1"}),
+	}
+	points := (&haproxyProbe{}).buildDatapoints(rows, time.Time{})
+
+	byProxy := func(proxy, name string) *float64 {
+		for _, p := range points {
+			if p.Name != name {
+				continue
+			}
+			for _, tg := range p.Tags {
+				if tg.Key == "proxy" && tg.Value == proxy {
+					v := p.Value
+					return &v
+				}
+			}
+		}
+		return nil
+	}
+
+	for _, name := range []string{"haproxy.connections.errors", "haproxy.responses.errors"} {
+		if v := byProxy("fe", name); v != nil {
+			t.Errorf("%s emitted as %v for a frontend whose cell is empty", name, *v)
+		}
+	}
+	if v := byProxy("be", "haproxy.connections.errors"); v == nil || *v != 2 {
+		t.Errorf("backend haproxy.connections.errors = %v, want 2", v)
+	}
+	if v := byProxy("be", "haproxy.responses.errors"); v == nil || *v != 1 {
+		t.Errorf("backend haproxy.responses.errors = %v, want 1", v)
+	}
+	if v := byProxy("fe", "haproxy.requests.errors"); v == nil || *v != 5 {
+		t.Errorf("frontend haproxy.requests.errors = %v, want 5", v)
+	}
+	if v := byProxy("fe", "haproxy.requests.rate"); v == nil || *v != 3 {
+		t.Errorf("frontend haproxy.requests.rate = %v, want 3", v)
 	}
 }

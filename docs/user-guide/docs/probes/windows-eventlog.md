@@ -61,6 +61,16 @@ Each event becomes one OTel log record: channel, provider, EventID,
 level (mapped to OTel severity), task, keywords, the rendered
 message as the body, and the EventData fields as attributes.
 
+The body is the message Windows renders for the event, the one
+`Get-WinEvent` shows, built from the provider's message template. When the
+provider's message file is not installed on the host, the body falls back
+to `<provider> event <id>: key=value, ...` built from the event data, which
+is enough to triage.
+
+Event data comes from `EventData`, and also from `UserData`, the element
+many providers use instead. The direct children of the first `UserData`
+element become attributes; an `EventData` field of the same name wins.
+
 The machine name from the event XML is emitted as `winlog.computer`,
 the uppercase spelling Windows uses. The host a record belongs to is
 the FQDN on the resource — the same value the metrics carry — so the

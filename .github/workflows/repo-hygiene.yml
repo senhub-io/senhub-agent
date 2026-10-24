@@ -15,7 +15,7 @@ jobs:
   conflict-markers:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Refuse committed conflict markers
         # Only <<<<<<< / >>>>>>> are flagged: a bare ======= line is a
         # legitimate Markdown setext underline. Golden files excluded.
@@ -29,8 +29,8 @@ jobs:
   docs-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
       - name: Install MkDocs
@@ -40,3 +40,72 @@ jobs:
       - name: Build user guide (strict)
         run: mkdocs build --strict
         working-directory: docs/user-guide
+
+  commit-hygiene:
+    # Commit messages, the PR description and the tree carry no assistant
+    # attribution or assistant configuration files. The patterns are
+    # base64-encoded so that this file does not match them itself.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Refuse attribution lines and assistant files
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          MSG_PATTERN: KGNvLWF1dGhvcmVkLWJ5OltePF0qKGNsYXVkZXxhbnRocm9waWMpfG5vcmVwbHlAYW50aHJvcGljfGNsYXVkZS1zZXNzaW9uOnxnZW5lcmF0ZWQgd2l0aCBcWz9jbGF1ZGV8Y2xhdWRlXC5haS9jb2RlKQ==
+          PATH_PATTERN: KF58LykoXC5jbGF1ZGUvfGNsYXVkZShcLmxvY2FsKT9cLm1kJCk=
+        run: |
+          msg=$(printf '%s' "$MSG_PATTERN" | base64 -d)
+          pathre=$(printf '%s' "$PATH_PATTERN" | base64 -d)
+          fail=0
+          if git log --format='%H %B' "$BASE..$HEAD" | grep -iE "$msg"; then
+            echo '::error::A commit message carries an attribution line'; fail=1
+          fi
+          if printf '%s' "$PR_BODY" | grep -iE "$msg"; then
+            echo '::error::The PR description carries an attribution line'; fail=1
+          fi
+          if git ls-tree -r --name-only "$HEAD" | grep -iE "$pathre"; then
+            echo '::error::Assistant configuration files are tracked'; fail=1
+          fi
+          exit $fail
+
+  public-names:
+    # The public tree, the commit messages and the PR description name no
+    # customer, customer host or internal host. The list of names is the
+    # repository secret PUBLIC_DENYLIST (one extended regex): written here,
+    # it would publish the very names it keeps out. A pull request from a
+    # fork does not receive secrets, so the check says it was skipped there
+    # and the reviewer runs it.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Refuse customer and host names
+        env:
+          DENYLIST: ${{ secrets.PUBLIC_DENYLIST }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if [ -z "$DENYLIST" ]; then
+            echo '::warning::PUBLIC_DENYLIST is not available to this run (fork pull request?); the name check was skipped'
+            exit 0
+          fi
+          fail=0
+          # Only file names and line numbers are printed: the matched text
+          # is what must not appear in a public log.
+          if git grep -I -i -E -l -e "$DENYLIST" "$HEAD" -- . > hits.txt; then
+            sed 's/^[^:]*://' hits.txt
+            echo '::error::A tracked file names a customer or a host (files above)'; fail=1
+          fi
+          if git log --format='%h %B' "$BASE..$HEAD" | grep -i -E -q -e "$DENYLIST"; then
+            echo '::error::A commit message names a customer or a host'; fail=1
+          fi
+          if printf '%s' "$PR_BODY" | grep -i -E -q -e "$DENYLIST"; then
+            echo '::error::The PR description names a customer or a host'; fail=1
+          fi
+          exit $fail

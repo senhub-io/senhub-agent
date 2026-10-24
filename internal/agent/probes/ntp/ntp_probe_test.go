@@ -1,12 +1,16 @@
 package ntp
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/rs/zerolog"
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -244,5 +248,29 @@ func TestCollectTagsEverySeriesWithItsServer(t *testing.T) {
 	}
 	if len(offsets) != 2 {
 		t.Errorf("offset series carry %d distinct server tags, want 2", len(offsets))
+	}
+}
+
+func TestUnreachableServerWarnsOncePerOutage(t *testing.T) {
+	var buf bytes.Buffer
+	base := zerolog.New(&buf).Level(zerolog.DebugLevel)
+	p := newTestProbe(t, map[string]interface{}{"servers": []interface{}{"ntp.example.org"}, "samples": 1})
+	p.moduleLogger = logger.NewModuleLogger(&base, "probe.ntp")
+
+	p.query = func(context.Context, string, time.Duration) (sample, error) { return sample{}, errUnreachable }
+	for i := 0; i < 10; i++ {
+		points, _ := p.Collect()
+		if got := value(t, points, "senhub.ntp.up", ""); got != 0 {
+			t.Fatalf("senhub.ntp.up = %v while the server is down, want 0", got)
+		}
+	}
+	p.query = func(context.Context, string, time.Duration) (sample, error) { return sample{stratum: 2}, nil }
+	p.Collect()
+
+	if got := strings.Count(buf.String(), `"level":"warn"`); got != 1 {
+		t.Errorf("%d warnings over 10 failed cycles, want 1\n%s", got, buf.String())
+	}
+	if got := strings.Count(buf.String(), `"level":"info"`); got != 1 {
+		t.Errorf("%d recovery lines, want 1\n%s", got, buf.String())
 	}
 }

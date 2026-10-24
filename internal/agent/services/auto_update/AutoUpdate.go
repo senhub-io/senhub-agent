@@ -435,7 +435,11 @@ func (a *autoUpdate) doUpdate(downloadURL string) error {
 	if err != nil {
 		return fmt.Errorf("opening update archive as zip: %w", err)
 	}
-	defer zr.Close()
+	defer func() {
+		if cErr := zr.Close(); cErr != nil {
+			a.logger.Warn().Err(cErr).Str("archive", archivePath).Msg("Failed to close update archive")
+		}
+	}()
 
 	// The archive ships exactly one entry: the agent binary. On
 	// Windows it's named `senhub-agent.exe`; everywhere else

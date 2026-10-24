@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/subcollect"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -40,6 +41,7 @@ type NginxProbe struct {
 	moduleLogger *logger.ModuleLogger
 	client       *http.Client
 	entitySrc    *nginxEntitySource
+	failures     subcollect.Tracker
 }
 
 type nginxConfig struct {
@@ -172,7 +174,7 @@ func (p *NginxProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, fmt.Errorf("nginx collection interrupted: %w", ctxErr)
 		}
-		p.moduleLogger.Warn().Err(err).Str("endpoint", p.cfg.Endpoint).Msg("nginx stub_status unreachable")
+		p.failures.Failed(p.moduleLogger, subcollect.Warn, "stub_status", err, "nginx stub_status unreachable")
 		p.entitySrc.setReachable(false)
 		points := []data_store.DataPoint{
 			{Name: "senhub.nginx.up", Value: 0, Timestamp: now, Tags: upTags},
@@ -183,7 +185,7 @@ func (p *NginxProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint
 
 	stats, err := parseStubStatus(body)
 	if err != nil {
-		p.moduleLogger.Warn().Err(err).Msg("nginx stub_status parse error")
+		p.failures.Failed(p.moduleLogger, subcollect.Warn, "stub_status", err, "nginx stub_status parse error")
 		p.entitySrc.setReachable(false)
 		points := []data_store.DataPoint{
 			{Name: "senhub.nginx.up", Value: 0, Timestamp: now, Tags: upTags},
@@ -193,6 +195,7 @@ func (p *NginxProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint
 	}
 
 	p.entitySrc.setReachable(true)
+	p.failures.Succeeded(p.moduleLogger, "stub_status", "nginx stub_status recovered")
 
 	points := []data_store.DataPoint{
 		{Name: "senhub.nginx.up", Value: 1, Timestamp: now, Tags: upTags},

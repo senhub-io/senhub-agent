@@ -3,7 +3,6 @@
 package app
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"os"
@@ -87,13 +86,11 @@ func runRefreshUnit() {
 
 	if !*yes {
 		fmt.Print("Apply changes? [y/N] ")
-		scanner := bufio.NewScanner(os.Stdin)
-		if !scanner.Scan() {
-			fmt.Println("aborted")
-			return
+		ok, interactive := confirmFrom(os.Stdin, os.Stderr)
+		if !interactive {
+			os.Exit(cliexit.Failure)
 		}
-		answer := strings.TrimSpace(scanner.Text())
-		if answer != "y" && answer != "Y" {
+		if !ok {
 			fmt.Println("aborted")
 			return
 		}
@@ -109,13 +106,13 @@ func runRefreshUnit() {
 		os.Exit(cliexit.Failure)
 	}
 
-	if err := os.WriteFile(unitPath, []byte(refreshed), 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "writing unit file: %v\n", err)
-		os.Exit(cliexit.Failure)
-	}
-
-	if out, err := exec.Command("systemctl", "daemon-reload").CombinedOutput(); err != nil {
-		fmt.Fprintf(os.Stderr, "systemctl daemon-reload: %v (%s)\n", err, strings.TrimSpace(string(out)))
+	if err := writeRefreshedUnit(unitPath, refreshed, func() error {
+		if out, err := exec.Command("systemctl", "daemon-reload").CombinedOutput(); err != nil {
+			return fmt.Errorf("systemctl daemon-reload: %w (%s)", err, strings.TrimSpace(string(out)))
+		}
+		return nil
+	}); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(cliexit.Failure)
 	}
 

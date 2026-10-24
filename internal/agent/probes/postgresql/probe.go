@@ -11,6 +11,7 @@ package postgresql
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -322,13 +323,18 @@ func (p *pgProbe) collectBackends(ctx context.Context, now time.Time, instance s
 	for rows.Next() {
 		var state sql.NullString
 		var cnt float64
-		if err := rows.Scan(&state, &cnt); err == nil {
-			key := "unknown"
-			if state.Valid && state.String != "" {
-				key = state.String
-			}
-			counts[key] += cnt
+		if err := rows.Scan(&state, &cnt); err != nil {
+			p.moduleLogger.Warn().Err(err).Str("query", "backends").Msg("postgresql: row scan failed")
+			continue
 		}
+		key := "unknown"
+		if state.Valid && state.String != "" {
+			key = state.String
+		}
+		counts[key] += cnt
+	}
+	if err := rows.Err(); err != nil {
+		p.moduleLogger.Warn().Err(err).Str("query", "backends").Msg("postgresql: row iteration failed, backend counts may be partial")
 	}
 	_ = rows.Close()
 
@@ -345,7 +351,9 @@ func (p *pgProbe) collectBackends(ctx context.Context, now time.Time, instance s
 
 	// max_connections
 	var maxConn float64
-	if err := p.db.QueryRowContext(ctx, `SHOW max_connections`).Scan(&maxConn); err == nil {
+	if err := p.db.QueryRowContext(ctx, `SHOW max_connections`).Scan(&maxConn); err != nil {
+		p.moduleLogger.Warn().Err(err).Str("query", "max_connections").Msg("postgresql: query failed, connection limit and utilization skipped")
+	} else {
 		*points = append(*points, p.dp("postgresql.connection.max", maxConn, now, connTags))
 
 		// Connection utilization ratio
@@ -415,6 +423,8 @@ func (p *pgProbe) collectStorage(ctx context.Context, now time.Time, instance st
 	if err := p.db.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM pg_class WHERE relkind = 'r'`).Scan(&tableCount); err == nil {
 		*points = append(*points, p.dp("postgresql.table.count", float64(tableCount), now, stTags))
+	} else {
+		p.moduleLogger.Warn().Err(err).Str("query", "table_count").Msg("postgresql: query failed")
 	}
 }
 
@@ -427,6 +437,8 @@ func (p *pgProbe) collectLocks(ctx context.Context, now time.Time, instance stri
 	var waiting float64
 	if err := p.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pg_locks WHERE NOT granted`).Scan(&waiting); err == nil {
 		*points = append(*points, p.dp("senhub.db.postgresql.lock.waiting", float64(waiting), now, locksTags))
+	} else {
+		p.moduleLogger.Warn().Err(err).Str("query", "locks_waiting").Msg("postgresql: query failed")
 	}
 
 	// Oldest active transaction age
@@ -437,6 +449,8 @@ func (p *pgProbe) collectLocks(ctx context.Context, now time.Time, instance stri
 		WHERE state IN ('active', 'idle in transaction')
 		  AND xact_start IS NOT NULL`).Scan(&longestXact); err == nil && longestXact.Valid {
 		*points = append(*points, p.dp("senhub.db.postgresql.long_running_xact", float64(longestXact.Float64), now, locksTags))
+	} else if err != nil {
+		p.moduleLogger.Warn().Err(err).Str("query", "long_running_xact").Msg("postgresql: query failed")
 	}
 }
 
@@ -447,7 +461,9 @@ func (p *pgProbe) collectWAL(ctx context.Context, now time.Time, instance string
 
 	// Archiver stats (only meaningful when archive_mode is on)
 	var archiveMode string
-	_ = p.db.QueryRowContext(ctx, `SHOW archive_mode`).Scan(&archiveMode)
+	if err := p.db.QueryRowContext(ctx, `SHOW archive_mode`).Scan(&archiveMode); err != nil {
+		p.moduleLogger.Warn().Err(err).Str("query", "archive_mode").Msg("postgresql: query failed, archiver age skipped")
+	}
 
 	var failedCount float64
 	var lastArchivedAge sql.NullFloat64
@@ -466,6 +482,8 @@ func (p *pgProbe) collectWAL(ctx context.Context, now time.Time, instance string
 		if archiveMode != "off" && archiveMode != "" && lastArchivedAge.Valid {
 			*points = append(*points, p.dp("senhub.db.postgresql.archiver.last_archived.age", float64(lastArchivedAge.Float64), now, archTags))
 		}
+	} else {
+		p.moduleLogger.Warn().Err(err).Str("query", "pg_stat_archiver").Msg("postgresql: query failed")
 	}
 }
 
@@ -476,7 +494,13 @@ func (p *pgProbe) collectReplication(ctx context.Context, now time.Time, instanc
 
 	// Detect role: pg_is_in_recovery() → replica; connected replicas → primary
 	var isReplica bool
-	_ = p.db.QueryRowContext(ctx, `SELECT pg_is_in_recovery()`).Scan(&isReplica)
+	if err := p.db.QueryRowContext(ctx, `SELECT pg_is_in_recovery()`).Scan(&isReplica); err != nil {
+		// Without this answer a replica would be reported through the
+		// primary branch, so emit nothing and keep the last known role
+		// rather than assert one.
+		p.moduleLogger.Warn().Err(err).Str("query", "pg_is_in_recovery").Msg("postgresql: replication role unknown, replication metrics skipped")
+		return
+	}
 
 	var role dbcommon.Role
 	var replHealth float64 = 1
@@ -496,18 +520,24 @@ func (p *pgProbe) collectReplication(ctx context.Context, now time.Time, instanc
 			if p.cfg.MaxReplicationLag > 0 && replayLag.Float64 > p.cfg.MaxReplicationLag.Seconds() {
 				replHealth = 0
 			}
+		} else if err != nil {
+			p.moduleLogger.Warn().Err(err).Str("query", "replay_lag").Msg("postgresql: query failed")
 		}
 
 		// WAL receiver status
 		var walRecvStatus sql.NullString
-		_ = p.db.QueryRowContext(ctx, `SELECT status FROM pg_stat_wal_receiver LIMIT 1`).Scan(&walRecvStatus)
-		ioRunning := float64(0)
-		if walRecvStatus.Valid && walRecvStatus.String == "streaming" {
-			ioRunning = 1
+		recvErr := p.db.QueryRowContext(ctx, `SELECT status FROM pg_stat_wal_receiver LIMIT 1`).Scan(&walRecvStatus)
+		if recvErr != nil && !errors.Is(recvErr, sql.ErrNoRows) {
+			p.moduleLogger.Warn().Err(recvErr).Str("query", "pg_stat_wal_receiver").Msg("postgresql: query failed, replica io state skipped")
 		} else {
-			replHealth = 0
+			ioRunning := float64(0)
+			if walRecvStatus.Valid && walRecvStatus.String == "streaming" {
+				ioRunning = 1
+			} else {
+				replHealth = 0
+			}
+			*points = append(*points, p.dp("senhub.db.postgresql.replica.io.running", ioRunning, now, replTags))
 		}
-		*points = append(*points, p.dp("senhub.db.postgresql.replica.io.running", ioRunning, now, replTags))
 
 	} else {
 		// Count connected replicas
@@ -517,6 +547,8 @@ func (p *pgProbe) collectReplication(ctx context.Context, now time.Time, instanc
 				role = dbcommon.RolePrimary
 			}
 			*points = append(*points, p.dp("senhub.db.replication.replicas.connected", float64(replicaCount), now, replTags))
+		} else {
+			p.moduleLogger.Warn().Err(err).Str("query", "pg_stat_replication").Msg("postgresql: query failed")
 		}
 	}
 

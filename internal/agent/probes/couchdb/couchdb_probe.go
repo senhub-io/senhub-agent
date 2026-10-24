@@ -249,6 +249,8 @@ func (p *CouchDBProbe) CollectContext(ctx context.Context) ([]data_store.DataPoi
 	if root, err := p.fetchRoot(ctx); err == nil {
 		p.entitySrc.pinServerUUID(root.UUID)
 		p.entitySrc.updateVersion(root.Version)
+	} else {
+		p.moduleLogger.Debug().Err(err).Msg("couchdb: GET / failed, server uuid and version not refreshed")
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return nil, fmt.Errorf("couchdb collection interrupted: %w", ctxErr)
