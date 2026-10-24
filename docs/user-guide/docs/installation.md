@@ -550,6 +550,29 @@ sudo /usr/local/bin/senhub-agent start
 sudo /usr/local/bin/senhub-agent version
 ```
 
+#### Going back to an earlier version on Windows
+
+The MSI does not downgrade. Installing an older MSI over a newer one fails with code 1603 and "A newer version of SenHub Agent is already installed", and leaves the installed agent and `%ProgramData%\SenHub\` untouched. Two ways back exist.
+
+Uninstall, then install the older MSI. Uninstalling deletes `%ProgramData%\SenHub\`, the agent key and the sealed secret store included, so copy that folder first and restore it once the older version is installed:
+
+```powershell
+Stop-Service senhub-agent
+Copy-Item -Recurse C:\ProgramData\SenHub C:\SenHub-backup
+msiexec /x senhub-agent-<newer-version>-amd64.msi /qn
+msiexec /i senhub-agent-<older-version>-amd64.msi /qn
+Stop-Service senhub-agent
+Remove-Item -Recurse -Force C:\ProgramData\SenHub
+Copy-Item -Recurse C:\SenHub-backup C:\ProgramData\SenHub
+Start-Service senhub-agent
+```
+
+The copy holds the agent key and the secrets: delete it once the agent runs. The agent key does not change, so PRTG and the other consumers need no change.
+
+Or replace the binaries with the older version's ZIP. Stop the service, copy the older `senhub-agent.exe` and `senhub-console.exe` over the installed ones in `C:\Program Files\SenHub Agent\`, and start the service again. The configuration is kept. Windows still lists the newer MSI version, so the next upgrade needs an MSI newer than that one. If `auto_update.enabled` is `true`, set it to `false` while the older binary runs, or the agent installs the newer MSI again.
+
+Either way, the older agent loads the configuration only if it supports its `config_version` (see [Config versions](configuration.md#config-versions)).
+
 ## Post-Installation Checklist
 
 After installing and starting the agent, verify the following:
