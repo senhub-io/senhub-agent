@@ -491,6 +491,11 @@ func TestRedactPresetMasksThePRTGLicence(t *testing.T) {
 			want: "2026-10-20 09:30:01.000002 INFO  TId 1 Core> SystemID: SYSTEMID-***",
 		},
 		{
+			name: "system id with more groups than today",
+			in:   "Core> SystemID: SYSTEMID-ABCDEF12-34567890-ABCDEF12-34567890-ABCDEF12-1ABCDEFG done",
+			want: "Core> SystemID: SYSTEMID-*** done",
+		},
+		{
 			name: "both inside a folded multiline record",
 			in:   "Core> licensed for \"Example\" (" + key + ")\nCore> SystemID: SYSTEMID-ABCDEF12-34567890-ABCDEF12-34567890-ABCDEF12",
 			want: "Core> licensed for \"Example\" (***)\nCore> SystemID: SYSTEMID-***",
@@ -511,8 +516,8 @@ func TestRedactPresetMasksThePRTGLicence(t *testing.T) {
 			counts[c.Rule] = c.Count
 		}
 	}
-	if counts["prtg_license_key"] != 2 || counts["prtg_system_id"] != 2 {
-		t.Fatalf("counters = %v, want 2 masked keys and 2 masked system ids", counts)
+	if counts["prtg_license_key"] != 2 || counts["prtg_system_id"] != 3 {
+		t.Fatalf("counters = %v, want 2 masked keys and 3 masked system ids", counts)
 	}
 
 	for _, keep := range []string{
@@ -520,7 +525,6 @@ func TestRedactPresetMasksThePRTGLicence(t *testing.T) {
 		"guid 0f4c2a51-9b7e-4d3a-8c61-2e5f7a9b0d13",
 		"ABC123-DEF456-GHI789-JKL012-MNO345-PQR678-STU901-VWX234-YZA567",
 		"abc123-def456-ghi789-jkl012-mno345-pqr678-stu901-vwx234-yza567-bcd890",
-		"SYSTEMID-ABCDEF12-34567890",
 	} {
 		if rec := redactLogRecord(LogRecord{Body: keep, ProducerProbeName: "prtg-logs"}); rec.Body != keep {
 			t.Errorf("Body = %q, want unchanged %q", rec.Body, keep)
