@@ -25,6 +25,7 @@ alias ParsedArgs = senhub-agent.go/internal/agent/cliArgs.ParsedArgs
   field KeyFile string
   field LogFormat string
   field MinTlsVersion string
+  field NoRefreshUnit bool
   field NoRestart bool
   field ServiceUser string
   field ShowOTLP bool

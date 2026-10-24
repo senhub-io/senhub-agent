@@ -106,13 +106,13 @@ func runRefreshUnit() {
 		os.Exit(cliexit.Failure)
 	}
 
-	if err := os.WriteFile(unitPath, []byte(refreshed), 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "writing unit file: %v\n", err)
-		os.Exit(cliexit.Failure)
-	}
-
-	if out, err := exec.Command("systemctl", "daemon-reload").CombinedOutput(); err != nil {
-		fmt.Fprintf(os.Stderr, "systemctl daemon-reload: %v (%s)\n", err, strings.TrimSpace(string(out)))
+	if err := writeRefreshedUnit(unitPath, refreshed, func() error {
+		if out, err := exec.Command("systemctl", "daemon-reload").CombinedOutput(); err != nil {
+			return fmt.Errorf("systemctl daemon-reload: %w (%s)", err, strings.TrimSpace(string(out)))
+		}
+		return nil
+	}); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(cliexit.Failure)
 	}
 

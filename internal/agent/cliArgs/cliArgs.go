@@ -85,6 +85,9 @@ type UpdateSubcommandArgs struct {
 	Verbose     bool   `arg:"-v,--verbose" help:"Enable verbose logging"`
 	DryRun      bool   `arg:"-d,--dry-run" help:"Do not perform the update, only print the new version"`
 	NoRestart   bool   `arg:"--no-restart" help:"Install the new binary but leave the running service as it is"`
+	// NoRefreshUnit is for an operator who manages the systemd unit
+	// with their own tooling.
+	NoRefreshUnit bool `arg:"--no-refresh-unit" help:"Leave the systemd unit as it is (Linux)"`
 }
 
 type StartSubcommandArgs struct {
@@ -130,7 +133,9 @@ type ParsedArgs struct {
 	CommitHash        string
 	DryRun            bool
 	// NoRestart leaves a service running the old binary after update.
-	NoRestart             bool
+	NoRestart bool
+	// NoRefreshUnit leaves the installed systemd unit as it is after update.
+	NoRefreshUnit         bool
 	DebugLogShipperUrl    string
 	DebugLogShipperTags   map[string]string
 	DebugLogShipperBuffer int

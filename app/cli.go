@@ -243,7 +243,10 @@ Check for, list, or install agent updates.
     %s update <version>    Install a specific version (e.g. %s update 0.6.0)
 
 Updating replaces the running binary and requires the same privileges
-as the service commands (root on Linux, administrator on Windows).
+as the service commands (root on Linux, administrator on Windows). On
+Linux it also brings a unit written by 'install' up to date with the new
+binary before restarting the service; --no-refresh-unit leaves the unit
+as it is, and --no-restart leaves the service running.
 `, exe, exe, exe, exe, exe)
 }
 
@@ -298,6 +301,7 @@ func parseUpdateCommand(argv []string) (parsed *cliArgs.ParsedArgs, wantHelp boo
 	base.UpdateRegistryUrl = ua.RegistryUrl
 	base.DryRun = ua.DryRun
 	base.NoRestart = ua.NoRestart
+	base.NoRefreshUnit = ua.NoRefreshUnit
 	if ua.Verbose {
 		base.Verbose = true
 	}
@@ -572,7 +576,7 @@ func Main() {
 		// copy the unprivileged daemon can replace itself; nothing else
 		// keeps them in sync, so `update` (which runs as root) reconciles
 		// it here (#723).
-		agent.UpdateAgent(parsed, agent.AfterInstall(syncServiceBinary), agent.RestartService(restartServiceAfterUpdate))
+		agent.UpdateAgent(parsed, agent.AfterInstall(syncServiceBinary), agent.RefreshUnit(refreshUnitAfterUpdate), agent.RestartService(restartServiceAfterUpdate))
 		return
 	case "refresh-unit":
 		runRefreshUnit()

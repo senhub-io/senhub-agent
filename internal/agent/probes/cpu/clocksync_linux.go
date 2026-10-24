@@ -28,7 +28,9 @@ func newClockSync() func() (clockSync, error) {
 	s := &linuxClockSync{
 		root: "/",
 		survivable: func() error {
-			return adjtimexSurvivable("/proc/self/status", runAdjtimexChild)
+			return adjtimexSurvivable("/proc/self/status", func() bool {
+				return agentUnitKillsOnAdjtimex("/proc/self/cgroup")
+			}, runAdjtimexChild)
 		},
 	}
 	return s.read
