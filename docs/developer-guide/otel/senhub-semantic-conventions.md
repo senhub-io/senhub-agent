@@ -287,6 +287,14 @@ ping_gateway vs ping_webapp: same metric name, but ping_gateway does **not** emi
 **Primary source:** nothing in OTel applies directly (`http.client.*` is histogram-oriented over one-shot requests; our model is continuous, with averages)
 **Secondary source:** [blackbox_exporter](https://github.com/prometheus/blackbox_exporter/blob/master/prober/http.go) — `probe_http_duration_seconds{phase=…}` with phases `resolve, connect, tls, processing, transfer`
 
+#### 4.6.0 `senhub.probe.check.result`
+
+| Senhub metric | Unit | Type | Attributes |
+|---|---|---|---|
+| `senhub.probe.check.result` | `{status}` | Gauge | none beyond the probe's resource attributes |
+
+Why the last check of a probe failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied. Emitted by the database, application and active-check probes; every one of them declares it in its definition file. The PRTG "Check Result" channel is a view of this series and is off unless `prtg.check_result_channel` is set; the series itself always goes out over OTLP.
+
 #### 4.6.1 The `senhub.probe.http.*` extension
 
 | Senhub metric | Unit | Type | Attributes |
