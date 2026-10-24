@@ -54,7 +54,7 @@ type execResult struct {
 	err      error // spawn-level failure (not a non-zero exit)
 }
 
-type runFunc func() execResult
+type runFunc func(ctx context.Context) execResult
 
 type ExecProbe struct {
 	*types.BaseProbe
@@ -175,11 +175,19 @@ func (p *ExecProbe) OnStart(quitChannel chan struct{}) error {
 
 func (p *ExecProbe) OnShutdown(ctx context.Context) error { return nil }
 
-// Collect runs the configured program once. A failing or non-zero
-// check is a measurement (status reflects it), never a collection
-// error. If the previous run is still going, the cycle is skipped and
-// reported, not stacked.
+// Collect runs the configured program once, with no deadline but the
+// probe's own timeout.
 func (p *ExecProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext runs the configured program once under ctx and the
+// probe's own timeout, whichever ends first. A failing or non-zero
+// check is a measurement (status reflects it), never a collection
+// error; a run cut by ctx is an error wrapping ctx.Err(), because the
+// check did not get to answer. If the previous run is still going, the
+// cycle is skipped and reported, not stacked.
+func (p *ExecProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 	baseTags := []tags.Tag{{Key: "metric_type", Value: "exec"}}
 
@@ -193,7 +201,10 @@ func (p *ExecProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 	defer p.running.Unlock()
 
-	res := p.run()
+	res := p.run(ctx)
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("exec %s cut before it answered: %w", p.config.Command, err)
+	}
 
 	points := []data_store.DataPoint{
 		{Name: "senhub.exec.duration", Value: res.duration.Seconds() * 1000, Timestamp: now, Tags: baseTags},
@@ -277,10 +288,10 @@ func metricsToDatapoints(metrics []checkMetric, ts time.Time) []data_store.DataP
 }
 
 // runOnce is the production runFunc: one process, hard deadline.
-func (p *ExecProbe) runOnce() execResult {
+func (p *ExecProbe) runOnce(parent context.Context) execResult {
 	res := execResult{}
 
-	ctx, cancel := context.WithTimeout(context.Background(), p.config.Timeout)
+	ctx, cancel := context.WithTimeout(parent, p.config.Timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, p.config.Command, p.config.Args...)
@@ -305,7 +316,7 @@ func (p *ExecProbe) runOnce() execResult {
 	err := cmd.Run()
 	res.duration = time.Since(start)
 	res.stdout = stdout.Bytes()
-	res.timedOut = ctx.Err() == context.DeadlineExceeded
+	res.timedOut = ctx.Err() == context.DeadlineExceeded && parent.Err() == nil
 
 	var exitErr *exec.ExitError
 	switch {
