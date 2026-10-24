@@ -21,3 +21,4 @@ Changes land here as they are merged.
 ## Fixes
 
 - **Windows: `install` from the ZIP no longer runs over another install.** On a machine where a `senhub-agent` service from another install is already registered (the MSI, or a ZIP extracted elsewhere), `senhub-agent.exe install` now stops without changing anything, and says how to upgrade that install instead.
+- **`install --ok-if-unchanged`.** Run again on a machine already in the requested state, `install` exits `3` and writes nothing. With the new flag it exits `0` instead, as `config init --ok-if-unchanged` already did, for GPO, SCCM or Intune scripts that read any other code as a failure. See [Exit codes](../cli.md#exit-codes).
