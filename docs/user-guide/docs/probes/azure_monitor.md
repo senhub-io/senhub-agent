@@ -230,6 +230,8 @@ Every series of a resource carries:
 
 Entity emission is **off by default**. With `entities.enabled: true` the probe publishes one entity of type `cloud.resource` per discovered resource, after the first successful discovery. Turn it on only when the topology backend you send to registers the `cloud.resource` entity type: a backend that does not know the type refuses the records. For Toise, that is version 0.23 or later. A refused record is not retried: it is counted in `senhub.agent.export.rejected` (signal `logs`) and reported in the agent log, and the probe's metrics are not affected.
 
+In this version a resource is linked only to the agent that discovers it (a `monitors` relation from that agent's `service.instance`). An Azure VM's resource is not yet linked to the host it is, so it does not appear when you start from that host on the map.
+
 - **Identity**: the ARM id in **lower case**, in the attribute `azure.resource.id`. Azure returns the same id with different casing depending on the API, and two spellings of one key would make two entities. Resource and resource group names are case-insensitive in Azure Resource Manager, so lower-casing cannot merge two distinct resources.
 - **`cloud.resource_id`** is a descriptive attribute that keeps the id as Azure returned it; it is not the identity and is never lower-cased, so it still joins with Azure's own telemetry.
 - Other attributes: the resource attributes above, the provisioning and product states, and for a virtual machine `azure.vm.id`, its `vmId` as a lower-case hyphenated UUID.
