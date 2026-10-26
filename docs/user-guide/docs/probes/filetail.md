@@ -174,6 +174,14 @@ mistake.
   bytes), so copytruncate, daily rotation and file replacement are
   detected and the probe restarts from offset 0 of the new file —
   no silent gaps, no duplicates.
+- **Rotated files on Windows.** The end of a rotated file is read for up
+  to one second (less once it stops growing), then the file is released,
+  so the writer's rotation is never refused for long. A writer that
+  rotates onto the same backup name within a second of the previous
+  rotation (`app.log` renamed over `app.log.old` twice in a second) can
+  have that rename refused by Windows until the file is released, at
+  most one second later.
+- **Very fast rotation on Windows.** A rotation is noticed within about two seconds. A file renamed away again before that, by a writer that rotates more than once every couple of seconds, can have its whole content missed. Rotations of an ordinary application log, by the hour, the day or a size of several megabytes, are far slower than that.
 - **At-least-once delivery.** Bookmarks are flushed every 2 seconds;
   after a crash, up to 2 seconds of records may be re-read. Plan
   deduplication downstream if exact-once matters.
