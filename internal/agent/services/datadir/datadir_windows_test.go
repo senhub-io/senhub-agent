@@ -7,9 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
+
+var procSetFileSecurityW = windows.NewLazySystemDLL("advapi32.dll").NewProc("SetFileSecurityW")
 
 func TestApplyRemovesUsersACE(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "SenHub")
@@ -160,18 +163,24 @@ func makeUpgradedTree(t *testing.T) (string, []string) {
 		}
 	}
 
-	protectedDacl := sddlDacl(t, ProtectedSDDL)
+	// SetFileSecurityW writes the root's descriptor without propagating it to
+	// the children, which is what leaves an upgraded tree half-protected.
+	// SetSecurityInfo and SetNamedSecurityInfo propagate, so they cannot set
+	// up this state.
+	sd, err := windows.SecurityDescriptorFromString(ProtectedSDDL)
+	if err != nil {
+		t.Fatal(err)
+	}
 	pathp, err := windows.UTF16PtrFromString(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := windows.CreateFile(pathp, windows.GENERIC_READ|windows.WRITE_DAC, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer windows.CloseHandle(h)
-	if err := windows.SetSecurityInfo(h, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, protectedDacl, nil); err != nil {
-		t.Fatal(err)
+	if r, _, callErr := procSetFileSecurityW.Call(
+		uintptr(unsafe.Pointer(pathp)),
+		uintptr(windows.DACL_SECURITY_INFORMATION),
+		uintptr(unsafe.Pointer(sd)),
+	); r == 0 {
+		t.Fatalf("SetFileSecurityW: %v", callErr)
 	}
 
 	rootSnap, err := b.inspect(root)
