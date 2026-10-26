@@ -59,6 +59,16 @@ pollers are unaffected either way. If the key is added while the agent runs, the
 
 **Rotating or removing the key.** After a configuration reload, the new key is served at once, with no restart: the old key now answers 401. If you remove `admin_key` and reload, the administration routes are no longer served and answer 404, exactly as on an agent that never had a key. Readers holding the agent key are unaffected in both cases.
 
+**Where the key goes after you open the console.** Opening `/web/{admin-key}/` once sets a cookie named `senhub_console` (`HttpOnly`, `SameSite=Strict`, `Secure` when the console is served over HTTPS) and redirects you to the same page at `/web/_/...`. From then on the address bar, the browser history and any `Referer` header carry `_` instead of the key, and the console calls the agent without the key in the URL. The cookie holds a value derived from the key, not the key itself, and a rotated key invalidates it. Close the browser or clear its cookies and you open the link from `console --print` again. Console pages are sent with `Referrer-Policy: no-referrer`.
+
+A script can do the same with a header instead of a cookie:
+
+```bash
+curl -H "Authorization: Bearer $ADMIN_KEY" http://agent-server:8080/api/_/config/probes
+```
+
+The older form with the key in the path (`/api/{admin-key}/...`) still works, so existing scripts are unaffected; it is the form to avoid, because the key then appears in logs along the way. A state-changing request that is authenticated only by the cookie is refused with 403 unless the browser says it comes from the console's own origin (`Sec-Fetch-Site` or `Origin`); requests that use the header need no such check. The agent key in PRTG, Nagios and Prometheus URLs is not affected by any of this.
+
 The header of every page shows the host name, the agent's state, its version and its uptime, so you can see that the agent runs without leaving the page you are on. The menu has five entries: Overview, Probes, Outputs, Settings and Docs. Docs opens this documentation on [agent.senhub.io](https://agent.senhub.io/docs); the API reference embedded in the agent remains available at `/web/{admin-key}/docs`.
 
 ## Overview
