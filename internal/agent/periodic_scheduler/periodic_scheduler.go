@@ -22,6 +22,14 @@ type PeriodicSchedulerContextCall func(ctx context.Context) error
 type PeriodicSchedulerOnStart func(quitChannel chan struct{}) error
 type PeriodicSchedulerOnShutdown func(ctx context.Context) error
 
+// CallObserver is told how each call was scheduled. The scheduler reports
+// it and never acts on it, so it stays free of any metrics package.
+type CallObserver interface {
+	CallStarted(lag time.Duration) // actual start minus planned start, >= 0
+	CallEnded(first bool)          // first is true for the initial call only
+	CallOverran()                  // a call was still running after a full interval; reported once per call
+}
+
 type PeriodicSchedulerConfig struct {
 	// Should the call be made on start
 	ExecuteOnStart bool
@@ -31,6 +39,14 @@ type PeriodicSchedulerConfig struct {
 	FailOnStartError bool
 	// interval between calls
 	Interval time.Duration
+	// InitialDelay is how long the goroutine waits after its initial
+	// call, or before its first tick when no initial call is made,
+	// before it starts the ticker: the delay is a phase every later
+	// cycle keeps. The initial call itself runs at once, so the first
+	// data does not wait for the phase (a poller reading the output
+	// right after a start finds it). A stop during the wait ends the
+	// goroutine. Zero means no wait.
+	InitialDelay time.Duration
 	// MaxRetries is the consecutive-failure threshold after which the
 	// scheduler backs off (skipping ticks, exponentially up to
 	// maxBackoffTicks) while CONTINUING to retry. Zero or negative
@@ -43,6 +59,15 @@ type PeriodicSchedulerConfig struct {
 	// scheduler's run context, which Shutdown cancels before waiting
 	// for the call in flight, so a call that honours it stops early.
 	ExecuteContext PeriodicSchedulerContextCall
+	// CallTimeout is the deadline of each call's context. Zero means no
+	// deadline. It is independent of Interval: a call running past the
+	// interval but not past its deadline is not cut. The loop being
+	// single-threaded, no further call starts until this one returns,
+	// and the observer is told once the call has outlived the interval.
+	CallTimeout time.Duration
+	// Observer receives scheduling events for this scheduler. Nil
+	// disables all observer notifications.
+	Observer CallObserver
 	// Call to always be made on start (optional)
 	OnStart PeriodicSchedulerOnStart
 	// Call to always be made on shutdown (optional)
@@ -59,7 +84,6 @@ type periodicScheduler struct {
 	started bool
 	logger  *logger.Logger
 	config  PeriodicSchedulerConfig
-	ticker  *time.Ticker
 	// runCtx is the scheduler's own cancellation root, derived from
 	// the context Start received. It is the SINGLE termination signal
 	// for everything the scheduler owns: the tick goroutine and any
@@ -137,47 +161,81 @@ func (l *periodicScheduler) Start(ctx context.Context) error {
 		}
 	}
 
-	if l.config.ExecuteOnStart {
+	initialCall := l.config.ExecuteOnStart
+	if initialCall && l.config.FailOnStartError {
+		initialCall = false
 		l.logger.Info().Msg("Initial call")
-		// Do onStart call
 		if err := l.doCall(l.runCtx); err != nil {
-			if l.config.FailOnStartError {
-				return fmt.Errorf("Initial call failed: %w", err)
-			}
-			// The first collect failing is the moment an operator most
-			// needs to hear about; the log line was unreachable behind a
-			// condition that had already returned.
-			l.logger.Error().Err(err).Msg("Initial call failed")
+			return fmt.Errorf("Initial call failed: %w", err)
 		}
 	}
 
-	if err := l.setupIntervalCall(); err != nil {
-		return fmt.Errorf("Unable to setup interval call %w", err)
-	}
-
+	l.run(initialCall)
 	return nil
 }
 
-func (l *periodicScheduler) doCall(ctx context.Context) error {
+func (l *periodicScheduler) doCall(parent context.Context) error {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 
+	ctx := parent
+	if l.config.CallTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(parent, l.config.CallTimeout)
+		defer cancel()
+	}
+	if l.config.Observer != nil && l.config.Interval > 0 {
+		finished := make(chan struct{})
+		defer close(finished)
+		go l.watchOverrun(finished)
+	}
+	return l.invoke(ctx)
+}
+
+func (l *periodicScheduler) invoke(ctx context.Context) error {
 	if l.config.ExecuteContext != nil {
 		return l.config.ExecuteContext(ctx)
 	}
 	return l.config.Execute()
 }
 
-func (l *periodicScheduler) setupIntervalCall() error {
+// watchOverrun reports a call that is still running once a full interval
+// has passed since it began: it delays the next tick. The call is neither
+// cut nor repeated; its own deadline, if any, is a separate matter.
+func (l *periodicScheduler) watchOverrun(finished <-chan struct{}) {
+	timer := time.NewTimer(l.config.Interval)
+	defer timer.Stop()
+	select {
+	case <-finished:
+	case <-timer.C:
+		l.config.Observer.CallOverran()
+	}
+}
+
+func (l *periodicScheduler) doCallObserved(ctx context.Context, planned time.Time, first bool) error {
+	if l.config.Observer != nil {
+		lag := time.Since(planned)
+		if lag < 0 {
+			lag = 0
+		}
+		l.config.Observer.CallStarted(lag)
+		defer l.config.Observer.CallEnded(first)
+	}
+	return l.doCall(ctx)
+}
+
+// run starts the goroutine that makes the initial call, when asked, and
+// then one call per interval. The initial call runs there rather than in
+// Start: a probe whose first collection hangs on an unreachable target
+// would otherwise hold Start, and with it the sensor lock and every
+// service started after the sensor.
+func (l *periodicScheduler) run(initialCall bool) {
 	if l.config.Interval == 0 {
 		l.logger.Info().Msg("No interval set")
-		return nil
+		if !initialCall {
+			return
+		}
 	}
-
-	l.ticker = time.NewTicker(l.config.Interval)
-	errorCount := 0
-	backoffTicks := 0  // current backoff width in ticks (0 = none)
-	skipRemaining := 0 // ticks left to skip before the next attempt
 
 	// done and the run context are captured here, not read from the
 	// struct inside the goroutine: a Shutdown/Start restart cycle
@@ -187,8 +245,9 @@ func (l *periodicScheduler) setupIntervalCall() error {
 	done := make(chan struct{})
 	l.done = done
 
-	go func(ticker *time.Ticker, runCtx context.Context, done chan struct{}) {
+	go func(runCtx context.Context, done chan struct{}) {
 		defer close(done)
+		goroutineStart := time.Now()
 		stopped := false
 		// Recover from any panic in Execute so a buggy probe collector
 		// does not silently kill the scheduler goroutine — historically
@@ -208,6 +267,39 @@ func (l *periodicScheduler) setupIntervalCall() error {
 			}
 		}()
 
+		if initialCall && runCtx.Err() == nil {
+			l.logger.Info().Msg("Initial call")
+			if err := l.doCallObserved(runCtx, goroutineStart, true); err != nil {
+				// The first collect failing is the moment an operator
+				// most needs to hear about.
+				l.logger.Error().Err(err).Msg("Initial call failed")
+			}
+		}
+		if l.config.Interval == 0 {
+			stopped = true
+			return
+		}
+
+		if l.config.InitialDelay > 0 {
+			timer := time.NewTimer(l.config.InitialDelay)
+			select {
+			case <-timer.C:
+			case <-runCtx.Done():
+				timer.Stop()
+				stopped = true
+				l.logger.Info().Msg("Scheduler goroutine terminating on cancellation before its first tick")
+				return
+			}
+		}
+
+		// The ticker starts after the initial call and the phase delay,
+		// so the first tick comes one interval after both.
+		ticker := time.NewTicker(l.config.Interval)
+		defer ticker.Stop()
+		errorCount := 0
+		backoffTicks := 0  // current backoff width in ticks (0 = none)
+		skipRemaining := 0 // ticks left to skip before the next attempt
+
 		l.logger.Info().
 			Dur("interval", l.config.Interval).
 			Int("max_retries", l.config.MaxRetries).
@@ -215,7 +307,7 @@ func (l *periodicScheduler) setupIntervalCall() error {
 
 		for {
 			select {
-			case <-ticker.C:
+			case tick := <-ticker.C:
 				// Backoff: after MaxRetries consecutive failures the
 				// scheduler skips ticks (exponentially, capped) instead
 				// of attempting every interval — and NEVER shuts itself
@@ -232,7 +324,7 @@ func (l *periodicScheduler) setupIntervalCall() error {
 				l.logger.Debug().
 					Int("error_count", errorCount).
 					Msg("scheduler tick → calling doCall")
-				err := l.doCall(runCtx)
+				err := l.doCallObserved(runCtx, tick, false)
 				if err != nil {
 					errorCount++
 					if l.config.MaxRetries > 0 && errorCount >= l.config.MaxRetries {
@@ -277,9 +369,7 @@ func (l *periodicScheduler) setupIntervalCall() error {
 				return
 			}
 		}
-	}(l.ticker, runCtx, done)
-
-	return nil
+	}(runCtx, done)
 }
 
 func (l *periodicScheduler) Shutdown(ctx context.Context) error {
@@ -297,11 +387,6 @@ func (l *periodicScheduler) Shutdown(ctx context.Context) error {
 
 	l.logger.Debug().Msg("Shutting down")
 	l.started = false
-
-	if l.ticker != nil {
-		l.ticker.Stop()
-		l.ticker = nil
-	}
 
 	// Cancelling the run context is the single stop signal: it ends the
 	// tick goroutine and closes the channel the OnStart hook parked its
@@ -321,16 +406,20 @@ func (l *periodicScheduler) Shutdown(ctx context.Context) error {
 	// caller's budget. Without this, Shutdown returned while a tick was
 	// still in flight: the next Start raced it, and a leak test could
 	// never observe a settled state.
+	settled := true
 	if l.done != nil {
 		select {
 		case <-l.done:
 		case <-ctx.Done():
+			settled = false
 			l.logger.Warn().Msg("Scheduler goroutine still running when the stop budget expired")
 		}
 		l.done = nil
 	}
 
-	if l.config.ExecuteOnShutdown {
+	// A call still in flight holds the call mutex: a final call would
+	// wait on it past the budget.
+	if l.config.ExecuteOnShutdown && settled {
 		l.logger.Info().Msg("Final call")
 		// The run context is already cancelled here; the final call
 		// is bounded by the caller's stop budget instead.
