@@ -116,3 +116,33 @@ func TestRecordProbeHealth_OverwritesPrevious(t *testing.T) {
 		t.Errorf("recovered: healthy=%d, want 1", h)
 	}
 }
+
+// A probe that delivered cycles without ever recording a health entry (an
+// event-driven probe, or one stopped before its first health report) must
+// not leave its cycle behind when it is no longer active: every reload that
+// changes a probe's ID would otherwise add one entry for good.
+func TestSetActiveProbesPrunesCyclesWithoutHealth(t *testing.T) {
+	SetActiveProbes(nil)
+	t.Cleanup(func() { SetActiveProbes(nil) })
+
+	SetActiveProbes([]string{"old-id", "kept-id"})
+	RecordProbeCycle("old-id", 3)
+	RecordProbeCycle("kept-id", 1)
+	probeStateMu.Lock()
+	probeLastError["old-id"] = "boom"
+	probeStateMu.Unlock()
+
+	SetActiveProbes([]string{"kept-id"})
+
+	probeStateMu.RLock()
+	defer probeStateMu.RUnlock()
+	if _, left := probeCycles["old-id"]; left {
+		t.Error("the cycle of a probe no longer active was kept")
+	}
+	if _, left := probeLastError["old-id"]; left {
+		t.Error("the last error of a probe no longer active was kept")
+	}
+	if _, kept := probeCycles["kept-id"]; !kept {
+		t.Error("the cycle of an active probe was dropped")
+	}
+}

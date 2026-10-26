@@ -16,11 +16,19 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/datadir"
 )
 
 // Configuration Management - Loading, creation, validation, and TLS generation
 
 func (lc *LocalConfiguration) loadOrCreateConfiguration() error {
+	// Runs before any file is written so the admin key and sealed secrets
+	// never land under the inherited %ProgramData% ACL; on an existing
+	// install it repairs the ACL left by earlier versions.
+	if err := datadir.Secure(filepath.Dir(lc.configPath), lc.logger); err != nil {
+		lc.logger.Warn().Err(err).Str("dir", filepath.Dir(lc.configPath)).Msg("Could not restrict data directory ACL")
+	}
+
 	if _, err := os.Stat(lc.configPath); os.IsNotExist(err) {
 		lc.logger.Info().Msgf("Configuration file not found, creating default: %s", lc.configPath)
 		return lc.createDefaultConfiguration()
