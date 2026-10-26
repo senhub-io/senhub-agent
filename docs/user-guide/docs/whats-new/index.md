@@ -27,6 +27,7 @@ Lines may also carry an **area** tag (the subsystem affected), e.g.
 | Version | Date | Headline |
 |---|---|---|
 | [**Next (unreleased)**](next.md) | in progress | — |
+| [**0.6.5**](0.6.5.md) | 2026-10-26 | Secrets masked in logs by default; Proxmox disk, ZFS and backup health; Azure Monitor, Azure Log Query and Entra ID probes (Pro); a console page per probe; Windows data folder locked down |
 | [**0.6.4**](0.6.4.md) | 2026-10-18 | The network on the map from the agent: routing tables, SNMP discovery over LLDP, Ethernet aggregates, ARP/NDP neighbours, system services as entities; Kubernetes metrics and pod logs from the DaemonSet; clock synchronisation |
 | [**0.6.3**](0.6.3.md) | 2026-10-13 | Azure Container Apps: whole-subscription discovery with coverage, jobs discovery, shared Azure credentials, `check azure`, log volume per app and official dashboards; config and identity on Azure Files |
 | [**0.6.2**](0.6.2.md) | 2026-10-08 | Signed Linux packages and repositories, Ansible, Helm and Podman deployment, probes from environment variables, credentials masked in the log, PRTG bit rates at the right scale |
