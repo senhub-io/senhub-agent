@@ -214,7 +214,7 @@
         </div>
     </div>
 
-    <script>window.AGENT_KEY = '{{.AgentKey}}';</script>
+    <script>window.AGENT_KEY = '{{.AgentKey}}'; window.AGENT_READ_KEY = '{{.ReadKey}}';</script>
     <script src="/web/{{.AgentKey}}/assets/js/console.js"></script>
     <script src="/web/{{.AgentKey}}/assets/js/base.js"></script>
     <script src="/web/{{.AgentKey}}/assets/js/tag-filters.js"></script>
@@ -249,8 +249,8 @@
             const prom = (d.endpoints || []).find(e => e.name === 'prometheus');
             if (prom && !prom.enabled) $('su-prom-url').textContent = 'Prometheus endpoint off; enable it in Settings';
         }).catch(() => {});
-        $('su-nagios-url').textContent = '/api/' + O.key + '/nagios/checks';
-        const su = new SensorURLs(O.key, $('p-urls'));
+        $('su-nagios-url').textContent = '/api/' + window.AGENT_READ_KEY + '/nagios/checks';
+        const su = new SensorURLs(window.AGENT_READ_KEY, $('p-urls'));
         su.load(deep);
         // A deep link reached by changing only the hash (a link from the
         // Probes page while this page is open) applies without a reload.

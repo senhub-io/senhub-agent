@@ -11,6 +11,7 @@ package http
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"go.opentelemetry.io/otel"
@@ -47,10 +48,12 @@ func TraceRequests(next http.Handler) http.Handler {
 		span.SetAttributes(
 			attribute.String("http.request.method", r.Method),
 			attribute.String("http.route", route),
-			attribute.String("url.path", r.URL.Path),
 			attribute.String("network.peer.address", r.RemoteAddr),
 			attribute.String("server.address", r.Host),
 		)
+		if path, ok := tracedPath(r, route); ok {
+			span.SetAttributes(attribute.String("url.path", path))
+		}
 		defer span.End()
 
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
@@ -63,6 +66,27 @@ func TraceRequests(next http.Handler) http.Handler {
 			span.SetStatus(codes.Error, http.StatusText(rec.status))
 		}
 	})
+}
+
+// tracedPath is the request path with the agent or admin key masked: the
+// key is a path segment, and a span is exported to wherever traces go.
+// An unmatched route has no variables to mask by, so its path is left out
+// rather than risk carrying a key.
+func tracedPath(r *http.Request, route string) (string, bool) {
+	if route == "_unmatched" {
+		return "", false
+	}
+	key := mux.Vars(r)["agentkey"]
+	if key == "" {
+		return r.URL.Path, true
+	}
+	segments := strings.Split(r.URL.Path, "/")
+	for i, seg := range segments {
+		if seg == key {
+			segments[i] = "{agentkey}"
+		}
+	}
+	return strings.Join(segments, "/"), true
 }
 
 // statusRecorder wraps http.ResponseWriter to capture the status code
