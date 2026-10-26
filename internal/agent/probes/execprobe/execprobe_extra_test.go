@@ -237,7 +237,7 @@ wait $child`,
 
 	p := newTestProbe(t, map[string]interface{}{"command": script, "timeout": 1})
 	done := make(chan execResult, 1)
-	go func() { done <- p.run() }()
+	go func() { done <- p.run(context.Background()) }()
 
 	childPid := waitForChildPidFileForTest(t, pidFile)
 
@@ -245,7 +245,7 @@ wait $child`,
 	select {
 	case res = <-done:
 	case <-time.After(10 * time.Second):
-		t.Fatal("p.run() did not return after timeout kill")
+		t.Fatal("p.run(context.Background()) did not return after timeout kill")
 	}
 	if !res.timedOut {
 		t.Fatalf("run timedOut = false, want true (result: %+v)", res)

@@ -2394,6 +2394,28 @@ relaying-agent identity marker, **deferred** for want of a standard key
 > mechanism; not applicable here, since the agent's metrics are
 > collected outside any active trace context). Out of scope.
 
+## 6quinquies. Agent self-metrics: probe scheduling
+
+Four metrics describe how the scheduler runs the probes. They belong to the
+agent (`senhub.agent.*`, no reserved OpenTelemetry namespace) and the `probe`
+attribute is the probe **type**, so cardinality is bounded by the registry.
+
+| Name | Type | Unit | Attributes | Meaning |
+|---|---|---|---|---|
+| `senhub.agent.collect.in_flight` | gauge | `{collection}` | none | Collections running at this instant. |
+| `senhub.agent.collect.lag` | gauge | `s` | `probe_name`, `probe_type` | Maximum of the actual start of a collection minus its planned start, over the window since the previous read by the same reader (Prometheus scrape, OTLP push). Each reader has its own window, so one reader's read does not reset another's; a reader's first window starts at the process start. 0 for a probe with no collection in the window. |
+| `senhub.agent.collect.overruns` | counter | `{collection}` | `probe_name`, `probe_type` | A collection that ran past its interval, whether or not it reached its deadline. Such a collection is not cut at the interval and not run twice: the next ticks are skipped until it returns. Ticks skipped on purpose by the failure backoff are not counted. |
+| `senhub.agent.probe.first_collection.delay` | gauge | `s` | `probe_name`, `probe_type` | Time from the process start to the end of the probe's first collection. Recorded once per process and per probe instance, then emitted unchanged. |
+
+The first collection of each probe waits for a stable offset (FNV-1a 64 of the
+probe id modulo `min(interval, 30 s)`), so `first_collection.delay` includes
+that offset. The planned start of the first collection is the end of that wait;
+the planned start of a later one is the tick time.
+
+Prometheus names: `senhub_agent_collect_in_flight`,
+`senhub_agent_collect_lag_seconds`, `senhub_agent_collect_overruns_total`,
+`senhub_agent_probe_first_collection_delay_seconds`.
+
 ## 7. Versioning
 
 This document does not have a version number yet. Once the complete V1 (15 probes mapped) is published in 0.1.88 it moves to SemVer 1.0.0. Any change to a name, attribute or unit is a major bump.

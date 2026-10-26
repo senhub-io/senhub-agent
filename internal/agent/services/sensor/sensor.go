@@ -331,7 +331,7 @@ func (s *sensor) SyncConfiguration() error {
 				Str("probe_name", startedProbe.Probe.GetName()).
 				Msg("Stopping removed probe")
 
-			err := startedProbe.Shutdown(context.Background())
+			err := stopProbe(startedProbe)
 			if err != nil {
 				s.moduleLogger.Error().
 					Str("probe_id", startedProbe.ProbeId).
@@ -530,13 +530,25 @@ func (s *sensor) startProbe(probeConfig configuration.ProbeConfig) error {
 		// Not kept as started: a poller left in startedProbes after a
 		// failed start reads as running to every later sync, which then
 		// never tries it again.
-		if stopErr := probePoller.Shutdown(context.Background()); stopErr != nil {
+		if stopErr := stopProbe(probePoller); stopErr != nil {
 			s.moduleLogger.Warn().Err(stopErr).Str("probe_name", probeConfig.Name).Msg("Stopping a probe that failed to start")
 		}
 		return err
 	}
 	s.startedProbes = append(s.startedProbes, probePoller)
 	return nil
+}
+
+// probeStopBudget bounds the stop of one probe on a reload. The sensor
+// lock is held meanwhile, and a probe blocked in a collection against an
+// unreachable target would otherwise hold it, and every later reload,
+// for as long as that collection lasts.
+var probeStopBudget = 5 * time.Second
+
+func stopProbe(p *probes.ProbePoller) error {
+	ctx, cancel := context.WithTimeout(context.Background(), probeStopBudget)
+	defer cancel()
+	return p.Shutdown(ctx)
 }
 
 // publishFailedProbes hands the probes that failed to start to agentstate,

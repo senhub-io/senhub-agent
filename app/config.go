@@ -581,6 +581,7 @@ func checkConfig(configPath string) checkOutcome {
 			errorCount += e
 			warnings += w
 			errorCount += reportGovernanceProblems(p)
+			errorCount += reportCollectTimeoutProblems(p)
 		}
 		for _, o := range filetailOverlaps(config.Probes) {
 			fmt.Printf("  [WARN] %s is read by filetail probes %s: each line is sent once per probe and the probes share one rotation notice; declare the file in a single probe\n",
@@ -948,6 +949,17 @@ func reportGovernanceProblems(p configuration.ProbeConfig) (errors int) {
 	}
 	if _, err := p.ParseGovernance(); err != nil {
 		fmt.Printf("         [ERROR] Probe %q: governance: %v\n", p.Name, err)
+		errors++
+	}
+	return errors
+}
+
+// reportCollectTimeoutProblems checks the probe's collect_timeout: a value
+// that is not a duration or a number of seconds, or is negative, is an
+// error naming the key. Absent is silent.
+func reportCollectTimeoutProblems(p configuration.ProbeConfig) (errors int) {
+	if _, err := probes.CollectTimeoutOf(p); err != nil {
+		fmt.Printf("         [ERROR] %v\n", err)
 		errors++
 	}
 	return errors

@@ -47,6 +47,7 @@ alias LocalConfigurationData = senhub-agent.go/internal/agent/services/configura
   field Probes []senhub-agent.go/internal/agent/services/configuration.ProbeConfig `yaml:"probes"`
   field Storage []senhub-agent.go/internal/agent/services/configuration.StorageConfig `yaml:"storage"`
 alias ProbeConfig = senhub-agent.go/internal/agent/services/configuration.ProbeConfig
+  field CollectTimeout interface{} `json:"collect_timeout,omitempty" yaml:"collect_timeout,omitempty"`
   field CustomTags map[string]string `json:"custom_tags,omitempty" yaml:"custom_tags,omitempty"`
   field Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
   field Governance map[string]interface{} `json:"governance,omitempty" yaml:"governance,omitempty"`
@@ -484,6 +485,7 @@ type senhub-agent.go/internal/agent/services/configuration.LogsRedactRuleSpec st
   field Pattern string `yaml:"pattern"`
   field Replacement string `yaml:"replacement"`
 type senhub-agent.go/internal/agent/services/configuration.ProbeConfig struct
+  field CollectTimeout interface{} `json:"collect_timeout,omitempty" yaml:"collect_timeout,omitempty"`
   field CustomTags map[string]string `json:"custom_tags,omitempty" yaml:"custom_tags,omitempty"`
   field Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
   field Governance map[string]interface{} `json:"governance,omitempty" yaml:"governance,omitempty"`
