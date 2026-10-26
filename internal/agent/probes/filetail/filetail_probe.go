@@ -112,11 +112,17 @@ func NewFileTailProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 		quit:         make(chan struct{}),
 	}
 	p.SetProbeType(ProbeType)
-	if w := logparse.MultilineWarning(parsed.Multiline); w != "" {
-		moduleLogger.Warn().Msg(w)
+	return p, nil
+}
+
+// warnAboutConfig logs what config check would warn about. It runs at start,
+// not at construction: the poller names the probe after constructing it, and a
+// warning that does not say which probe it is about cannot be acted on.
+func (p *FileTailProbe) warnAboutConfig() {
+	if w := logparse.MultilineWarning(p.config.Multiline); w != "" {
+		p.warn().Msg(w)
 	}
 	p.warnProtectedHomePaths()
-	return p, nil
 }
 
 // warnProtectedHomePaths names the systemd drop-in when a configured path
@@ -268,6 +274,7 @@ func (p *FileTailProbe) OnStart(quitChannel chan struct{}) error {
 		return fmt.Errorf("filetail: bookmark init: %w", err)
 	}
 	p.bookmarks = bm
+	p.warnAboutConfig()
 
 	p.info().
 		Strs("paths", p.config.Paths).
