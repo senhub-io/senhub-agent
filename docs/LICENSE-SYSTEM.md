@@ -207,7 +207,7 @@ go run scripts/sensor-factory-license-generator.go --generate-keys
 ```bash
 # Pro license for specific customer
 go run sensor-factory-license-generator.go --generate-license \
-  --customer-id "noble-age" \
+  --customer-id "example-customer" \
   --tier "pro" \
   --probes "redfish,citrix,netscaler" \
   --validity-days 365
@@ -720,7 +720,7 @@ Content-Type: application/json
 Authorization: Bearer <admin-token>
 
 {
-  "customer_id": "noble-age",
+  "customer_id": "example-customer",
   "tier": "pro",
   "authorized_probes": ["redfish", "citrix", "netscaler"],
   "validity_days": 365
@@ -730,7 +730,7 @@ Response:
 {
   "license_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
   "expires_at": "2026-11-09T17:17:13Z",
-  "customer_id": "noble-age",
+  "customer_id": "example-customer",
   "tier": "pro"
 }
 ```

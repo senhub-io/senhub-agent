@@ -159,7 +159,7 @@ senhub_host_memory_used_percent 38.5
 # TYPE senhub_probe_up gauge
 senhub_probe_up{probe_name="lb-prod-paris",probe_type="netscaler",env="prod",site="paris",client="acme"} 1
 senhub_probe_up{probe_name="lb-prod-lyon",probe_type="netscaler",env="prod",site="lyon",client="acme"} 1
-senhub_probe_up{probe_name="cvad-axplora",probe_type="citrix_cvad",env="prod",client="axplora"} 1
+senhub_probe_up{probe_name="cvad-example",probe_type="citrix_cvad",env="prod",client="example"} 1
 
 # HELP senhub_probe_health Metric value (per vserver/service/object)
 # TYPE senhub_probe_health gauge
