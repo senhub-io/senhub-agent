@@ -1023,7 +1023,7 @@ func TestPeriodicScheduler_CallContextEndsOnShutdown(t *testing.T) {
 	}
 	select {
 	case err := <-ended:
-		if err != context.Canceled {
+		if !errors.Is(err, context.Canceled) {
 			t.Errorf("context ended with %v, want Canceled", err)
 		}
 	case <-time.After(time.Second):
@@ -1050,7 +1050,7 @@ func TestPeriodicScheduler_CallTimeoutEndsASlowCall(t *testing.T) {
 	defer func() { _ = s.Shutdown(context.Background()) }()
 	select {
 	case err := <-ended:
-		if err != context.DeadlineExceeded {
+		if !errors.Is(err, context.DeadlineExceeded) {
 			t.Errorf("context ended with %v, want DeadlineExceeded", err)
 		}
 	case <-time.After(2 * time.Second):
