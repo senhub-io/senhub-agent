@@ -167,7 +167,15 @@ func LogRedactedCounts() []LogRedactedCount {
 
 func redactLogRecord(rec LogRecord) LogRecord {
 	rs := loadRedactionRuleset()
-	rec.Body = maskString(rs, rec.Body, rec.ProducerProbeName)
+	pemEnabled := hasRedactRule(rs, "private_key")
+	opensPEM := pemEnabled && hasUnclosedPEMBegin(rec.Body)
+
+	if masked, body := pemState.process(rec, pemEnabled, opensPEM); masked {
+		rec.Body = body
+	} else {
+		rec.Body = maskString(rs, rec.Body, rec.ProducerProbeName)
+	}
+
 	rec.Attributes = maskStringMap(rs, rec.Attributes, rec.ProducerProbeName)
 	rec.Fields = maskRecordFields(rs, rec.Fields, rec.ProducerProbeName)
 	return rec
@@ -175,6 +183,7 @@ func redactLogRecord(rec LogRecord) LogRecord {
 
 func resetLogRedactionForTest() {
 	redactionConfig.Store(buildDefaultRedactionRuleset())
+	pemState.reset()
 	var keys []redactionCounterKey
 	redactionCounters.Range(func(k, _ any) bool {
 		keys = append(keys, k.(redactionCounterKey))
