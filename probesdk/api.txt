@@ -226,6 +226,7 @@ alias Assembler = senhub-agent.go/internal/agent/probes/logparse.Assembler
   method (*senhub-agent.go/internal/agent/probes/logparse.Assembler) Pending() bool
 const DefaultMaxBytesPerLine untyped int = 1048576
 alias MultilineConfig = senhub-agent.go/internal/agent/probes/logparse.MultilineConfig
+  field FlushTimeout time.Duration
   field Match string
   field Negate bool
   field Pattern string
