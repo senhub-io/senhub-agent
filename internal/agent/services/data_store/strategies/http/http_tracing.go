@@ -100,6 +100,12 @@ type statusRecorder struct {
 	wroteHeader bool
 }
 
+// Unwrap lets http.NewResponseController reach the server's writer, to
+// move a deadline or flush through this wrapper.
+func (r *statusRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
+
 func (r *statusRecorder) WriteHeader(code int) {
 	if !r.wroteHeader {
 		r.status = code

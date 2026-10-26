@@ -607,8 +607,12 @@ type MetricCache struct {
 	// was served for five minutes an hour and absent the other
 	// fifty-five, on PRTG, Nagios and Prometheus alike.
 	cadences map[string]time.Duration
-	stopChan chan struct{}
-	logger   *logger.ModuleLogger
+	// firstData holds, per case-folded probe name, a channel closed when
+	// the probe's first points land; a pull handler waits on it instead
+	// of polling. One entry per probe name asked about, removed on close.
+	firstData map[string]chan struct{}
+	stopChan  chan struct{}
+	logger    *logger.ModuleLogger
 }
 
 // CachedMetric represents a stored metric with metadata
@@ -633,8 +637,28 @@ func NewMetricCache(ttl time.Duration, logger *logger.ModuleLogger) *MetricCache
 		ttl:        ttl,
 		maxSeries:  DefaultMaxCacheSeries,
 		cadences:   make(map[string]time.Duration),
+		firstData:  make(map[string]chan struct{}),
 		logger:     logger,
 	}
+}
+
+// FirstDataSignal returns a channel that is closed once the cache holds
+// data for the probe: already closed if it does.
+func (c *MetricCache) FirstDataSignal(probeName string) <-chan struct{} {
+	key := strings.ToLower(probeName)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.probeIndex[key]) > 0 {
+		done := make(chan struct{})
+		close(done)
+		return done
+	}
+	ch, ok := c.firstData[key]
+	if !ok {
+		ch = make(chan struct{})
+		c.firstData[key] = ch
+	}
+	return ch
 }
 
 // NoteProbeCadence records how often the named probe collects.
@@ -847,6 +871,7 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 	now := time.Now()
 	batchProbes := map[string]bool{}
 	defer c.retireSupersededLocked(batchProbes, now)
+	defer c.releaseFirstDataWaitersLocked(batchProbes)
 
 	for _, dp := range dataPoints {
 		// Convert tags from []tags.Tag to map[string]string
@@ -972,6 +997,17 @@ func (c *MetricCache) AddDataPointsWithTransformer(dataPoints []datapoint.DataPo
 			Interface("value", dp.Value).
 			Str("unit", unit).
 			Msg("Cache - Stored metric")
+	}
+}
+
+// releaseFirstDataWaitersLocked wakes the requests waiting on the first
+// data of each probe that just delivered a batch. The caller holds c.mu.
+func (c *MetricCache) releaseFirstDataWaitersLocked(probes map[string]bool) {
+	for key := range probes {
+		if ch, ok := c.firstData[key]; ok {
+			close(ch)
+			delete(c.firstData, key)
+		}
 	}
 }
 

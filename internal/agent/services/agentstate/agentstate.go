@@ -113,6 +113,7 @@ var probeCycles = map[string]probeCycle{}
 func RecordProbeCycle(probeID string, points int) {
 	probeStateMu.Lock()
 	probeCycles[probeID] = probeCycle{at: time.Now(), points: points}
+	closeFirstCycleSignalLocked(probeID)
 	probeStateMu.Unlock()
 }
 
@@ -146,6 +147,10 @@ func SetStartFailedProbes(failed map[string]string) {
 // probe's own state rather than infer it from the metrics it holds.
 var activeProbeByName = map[string]string{}
 
+// activeNamesChanged is closed, and replaced, each time the set of
+// running probe names is published. Guarded by probeStateMu.
+var activeNamesChanged = make(chan struct{})
+
 // SetActiveProbeNames publishes the name of each running probe.
 func SetActiveProbeNames(byName map[string]string) {
 	probeStateMu.Lock()
@@ -155,6 +160,17 @@ func SetActiveProbeNames(byName map[string]string) {
 		next[strings.ToLower(name)] = id
 	}
 	activeProbeByName = next
+	close(activeNamesChanged)
+	activeNamesChanged = make(chan struct{})
+}
+
+// ActiveProbeNamesChanged returns a channel closed the next time the
+// running probe names are published. Take it before reading the state,
+// so a publication between the read and the wait is not missed.
+func ActiveProbeNamesChanged() <-chan struct{} {
+	probeStateMu.RLock()
+	defer probeStateMu.RUnlock()
+	return activeNamesChanged
 }
 
 // ProbeRunStateByName reports the live state of a running probe by its
@@ -197,6 +213,7 @@ func SetActiveProbes(probeIDs []string) {
 			delete(probeCycles, id)
 		}
 	}
+	pruneProbeKindLocked(newSet)
 }
 
 // RecordProbeHealth publishes a probe's current health to the shared map.
@@ -257,6 +274,9 @@ type ProbeRunState struct {
 	// and LastPoints how many; zero until it has.
 	LastCycle  time.Time
 	LastPoints int
+	// EventDriven is true for a probe whose data arrives through a
+	// callback or a listener rather than a first collection.
+	EventDriven bool
 }
 
 // GetProbeRunState reports the live state of a probe by its ID (from
@@ -270,7 +290,8 @@ func GetProbeRunState(probeID string) ProbeRunState {
 		}
 		return ProbeRunState{}
 	}
-	state := ProbeRunState{Running: true, LastCycle: probeCycles[probeID].at, LastPoints: probeCycles[probeID].points}
+	_, eventDriven := probeEventDriven[probeID]
+	state := ProbeRunState{Running: true, EventDriven: eventDriven, LastCycle: probeCycles[probeID].at, LastPoints: probeCycles[probeID].points}
 	switch probeHealth[probeID] {
 	case probeHealthOK:
 		state.Health = "ok"

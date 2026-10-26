@@ -223,6 +223,10 @@ func NewProbePoller(
 		moduleLogger.Debug().Msg("Setting callback for probe")
 		probeWithCallback.SetCallback(probePoller.getWrappedCallback())
 	}
+	_, callbackProbe := probe.(types.ProbeWithCallback)
+	if _, listenerProbe := probe.(types.ListenerProbe); callbackProbe || listenerProbe {
+		agentstate.MarkProbeEventDriven(probePoller.ProbeId)
+	}
 
 	moduleLogger.Debug().Msg("Probe poller created successfully")
 	return probePoller, nil
