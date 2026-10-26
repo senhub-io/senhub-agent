@@ -569,19 +569,16 @@ series' tags.
 | `senhub.netscaler.interface.errors` | `netscaler.interface.tx.errors.total` | Interface TX Errors ({interface}) | # | Total transmit errors on the interface |
 | `senhub.netscaler.interface.packets.dropped` | `netscaler.interface.rx.drops.total` | Interface RX Drops ({interface}) | # | Total inbound packets dropped on the interface |
 | `senhub.netscaler.interface.packets.dropped` | `netscaler.interface.tx.drops.total` | Interface TX Drops ({interface}) | # | Total outbound packets dropped on the interface |
-| `senhub.netscaler.interface.link_speed` | `netscaler.interface.link_speed_mbps` | Interface Link Speed ({interface}) | Mbps | Negotiated link speed of the interface |
 | `senhub.netscaler.csvserver.status` | `netscaler.cs.vserver.state` | CS VServer State ({csvserver}) | # | Content Switching vServer state: UP=7, DOWN=1, etc. |
 | `senhub.netscaler.csvserver.hits` | `netscaler.cs.vserver.hits.total` | CS VServer Hits Total ({csvserver}) | # | Total hits on the content switching virtual server |
 | `senhub.netscaler.csvserver.requests.rate` | `netscaler.cs.vserver.requests.rate` | CS VServer Requests Rate ({csvserver}) | req/s | Rate of requests handled by the CS virtual server |
 | `senhub.netscaler.csvserver.connections.active` | `netscaler.cs.vserver.connections.current` | CS VServer Current Connections ({csvserver}) | # | Number of active connections on the CS virtual server |
-| `senhub.netscaler.cspolicy.evaluations` | `netscaler.cs.policy.hits.total` | CS Policy Hits Total ({cspolicy}) | # | Total times the content switching policy was matched |
-| `senhub.netscaler.cspolicy.evaluations` | `netscaler.cs.policy.undefine_hits.total` | CS Policy Undefine Hits ({cspolicy}) | # | Rules not matched |
+| `senhub.netscaler.cspolicy.evaluations` | `netscaler.cs.policy.hits.total` | CS Policy Hits Total ({csvserver} {cspolicy}) | # | Total times the content switching policy was matched on the vserver it is bound to |
 | `senhub.netscaler.gslb.vserver.status` | `netscaler.gslb.vserver.state` | GSLB VServer State ({gslbvserver}) | # | GSLB vServer state: UP=7, DOWN=1, etc. |
 | `senhub.netscaler.gslb.vserver.hits` | `netscaler.gslb.vserver.hits.total` | GSLB VServer Hits Total ({gslbvserver}) | # | Total DNS requests resolved by the GSLB virtual server |
 | `senhub.netscaler.gslb.vserver.requests.rate` | `netscaler.gslb.vserver.requests.rate` | GSLB VServer Requests Rate ({gslbvserver}) | req/s | Rate of DNS requests handled by the GSLB virtual server |
 | `senhub.netscaler.gslb.vserver.persistence_records` | `netscaler.gslb.vserver.persistence.records` | GSLB VServer Persistence Records ({gslbvserver}) | # | Number of active persistence records for site affinity |
 | `senhub.netscaler.gslb.site.status` | `netscaler.gslb.site.state` | GSLB Site State ({gslbsite}) | # | GSLB site state: 1=UP/ACTIVE, 0=DOWN |
-| `senhub.netscaler.gslb.site.network_rtt` | `netscaler.gslb.site.network_rtt_microseconds` | GSLB Site Network RTT ({gslbsite}) | μs | Network round-trip time in microseconds |
 | `senhub.netscaler.gslb.site.connections.active` | `netscaler.gslb.site.connections.current` | GSLB Site Current Connections ({gslbsite}) | # | Number of active connections at the GSLB site |
 | `senhub.netscaler.gslb.service.status` | `netscaler.gslb.service.state` | GSLB Service State ({gslbservice}) | # | GSLB service state: 1=UP, 0=DOWN |
 | `senhub.netscaler.gslb.service.hits` | `netscaler.gslb.service.hits.total` | GSLB Service Hits Total ({gslbservice}) | # | Total requests directed to the GSLB service |
@@ -597,15 +594,11 @@ series' tags.
 | `senhub.netscaler.compression.bandwidth_savings` | `netscaler.compression.bandwidth_savings.bytes` | Compression Bandwidth Savings | bytes | Bandwidth saved by compression |
 | `senhub.netscaler.aaa.sessions.active` | `netscaler.aaa.sessions.active.total` | AAA Active Sessions Total | # | Total active AAA sessions |
 | `senhub.netscaler.aaa.vserver.status` | `netscaler.aaa.vserver.state` | AAA VServer State ({authvserver}) | # | Authentication vServer state: 1=UP, 0=DOWN |
-| `senhub.netscaler.aaa.vserver.auth_attempts` | `netscaler.aaa.vserver.auth.successes.total` | AAA VServer Auth Successes ({authvserver}) | # | Total successful authentication attempts |
-| `senhub.netscaler.aaa.vserver.auth_attempts` | `netscaler.aaa.vserver.auth.failures.total` | AAA VServer Auth Failures ({authvserver}) | # | Total failed authentication attempts |
 | `senhub.netscaler.vpn.vserver.status` | `netscaler.vpn.vserver.state` | VPN VServer State ({vpnvserver}) | # | VPN vServer state: 1=UP, 0=DOWN |
 | `senhub.netscaler.vpn.vserver.hits` | `netscaler.vpn.vserver.hits.total` | VPN VServer Hits Total ({vpnvserver}) | # | Total hits on the VPN virtual server |
-| `senhub.netscaler.vpn.vserver.ica_sessions.active` | `netscaler.vpn.vserver.ica.sessions.active` | VPN VServer ICA Sessions Active ({vpnvserver}) | # | Active ICA sessions (Citrix Virtual Apps) |
 | `senhub.netscaler.vpn.vserver.connections.established` | `netscaler.vpn.vserver.connections.established` | VPN VServer Connections Established ({vpnvserver}) | # | Number of established VPN connections |
 | `senhub.netscaler.appfw.violations.total` | `netscaler.appfw.violations.total` | AppFW Violations Total | # | Total application firewall violations |
 | `senhub.netscaler.appfw.blocked` | `netscaler.appfw.requests.blocked.total` | AppFW Requests Blocked | # | Total requests blocked by WAF |
-| `senhub.netscaler.appfw.blocked` | `netscaler.appfw.responses.blocked.total` | AppFW Responses Blocked | # | Total responses blocked by WAF |
 | `senhub.netscaler.appfw.violations.by_type` | `netscaler.appfw.violations.sqli.total` | AppFW SQL Injection Violations | # | SQL injection violations detected |
 | `senhub.netscaler.appfw.violations.by_type` | `netscaler.appfw.violations.xss.total` | AppFW XSS Violations | # | Cross-site scripting violations detected |
 | `senhub.netscaler.appfw.violations.by_type` | `netscaler.appfw.violations.buffer_overflow.total` | AppFW Buffer Overflow Violations | # | Buffer overflow violations detected |

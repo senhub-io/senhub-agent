@@ -986,21 +986,6 @@ metrics:
     tag_to_attribute:
       interface: network.interface.name
 
-  - name: "netscaler.interface.link_speed_mbps"
-    channel: "interface.link_speed_mbps"
-    display_name: "Interface Link Speed ({interface})"
-    unit: "Mbps"
-    multi_instance_labels: ["interface"]
-    category: "network"
-    description: "Negotiated link speed of the interface"
-    otel:
-      name: senhub.netscaler.interface.link_speed
-      unit: "By/s"
-      type: gauge
-      # Mapper ×1e6 (Mbps → bit/s)
-    tag_to_attribute:
-      interface: network.interface.name
-
   # ═════════════════════════════════════════════════════════════════════════
   # CONTENT SWITCHING
   # ═════════════════════════════════════════════════════════════════════════
@@ -1073,11 +1058,11 @@ metrics:
 
   - name: "netscaler.cs.policy.hits.total"
     channel: "cs.policy.hits.total"
-    display_name: "CS Policy Hits Total ({cspolicy})"
+    display_name: "CS Policy Hits Total ({csvserver} {cspolicy})"
     unit: "#"
-    multi_instance_labels: ["cspolicy"]
+    multi_instance_labels: ["csvserver", "cspolicy"]
     category: "content_switching"
-    description: "Total times the content switching policy was matched"
+    description: "Total times the content switching policy was matched on the vserver it is bound to"
     otel:
       name: senhub.netscaler.cspolicy.evaluations
       unit: "{evaluation}"
@@ -1085,22 +1070,7 @@ metrics:
       attributes:
         senhub.netscaler.cspolicy.result: hit
     tag_to_attribute:
-      cspolicy: senhub.netscaler.cspolicy.name
-
-  - name: "netscaler.cs.policy.undefine_hits.total"
-    channel: "cs.policy.undefine_hits.total"
-    display_name: "CS Policy Undefine Hits ({cspolicy})"
-    unit: "#"
-    multi_instance_labels: ["cspolicy"]
-    category: "content_switching"
-    description: "Rules not matched"
-    otel:
-      name: senhub.netscaler.cspolicy.evaluations
-      unit: "{evaluation}"
-      type: counter
-      attributes:
-        senhub.netscaler.cspolicy.result: undefined
-    tag_to_attribute:
+      csvserver: senhub.netscaler.csvserver.name
       cspolicy: senhub.netscaler.cspolicy.name
 
   # ═════════════════════════════════════════════════════════════════════════
@@ -1189,21 +1159,6 @@ metrics:
         mapping:
           down: 0
           up: 1
-    tag_to_attribute:
-      gslbsite: senhub.netscaler.gslb.site.name
-
-  - name: "netscaler.gslb.site.network_rtt_microseconds"
-    channel: "gslb.site.network_rtt_microseconds"
-    display_name: "GSLB Site Network RTT ({gslbsite})"
-    unit: "μs"
-    multi_instance_labels: ["gslbsite"]
-    category: "gslb"
-    description: "Network round-trip time in microseconds"
-    otel:
-      name: senhub.netscaler.gslb.site.network_rtt
-      unit: s
-      type: gauge
-      # Mapper ÷1e6 (μs → s)
     tag_to_attribute:
       gslbsite: senhub.netscaler.gslb.site.name
 
@@ -1426,38 +1381,6 @@ metrics:
     tag_to_attribute:
       authvserver: senhub.netscaler.aaa.vserver.name
 
-  - name: "netscaler.aaa.vserver.auth.successes.total"
-    channel: "aaa.vserver.auth.successes.total"
-    display_name: "AAA VServer Auth Successes ({authvserver})"
-    unit: "#"
-    multi_instance_labels: ["authvserver"]
-    category: "aaa"
-    description: "Total successful authentication attempts"
-    otel:
-      name: senhub.netscaler.aaa.vserver.auth_attempts
-      unit: "{attempt}"
-      type: counter
-      attributes:
-        senhub.netscaler.aaa.auth_result: success
-    tag_to_attribute:
-      authvserver: senhub.netscaler.aaa.vserver.name
-
-  - name: "netscaler.aaa.vserver.auth.failures.total"
-    channel: "aaa.vserver.auth.failures.total"
-    display_name: "AAA VServer Auth Failures ({authvserver})"
-    unit: "#"
-    multi_instance_labels: ["authvserver"]
-    category: "aaa"
-    description: "Total failed authentication attempts"
-    otel:
-      name: senhub.netscaler.aaa.vserver.auth_attempts
-      unit: "{attempt}"
-      type: counter
-      attributes:
-        senhub.netscaler.aaa.auth_result: failure
-    tag_to_attribute:
-      authvserver: senhub.netscaler.aaa.vserver.name
-
   # ═════════════════════════════════════════════════════════════════════════
   # VPN / Gateway
   # ═════════════════════════════════════════════════════════════════════════
@@ -1491,20 +1414,6 @@ metrics:
       name: senhub.netscaler.vpn.vserver.hits
       unit: "{hit}"
       type: counter
-    tag_to_attribute:
-      vpnvserver: senhub.netscaler.vpn.vserver.name
-
-  - name: "netscaler.vpn.vserver.ica.sessions.active"
-    channel: "vpn.vserver.ica.sessions.active"
-    display_name: "VPN VServer ICA Sessions Active ({vpnvserver})"
-    unit: "#"
-    multi_instance_labels: ["vpnvserver"]
-    category: "vpn"
-    description: "Active ICA sessions (Citrix Virtual Apps)"
-    otel:
-      name: senhub.netscaler.vpn.vserver.ica_sessions.active
-      unit: "{session}"
-      type: updowncounter
     tag_to_attribute:
       vpnvserver: senhub.netscaler.vpn.vserver.name
 
@@ -1550,20 +1459,6 @@ metrics:
       type: counter
       attributes:
         senhub.netscaler.http.message_type: request
-
-  - name: "netscaler.appfw.responses.blocked.total"
-    multi_instance_labels: []
-    channel: "appfw.responses.blocked.total"
-    display_name: "AppFW Responses Blocked"
-    unit: "#"
-    category: "security"
-    description: "Total responses blocked by WAF"
-    otel:
-      name: senhub.netscaler.appfw.blocked
-      unit: "{message}"
-      type: counter
-      attributes:
-        senhub.netscaler.http.message_type: response
 
   - name: "netscaler.appfw.violations.sqli.total"
     multi_instance_labels: []
