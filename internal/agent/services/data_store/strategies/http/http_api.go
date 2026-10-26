@@ -63,7 +63,7 @@ func (a *APIManager) HandlePRTGMetricsGET(w http.ResponseWriter, r *http.Request
 		Interface("filter", filter).
 		Msg("PRTG metrics GET request received")
 
-	a.strategy.waitForFirstData(r.Context(), probeNameLower)
+	a.strategy.waitForFirstData(r.Context(), w, probeNameLower)
 
 	// Get metrics from cache for the specified probe with filters
 	channels := a.strategy.metricsProcessor.GetPRTGMetricsForProbeWithFilter(probeNameLower, filter)
@@ -115,7 +115,7 @@ func (a *APIManager) HandlePRTGMetrics(w http.ResponseWriter, r *http.Request) {
 		a.logger.Debug().Str("probe", req.Probe).Msg("PRTG request carried a config block; it is ignored")
 	}
 
-	a.strategy.waitForFirstData(r.Context(), strings.ToLower(req.Probe))
+	a.strategy.waitForFirstData(r.Context(), w, strings.ToLower(req.Probe))
 
 	// Get metrics from cache for the specified probe
 	channels := a.strategy.metricsProcessor.GetPRTGMetricsForProbeWithFilter(req.Probe, MetricFilter{ShowTags: true, NativeSpeed: NativeSpeedRequested(r)})

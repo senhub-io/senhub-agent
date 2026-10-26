@@ -51,7 +51,7 @@ func (n *NagiosManager) HandleNagiosMetricsGET(w http.ResponseWriter, r *http.Re
 	// Parse query parameters
 	filter := n.strategy.metricsProcessor.ParseMetricFilter(r)
 
-	n.strategy.waitForFirstData(r.Context(), probeNameLower)
+	n.strategy.waitForFirstData(r.Context(), w, probeNameLower)
 
 	// Get probe metrics from cache
 	metrics := n.strategy.cache.GetProbeMetrics(probeNameLower)

@@ -147,6 +147,10 @@ func SetStartFailedProbes(failed map[string]string) {
 // probe's own state rather than infer it from the metrics it holds.
 var activeProbeByName = map[string]string{}
 
+// activeNamesChanged is closed, and replaced, each time the set of
+// running probe names is published. Guarded by probeStateMu.
+var activeNamesChanged = make(chan struct{})
+
 // SetActiveProbeNames publishes the name of each running probe.
 func SetActiveProbeNames(byName map[string]string) {
 	probeStateMu.Lock()
@@ -156,6 +160,17 @@ func SetActiveProbeNames(byName map[string]string) {
 		next[strings.ToLower(name)] = id
 	}
 	activeProbeByName = next
+	close(activeNamesChanged)
+	activeNamesChanged = make(chan struct{})
+}
+
+// ActiveProbeNamesChanged returns a channel closed the next time the
+// running probe names are published. Take it before reading the state,
+// so a publication between the read and the wait is not missed.
+func ActiveProbeNamesChanged() <-chan struct{} {
+	probeStateMu.RLock()
+	defer probeStateMu.RUnlock()
+	return activeNamesChanged
 }
 
 // ProbeRunStateByName reports the live state of a running probe by its
