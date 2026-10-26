@@ -178,11 +178,22 @@ func SetActiveProbes(probeIDs []string) {
 		newSet[id] = struct{}{}
 	}
 	activeProbeIDs = newSet
-	// Prune health entries for probes no longer active.
+	// Prune what is kept per probe for probes no longer active. Each map
+	// is walked on its own: a probe can have cycles or an error recorded
+	// without a health entry, and pruning those through the health map
+	// left them behind on every reload that changed a probe's ID.
 	for id := range probeHealth {
 		if _, alive := newSet[id]; !alive {
 			delete(probeHealth, id)
+		}
+	}
+	for id := range probeLastError {
+		if _, alive := newSet[id]; !alive {
 			delete(probeLastError, id)
+		}
+	}
+	for id := range probeCycles {
+		if _, alive := newSet[id]; !alive {
 			delete(probeCycles, id)
 		}
 	}
