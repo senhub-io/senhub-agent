@@ -81,7 +81,7 @@ The `agent` section defines the agent identity.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `key` | Yes | Agent key (UUID format), generated on the machine by `install`, `config init` or the MSI. It identifies the agent and is the key PRTG, Nagios and a Prometheus scrape read with. It must not be empty. It does not open the web console, which answers only the administration key (`admin_key` of the `http` output) |
+| `key` | Yes | Agent key (UUID format), generated on the machine by `install`, `config init` or the MSI. It identifies the agent and is the key PRTG, Nagios and a Prometheus scrape read with. It must not be empty, and it is never copied to another machine (see [License](#license)). It does not open the web console, which answers only the administration key (`admin_key` of the `http` output) |
 | `license` | No | License token for premium probes (see License section) |
 | `global_tags` | No | Key-value tags applied to every datapoint of every probe. A probe's own `custom_tags` win on a key present in both. Keep the set small — every key multiplies the series a backend stores |
 
@@ -666,6 +666,15 @@ shell history; it is also accepted as the argument.
 
 Either way, **the license takes effect after restarting the agent** — a license
 change is not picked up while the agent is running.
+
+!!! warning "Never copy an agent key to another machine"
+    A licence bound to one agent key is valid on that agent only. To license
+    another agent, ask support for a licence for that agent or for your
+    organisation. Do not copy `key` from one `agent.yaml` to another: the
+    agent's identity in every output is derived from it (its
+    `service.instance.id`, the address PRTG and Nagios read), so two agents
+    sharing a key report as one. Their own metrics mix, and in a topology
+    graph each overwrites the other's entities, so one host appears detached.
 
 ### Verifying License Status
 
