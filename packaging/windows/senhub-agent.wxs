@@ -630,7 +630,7 @@
           (internal/agent/services/datadir), which also repairs upgrades.
         -->
         <CreateFolder>
-          <util:PermissionEx Sddl="D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)" />
+          <PermissionEx Sddl="D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)" />
         </CreateFolder>
         <!--
           Three purge rows, processed together by Wix4RemoveFoldersEx. Each
