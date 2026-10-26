@@ -464,3 +464,152 @@ func TestRedactAttributeByCredentialKey(t *testing.T) {
 		t.Fatalf("preset off must leave keyed attributes alone, got %q", off.Attributes["password"])
 	}
 }
+
+// PRTG writes its licence key and system id in clear in Core.log and
+// CoreActivationLog.log on every core start. A probe that ships those
+// files must never carry them, whatever its own configuration.
+func TestRedactPresetMasksThePRTGLicence(t *testing.T) {
+	setupRedactionTest(t)
+	if errs := ConfigureLogRedaction(true, nil); len(errs) != 0 {
+		t.Fatalf("ConfigureLogRedaction errors: %v", errs)
+	}
+
+	const key = "ABC123-DEF456-GHI789-JKL012-MNO345-PQR678-STU901-VWX234-YZA567-BCD890"
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "licence line",
+			in:   `2026-10-20 09:30:01.000001 INFO  TId 1 Core> Paessler PRTG Enterprise licensed for "Example" (` + key + `) Edt=7`,
+			want: `2026-10-20 09:30:01.000001 INFO  TId 1 Core> Paessler PRTG Enterprise licensed for "Example" (***) Edt=7`,
+		},
+		{
+			name: "system id line",
+			in:   "2026-10-20 09:30:01.000002 INFO  TId 1 Core> SystemID: SYSTEMID-ABCDEF12-34567890-ABCDEF12-34567890-ABCDEF12",
+			want: "2026-10-20 09:30:01.000002 INFO  TId 1 Core> SystemID: SYSTEMID-***",
+		},
+		{
+			name: "system id with more groups than today",
+			in:   "Core> SystemID: SYSTEMID-ABCDEF12-34567890-ABCDEF12-34567890-ABCDEF12-1ABCDEFG done",
+			want: "Core> SystemID: SYSTEMID-*** done",
+		},
+		{
+			name: "both inside a folded multiline record",
+			in:   "Core> licensed for \"Example\" (" + key + ")\nCore> SystemID: SYSTEMID-ABCDEF12-34567890-ABCDEF12-34567890-ABCDEF12",
+			want: "Core> licensed for \"Example\" (***)\nCore> SystemID: SYSTEMID-***",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := redactLogRecord(LogRecord{Body: tc.in, ProducerProbeName: "prtg-logs"})
+			if rec.Body != tc.want {
+				t.Fatalf("Body = %q, want %q", rec.Body, tc.want)
+			}
+		})
+	}
+
+	counts := map[string]uint64{}
+	for _, c := range LogRedactedCounts() {
+		if c.Probe == "prtg-logs" {
+			counts[c.Rule] = c.Count
+		}
+	}
+	if counts["prtg_license_key"] != 2 || counts["prtg_system_id"] != 3 {
+		t.Fatalf("counters = %v, want 2 masked keys and 3 masked system ids", counts)
+	}
+
+	for _, keep := range []string{
+		"Core> sensor 2413 ABC123-DEF456 scanned",
+		"guid 0f4c2a51-9b7e-4d3a-8c61-2e5f7a9b0d13",
+		"ABC123-DEF456-GHI789-JKL012-MNO345-PQR678-STU901-VWX234-YZA567",
+		"abc123-def456-ghi789-jkl012-mno345-pqr678-stu901-vwx234-yza567-bcd890",
+	} {
+		if rec := redactLogRecord(LogRecord{Body: keep, ProducerProbeName: "prtg-logs"}); rec.Body != keep {
+			t.Errorf("Body = %q, want unchanged %q", rec.Body, keep)
+		}
+	}
+}
+
+func TestRedactPresetRuleNamesAreReserved(t *testing.T) {
+	for _, name := range []string{"prtg_license_key", "prtg_system_id", "private_key", "jwt", "aws_access_key_id", "aws_secret_access_key"} {
+		errs := ValidateLogRedactRules([]LogRedactRule{{Name: name, Pattern: "x", Replacement: "y"}})
+		if len(errs) != 1 || !strings.Contains(errs[0].Error(), "reserved") {
+			t.Errorf("custom rule %q: errors %v, want it reserved", name, errs)
+		}
+	}
+}
+
+func TestRedactPresetMasksKeysAndTokens(t *testing.T) {
+	setupRedactionTest(t)
+	if errs := ConfigureLogRedaction(true, nil); len(errs) != 0 {
+		t.Fatalf("ConfigureLogRedaction errors: %v", errs)
+	}
+
+	const jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "pem private key",
+			in:   "loaded key\n-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA1c3\nabcDEF==\n-----END RSA PRIVATE KEY-----\ndone",
+			want: "loaded key\n-----BEGIN RSA PRIVATE KEY-----***-----END RSA PRIVATE KEY-----\ndone",
+		},
+		{
+			name: "pem private key cut short",
+			in:   "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0",
+			want: "-----BEGIN PRIVATE KEY-----***",
+		},
+		{
+			name: "jwt in a log line",
+			in:   "session " + jwt + " issued",
+			want: "session *** issued",
+		},
+		{
+			name: "aws access key id",
+			in:   "using key AKIAIOSFODNN7EXAMPLE for s3",
+			want: "using key *** for s3",
+		},
+		{
+			name: "aws temporary key id",
+			in:   "creds ASIAY34FZKBOKMUTVV7A",
+			want: "creds ***",
+		},
+		{
+			name: "aws secret access key",
+			in:   "aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+			want: "aws_secret_access_key = ***",
+		},
+		{
+			name: "aws secret access key in json",
+			in:   `{"aws_secret_access_key":"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"}`,
+			want: `{"aws_secret_access_key":"***"}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := redactLogRecord(LogRecord{Body: tc.in, ProducerProbeName: "app-logs"})
+			if rec.Body != tc.want {
+				t.Fatalf("Body = %q, want %q", rec.Body, tc.want)
+			}
+		})
+	}
+
+	for _, keep := range []string{
+		"-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqh\n-----END PUBLIC KEY-----",
+		"-----BEGIN CERTIFICATE-----\nMIIDdzCCAl+g\n-----END CERTIFICATE-----",
+		"payload eyJhbGciOiJIUzI1NiJ9 seen",
+		"a.b.c eyJ.eyJ.x",
+		"key AKIA1234 too short",
+		"akiaiosfodnn7example lowercase",
+		"secret_access_key = short",
+		"aws_secret_access_key = notfortycharacters",
+	} {
+		if rec := redactLogRecord(LogRecord{Body: keep, ProducerProbeName: "app-logs"}); rec.Body != keep {
+			t.Errorf("Body = %q, want unchanged %q", rec.Body, keep)
+		}
+	}
+}
