@@ -112,7 +112,25 @@ func NewFileTailProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 		quit:         make(chan struct{}),
 	}
 	p.SetProbeType(ProbeType)
+	p.warnProtectedHomePaths()
 	return p, nil
+}
+
+// warnProtectedHomePaths names the systemd drop-in when a configured path
+// sits where the packaged unit's ProtectHome hides it. Nothing else says
+// why such a path stays empty.
+func (p *FileTailProbe) warnProtectedHomePaths() {
+	if runtime.GOOS != "linux" {
+		return
+	}
+	for _, configured := range p.config.Paths {
+		dir, hidden := hiddenByProtectHome(configured)
+		if !hidden {
+			continue
+		}
+		p.warn().Str("path", configured).Str("hidden_dir", dir).
+			Msg("Path is under a directory the systemd unit hides with ProtectHome; if the agent runs as a service, add a drop-in (systemctl edit senhub-agent) with [Service] ProtectHome=read-only, then restart")
+	}
 }
 
 // GetTargetStrategies is intentionally NOT overridden: the tailed log
@@ -313,14 +331,81 @@ func (p *FileTailProbe) rescanLoop() {
 	defer p.wg.Done()
 	ticker := time.NewTicker(globRescanInterval)
 	defer ticker.Stop()
+	var rotationC <-chan time.Time
+	if rotationCheckInterval > 0 {
+		rotation := time.NewTicker(rotationCheckInterval)
+		defer rotation.Stop()
+		rotationC = rotation.C
+	}
 	for {
 		select {
 		case <-p.quit:
 			return
 		case <-ticker.C:
 			p.scanAndTail()
+		case <-rotationC:
+			p.restartRotatedTails()
 		}
 	}
+}
+
+// rotationCheckInterval is how often, on Windows, the probe checks that each
+// path still names the file its tail reads. The polling watcher there can
+// miss a rename made during its first interval and go on reading the old
+// file; without this check the stall grace of the full rescan applies and
+// the new file waits tens of seconds. Elsewhere the library sees renames
+// itself, and a second reader of rotation would race its reopen.
+var rotationCheckInterval = func() time.Duration {
+	if runtime.GOOS == "windows" {
+		return time.Second
+	}
+	return 0
+}()
+
+// restartRotatedTails restarts, from the first byte of the new file, every
+// tail whose path has named another file on two checks in a row. Two looks
+// leave the library the time to report a reopen it is making itself.
+func (p *FileTailProbe) restartRotatedTails() {
+	type candidate struct {
+		file string
+		ts   *tailState
+	}
+	var due []candidate
+	p.mu.Lock()
+	for file, ts := range p.tailing {
+		moved := !ts.stillOnPath(file) && pathExists(file)
+		ts.mu.Lock()
+		switch {
+		case !moved:
+			ts.movedSeen = false
+		case !ts.movedSeen:
+			ts.movedSeen = true
+		default:
+			due = append(due, candidate{file, ts})
+		}
+		ts.mu.Unlock()
+	}
+	p.mu.Unlock()
+	for _, c := range due {
+		p.restartStalledTail(c.file, c.ts, "the path names a different file than the one being read", false)
+	}
+}
+
+func pathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// statIdentity stats path and fixes the file's identity at once. On Windows
+// Go reads the identity of a file stat'd by path lazily, by reopening the
+// path at the first os.SameFile: a rotation made before that comparison
+// would make this stat name the new file, and the rotation would go unseen.
+func statIdentity(path string) (os.FileInfo, error) {
+	fi, err := os.Stat(path)
+	if err == nil {
+		os.SameFile(fi, fi)
+	}
+	return fi, err
 }
 
 // scanAndTail expands every configured path glob and starts a tail for
@@ -420,7 +505,7 @@ func (p *FileTailProbe) startTail(file string) error {
 		return nil
 	}
 
-	fi, err := os.Stat(file)
+	fi, err := statIdentity(file)
 	if err != nil {
 		p.mu.Unlock()
 		if os.IsNotExist(err) {
@@ -545,6 +630,9 @@ type tailState struct {
 	mu            sync.Mutex
 	opened        os.FileInfo
 	mismatchSince time.Time
+	// movedSeen is set by a rotation check that found another file at the
+	// path; a second check that finds it again restarts the tail.
+	movedSeen     bool
 	checkedOffset int64
 
 	superseded atomic.Bool
@@ -618,7 +706,7 @@ func drainFrom(f *os.File, offset int64) ([]string, int64, error) {
 
 // markOpened records the file now at path as the one the tail reads.
 func (ts *tailState) markOpened(path string) {
-	fi, err := os.Stat(path)
+	fi, err := statIdentity(path)
 	if err != nil {
 		return
 	}
@@ -634,7 +722,7 @@ func (ts *tailState) markOpened(path string) {
 // would pair the new file with the offset or hash reached in the old one,
 // and a resume at that offset skips or replays the start of the new file.
 func (ts *tailState) restartedAtStart(path string) string {
-	fi, err := os.Stat(path)
+	fi, err := statIdentity(path)
 	fp := ""
 	if err == nil {
 		fp = fingerprint(path, DefaultFingerprintLength)
