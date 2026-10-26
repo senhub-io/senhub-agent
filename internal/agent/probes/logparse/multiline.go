@@ -58,11 +58,15 @@ func (a *Assembler) Append(line string) []string {
 	}
 
 	if a.cfg.Match == "before" {
+		var out []string
+		if a.full(line) {
+			out = a.flush()
+		}
 		a.push(line)
 		if a.matches(line) {
-			return a.flush()
+			out = append(out, a.flush()...)
 		}
-		return nil
+		return out
 	}
 
 	// Match == "after" (default).
@@ -71,13 +75,27 @@ func (a *Assembler) Append(line string) []string {
 		a.push(line)
 		return out
 	}
-	if len(a.pending) == 0 {
-		// Continuation with nothing started yet (file opens mid-stack):
-		// emit the orphan line on its own rather than swallow it.
-		return []string{Truncate(line, a.maxLen)}
+	// A continuation with nothing started (the file opened mid-message,
+	// or the start was already sent by an idle flush) opens a record of
+	// its own: the continuations after it fold into it, as they would
+	// into a record that had its first line.
+	if a.full(line) {
+		// The record would pass the cap: send it, and carry on with this
+		// line as the start of the next one, rather than dropping every
+		// line past the cap until the next record starts.
+		out := a.flush()
+		a.push(line)
+		return out
 	}
 	a.push(line)
 	return nil
+}
+
+// full reports whether line would take the record in progress past the
+// cap. A record is cut between lines, so no byte is lost; only a single
+// line longer than the cap is truncated.
+func (a *Assembler) full(line string) bool {
+	return len(a.pending) > 0 && a.curLen+len(line) > a.maxLen
 }
 
 // Pending reports whether a logical record is being assembled, so a caller
@@ -94,9 +112,6 @@ func (a *Assembler) Flush() []string {
 }
 
 func (a *Assembler) push(line string) {
-	if a.curLen >= a.maxLen {
-		return // already at cap; drop further continuation bytes
-	}
 	a.pending = append(a.pending, line)
 	a.curLen += len(line) + 1 // +1 for the joining newline
 }

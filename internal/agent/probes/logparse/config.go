@@ -8,6 +8,8 @@ package logparse
 import (
 	"fmt"
 	"regexp"
+	"strings"
+	"time"
 )
 
 // ParserType enumerates the supported line-parsing strategies. Each
@@ -38,21 +40,32 @@ const DefaultMaxBytesPerLine = 1 << 20 // 1 MiB
 // single logical log record. When Pattern is empty multiline is off
 // and every physical line is its own record.
 //
-// Semantics mirror the common filebeat/fluentbit model:
-//   - A line matching Pattern (XOR Negate) is a continuation that is
-//     appended to the record currently being assembled when Match is
-//     "after"; when Match is "before" the matching line starts a new
-//     record and the preceding accumulation is flushed.
+// Pattern describes the line that STARTS a record when Match is "after"
+// (the default): a matching line opens a new record and a non-matching
+// line is a continuation of the record above it. With Match "before" a
+// matching line ends the record: it is appended, then the record is sent.
+// Negate inverts the test.
 //
-// The default match mode is "after": Pattern marks the FIRST line of a
-// new message (e.g. a leading timestamp), so a non-matching line is a
-// continuation of the message above it.
+// This is not Filebeat's model, where the pattern describes the lines that
+// are joined: Filebeat's "negate: true, match: after" for a leading
+// timestamp is written here "negate: false". MultilineWarning flags the
+// Filebeat spelling.
 type MultilineConfig struct {
 	Pattern  string
 	compiled *regexp.Regexp
 	Negate   bool
 	Match    string // "after" (default) or "before"
+	// FlushTimeout sends a record in progress once no line has come for
+	// that long, so the last message of a quiet file is not held until
+	// the next one. Zero keeps it until the next record starts. Set by a
+	// conduit that streams lines (filetail); one that polls flushes on its
+	// own idle cycle instead.
+	FlushTimeout time.Duration
 }
+
+// DefaultMultilineFlushTimeout is how long a record in progress waits for
+// another line when the probe sets no flush_timeout.
+const DefaultMultilineFlushTimeout = 5 * time.Second
 
 // Enabled reports whether multiline folding is active (a pattern compiled).
 func (m MultilineConfig) Enabled() bool { return m.compiled != nil }
@@ -163,4 +176,18 @@ func countNamedGroups(names []string) int {
 		}
 	}
 	return n
+}
+
+// MultilineWarning returns why a multiline block probably does not do what
+// its author meant, or "" when nothing looks wrong. The one case it knows is
+// Filebeat's spelling of "a line starting with this pattern opens a record"
+// (negate: true, match: after, pattern anchored at the start of the line):
+// here it makes every line WITHOUT the pattern open a record, so each line
+// that has it is folded into the record a continuation line opened.
+func MultilineWarning(ml MultilineConfig) string {
+	if !ml.Negate || ml.Match != "after" || !strings.HasPrefix(ml.Pattern, "^") {
+		return ""
+	}
+	return fmt.Sprintf("multiline: with negate: true and match: after, a line that does NOT match %q starts a record, and every line that matches is folded into it; "+
+		"for a pattern on the first line of a message (Filebeat's negate: true), write negate: false", ml.Pattern)
 }
