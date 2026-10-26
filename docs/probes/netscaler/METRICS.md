@@ -346,7 +346,6 @@ Per-partition disk space monitoring.
 - `netscaler.interface.tx.errors.total` - TX error counter
 - `netscaler.interface.rx.drops.total` - RX packet drops
 - `netscaler.interface.tx.drops.total` - TX packet drops
-- `netscaler.interface.link_speed_mbps` - Link speed
 
 **Tags:** `interface` (e.g., "LO/1", "LA/1")
 
@@ -357,7 +356,6 @@ Per-partition disk space monitoring.
 - `netscaler.cs.vserver.requests.rate` - Requests per second
 - `netscaler.cs.vserver.connections.current` - Active connections
 - `netscaler.cs.policy.hits.total` - CS policy hits
-- `netscaler.cs.policy.undefine_hits.total` - Unmatched requests
 
 **Tags:** `csvserver`, `cspolicy`
 
@@ -367,7 +365,6 @@ Per-partition disk space monitoring.
 - `netscaler.gslb.vserver.hits.total` - Total hits
 - `netscaler.gslb.vserver.requests.rate` - Requests per second
 - `netscaler.gslb.site.state` - GSLB site state (UP/DOWN)
-- `netscaler.gslb.site.network_rtt_microseconds` - RTT to remote site
 - `netscaler.gslb.service.state` - GSLB service state
 - `netscaler.gslb.service.hits.total` - Service hits
 
@@ -390,8 +387,6 @@ Per-partition disk space monitoring.
 
 - `netscaler.aaa.sessions.active.total` - Active AAA sessions
 - `netscaler.aaa.vserver.state` - Auth vServer state
-- `netscaler.aaa.vserver.auth.successes.total` - Successful authentications
-- `netscaler.aaa.vserver.auth.failures.total` - Failed authentications
 
 **Tags:** `authvserver`
 
@@ -399,7 +394,6 @@ Per-partition disk space monitoring.
 
 - `netscaler.vpn.vserver.state` - VPN vServer state
 - `netscaler.vpn.vserver.hits.total` - Total hits
-- `netscaler.vpn.vserver.ica.sessions.active` - Active ICA sessions (Citrix Virtual Apps)
 - `netscaler.vpn.vserver.connections.established` - Established VPN connections
 
 **Tags:** `vpnvserver`
@@ -408,7 +402,6 @@ Per-partition disk space monitoring.
 
 - `netscaler.appfw.violations.total` - Total WAF violations
 - `netscaler.appfw.requests.blocked.total` - Requests blocked
-- `netscaler.appfw.responses.blocked.total` - Responses blocked
 - `netscaler.appfw.violations.sqli.total` - SQL injection violations
 - `netscaler.appfw.violations.xss.total` - XSS violations
 - `netscaler.appfw.violations.buffer_overflow.total` - Buffer overflow violations
