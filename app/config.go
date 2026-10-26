@@ -18,6 +18,7 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/lifecycle"
 	"senhub-agent.go/internal/agent/probes"
+	"senhub-agent.go/internal/agent/probes/logparse"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -880,6 +881,7 @@ func validateProbeParams(name, probeType string, params map[string]interface{}) 
 	e, w := reportProbeParamProblems(name, probeType, params)
 	errors += e
 	warnings += w
+	warnings += reportMultilineProblems(name, params)
 
 	// Citrix has two accepted formats: nested director block (0.1.87+) or flat director_url/base_url.
 	// Validate manually instead of using a flat required-list.
@@ -1187,4 +1189,19 @@ func reportEntityEmission(entities *configuration.EntitiesConfig, storage []conf
 	fmt.Println("         logs export normally; a consumer of the topology sees this host")
 	fmt.Println("         as absent. Add `entities: {enabled: true}` to turn it on.")
 	return true
+}
+
+// reportMultilineProblems warns on a multiline block that parses but
+// probably folds lines the reverse of what its author meant, whatever probe
+// carries it.
+func reportMultilineProblems(name string, params map[string]interface{}) (warnings int) {
+	var ml logparse.MultilineConfig
+	if err := logparse.ParseMultiline(params, &ml); err != nil {
+		return 0
+	}
+	if w := logparse.MultilineWarning(ml); w != "" {
+		fmt.Printf("         [WARN] Probe %q: %s\n", name, w)
+		return 1
+	}
+	return 0
 }
