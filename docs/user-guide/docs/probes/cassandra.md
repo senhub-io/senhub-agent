@@ -81,5 +81,6 @@ series' tags.
 | `jvm.memory.heap.used` | `jvm.memory.heap.used` | Cassandra JVM Heap Used | B | JVM heap memory currently in use by the Cassandra process |
 | `jvm.gc.collections.count` | `jvm.gc.collections.count` | Cassandra GC {collector} Collections | # | Total number of garbage collections performed by the named GC collector |
 | `jvm.gc.collections.elapsed` | `jvm.gc.collections.elapsed` | Cassandra GC {collector} Elapsed | ms | Total elapsed time in milliseconds spent in garbage collection by the named GC collector |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

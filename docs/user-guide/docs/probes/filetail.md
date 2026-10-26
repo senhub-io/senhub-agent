@@ -184,6 +184,35 @@ mistake.
   first ingestion (combine with `bookmark_path` so it only happens
   once).
 
+## Files under /home, /root or /run/user
+
+On Linux, the systemd unit of the agent sets `ProtectHome=true`, which makes
+`/home`, `/root` and `/run/user` appear empty to the service. A path under
+one of them is never read, and `ReadOnlyPaths=` cannot bring it back: with
+`ProtectHome=true` the directories are inaccessible, not read-only. At
+construction the probe logs a warning that names the directory.
+
+Override the setting with a drop-in, which survives package upgrades:
+
+```bash
+sudo systemctl edit senhub-agent
+```
+
+```ini
+[Service]
+ProtectHome=read-only
+```
+
+```bash
+sudo systemctl restart senhub-agent
+```
+
+`read-only` exposes the three directories for reading, which is all the
+probe needs. The `senhub` account must also have the Unix permission to
+read the file and to traverse its parent directories. To expose a single
+directory instead, use `ProtectHome=tmpfs` together with
+`BindReadOnlyPaths=/home/<path>`.
+
 ## Detecting a tail that no longer reads
 
 For every file it follows, the probe reports two gauges carrying the

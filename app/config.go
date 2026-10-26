@@ -515,6 +515,16 @@ func checkConfig(configPath string) checkOutcome {
 		} else {
 			fmt.Printf("  [OK]   %d probe(s) configured\n", len(config.Probes))
 		}
+		// A key at the probe level that no field reads is dropped by the
+		// loader and the probe runs without it: a warning, as an unread
+		// key inside params is.
+		if unknown, uerr := configuration.FindUnknownProbeKeys(configPath); uerr == nil {
+			for _, u := range unknown {
+				fmt.Printf("  [WARN] Probe %q: key %q is not read at the probe level and has no effect (accepted: %s); parameters belong under params\n",
+					u.Probe, u.Key, strings.Join(configuration.KnownProbeKeys(), ", "))
+				warnings++
+			}
+		}
 		registeredProbes := probes.GetRegisteredProbeTypes()
 		duplicate := duplicateProbeIndexes(config.Probes)
 		for i, p := range config.Probes {
@@ -619,9 +629,14 @@ func checkConfig(configPath string) checkOutcome {
 					warnings++
 					continue
 				}
-				fmt.Printf("         [ERROR] Storage %q: param %q is not read by the %s strategy and has no effect\n",
+				fmt.Printf("         [WARN] Storage %q: param %q is not read by the %s strategy and has no effect\n",
 					s.Name, unread.Key, s.Name)
-				errorCount++
+				warnings++
+			}
+			for _, unread := range data_store.UnreadBlockParamsFor(s.Name, s.Params) {
+				fmt.Printf("         [WARN] Storage %q: param %q is not read by the %s strategy and has no effect\n",
+					s.Name, unread, s.Name)
+				warnings++
 			}
 
 			// And the validation the agent runs at construction: a
