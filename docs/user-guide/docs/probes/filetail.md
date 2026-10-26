@@ -60,6 +60,8 @@ appears. Such a file is read from its first line, whatever
 `from_beginning` says, since all of it was written after the probe
 started watching for it.
 
+Reading an old file from its first line sends its records with the time written in each line, when the parser finds one. A log backend refuses records older than its retention, without the agent being told: VictoriaLogs, for example, drops them and counts them in its own `too_small_timestamp` metric. Lines older than the backend's retention therefore never appear there, while the agent reports them as sent.
+
 ### Multiline folding
 
 Java stacktraces, Python tracebacks and pretty-printed payloads span
