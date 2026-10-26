@@ -112,8 +112,17 @@ func NewFileTailProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 		quit:         make(chan struct{}),
 	}
 	p.SetProbeType(ProbeType)
-	p.warnProtectedHomePaths()
 	return p, nil
+}
+
+// warnAboutConfig logs what config check would warn about. It runs at start,
+// not at construction: the poller names the probe after constructing it, and a
+// warning that does not say which probe it is about cannot be acted on.
+func (p *FileTailProbe) warnAboutConfig() {
+	if w := logparse.MultilineWarning(p.config.Multiline); w != "" {
+		p.warn().Msg(w)
+	}
+	p.warnProtectedHomePaths()
 }
 
 // warnProtectedHomePaths names the systemd drop-in when a configured path
@@ -265,6 +274,7 @@ func (p *FileTailProbe) OnStart(quitChannel chan struct{}) error {
 		return fmt.Errorf("filetail: bookmark init: %w", err)
 	}
 	p.bookmarks = bm
+	p.warnAboutConfig()
 
 	p.info().
 		Strs("paths", p.config.Paths).
@@ -523,10 +533,6 @@ func (p *FileTailProbe) startTail(file string) error {
 		}
 		return fmt.Errorf("%s: %w", describePathError(err), err)
 	}
-	if !drainsRotatedFile {
-		closeQuietly(handle)
-		handle = nil
-	}
 	fp := fingerprint(file, DefaultFingerprintLength)
 	stored, hasStored := p.bookmarks.Get(file)
 	offset := resolveStartOffset(stored, hasStored, fp, size, p.config.FromBeginning || p.awaiting[file])
@@ -661,16 +667,34 @@ func closeQuietly(f *os.File) {
 	}
 }
 
-// drainsRotatedFile is false on Windows: refusing a rename onto a file the
-// probe still holds open would stop the application from rotating its own
-// log, which the probe must never do. There a rotated file is left at once.
-var drainsRotatedFile = runtime.GOOS != "windows"
-
 // retiredGrace is how long the handle on a rotated file stays open after
 // the library has moved on. A writer keeps its old descriptor until it is
 // told to reopen (logrotate's postrotate signal), which comes after the
 // library has already left the file.
 const retiredGrace = 30 * time.Second
+
+// windowsRetiredGrace bounds the same handle on Windows. A file held open,
+// even with FILE_SHARE_DELETE, makes a later rename onto its name fail
+// there: an application that rotates app.log to app.log.old on every
+// rotation would be refused if the probe still held the previous
+// app.log.old. The application's own rotation must never be refused, so
+// the end of the rotated file is read for a short time and the handle then
+// released. One second covers the writes made just before the rename and
+// is far below the interval between two rotations of a real log.
+const windowsRetiredGrace = time.Second
+
+// windowsRetiredIdle closes the handle earlier than windowsRetiredGrace
+// once the rotated file has stopped growing for this long.
+const windowsRetiredIdle = retiredPollInterval
+
+// retiredWindow returns how long a rotated file stays open and, when
+// non-zero, how long without growth releases it sooner.
+func retiredWindow(goos string) (grace, idle time.Duration) {
+	if goos == "windows" {
+		return windowsRetiredGrace, windowsRetiredIdle
+	}
+	return retiredGrace, 0
+}
 
 // retiredPollInterval spaces the looks at rotated files still in their grace.
 const retiredPollInterval = 250 * time.Millisecond
@@ -680,6 +704,10 @@ type retiredFile struct {
 	f      *os.File
 	offset int64
 	until  time.Time
+	// idle, when non-zero, releases the file once it has not grown for that
+	// long; lastGrowth is when it last did.
+	idle       time.Duration
+	lastGrowth time.Time
 }
 
 // drainFrom returns the complete lines of f from offset to its current end,
@@ -937,10 +965,41 @@ func (p *FileTailProbe) consume(file string, ts *tailState, startOffset int64, f
 		}
 	}
 
+	// idle sends a record in progress once the file has been quiet for
+	// the flush timeout: without it the last message of a quiet file
+	// waited for the next one, possibly days, or for the agent to stop.
+	flushTimeout := p.config.Multiline.FlushTimeout
+	var idle *time.Timer
+	var idleC <-chan time.Time
+	armIdle := func() {
+		if flushTimeout <= 0 {
+			return
+		}
+		if !asm.Pending() {
+			if idle != nil {
+				idle.Stop()
+			}
+			idleC = nil
+			return
+		}
+		if idle == nil {
+			idle = time.NewTimer(flushTimeout)
+		} else {
+			idle.Reset(flushTimeout)
+		}
+		idleC = idle.C
+	}
+	defer func() {
+		if idle != nil {
+			idle.Stop()
+		}
+	}()
+
 	feed := func(text string, readTime time.Time) {
 		for _, logical := range asm.Append(strings.TrimSuffix(text, "\r")) {
 			p.publish(p.config.Parser, logical, readTime, probeName, file)
 		}
+		armIdle()
 	}
 
 	// pollRetired reads what writers still holding a rotated file appended
@@ -957,7 +1016,10 @@ func (p *FileTailProbe) consume(file string, ts *tailState, startOffset int64, f
 			for _, l := range lines {
 				feed(l, now)
 			}
-			if now.After(r.until) || err != nil {
+			if len(lines) > 0 {
+				r.lastGrowth = now
+			}
+			if now.After(r.until) || err != nil || (r.idle > 0 && now.Sub(r.lastGrowth) >= r.idle) {
 				closeQuietly(r.f)
 				continue
 			}
@@ -1000,7 +1062,9 @@ read:
 					p.debug().Str("file", file).Int("lines", len(lines)).Msg("drained lines written to the rotated file")
 				}
 				if ts.handle != nil {
-					retired = append(retired, &retiredFile{f: ts.handle, offset: off, until: time.Now().Add(retiredGrace)})
+					grace, idle := retiredWindow(runtime.GOOS)
+					started := time.Now()
+					retired = append(retired, &retiredFile{f: ts.handle, offset: off, until: started.Add(grace), idle: idle, lastGrowth: started})
 					ts.handle = nil
 				}
 				continue
@@ -1015,9 +1079,7 @@ read:
 				p.publish(p.config.Parser, logical, time.Now(), probeName, file)
 			}
 			lastOffset = 0
-			if !drainsRotatedFile {
-				// No drain handle to renew.
-			} else if h, err := tail.OpenFile(file); err == nil { //nolint:staticcheck // no replacement in nxadm/tail v1.4.11; os.Open lacks the Windows delete-sharing that rotation relies on
+			if h, err := tail.OpenFile(file); err == nil { //nolint:staticcheck // no replacement in nxadm/tail v1.4.11; os.Open lacks the Windows delete-sharing that rotation relies on
 				closeQuietly(ts.handle)
 				ts.handle = h
 			} else {
@@ -1031,6 +1093,12 @@ read:
 			continue
 		case <-retiredTicker.C:
 			pollRetired()
+			continue
+		case <-idleC:
+			idleC = nil
+			for _, logical := range asm.Flush() {
+				p.publish(p.config.Parser, logical, time.Now(), probeName, file)
+			}
 			continue
 		case <-ticker.C:
 			if dirty {
