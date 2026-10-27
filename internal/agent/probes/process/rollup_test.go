@@ -14,14 +14,20 @@ func TestAnUnfilteredViewEmitsNoPerProcessSeries(t *testing.T) {
 	}
 }
 
+func TestTopNAloneKeepsTheRollUpOnly(t *testing.T) {
+	if (config{topN: 10}).detailed() {
+		t.Error("top_n without per_pid must report the per-name roll-up, not per-process series")
+	}
+}
+
 func TestNamingWhatToWatchBringsTheDetailBack(t *testing.T) {
 	for _, c := range []config{
 		{byName: regexp.MustCompile("^nginx")},
 		{byUser: "www-data"},
-		{topN: 10},
+		{topN: 10, perPID: true},
 	} {
 		if !c.detailed() {
-			t.Errorf("%+v must report the per-process detail: the operator either named what to watch or bounded the sample", c)
+			t.Errorf("%+v must report the per-process detail: the operator either named what to watch or asked for per_pid", c)
 		}
 	}
 }
@@ -30,9 +36,9 @@ func TestNamingWhatToWatchBringsTheDetailBack(t *testing.T) {
 // with one difference that is deliberate: top_n bounds the series count
 // but its membership still churns, so it feeds the detail and not Toise.
 func TestTopNFeedsTheDetailButNotTheGraph(t *testing.T) {
-	c := config{topN: 5}
+	c := config{topN: 5, perPID: true}
 	if !c.detailed() {
-		t.Error("a bounded sample is safe for series")
+		t.Error("per_pid asks for the per-process detail of the sample")
 	}
 	p, err := NewProcessProbe(map[string]interface{}{
 		"filter": map[string]interface{}{"top_n": 5},

@@ -89,7 +89,8 @@ func TestParseConfig(t *testing.T) {
 func TestCollect_CurrentHost(t *testing.T) {
 	cfg, err := parseConfig(map[string]interface{}{
 		"filter": map[string]interface{}{
-			"top_n": 5,
+			"top_n":   5,
+			"per_pid": true,
 		},
 	})
 	if err != nil {
