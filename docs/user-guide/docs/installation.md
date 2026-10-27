@@ -32,17 +32,26 @@ same artifacts:
 
 ```bash
 # GitHub — public, and the one to prefer for a container build
-https://github.com/senhub-io/senhub-agent/releases/download/0.6.0/senhub-agent-linux-amd64.zip
+https://github.com/senhub-io/senhub-agent/releases/latest/download/senhub-agent-linux-amd64.zip
 
 # SenHub release server
-https://eu-west-1.intake.senhub.io/download/0.6.0/senhub-agent-linux-amd64.zip
+https://eu-west-1.intake.senhub.io/download/latest/senhub-agent-linux-amd64.zip
+```
+
+These `latest` URLs always serve the current release — the GitHub one by
+redirect, the SenHub one directly — so a copied command cannot go stale.
+Prefer them for a first install. For a build you need to reproduce
+later, pin the version instead:
+
+```bash
+https://github.com/senhub-io/senhub-agent/releases/download/0.6.4/senhub-agent-linux-amd64.zip
 ```
 
 !!! warning "Release tags carry no `v` prefix"
 
-    The tag is `0.6.0`, not `v0.6.0`. A URL built with the `v` returns
-    404, which reads like a missing file rather than a wrong name — this
-    is the single most common reason a direct download fails.
+    The tag is `0.6.4`, not `v0.6.4`. A pinned URL built with the `v`
+    returns 404, which reads like a missing file rather than a wrong
+    name — this is the single most common reason a direct download fails.
 
 Substitute the version you want. To discover what is published:
 
@@ -70,7 +79,7 @@ signature next to it. Verify before you run it, especially in an
 automated build:
 
 ```bash
-VERSION=0.6.0
+VERSION=0.6.4
 BASE=https://github.com/senhub-io/senhub-agent/releases/download/$VERSION
 curl -fsSLO "$BASE/senhub-agent-linux-amd64.zip"
 curl -fsSLO "$BASE/senhub-agent-linux-amd64.zip.minisig"
@@ -227,7 +236,7 @@ Invoke-WebRequest -Uri "http://localhost:8080/health"
 
 Expected response:
 ```json
-{"status":"ok","version":"0.6.0","uptime":"1m30s","probes_active":2,"metrics_cached":12}
+{"status":"ok","version":"0.6.4","uptime":"1m30s","probes_active":2,"metrics_cached":12}
 ```
 
 ![Windows service running](images/installation/windows-service-running.webp "Services.msc showing SenHub Agent in Running state")
@@ -246,6 +255,21 @@ Log rotation: 10 MB max per file, 5 backup files, 30-day retention, compressed.
 ## Linux Installation
 
 ### 1. Prepare the binary
+
+The ZIP is extracted with `unzip`, which several Linux images do not
+carry by default, a clean Ubuntu Server 24.04 among them. Install it
+first, or the extract step below fails with `unzip: command not found`:
+
+```bash
+# Debian, Ubuntu
+sudo apt update && sudo apt install unzip
+
+# RHEL, Rocky Linux, AlmaLinux
+sudo dnf install unzip
+
+# openSUSE, SLES
+sudo zypper install unzip
+```
 
 Download the ZIP for your architecture (`senhub-agent-linux-amd64.zip` or `senhub-agent-linux-arm64.zip`), then extract it:
 
@@ -510,6 +534,33 @@ All logs are printed to the console. Press Ctrl+C to stop.
 
 Use `--filter` to limit debug output to specific modules (see [CLI Reference](cli.md)).
 
+### Reaching the web console on a headless server
+
+`senhub-agent console --print` prints the console address, of the form
+`http://localhost:8080/web/{admin-key}/dashboard`:
+
+```bash
+sudo /usr/local/bin/senhub-agent console --print
+```
+
+The agent binds that HTTP endpoint to 127.0.0.1:8080 on its own host, so
+on a server without a desktop the printed address opens nothing. Forward
+the port over SSH from the workstation you browse from:
+
+```bash
+ssh -L 8080:127.0.0.1:8080 user@agent-host
+```
+
+With the tunnel open, paste the printed address into your own browser
+unchanged. If port 8080 is already taken on your workstation, forward
+any free local port and change the port in the address to match.
+
+!!! warning "The address carries the administration key"
+
+    The printed URL embeds the administration key, which grants access to
+    the console — treat it as a credential rather than a bookmark to pass
+    around.
+
 ### Updating the Agent
 
 Check for available updates:
@@ -518,11 +569,18 @@ Check for available updates:
 sudo /usr/local/bin/senhub-agent update --list
 ```
 
-Install a specific version:
+Install a specific version, named as `update --list` prints it:
 
 ```bash
-sudo /usr/local/bin/senhub-agent update 0.6.0
+sudo /usr/local/bin/senhub-agent update <version>
 ```
+
+!!! warning "A version named by hand can go backwards"
+
+    `update` installs the version you name, older ones included. Copying
+    a version number out of a document downgrades an agent that is
+    already ahead of it, so take the number from `update --list` on the
+    host you are updating.
 
 On an MSI-managed Windows install, auto-update applies a new signed MSI rather than swapping the binary in place — see the note under [MSI installer](#msi-installer-recommended).
 
