@@ -126,67 +126,7 @@ func collectWithBaseTags(ts time.Time, cfg config, log *logger.ModuleLogger, bas
 		snaps = append(snaps, snap)
 	}
 
-	if cfg.topN > 0 && len(snaps) > cfg.topN {
-		snaps = topProcesses(snaps, cfg.topN, cfg.topBy)
-	}
-
-	points := make([]data_store.DataPoint, 0, len(snaps)*7+1)
-
-	if cfg.detailed() {
-		processEntityMode := cfg.byName != nil || cfg.byUser != ""
-		for _, snap := range snaps {
-			// Only processes the entity source would emit may carry the full
-			// process identity keys {host.id, process.pid, process.creation.time}.
-			includeHostID := processEntityMode && snap.createTime > 0
-			processTags := buildProcessTags(baseTags, snap, hostname, includeHostID)
-			points = appendProcessPoints(points, ts, snap, processTags)
-		}
-	}
-
-	// The roll-up over the processes sharing a name. It is what an
-	// unfiltered view reports instead of the per-process detail, and it
-	// is what the native Zabbix agent reports in every case: a name is
-	// stable where a process id is not.
-	if cfg.aggregate {
-		type rollUp struct {
-			count  int
-			cpu    float64
-			memory uint64
-		}
-		byName := map[string]*rollUp{}
-		for _, snap := range snaps {
-			name := snap.name
-			r, ok := byName[name]
-			if !ok {
-				r = &rollUp{}
-				byName[name] = r
-			}
-			r.count++
-			r.cpu += snap.cpuPct
-			r.memory += snap.rss
-		}
-		for name, r := range byName {
-			aggTags := append([]tags.Tag{}, baseTags...)
-			aggTags = append(aggTags,
-				tags.Tag{Key: "process.name", Value: name},
-			)
-			for _, m := range []struct {
-				name  string
-				value float64
-			}{
-				{"process.count", float64(r.count)},
-				{"process.group.cpu.utilization", r.cpu},
-				{"process.group.memory.usage", float64(r.memory)},
-			} {
-				points = append(points, data_store.DataPoint{
-					Name:      m.name,
-					Timestamp: ts,
-					Value:     m.value,
-					Tags:      aggTags,
-				})
-			}
-		}
-	}
+	points, snaps := snapshotPoints(ts, cfg, baseTags, hostname, snaps)
 
 	// The kernel's ceilings on what was just counted. Absent outside
 	// Linux, and a failure here does not fail the collection.

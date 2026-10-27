@@ -1,6 +1,14 @@
 package process
 
-import "testing"
+import (
+	"bytes"
+	"strings"
+	"testing"
+
+	"github.com/rs/zerolog"
+
+	"senhub-agent.go/internal/agent/services/logger"
+)
 
 func TestTopProcesses_RanksOnTheChosenMeasure(t *testing.T) {
 	snaps := func() []processSnapshot {
@@ -28,5 +36,39 @@ func TestParseConfig_TopBy(t *testing.T) {
 	}
 	if _, err := parseConfig(map[string]interface{}{"filter": map[string]interface{}{"top_by": "disk"}}); err == nil {
 		t.Error("an unknown top_by must be refused")
+	}
+}
+
+func TestParseConfig_PerPID(t *testing.T) {
+	if cfg, _ := parseConfig(map[string]interface{}{}); cfg.perPID {
+		t.Error("per_pid must default to false")
+	}
+	cfg, err := parseConfig(map[string]interface{}{"filter": map[string]interface{}{"top_n": 5, "per_pid": true}})
+	if err != nil || !cfg.perPID {
+		t.Fatalf("per_pid true: cfg.perPID=%v err=%v", cfg.perPID, err)
+	}
+}
+
+func TestPerPIDWarnsOnceAtStart(t *testing.T) {
+	start := func(filter map[string]interface{}) string {
+		var buf bytes.Buffer
+		zl := zerolog.New(&buf)
+		base := logger.Logger(zl)
+		p, err := NewProcessProbe(map[string]interface{}{"filter": filter}, &base)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := p.OnStart(nil); err != nil {
+			t.Fatal(err)
+		}
+		return buf.String()
+	}
+
+	out := start(map[string]interface{}{"top_n": 5, "per_pid": true})
+	if n := strings.Count(out, `"level":"warn"`); n != 1 {
+		t.Errorf("per_pid with top_n logged %d warnings, want 1: %s", n, out)
+	}
+	if out := start(map[string]interface{}{"top_n": 5}); out != "" {
+		t.Errorf("no warning expected without per_pid, got %s", out)
 	}
 }

@@ -19,6 +19,9 @@ type config struct {
 	topBy string
 	// aggregate emits one extra rolled-up datapoint per distinct process name.
 	aggregate bool
+	// perPID keeps one series per process under top_n instead of the per-name
+	// roll-up. Process ids are not stable, so those series churn.
+	perPID bool
 	// interval between collection cycles.
 	interval time.Duration
 }
@@ -55,6 +58,9 @@ func parseConfig(raw map[string]interface{}) (config, error) {
 		if n, ok := types.IntParam(filter, "top_n"); ok {
 			cfg.topN = n
 		}
+		if b, ok := filter["per_pid"].(bool); ok {
+			cfg.perPID = b
+		}
 		if s, ok := filter["top_by"].(string); ok && s != "" {
 			if s != topByCPU && s != topByMemory {
 				return config{}, fmt.Errorf("filter.top_by: %q is neither %q nor %q", s, topByCPU, topByMemory)
@@ -72,16 +78,16 @@ func parseConfig(raw map[string]interface{}) (config, error) {
 	return cfg, nil
 }
 
-// detailed reports whether the per-process series are emitted. The
-// operator has either named what to watch, or bounded the sample with
-// top_n. An unfiltered view is every process on the machine, and the
-// identity of those series carries the process id, so it grows by one
-// set per process start and never shrinks: measured at about four and a
-// half thousand series on an ordinary machine, growing by fifty a
-// minute. That view gets the per-name roll-up alone.
-//
-// It is the rule the entity source already followed, for the same
-// reason, on the other rail.
+// detailed reports whether the per-process series are emitted. The operator
+// has either named what to watch (by_name, by_user), or asked for the
+// per-process detail of a top_n sample with per_pid. Without per_pid a top_n
+// sample is reported as the per-name roll-up: the membership of a top set
+// changes all the time, and every process id and creation time it exposed
+// became a new series. An unfiltered view is every process on the machine and
+// gets the roll-up alone for the same reason.
 func (c config) detailed() bool {
-	return c.byName != nil || c.byUser != "" || c.topN > 0
+	if c.topN > 0 {
+		return c.perPID
+	}
+	return c.byName != nil || c.byUser != ""
 }

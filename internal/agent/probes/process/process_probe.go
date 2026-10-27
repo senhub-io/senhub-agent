@@ -54,7 +54,14 @@ func (p *processProbe) ShouldStart() bool { return true }
 
 func (p *processProbe) GetInterval() time.Duration { return p.cfg.interval }
 
-func (p *processProbe) OnStart(_ chan struct{}) error { return nil }
+func (p *processProbe) OnStart(_ chan struct{}) error {
+	if p.cfg.perPID && p.cfg.topN > 0 {
+		p.logger.Warn().
+			Int("top_n", p.cfg.topN).
+			Msg("filter.per_pid emits one series per process; series identities grow with every new process id")
+	}
+	return nil
+}
 
 func (p *processProbe) OnShutdown(_ context.Context) error { return nil }
 
