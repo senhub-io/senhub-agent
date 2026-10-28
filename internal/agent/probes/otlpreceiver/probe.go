@@ -305,6 +305,7 @@ func (p *OTLPReceiverProbe) ingestLogs(resourceLogs []*logspb.ResourceLogs) {
 		return
 	}
 	fillSeverityNumbers(resourceLogs)
+	agentstate.RedactLogBatches(resourceLogs, p.GetName())
 	records := flattenResourceLogs(resourceLogs, p.GetName())
 	if len(records) == 0 {
 		return
