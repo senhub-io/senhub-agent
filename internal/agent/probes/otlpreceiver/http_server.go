@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -107,6 +108,7 @@ func (p *OTLPReceiverProbe) authorizeAndReadBody(w http.ResponseWriter, r *http.
 			code = http.StatusForbidden
 		case errors.Is(err, errRateLimited):
 			code = http.StatusTooManyRequests
+			w.Header().Set("Retry-After", strconv.Itoa(p.guard.retryAfterSeconds()))
 		}
 		http.Error(w, err.Error(), code)
 		return nil, false
