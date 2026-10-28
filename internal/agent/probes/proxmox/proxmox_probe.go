@@ -51,6 +51,8 @@ type probeConfig struct {
 	VerifyTLS    bool
 	Node         string // empty = all nodes
 	InstanceName string // optional operator-assigned stable id for the PVE surface entity
+	EnablePBS    bool   // preview: Proxmox Backup Server storages
+	EnableCeph   bool   // preview: Ceph-backed storages
 	Interval     time.Duration
 	Timeout      time.Duration
 }
@@ -122,6 +124,12 @@ func parseConfig(config map[string]interface{}) (probeConfig, error) {
 	}
 	if v, ok := config["instance_name"].(string); ok {
 		cfg.InstanceName = v
+	}
+	if v, ok := config["enable_pbs"].(bool); ok {
+		cfg.EnablePBS = v
+	}
+	if v, ok := config["enable_ceph"].(bool); ok {
+		cfg.EnableCeph = v
 	}
 	if v, ok := types.IntParam(config, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
@@ -308,6 +316,7 @@ func (p *ProxmoxProbe) collectNode(n pveNode, guests []pveGuest, guestsOK bool, 
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("node", n.Node).Msg("failed to list storage")
 	}
+	storages = p.withoutPreviewStorages(storages)
 	points = append(points, p.collectBackups(n.Node, known, storages, now)...)
 	points = append(points, p.collectFailedTasks(n.Node, now)...)
 	points = append(points, p.collectReplication(n.Node, now)...)
@@ -508,6 +517,7 @@ type pveVMStatus = pveVMListItem
 
 type pveStorageItem struct {
 	Storage string `json:"storage"`
+	Type    string `json:"type"`
 	Used    int64  `json:"used"`
 	Total   int64  `json:"total"`
 	Content string `json:"content"`
@@ -548,4 +558,25 @@ func (p *ProxmoxProbe) fetchStorage(node string) ([]pveStorageItem, error) {
 	var items []pveStorageItem
 	err := p.apiGet(fmt.Sprintf("/nodes/%s/storage", node), &items)
 	return items, err
+}
+
+// withoutPreviewStorages drops the storages of a kind whose support is still
+// a preview and not switched on, so they cost no further request and
+// produce no series.
+func (p *ProxmoxProbe) withoutPreviewStorages(in []pveStorageItem) []pveStorageItem {
+	out := make([]pveStorageItem, 0, len(in))
+	for _, st := range in {
+		switch st.Type {
+		case "pbs":
+			if !p.cfg.EnablePBS {
+				continue
+			}
+		case "rbd", "cephfs":
+			if !p.cfg.EnableCeph {
+				continue
+			}
+		}
+		out = append(out, st)
+	}
+	return out
 }
