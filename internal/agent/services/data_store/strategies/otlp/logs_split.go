@@ -6,6 +6,8 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
+
+	"senhub-agent.go/internal/agent/services/exporterrors"
 )
 
 // DefaultLogsMaxExportBytes keeps one logs export under the receivers'
@@ -53,6 +55,15 @@ func (e *splittingLogExporter) Export(ctx context.Context, records []sdklog.Reco
 			if ctx.Err() != nil {
 				break
 			}
+		}
+	}
+	// A permanent refusal wins over a transient failure: reporting the
+	// transient one would have the outer queue persist the whole batch,
+	// poisoned chunk included. The chunks it costs are entity heartbeats,
+	// re-emitted every interval.
+	for _, err := range errs {
+		if !exporterrors.IsRetryable(classifyExportError(err)) {
+			return err
 		}
 	}
 	return errors.Join(errs...)

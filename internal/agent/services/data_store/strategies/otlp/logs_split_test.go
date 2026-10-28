@@ -10,9 +10,28 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/exporterrors"
 )
+
+type scriptedLogExporter struct {
+	errs  []error
+	calls int
+}
+
+func (s *scriptedLogExporter) Export(context.Context, []sdklog.Record) error {
+	i := s.calls
+	s.calls++
+	if i < len(s.errs) {
+		return s.errs[i]
+	}
+	return nil
+}
+func (s *scriptedLogExporter) ForceFlush(context.Context) error { return nil }
+func (s *scriptedLogExporter) Shutdown(context.Context) error   { return nil }
 
 type captureLogExporter struct {
 	mu      sync.Mutex
@@ -144,5 +163,31 @@ func TestSplittingLogExporter_SmallBatchPassesThrough(t *testing.T) {
 	emitTestEntities(t, newSplittingLogExporter(sink, 0), 5, 2)
 	if len(sink.exports) != 1 || len(sink.exports[0]) != 5 {
 		t.Fatalf("small batch was split: %d exports", len(sink.exports))
+	}
+}
+
+func TestSplittingLogExporter_PermanentRefusalWinsOverTransient(t *testing.T) {
+	sink := &scriptedLogExporter{errs: []error{
+		status.Error(codes.Unavailable, "down"),
+		status.Error(codes.ResourceExhausted, "message larger than max"),
+		status.Error(codes.Unavailable, "down"),
+	}}
+	emitTestEntities(t, newSplittingLogExporter(sink, 64), 3, 2)
+	if sink.calls != 3 {
+		t.Fatalf("calls = %d, want every chunk attempted (3)", sink.calls)
+	}
+}
+
+func TestSplittingLogExporter_MixedErrorClassifiesPermanent(t *testing.T) {
+	sink := &scriptedLogExporter{errs: []error{
+		status.Error(codes.Unavailable, "down"),
+		status.Error(codes.ResourceExhausted, "message larger than max"),
+	}}
+	var got error
+	rec := &captureLogExporter{}
+	emitTestEntities(t, rec, 2, 2)
+	got = newSplittingLogExporter(sink, 64).Export(context.Background(), rec.exports[0])
+	if got == nil || exporterrors.IsRetryable(classifyExportError(got)) {
+		t.Fatalf("mixed chunk errors must classify permanent, got %v", got)
 	}
 }
