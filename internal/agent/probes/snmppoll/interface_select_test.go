@@ -171,3 +171,17 @@ func TestSelectedInterfacesIsEmptyBeforeTheFirstSweep(t *testing.T) {
 		t.Error("without a selection the set must be nil (keep everything)")
 	}
 }
+
+func TestAPartialSweepKeepsThePreviousSelection(t *testing.T) {
+	prev := map[string]bool{"1": true, "2": true}
+	if got := keepSelectionIfStale(prev, sweepResult{selectionStale: true}); len(got) != 2 {
+		t.Errorf("stale sweep replaced the selection with %v", got)
+	}
+	fresh := map[string]bool{"3": true}
+	if got := keepSelectionIfStale(prev, sweepResult{selectedIfaces: fresh}); !got["3"] || len(got) != 1 {
+		t.Errorf("complete sweep should replace the selection, got %v", got)
+	}
+	if got := keepSelectionIfStale(nil, sweepResult{selectionStale: true}); got != nil {
+		t.Errorf("no previous selection: got %v, want nil", got)
+	}
+}

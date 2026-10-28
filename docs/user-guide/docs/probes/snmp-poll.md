@@ -205,6 +205,11 @@ and logs a warning with the number matched and kept when it cuts.
 - A state the device does not answer for (`ifAdminStatus`, `ifDescr`) counts
   as not matching. Before the first sweep nothing is selected, so no
   interface series is emitted until the interfaces are known.
+- A sweep that could not read every interface column keeps the previous
+  selection, so a timed-out walk does not retract the series.
+- The selection narrows what is published, not what is read: the interface
+  table is still walked at each `interval`. It also applies to a
+  `custom_mappings` entry whose `index_label` is `if_index`.
 - Topology is not narrowed: every interface stays an entity, with its links.
 
 ### Custom mappings
