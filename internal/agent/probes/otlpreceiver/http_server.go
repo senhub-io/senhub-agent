@@ -123,12 +123,17 @@ func (p *OTLPReceiverProbe) authorizeAndReadBody(w http.ResponseWriter, r *http.
 		return nil, false
 	}
 
-	var reader io.Reader = io.LimitReader(r.Body, maxRecvMsgBytes+1)
+	raw := &io.LimitedReader{R: r.Body, N: maxRecvMsgBytes + 1}
+	var reader io.Reader = raw
 	switch enc := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Encoding"))); enc {
 	case "", "identity":
 	case "gzip":
 		zr, err := gzip.NewReader(reader)
 		if err != nil {
+			if raw.N == 0 {
+				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+				return nil, false
+			}
 			http.Error(w, "invalid gzip body", http.StatusBadRequest)
 			return nil, false
 		}
@@ -141,6 +146,10 @@ func (p *OTLPReceiverProbe) authorizeAndReadBody(w http.ResponseWriter, r *http.
 
 	body, err := io.ReadAll(reader)
 	if err != nil {
+		if raw.N == 0 {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return nil, false
+		}
 		http.Error(w, "failed to read body", http.StatusBadRequest)
 		return nil, false
 	}

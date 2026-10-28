@@ -3,6 +3,7 @@ package otlpreceiver
 import (
 	"bytes"
 	"compress/gzip"
+	"math/rand"
 	"net/http"
 	"testing"
 	"time"
@@ -146,5 +147,17 @@ func TestHTTPReceiver_CorruptGzipAnswers400(t *testing.T) {
 
 	if code := postEncoded(t, url, "gzip", []byte("not gzip")); code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", code)
+	}
+}
+
+func TestHTTPReceiver_IncompressibleGzipOverTheCapAnswers413(t *testing.T) {
+	cb := &captureCallback{}
+	probe, _ := newTestProbe(t, map[string]interface{}{"protocol": "http", "address": "127.0.0.1:0"}, cb)
+	url := "http://" + probe.listener.Addr().String() + defaultHTTPPath
+
+	noise := make([]byte, maxRecvMsgBytes+4096)
+	rand.New(rand.NewSource(1)).Read(noise)
+	if code := postEncoded(t, url, "gzip", gzipBytes(t, noise)); code != http.StatusRequestEntityTooLarge {
+		t.Errorf("status = %d, want 413", code)
 	}
 }
