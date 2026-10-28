@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -71,7 +72,7 @@ func TestCollect_HAStatusNormal(t *testing.T) {
 			})
 		})
 	})
-	p := newGuestProbe(t, srv.URL, "")
+	p := newGuestProbeWith(t, srv.URL, "", previewAll)
 
 	points, err := p.Collect()
 	if err != nil {
@@ -145,7 +146,7 @@ func TestCollect_HAQuorumLost(t *testing.T) {
 			})
 		})
 	})
-	p := newGuestProbe(t, srv.URL, "")
+	p := newGuestProbeWith(t, srv.URL, "", previewAll)
 
 	points, err := p.Collect()
 	if err != nil {
@@ -168,7 +169,7 @@ func TestCollect_HAEmptyList(t *testing.T) {
 			writeJSON(t, w, []interface{}{})
 		})
 	})
-	p := newGuestProbe(t, srv.URL, "")
+	p := newGuestProbeWith(t, srv.URL, "", previewAll)
 
 	var buf bytes.Buffer
 	zl := zerolog.New(&buf)
@@ -194,7 +195,7 @@ func TestCollect_HAStatusError(t *testing.T) {
 			http.Error(w, "boom", http.StatusInternalServerError)
 		})
 	})
-	p := newGuestProbe(t, srv.URL, "")
+	p := newGuestProbeWith(t, srv.URL, "", previewAll)
 
 	var buf bytes.Buffer
 	zl := zerolog.New(&buf)
@@ -236,7 +237,7 @@ func TestCollect_HAStatusForbidden(t *testing.T) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 		})
 	})
-	p := newGuestProbe(t, srv.URL, "")
+	p := newGuestProbeWith(t, srv.URL, "", previewAll)
 
 	var buf bytes.Buffer
 	zl := zerolog.New(&buf)
@@ -268,7 +269,7 @@ func TestCollect_HAStandaloneNodeReply(t *testing.T) {
 			})
 		})
 	})
-	p := newGuestProbe(t, srv.URL, "")
+	p := newGuestProbeWith(t, srv.URL, "", previewAll)
 
 	points, err := p.Collect()
 	if err != nil {
@@ -280,5 +281,75 @@ func TestCollect_HAStandaloneNodeReply(t *testing.T) {
 	}
 	if res := haTestResourceStates(points); len(res) != 0 {
 		t.Errorf("a fencing entry must not become an HA resource: %v", res)
+	}
+}
+
+func TestCollect_PreviewHAAndReplicationOffByDefaultCallNothing(t *testing.T) {
+	var haCalls, replCalls atomic.Int32
+	srv := newPVE9Server(t, resourcesReply(t), func(mux *http.ServeMux) {
+		mux.HandleFunc("/api2/json/cluster/ha/status/current", func(w http.ResponseWriter, r *http.Request) {
+			haCalls.Add(1)
+			writeJSON(t, w, []map[string]interface{}{
+				{"id": "quorum", "type": "quorum", "node": "n1", "quorate": 1},
+				{"id": "service:vm:100", "type": "service", "sid": "vm:100", "node": "n1", "state": "started"},
+			})
+		})
+		for _, n := range []string{"node-a", "node-b"} {
+			mux.HandleFunc("/api2/json/nodes/"+n+"/replication", func(w http.ResponseWriter, r *http.Request) {
+				replCalls.Add(1)
+				writeJSON(t, w, []map[string]interface{}{{"id": "100-0", "guest": 100, "target": "node-b", "fail_count": 0}})
+			})
+		}
+	})
+
+	cases := []struct {
+		name                         string
+		extra                        map[string]interface{}
+		wantHACalls, wantReplCalls   int32
+		wantQuorum, wantHA, wantRepl bool
+	}{
+		{"default", nil, 0, 0, false, false, false},
+		{"cluster", map[string]interface{}{"enable_cluster": true}, 1, 0, true, false, false},
+		{"ha", map[string]interface{}{"enable_ha": true}, 1, 0, false, true, false},
+		{"replication", map[string]interface{}{"enable_replication": true}, 0, 2, false, false, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			haCalls.Store(0)
+			replCalls.Store(0)
+			p := newGuestProbeWith(t, srv.URL, "", tc.extra)
+			var buf bytes.Buffer
+			zl := zerolog.New(&buf)
+			p.moduleLogger = &logger.ModuleLogger{Logger: &zl}
+
+			points, err := p.Collect()
+			if err != nil {
+				t.Fatalf("Collect: %v", err)
+			}
+			if haCalls.Load() != tc.wantHACalls || replCalls.Load() != tc.wantReplCalls {
+				t.Errorf("calls ha=%d replication=%d, want %d and %d", haCalls.Load(), replCalls.Load(), tc.wantHACalls, tc.wantReplCalls)
+			}
+			var quorum, ha, repl bool
+			for _, dp := range points {
+				switch dp.Name {
+				case "proxmox.ha.quorum.status":
+					quorum = true
+				case "proxmox.ha.resource.status":
+					ha = true
+				case "proxmox.replication.job.status", "proxmox.replication.job.age":
+					repl = true
+				}
+			}
+			if quorum != tc.wantQuorum || ha != tc.wantHA || repl != tc.wantRepl {
+				t.Errorf("series quorum=%v ha=%v replication=%v, want %v %v %v", quorum, ha, repl, tc.wantQuorum, tc.wantHA, tc.wantRepl)
+			}
+			if tc.name == "default" {
+				for _, line := range strings.Split(buf.String(), "\n") {
+					if strings.Contains(line, "ha/status") || strings.Contains(line, "replication") || strings.Contains(line, "HA") || strings.Contains(line, "quorum") {
+						t.Errorf("disabled preview parts must log nothing, got %s", line)
+					}
+				}
+			}
+		})
 	}
 }

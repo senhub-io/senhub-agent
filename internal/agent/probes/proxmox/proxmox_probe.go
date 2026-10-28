@@ -53,8 +53,12 @@ type probeConfig struct {
 	InstanceName string // optional operator-assigned stable id for the PVE surface entity
 	EnablePBS    bool   // preview: Proxmox Backup Server storages
 	EnableCeph   bool   // preview: Ceph-backed storages
-	Interval     time.Duration
-	Timeout      time.Duration
+
+	EnableCluster     bool // preview: cluster quorum
+	EnableHA          bool // preview: HA resource states
+	EnableReplication bool // preview: storage replication jobs
+	Interval          time.Duration
+	Timeout           time.Duration
 }
 
 // NewProxmoxProbe constructs the probe. Config errors are returned immediately
@@ -130,6 +134,15 @@ func parseConfig(config map[string]interface{}) (probeConfig, error) {
 	}
 	if v, ok := config["enable_ceph"].(bool); ok {
 		cfg.EnableCeph = v
+	}
+	if v, ok := config["enable_cluster"].(bool); ok {
+		cfg.EnableCluster = v
+	}
+	if v, ok := config["enable_ha"].(bool); ok {
+		cfg.EnableHA = v
+	}
+	if v, ok := config["enable_replication"].(bool); ok {
+		cfg.EnableReplication = v
 	}
 	if v, ok := types.IntParam(config, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
