@@ -320,6 +320,10 @@ type Config struct {
 	// it recovers (a per-endpoint cooldown avoids re-probing a dead one
 	// every cycle).
 	FallbackEndpoints []string
+	// FailoverCooldown overrides how long a failed endpoint is skipped;
+	// zero keeps the default. Not read from the configuration file: tests
+	// shorten it so a failover round trip fits in a fraction of a second.
+	FailoverCooldown time.Duration
 	// Protocol selects the OTLP transport: "grpc" (default) or "http",
 	// the two transports defined by the OTel protocol spec. It applies
 	// to all three signals — a per-signal override is not supported

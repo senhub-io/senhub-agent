@@ -22,11 +22,20 @@ usage.
     token_secret: ${secret:proxmox.token_secret}   # OS secret store; inline plaintext is auto-sealed on install
 ```
 
+!!! warning "Validated on a single node"
+    This probe is validated on a single Proxmox VE node (QEMU guests, LXC
+    containers, ZFS and directory storages). Cluster quorum, high availability,
+    replication, Ceph and Proxmox Backup Server (PBS) support are in preview: they
+    are not validated in a real environment, they are off by default, and each is
+    enabled explicitly (`enable_cluster`, `enable_ha`, `enable_replication`,
+    `enable_ceph`, `enable_pbs`). A part left disabled makes no API call and
+    produces no series.
+
 ## Parameters
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:ab29f8261ab0433230e24ee32a418dca0590d9edcc788f1231254cb1c561d9ca -->
+<!-- sha256:fc4b7daddd3ad3a932004320c4a9aa3cb1c2ff784c2fbdd119cabc7652b28d16 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -35,6 +44,11 @@ usage.
 | `token_secret` | Yes | - | API token secret. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `verify_tls` | No | `true` | Verify the API certificate; false accepts a self-signed one |
 | `node` | No | - | Only this node is collected; empty means every node of the cluster |
+| `enable_pbs` | No | `false` | Preview, not validated in a real environment: include Proxmox Backup Server storages (usage, state, backup archives) |
+| `enable_ceph` | No | `false` | Preview, not validated in a real environment: include Ceph-backed storages (rbd, cephfs) |
+| `enable_cluster` | No | `false` | Preview, not validated in a real environment: report cluster quorum |
+| `enable_ha` | No | `false` | Preview, not validated in a real environment: report the state of HA-managed guests |
+| `enable_replication` | No | `false` | Preview, not validated in a real environment: report storage replication jobs |
 | `interval` | No | `60` | Seconds between collections |
 | `timeout` | No | `15` | Request timeout in seconds |
 | `instance_name` | No | - | Stable identity override for this cluster |
@@ -83,7 +97,7 @@ usage.
 - The `endpoint` must use `https://`. The API certificate is verified by default; a self-signed Proxmox certificate needs `verify_tls: false`, or better, a proper certificate for production.
 - Both QEMU VMs and LXC containers are monitored; they are distinguished by the `proxmox.vmid` tag.
 - Disk, ZFS, backup and task series need `Sys.Audit` on `/nodes/<node>` (`PVEAuditor` on `/` covers it); a token without it simply contributes nothing for that endpoint. Backup job coverage reads `/cluster/backup`: a job with `all` covers every guest except its exclude list, otherwise its VM list and pool members, and a disabled job covers nothing.
-- HA series read `/cluster/ha/status/current` and need `Sys.Audit` on `/`; replication series read `/nodes/<node>/replication` and need `Sys.Audit` on `/nodes/<node>` (both covered by `PVEAuditor` on `/`). A cluster without HA resources or replication jobs emits no HA resource or replication series and logs no warning. An HA resource in a state PVE does not document is skipped.
+- Preview, off by default: quorum series need `enable_cluster`, HA resource series `enable_ha`, replication series `enable_replication`. HA series read `/cluster/ha/status/current` and need `Sys.Audit` on `/`; replication series read `/nodes/<node>/replication` and need `Sys.Audit` on `/nodes/<node>` (both covered by `PVEAuditor` on `/`). A cluster without HA resources or replication jobs emits no HA resource or replication series and logs no warning. An HA resource in a state PVE does not document is skipped.
 
 ## Metric reference
 

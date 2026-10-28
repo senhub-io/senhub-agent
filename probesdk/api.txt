@@ -50,6 +50,7 @@ alias ProbeConfig = senhub-agent.go/internal/agent/services/configuration.ProbeC
   field CustomTags map[string]string `json:"custom_tags,omitempty" yaml:"custom_tags,omitempty"`
   field Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
   field Governance map[string]interface{} `json:"governance,omitempty" yaml:"governance,omitempty"`
+  field LogRedact *bool `json:"log_redact,omitempty" yaml:"log_redact,omitempty"`
   field LogStrategies []string `json:"log_strategies,omitempty" yaml:"log_strategies,omitempty"`
   field Name string `json:"name"`
   field Params senhub-agent.go/internal/agent/services/configuration.ProbeConfigParams `json:"params"`
@@ -486,6 +487,7 @@ type senhub-agent.go/internal/agent/services/configuration.ProbeConfig struct
   field CustomTags map[string]string `json:"custom_tags,omitempty" yaml:"custom_tags,omitempty"`
   field Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
   field Governance map[string]interface{} `json:"governance,omitempty" yaml:"governance,omitempty"`
+  field LogRedact *bool `json:"log_redact,omitempty" yaml:"log_redact,omitempty"`
   field LogStrategies []string `json:"log_strategies,omitempty" yaml:"log_strategies,omitempty"`
   field Name string `json:"name"`
   field Params senhub-agent.go/internal/agent/services/configuration.ProbeConfigParams `json:"params"`

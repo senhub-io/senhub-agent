@@ -86,6 +86,10 @@ type FileTailProbe struct {
 	// log rail — the conduit's own throughput self-metric, surfaced through
 	// Collect so it flows to the metric sinks like any other probe (#701).
 	emitted atomic.Uint64
+
+	// fileEmitted counts, per followed file, the records published from it.
+	// The probe-wide total hides a silent file behind a busy one.
+	fileEmitted sync.Map // path -> *atomic.Uint64
 }
 
 // NewFileTailProbe constructs the probe. Validation of paths and the
@@ -187,9 +191,12 @@ func (p *FileTailProbe) tailPositionPoints(now time.Time) []data_store.DataPoint
 	p.mu.Unlock()
 	sort.Slice(positions, func(i, j int) bool { return positions[i].path < positions[j].path })
 
-	points := make([]data_store.DataPoint, 0, 2*len(positions))
+	points := make([]data_store.DataPoint, 0, 3*len(positions))
 	for _, pos := range positions {
 		pathTags := []tags.Tag{{Key: "log.file.path", Value: pos.path}}
+		points = append(points, data_store.DataPoint{
+			Name: "senhub.filetail.file_records_emitted", Value: float64(p.fileEmittedCounter(pos.path).Load()), Timestamp: now, Tags: pathTags,
+		})
 		points = append(points, data_store.DataPoint{
 			Name: "senhub.filetail.read_offset", Value: float64(pos.offset), Timestamp: now, Tags: pathTags,
 		})
@@ -1195,6 +1202,17 @@ func (p *FileTailProbe) publish(pc ParserConfig, line string, readTime time.Time
 	rec.TargetStrategies = p.LogTargets()
 	agentstate.PublishLog(rec)
 	p.emitted.Add(1)
+	if file != "" {
+		p.fileEmittedCounter(file).Add(1)
+	}
+}
+
+func (p *FileTailProbe) fileEmittedCounter(file string) *atomic.Uint64 {
+	if c, ok := p.fileEmitted.Load(file); ok {
+		return c.(*atomic.Uint64)
+	}
+	c, _ := p.fileEmitted.LoadOrStore(file, new(atomic.Uint64))
+	return c.(*atomic.Uint64)
 }
 
 // hasGlobMeta reports whether a path pattern contains glob

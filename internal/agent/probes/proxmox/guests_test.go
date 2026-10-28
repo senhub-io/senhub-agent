@@ -81,7 +81,15 @@ func resourcesReply(t *testing.T) http.HandlerFunc {
 
 func newGuestProbe(t *testing.T, endpoint, node string) *ProxmoxProbe {
 	t.Helper()
+	return newGuestProbeWith(t, endpoint, node, nil)
+}
+
+func newGuestProbeWith(t *testing.T, endpoint, node string, extra map[string]interface{}) *ProxmoxProbe {
+	t.Helper()
 	cfg := map[string]interface{}{"endpoint": endpoint, "token_id": "monitor@pve!agent", "token_secret": "s", "verify_tls": false}
+	for k, v := range extra {
+		cfg[k] = v
+	}
 	if node != "" {
 		cfg["node"] = node
 	}
@@ -192,3 +200,5 @@ func TestCollect_GuestsFallbackWhenClusterResourcesFails(t *testing.T) {
 		t.Error("probe should be flagged degraded while cluster/resources fails")
 	}
 }
+
+var previewAll = map[string]interface{}{"enable_cluster": true, "enable_ha": true, "enable_replication": true}

@@ -883,6 +883,7 @@ func validateProbeParams(name, probeType string, params map[string]interface{}) 
 	errors += e
 	warnings += w
 	warnings += reportMultilineProblems(name, params)
+	warnings += reportProcessPerPIDProblems(name, probeType, params)
 	if probeType == "filetail" {
 		warnings += reportFiletailProtectedHome(name, params)
 	}
@@ -1226,4 +1227,29 @@ func reportFiletailProtectedHome(name string, params map[string]interface{}) (wa
 		warnings++
 	}
 	return warnings
+}
+
+// processPerPIDWarning is the cardinality warning for the process probe
+// when top_n is combined with per-process series; empty otherwise.
+func processPerPIDWarning(probeType string, params map[string]interface{}) string {
+	if probeType != "process" {
+		return ""
+	}
+	detail, _ := params["detail"].(map[string]interface{})
+	if perPID, _ := detail["per_pid"].(bool); !perPID {
+		return ""
+	}
+	filter, _ := params["filter"].(map[string]interface{})
+	if n, ok := types.IntParam(filter, "top_n"); !ok || n <= 0 {
+		return "detail.per_pid only applies with filter.top_n and has no effect without it"
+	}
+	return "detail.per_pid with filter.top_n tags every series with the process id and creation time: each process entering the top creates new series that are never reused, so the series count grows without bound; leave per_pid off for the stable per-name roll-up"
+}
+
+func reportProcessPerPIDProblems(name, probeType string, params map[string]interface{}) (warnings int) {
+	if w := processPerPIDWarning(probeType, params); w != "" {
+		fmt.Printf("         [WARN] Probe %q: %s\n", name, w)
+		return 1
+	}
+	return 0
 }
