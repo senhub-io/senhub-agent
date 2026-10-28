@@ -492,3 +492,53 @@ func TestHTTPReceiver_GuardStatusCodes(t *testing.T) {
 	}
 	waitForPoints(t, cb, 2)
 }
+
+func TestHTTPReceiver_RateLimitedAnswersRetryAfter(t *testing.T) {
+	cb := &captureCallback{}
+	probe, _ := newTestProbe(t, map[string]interface{}{
+		"protocol": "http", "address": "127.0.0.1:0",
+		"rate_limit_rps": 0.25, "rate_limit_burst": 1,
+	}, cb)
+	addr := probe.listener.Addr().String()
+
+	body, err := proto.Marshal(sampleRequest())
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	post := func() *http.Response {
+		req, err := http.NewRequest(http.MethodPost, "http://"+addr+defaultHTTPPath, bytes.NewReader(body))
+		if err != nil {
+			t.Fatalf("NewRequest: %v", err)
+		}
+		req.Header.Set("Content-Type", "application/x-protobuf")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("Do: %v", err)
+		}
+		_ = resp.Body.Close()
+		return resp
+	}
+
+	if resp := post(); resp.StatusCode != http.StatusOK || resp.Header.Get("Retry-After") != "" {
+		t.Errorf("within burst: status %d Retry-After %q, want 200 and none", resp.StatusCode, resp.Header.Get("Retry-After"))
+	}
+	resp := post()
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("over rate: status = %d, want 429", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Retry-After"); got != "4" {
+		t.Errorf("Retry-After = %q, want 4 (one token every 4 s)", got)
+	}
+}
+
+func TestIngressGuard_RetryAfterSeconds(t *testing.T) {
+	for _, tc := range []struct {
+		rps  float64
+		want int
+	}{{100, 1}, {1, 1}, {0.4, 3}, {0.001, maxRetryAfterSeconds}} {
+		g := newIngressGuard(receiverConfig{RateLimitRPS: tc.rps, RateLimitBurst: 1})
+		if got := g.retryAfterSeconds(); got != tc.want {
+			t.Errorf("rps %g: Retry-After = %d, want %d", tc.rps, got, tc.want)
+		}
+	}
+}

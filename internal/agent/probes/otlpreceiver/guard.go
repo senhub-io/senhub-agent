@@ -3,6 +3,7 @@ package otlpreceiver
 import (
 	"crypto/subtle"
 	"errors"
+	"math"
 	"net"
 	"strings"
 	"sync"
@@ -90,6 +91,28 @@ func (g *ingressGuard) allow(remoteAddr, authHeader string) error {
 	}
 
 	return nil
+}
+
+// maxRetryAfterSeconds caps the Retry-After advice: a sender told to
+// wait a quarter of an hour by a very low rate limit would hold its
+// batches that long, and one that retries sooner only gets another 429.
+const maxRetryAfterSeconds = 60
+
+// retryAfterSeconds is how long a throttled sender should wait before
+// trying again: the time the bucket needs to earn one token, rounded up
+// to whole seconds as the Retry-After header requires.
+func (g *ingressGuard) retryAfterSeconds() int {
+	if g == nil || g.bucket == nil || g.bucket.rate <= 0 {
+		return 1
+	}
+	secs := int(math.Ceil(1 / g.bucket.rate))
+	if secs < 1 {
+		return 1
+	}
+	if secs > maxRetryAfterSeconds {
+		return maxRetryAfterSeconds
+	}
+	return secs
 }
 
 // tokenBucket is a minimal thread-safe token bucket. Hand-rolled
