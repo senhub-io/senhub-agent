@@ -141,3 +141,21 @@ func TestParseConfig_PerPID(t *testing.T) {
 		t.Error("per_pid must default to false")
 	}
 }
+
+func TestTopNWithANameFilterStillReportsTheRollUp(t *testing.T) {
+	c := config{byName: regexp.MustCompile("^nginx"), topN: 3}
+	if c.detailed() || !c.topByName() {
+		t.Error("top_n bounds a named filter too: the top is reported as the roll-up unless per_pid is set")
+	}
+}
+
+func TestTopProcessNamesKeepsEverythingWhenNExceedsTheNames(t *testing.T) {
+	snaps := []processSnapshot{{pid: 1, name: "a"}, {pid: 2, name: "b"}, {pid: 3, name: "b"}}
+	if got := topProcessNames(snaps, 5, topByCPU); len(got) != 3 {
+		t.Errorf("kept %d processes, want 3", len(got))
+	}
+	tied := []processSnapshot{{pid: 1, name: "z"}, {pid: 2, name: "a"}}
+	if got := topProcessNames(tied, 1, topByCPU); len(got) != 1 || got[0].name != "a" {
+		t.Errorf("a tie must break on the name, got %+v", got)
+	}
+}

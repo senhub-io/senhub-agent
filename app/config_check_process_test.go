@@ -13,7 +13,7 @@ func TestProcessPerPIDWarning(t *testing.T) {
 	}{
 		{"top_n with per_pid", "process", map[string]interface{}{"filter": filter, "detail": detail}, true},
 		{"top_n alone", "process", map[string]interface{}{"filter": filter}, false},
-		{"per_pid without top_n", "process", map[string]interface{}{"detail": detail}, false},
+		{"per_pid without top_n", "process", map[string]interface{}{"detail": detail}, true},
 		{"other probe", "mysql", map[string]interface{}{"filter": filter, "detail": detail}, false},
 	}
 	for _, c := range cases {

@@ -1219,7 +1219,7 @@ func processPerPIDWarning(probeType string, params map[string]interface{}) strin
 	}
 	filter, _ := params["filter"].(map[string]interface{})
 	if n, ok := types.IntParam(filter, "top_n"); !ok || n <= 0 {
-		return ""
+		return "detail.per_pid only applies with filter.top_n and has no effect without it"
 	}
 	return "detail.per_pid with filter.top_n tags every series with the process id and creation time: each process entering the top creates new series that are never reused, so the series count grows without bound; leave per_pid off for the stable per-name roll-up"
 }

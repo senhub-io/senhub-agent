@@ -13,7 +13,7 @@ func init() {
 		DefaultInterval: 30,
 		Params: []probes.ParamSpec{
 			{Key: "interval", Kind: probes.KindInt, Default: 30, Group: "collection", Description: "Seconds between collections"},
-			{Key: "filter", Kind: probes.KindBlock, Group: "filter", Description: "Narrows the process table; by_name and by_user turn on the per-process detail; empty reports the per-name roll-up over every process", Fields: []probes.ParamSpec{
+			{Key: "filter", Kind: probes.KindBlock, Group: "filter", Description: "Narrows the process table; by_name and by_user turn on the per-process detail unless top_n is also set; empty reports the per-name roll-up over every process", Fields: []probes.ParamSpec{
 				{Key: "by_name", Kind: probes.KindString, Description: "Regular expression (RE2) a process name must match", Example: "^(nginx|php-fpm)"},
 				{Key: "by_user", Kind: probes.KindString, Description: "OS user owning the processes; empty accepts every user", Example: "www-data"},
 				{Key: "top_n", Kind: probes.KindInt, Default: 0, Description: "Keep only the N processes ranking highest on top_by; 0 keeps all. Ranks process names, summing the measure over processes sharing a name, and reports the per-name roll-up of the N highest; per-process series need detail.per_pid"},
