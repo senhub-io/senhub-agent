@@ -1,6 +1,7 @@
 package agentstate
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -145,5 +146,81 @@ func TestRedactAdversarialInputStaysLinear(t *testing.T) {
 				t.Fatalf("took %s on %d bytes", d, len(in))
 			}
 		})
+	}
+}
+
+func TestRedactEdgeCases(t *testing.T) {
+	setupRedactionTest(t)
+	cases := []struct{ name, in, want string }{
+		{"empty query value", "GET /x?key=&a=1", "GET /x?key=&a=1"},
+		{"separator then space", "password= next", "password= ***"},
+		{"x-api-key query", "GET /x?x-api-key=abc123", "GET /x?x-api-key=***"},
+		{"plural key", "tokens=5", "tokens=5"},
+		{"prefixed key", "mytoken=1 _token=2", "mytoken=1 _token=2"},
+		{"percent in password", "mongodb://u:p%40ss@h/db", "mongodb://u:***@h/db"},
+		{"semicolon ends query value", "/p?key=a;sig=b", "/p?key=***;sig=b"},
+		{"token holding a bearer", "token=Bearer abcdef0123456789ABCDEF", "token=*** ***"},
+		{"already masked", "password=*** https://u:***@h/?key=***", "password=*** https://u:***@h/?key=***"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := redactLogRecord(LogRecord{Body: tc.in, ProducerProbeName: "p"}).Body
+			if got != tc.want {
+				t.Fatalf("got  %q\nwant %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRedactIsIdempotentAndCountsOnce(t *testing.T) {
+	setupRedactionTest(t)
+	in := "Authorization: Basic dXNlcjpwdw== https://u:pw@h/?key=k password=p"
+	once := redactLogRecord(LogRecord{Body: in, ProducerProbeName: "p"})
+	counts := LogRedactedCounts()
+	twice := redactLogRecord(once)
+	if twice.Body != once.Body {
+		t.Fatalf("second pass changed %q to %q", once.Body, twice.Body)
+	}
+	if !reflect.DeepEqual(counts, LogRedactedCounts()) {
+		t.Fatalf("second pass moved the counters: %v then %v", counts, LogRedactedCounts())
+	}
+}
+
+func TestRedactAttributeNamedAfterOAuthSecret(t *testing.T) {
+	setupRedactionTest(t)
+	rec := redactLogRecord(LogRecord{
+		Attributes:        map[string]string{"oauth.refresh_token": "opaque", "oauth.client_secret": "opaque", "id_token": "opaque"},
+		ProducerProbeName: "p",
+	})
+	for k, v := range rec.Attributes {
+		if v != "***" {
+			t.Fatalf("%s = %q", k, v)
+		}
+	}
+}
+
+func TestRedactLogBatchesPrivateKeyAcrossRecordsAndResource(t *testing.T) {
+	setupRedactionTest(t)
+	str := func(s string) *commonpb.AnyValue {
+		return &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: s}}
+	}
+	src := []*commonpb.KeyValue{{Key: "log.file.path", Value: str("/var/log/a.log")}}
+	rl := []*logspb.ResourceLogs{{
+		ScopeLogs: []*logspb.ScopeLogs{{LogRecords: []*logspb.LogRecord{
+			{Body: str("-----BEGIN RSA PRIVATE KEY-----"), Attributes: src},
+			{Body: str("MIIEowIBAAKCAQEA0Z3VS5JJcds3xfn"), Attributes: src},
+			{Body: str("-----END RSA PRIVATE KEY-----"), Attributes: src},
+			{Body: str("plain line"), Attributes: src},
+			{Body: &commonpb.AnyValue{Value: &commonpb.AnyValue_BytesValue{BytesValue: []byte("x")}}},
+			{},
+		}}},
+	}}
+	RedactLogBatches(rl, "recv")
+	recs := rl[0].ScopeLogs[0].LogRecords
+	if got := recs[1].Body.GetStringValue(); got != "***" {
+		t.Fatalf("key line not masked: %q", got)
+	}
+	if got := recs[3].Body.GetStringValue(); got != "plain line" {
+		t.Fatalf("plain line changed: %q", got)
 	}
 }

@@ -135,7 +135,7 @@ func scanURLQuerySecret(s string) (string, int) {
 			vs, ve = end+1, end+1
 			for ve < len(s) {
 				c := s[ve]
-				if isRE2Space(c) || c == '&' || c == '#' || c == '"' || c == '\'' {
+				if isRE2Space(c) || c == '&' || c == '#' || c == '"' || c == '\'' || c == ',' || c == ';' || c == '<' || c == '>' {
 					break
 				}
 				ve++

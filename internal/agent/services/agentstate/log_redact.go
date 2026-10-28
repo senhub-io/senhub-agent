@@ -49,6 +49,14 @@ var (
 
 var builtinRedactRules = []redactRule{
 	{
+		// A bearer credential written outside an Authorization header. Sixteen
+		// characters or more, so the word "bearer" in prose is left alone.
+		name:        "bearer_token",
+		re:          regexp.MustCompile(`(?i)(\bbearer\s+)([A-Za-z0-9._~+/=-]{16,})`),
+		replacement: "${1}***",
+		precheck:    func(s string) bool { return containsFold(s, "bearer") },
+	},
+	{
 		name: "credential_param",
 		scan: scanCredentialParam,
 	},
@@ -71,14 +79,6 @@ var builtinRedactRules = []redactRule{
 		// text: ?key=..., &sig=..., &access_key=...
 		name: "url_query_secret",
 		scan: scanURLQuerySecret,
-	},
-	{
-		// A bearer credential written outside an Authorization header. Sixteen
-		// characters or more, so the word "bearer" in prose is left alone.
-		name:        "bearer_token",
-		re:          regexp.MustCompile(`(?i)(\bbearer\s+)([A-Za-z0-9._~+/=-]{16,})`),
-		replacement: "${1}***",
-		precheck:    func(s string) bool { return containsFold(s, "bearer") },
 	},
 	{
 		// PRTG writes its licence key in clear in Core.log and
@@ -208,6 +208,7 @@ func redactLogRecord(rec LogRecord) LogRecord {
 func resetLogRedactionForTest() {
 	redactionConfig.Store(buildDefaultRedactionRuleset())
 	pemState.reset()
+	batchPemState.reset()
 	var keys []redactionCounterKey
 	redactionCounters.Range(func(k, _ any) bool {
 		keys = append(keys, k.(redactionCounterKey))
@@ -502,7 +503,8 @@ func ResetLogRedactionForTest() {
 var credentialKeys = map[string]string{
 	"password": "credential_param", "passwd": "credential_param", "pwd": "credential_param",
 	"passhash": "credential_param", "apikey": "credential_param", "api_key": "credential_param",
-	"token": "credential_param", "access_token": "credential_param", "secret": "credential_param",
+	"token": "credential_param", "access_token": "credential_param", "refresh_token": "credential_param", "id_token": "credential_param",
+	"client_secret": "credential_param", "secret": "credential_param",
 	"authorization": "authorization_header", "proxy-authorization": "authorization_header",
 }
 

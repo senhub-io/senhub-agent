@@ -19,14 +19,43 @@ func RedactLogBatches(rl []*logspb.ResourceLogs, probe string) {
 	if len(rs.rules) == 0 {
 		return
 	}
+	pemEnabled := hasRedactRule(rs, "private_key")
 	for _, r := range rl {
+		redactKeyValues(rs, r.GetResource().GetAttributes(), probe)
 		for _, sl := range r.GetScopeLogs() {
+			redactKeyValues(rs, sl.GetScope().GetAttributes(), probe)
 			for _, rec := range sl.GetLogRecords() {
-				redactAnyValue(rs, rec.GetBody(), probe)
+				if sv, ok := rec.GetBody().GetValue().(*commonpb.AnyValue_StringValue); ok {
+					sv.StringValue = maskBatchBody(rs, sv.StringValue, rec.GetAttributes(), probe, pemEnabled)
+				} else {
+					redactAnyValue(rs, rec.GetBody(), probe)
+				}
 				redactKeyValues(rs, rec.GetAttributes(), probe)
 			}
 		}
 	}
+}
+
+// maskBatchBody masks a record body, following a private key whose lines
+// arrive as separate records with a tracker of its own so that the flat
+// copy of the same records keeps its state apart.
+func maskBatchBody(rs *redactionRuleset, body string, attrs []*commonpb.KeyValue, probe string, pemEnabled bool) string {
+	rec := LogRecord{Body: body, ProducerProbeName: probe}
+	if pemEnabled {
+		for _, kv := range attrs {
+			switch kv.GetKey() {
+			case "log.file.path", "log.iostream", "systemd.unit", "container.name", "syslog.hostname", "syslog.appname":
+				if rec.Attributes == nil {
+					rec.Attributes = make(map[string]string, 2)
+				}
+				rec.Attributes[kv.GetKey()] = kv.GetValue().GetStringValue()
+			}
+		}
+	}
+	if masked, out := batchPemState.process(rec, pemEnabled, pemEnabled && hasUnclosedPEMBegin(body)); masked {
+		return out
+	}
+	return maskString(rs, body, probe)
 }
 
 func redactKeyValues(rs *redactionRuleset, kvs []*commonpb.KeyValue, probe string) {
