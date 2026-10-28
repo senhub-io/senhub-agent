@@ -137,7 +137,11 @@ func (p *OTLPReceiverProbe) authorizeAndReadBody(w http.ResponseWriter, r *http.
 			http.Error(w, "invalid gzip body", http.StatusBadRequest)
 			return nil, false
 		}
-		defer zr.Close()
+		defer func() {
+			if cerr := zr.Close(); cerr != nil {
+				p.moduleLogger.Debug().Err(cerr).Msg("closing gzip reader")
+			}
+		}()
 		reader = io.LimitReader(zr, maxRecvMsgBytes+1)
 	default:
 		http.Error(w, "unsupported Content-Encoding", http.StatusUnsupportedMediaType)
