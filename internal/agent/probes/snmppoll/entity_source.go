@@ -151,6 +151,8 @@ type snmpEntitySource struct {
 	// place), so a reader holding the returned map sees a stable snapshot.
 	deviceID string
 	ifNames  map[string]string
+	// selectedIfaces mirrors the last sweep's interface selection.
+	selectedIfaces map[string]bool
 
 	// discMu guards discObs, the latest discovery crawl observation. The
 	// discovery loop rebuilds it each run and swaps it under this mutex.
@@ -229,9 +231,12 @@ type sweepResult struct {
 	addrs         []ipAddr
 	deviceID      string
 	ifNames       map[string]string
-	fdb           []fdbEntry
-	arp           []arpEntry
-	lag           lagData
+	// selectedIfaces is the ifIndex set that keeps its metric series; nil
+	// when no interface selection is configured.
+	selectedIfaces map[string]bool
+	fdb            []fdbEntry
+	arp            []arpEntry
+	lag            lagData
 	// partial marks a sweep where at least one table walk failed: what is
 	// missing from it was not read, not seen gone.
 	partial bool
@@ -404,6 +409,43 @@ func (s *snmpEntitySource) DeviceID() string {
 	return s.deviceID
 }
 
+// SelectedInterfaces returns the ifIndex set whose metric series are kept, or
+// nil when no interface selection is configured. With a selection configured
+// and no sweep yet, it is an empty set: nothing is selected until the
+// interfaces are known, so the series count never exceeds the bound.
+func (s *snmpEntitySource) SelectedInterfaces() map[string]bool {
+	if !s.cfg.Interfaces.active() {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.selectedIfaces == nil {
+		return map[string]bool{}
+	}
+	return s.selectedIfaces
+}
+
+// selectInterfaces evaluates the interface selection against the current
+// ifTable. Evaluated at every sweep, so a port that comes up or goes down
+// enters or leaves the metric series at the sweep cadence.
+func (s *snmpEntitySource) selectInterfaces(client snmpClient, ifaces []ifaceRow) map[string]bool {
+	sel := s.cfg.Interfaces
+	if !sel.active() || len(ifaces) == 0 {
+		return nil
+	}
+	if skipped := collectSelectionFields(client, ifaces, sel); len(skipped) > 0 {
+		s.moduleLogger.Warn().Str("target", s.cfg.Target).Strs("skipped_walks", skipped).
+			Msg("interface selection: some columns could not be read, their criteria exclude every interface")
+	}
+	selected, matched := sel.selectIndexes(ifaces)
+	if sel.maxInterfaces > 0 && matched > sel.maxInterfaces {
+		s.moduleLogger.Warn().Str("target", s.cfg.Target).
+			Int("matched", matched).Int("kept", len(selected)).Int("max_interfaces", sel.maxInterfaces).
+			Msg("interface selection: max_interfaces reached, metric series of the remaining interfaces are not emitted")
+	}
+	return selected
+}
+
 // InterfaceNames returns the ifIndex→ifName map from the last sweep (nil before
 // the first sweep). The metric collector resolves an interface metric's
 // if_index to network.interface.name so per-port metrics join to the network.interface
@@ -470,6 +512,7 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 	s.cache = res
 	s.deviceID = res.deviceID
 	s.ifNames = res.ifNames
+	s.selectedIfaces = res.selectedIfaces
 	s.lastSweep = now
 	s.swept = true
 	s.mu.Unlock()
@@ -526,6 +569,8 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 		}
 	}
 
+	selected := s.selectInterfaces(client, ifaces)
+
 	maxRoutes := s.cfg.MaxRoutes
 	if maxRoutes <= 0 {
 		maxRoutes = defaultMaxRoutes
@@ -576,7 +621,7 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	// with a neighbourless ghost, retracting its links as if they had been
 	// seen to go.
 	answered := deviceAnswered(self, topo, routes, ifaces, addrs)
-	return sweepResult{self: self, topo: topo, routes: routes, routesOmitted: routesOmitted, ifaces: ifaces, addrs: addrs, deviceID: deviceID, ifNames: ifNames, fdb: fdbs, arp: arps, lag: lag, partial: partial}, deviceID != "" && answered
+	return sweepResult{self: self, topo: topo, routes: routes, routesOmitted: routesOmitted, ifaces: ifaces, addrs: addrs, deviceID: deviceID, ifNames: ifNames, selectedIfaces: selected, fdb: fdbs, arp: arps, lag: lag, partial: partial}, deviceID != "" && answered
 }
 
 // deviceAnswered reports whether any read reached the device, as opposed to

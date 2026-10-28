@@ -194,6 +194,7 @@ func (p *snmppollProbe) Collect() ([]data_store.DataPoint, error) {
 
 		var answered bool
 		if keylessMode || identityResolved {
+			opts.SelectedInterfaces = p.entitySource.SelectedInterfaces()
 			var metricPoints []data_store.DataPoint
 			metricPoints, answered = collect(client, p.cfg, p.instance, deviceID, ifNames, start, p.moduleLogger, opts)
 			points = append(points, metricPoints...)

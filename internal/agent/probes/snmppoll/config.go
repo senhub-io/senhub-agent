@@ -87,6 +87,10 @@ type config struct {
 	// MaxRoutes bounds the number of network.route entities emitted per device.
 	MaxRoutes int
 
+	// Interfaces narrows the per-interface metric series (nil: every
+	// interface). Topology entities are never narrowed.
+	Interfaces *ifaceSelect
+
 	// MIBs is the ordered list of built-in MIB selectors to poll
 	// (e.g. "mib-2", "if-mib").
 	MIBs []string
@@ -222,6 +226,12 @@ func parseConfig(raw map[string]interface{}) (*config, error) {
 		errs = append(errs, err.Error())
 	}
 	cfg.MIBs = mibs
+
+	sel, err := parseIfaceSelect(raw["interfaces"])
+	if err != nil {
+		errs = append(errs, err.Error())
+	}
+	cfg.Interfaces = sel
 
 	cfg.MibPaths = stringSliceOf(raw["mib_paths"])
 
