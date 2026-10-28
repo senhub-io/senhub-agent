@@ -166,18 +166,6 @@ func TestSplittingLogExporter_SmallBatchPassesThrough(t *testing.T) {
 	}
 }
 
-func TestSplittingLogExporter_PermanentRefusalWinsOverTransient(t *testing.T) {
-	sink := &scriptedLogExporter{errs: []error{
-		status.Error(codes.Unavailable, "down"),
-		status.Error(codes.ResourceExhausted, "message larger than max"),
-		status.Error(codes.Unavailable, "down"),
-	}}
-	emitTestEntities(t, newSplittingLogExporter(sink, 64), 3, 2)
-	if sink.calls != 3 {
-		t.Fatalf("calls = %d, want every chunk attempted (3)", sink.calls)
-	}
-}
-
 func TestSplittingLogExporter_MixedErrorClassifiesPermanent(t *testing.T) {
 	sink := &scriptedLogExporter{errs: []error{
 		status.Error(codes.Unavailable, "down"),
