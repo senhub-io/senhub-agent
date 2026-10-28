@@ -576,7 +576,14 @@ func (d *dataStore) publishSignalContext() {
 	cfg := d.configProvider.GetConfiguration()
 
 	var customByProbe map[string]map[string]string
+	var redactOff map[string]struct{}
 	for _, p := range cfg.Probes {
+		if p.LogRedact != nil && !*p.LogRedact {
+			if redactOff == nil {
+				redactOff = make(map[string]struct{})
+			}
+			redactOff[p.Name] = struct{}{}
+		}
 		operator, err := operatorTagsForProbe(p)
 		if err != nil {
 			d.logger.Warn().Err(err).Msg("governance block ignored on log records")
@@ -602,6 +609,8 @@ func (d *dataStore) publishSignalContext() {
 	agentstate.SetSignalContext(&agentstate.SignalContext{
 		CustomTagsByProbe: customByProbe,
 		GlobalTags:        global,
+
+		LogRedactOffProbes: redactOff,
 	})
 }
 

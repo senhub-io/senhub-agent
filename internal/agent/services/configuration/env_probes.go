@@ -48,7 +48,7 @@ func SetProbeTypeLookup(known func(probeType string) bool) { probeTypeLookup = k
 // variable whose first segment is one of them sets the entry, not a
 // parameter; PARAMS__<KEY> reaches a parameter that bears the same name.
 var probeLevelFields = map[string]bool{
-	"type": true, "enabled": true, "log_strategies": true,
+	"type": true, "enabled": true, "log_strategies": true, "log_redact": true,
 	"custom_tags": true, "governance": true,
 }
 
@@ -313,7 +313,7 @@ func mergeEnvProbe(data *LocalConfigurationData, g envProbe, log *logger.ModuleL
 }
 
 // applyProbeLevel sets the fields of the probe entry that sit beside
-// params: enabled, log_strategies, custom_tags, governance.
+// params: enabled, log_strategies, log_redact, custom_tags, governance.
 func applyProbeLevel(p *ProbeConfig, governance *map[string]interface{}, s envSetting, seen map[string]string) error {
 	key := strings.Join(s.segments, ".")
 	if prev, dup := seen[key]; dup {
@@ -331,6 +331,15 @@ func applyProbeLevel(p *ProbeConfig, governance *map[string]interface{}, s envSe
 			return fmt.Errorf("%s: %w", s.variable, err)
 		}
 		p.Enabled = &b
+	case "log_redact":
+		if len(s.segments) > 1 {
+			return fmt.Errorf("%s: log_redact is a single value", s.variable)
+		}
+		b, err := parseBool(s.value)
+		if err != nil {
+			return fmt.Errorf("%s: %w", s.variable, err)
+		}
+		p.LogRedact = &b
 	case "log_strategies":
 		if len(s.segments) > 1 {
 			return fmt.Errorf("%s: log_strategies is a single list", s.variable)

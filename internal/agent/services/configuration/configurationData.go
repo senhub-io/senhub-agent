@@ -72,6 +72,9 @@ type ProbeConfig struct {
 	// Absent (the default) means every log output receives the records,
 	// which is what every existing configuration does today.
 	LogStrategies []string `json:"log_strategies,omitempty" yaml:"log_strategies,omitempty"`
+	// LogRedact turns the masking of secrets in this probe's log records
+	// off when set to false. A pointer so that absent stays "masked".
+	LogRedact *bool `json:"log_redact,omitempty" yaml:"log_redact,omitempty"`
 }
 
 // LogCapableStrategies is the set of outputs that can consume a log
