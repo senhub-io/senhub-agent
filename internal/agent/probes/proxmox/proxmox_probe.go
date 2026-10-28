@@ -329,10 +329,12 @@ func (p *ProxmoxProbe) collectNode(n pveNode, guests []pveGuest, guestsOK bool, 
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("node", n.Node).Msg("failed to list storage")
 	}
-	storages = p.withoutPreviewStorages(storages)
-	points = append(points, p.collectBackups(n.Node, known, storages, now)...)
+	enabled := p.withoutPreviewStorages(storages)
+	points = append(points, p.collectBackups(n.Node, known, enabled, now)...)
 	points = append(points, p.collectFailedTasks(n.Node, now)...)
 	points = append(points, p.collectReplication(n.Node, now)...)
+	// Usage and capacity of every storage were already published before the
+	// preview flags existed; only what came with them stays behind the flags.
 	for _, st := range storages {
 		stTags := []tags.Tag{
 			{Key: "proxmox.node", Value: n.Node},
@@ -343,7 +345,7 @@ func (p *ProxmoxProbe) collectNode(n pveNode, guests []pveGuest, guestsOK bool, 
 			data_store.DataPoint{Name: "proxmox.storage.used", Value: float64(st.Used), Timestamp: now, Tags: stTags},
 			data_store.DataPoint{Name: "proxmox.storage.total", Value: float64(st.Total), Timestamp: now, Tags: stTags},
 		)
-		if st.Active != nil {
+		if st.Active != nil && p.previewStorageEnabled(st.Type) {
 			points = append(points, stateSeries("proxmox.storage.status", "proxmox.storage.state", []string{"active", "inactive"}, boolState(*st.Active != 0, "active", "inactive"), stTags, now)...)
 		}
 	}
@@ -574,22 +576,23 @@ func (p *ProxmoxProbe) fetchStorage(node string) ([]pveStorageItem, error) {
 }
 
 // withoutPreviewStorages drops the storages of a kind whose support is still
-// a preview and not switched on, so they cost no further request and
-// produce no series.
+// a preview and not switched on, so they cost no further request.
 func (p *ProxmoxProbe) withoutPreviewStorages(in []pveStorageItem) []pveStorageItem {
 	out := make([]pveStorageItem, 0, len(in))
 	for _, st := range in {
-		switch st.Type {
-		case "pbs":
-			if !p.cfg.EnablePBS {
-				continue
-			}
-		case "rbd", "cephfs":
-			if !p.cfg.EnableCeph {
-				continue
-			}
+		if p.previewStorageEnabled(st.Type) {
+			out = append(out, st)
 		}
-		out = append(out, st)
 	}
 	return out
+}
+
+func (p *ProxmoxProbe) previewStorageEnabled(storageType string) bool {
+	switch storageType {
+	case "pbs":
+		return p.cfg.EnablePBS
+	case "rbd", "cephfs":
+		return p.cfg.EnableCeph
+	}
+	return true
 }
