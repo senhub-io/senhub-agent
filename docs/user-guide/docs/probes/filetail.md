@@ -284,6 +284,7 @@ series' tags.
 | Metric | Name | PRTG channel | Unit | Description |
 |---|---|---|---|---|
 | `senhub.filetail.records_emitted` | `senhub.filetail.records_emitted` | File Tail Records Emitted | # | Cumulative count of log records this file-tail probe has published to the log rail |
+| `senhub.filetail.file_records_emitted` | `senhub.filetail.file_records_emitted` | File Tail Records Emitted {log.file.path} | # | Cumulative count of log records published from one followed file; a file that stays flat while its size grows sends nothing |
 | `senhub.filetail.read_offset` | `senhub.filetail.read_offset` | File Tail Read Offset {log.file.path} | bytes | Byte offset the tail of a followed file has read up to |
 | `senhub.filetail.file_size` | `senhub.filetail.file_size` | File Tail File Size {log.file.path} | bytes | Current size in bytes of a followed file; a healthy tail has a read offset equal to it |
 
