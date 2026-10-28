@@ -492,8 +492,8 @@ func probeHTTPTarget(ctx context.Context, outputType string, params map[string]i
 		method, body := http.MethodHead, io.Reader(nil)
 		if outputType == "event" {
 			// POST, not HEAD: the event intake answers 404 to HEAD and GET
-			// on a route that exists. An empty batch carries no credential
-			// and no event, so nothing is stored.
+			// on a route that exists. The empty batch carries no credential
+			// and no event.
 			method, body = http.MethodPost, strings.NewReader("[]")
 		}
 		req, err := http.NewRequestWithContext(ctx, method, target, body)
