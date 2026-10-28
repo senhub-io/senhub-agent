@@ -81,7 +81,7 @@ func (r *polledRegistry) warming(now time.Time) bool {
 
 // warmupRemaining is how long the warm-up window still has to run.
 func (r *polledRegistry) warmupRemaining(now time.Time) time.Duration {
-	return max(r.warmup()-now.Sub(r.started), 0)
+	return min(max(r.warmup()-now.Sub(r.started), 0), r.warmup())
 }
 
 func (r *polledRegistry) warmup() time.Duration {
