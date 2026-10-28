@@ -143,6 +143,9 @@ type snmpEntitySource struct {
 	// cache, discovered devices aged out) until the detector collects it.
 	unobserved   []entity.Entity
 	silentMarked bool
+	// holdLogged marks that the start-up hold was already announced, so a
+	// device held across many reads logs it once.
+	holdLogged bool
 	// deviceID + ifNames are the resolved identity of the polled device and its
 	// ifIndex→ifName map, cached from the last sweep so the METRIC collector can
 	// tag SNMP metrics with network.device.id / network.interface.name — the same
@@ -295,6 +298,7 @@ func (s *snmpEntitySource) observeSingle() (entity.Observation, bool) {
 	now := s.now()
 	obs, unresolved := s.build(res, now)
 	if unresolved > 0 && s.registry != nil && s.registry.warming(now) {
+		s.logHold(unresolved, s.registry.warmupRemaining(now))
 		return entity.Observation{}, false
 	}
 	obs = s.appendResolvesNeighbors(obs, res)
@@ -304,6 +308,23 @@ func (s *snmpEntitySource) observeSingle() (entity.Observation, bool) {
 		stampObservedAt(&obs, lastSweep)
 	}
 	return obs, true
+}
+
+// logHold announces once per instance that the observation is withheld
+// while LLDP neighbours wait to be matched against other polled devices.
+func (s *snmpEntitySource) logHold(unresolved int, remaining time.Duration) {
+	s.mu.Lock()
+	first := !s.holdLogged
+	s.holdLogged = true
+	s.mu.Unlock()
+	if !first {
+		return
+	}
+	s.moduleLogger.Info().
+		Str("target", s.cfg.Target).
+		Int("unresolved_neighbors", unresolved).
+		Dur("releases_in", remaining.Round(time.Second)).
+		Msg("topology withheld during start-up: LLDP neighbours not yet resolved against other polled devices")
 }
 
 // silentAfterSweeps is how many topology intervals of failed sweeps the last
