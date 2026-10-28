@@ -11,3 +11,7 @@ Nothing released yet since 0.6.5. Changes land here as they are merged.
 ## Process probe: `top_n` reports a per-name roll-up
 
 With `filter.top_n`, the `process` probe now ranks process names and reports the per-name roll-up of the top, without `process.pid` and `process.creation.time` on the series. Short-lived processes no longer create new series each time they enter the top. Per-process series under `top_n` remain available with `detail.per_pid: true`, which `agent config check` flags with a cardinality warning.
+
+## OTLP logs: oversized exports are split, size refusals are not queued
+
+Entity events and logs are now exported in parts no larger than `signals.logs.max_export_bytes` (3 MiB by default, below the 4 MiB message limit of common receivers). Parts are cut between records, so an entity always keeps its complete relationships. A gRPC `RESOURCE_EXHAUSTED` answer without a retry hint, like an HTTP 413, is now treated as a permanent refusal: the batch is counted and logged once instead of being queued and replayed forever. With a retry hint it is still retried.

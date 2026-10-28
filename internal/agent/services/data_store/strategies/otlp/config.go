@@ -197,6 +197,9 @@ type LogsSignal struct {
 	BatchSize    int
 	BatchTimeout time.Duration
 	BufferSize   int // bounded queue; drop-oldest beyond this
+	// MaxExportBytes bounds one export's estimated size; larger batches
+	// are cut between records. 0 selects DefaultLogsMaxExportBytes.
+	MaxExportBytes int
 }
 
 // EntitiesSignal holds entity-event emission knobs. Entity events are
@@ -539,6 +542,8 @@ func defaultConfig() Config {
 			BatchSize:    DefaultLogsBatchSize,
 			BatchTimeout: DefaultLogsBatchTimeout,
 			BufferSize:   DefaultLogsBufferSize,
+
+			MaxExportBytes: DefaultLogsMaxExportBytes,
 		},
 		Entities: EntitiesSignal{
 			Enabled:           false,
@@ -1103,6 +1108,12 @@ func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, tra
 		}
 		if v, ok := readInt(lm["buffer_size"]); ok {
 			logs.BufferSize = v
+		}
+		if v, ok := readInt(lm["max_export_bytes"]); ok {
+			if v < 0 {
+				return fmt.Errorf("logs.max_export_bytes must be >= 0, got %d", v)
+			}
+			logs.MaxExportBytes = v
 		}
 		if err := parseSignalTransport("logs", lm, &logs.SignalTransport); err != nil {
 			return err

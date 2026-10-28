@@ -395,6 +395,9 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 	// replay at boot and on backend recovery. On by default, in the
 	// state directory, whenever raw logs are emitted; entity events are a
 	// re-emitted state stream and are not queued.
+	if s.exporters.log != nil {
+		s.exporters.log = newSplittingLogExporter(s.exporters.log, s.cfg.Logs.MaxExportBytes)
+	}
 	var logExp *persistentLogExporter
 	if queuePath := s.cfg.Persistence.logsQueuePath(); queuePath != "" && s.cfg.Logs.Enabled && s.exporters.log != nil {
 		if err := prepareQueueDir(queuePath); err != nil {

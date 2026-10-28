@@ -227,12 +227,16 @@ func TestPersistentLogExporter_FailureCountsBySignal(t *testing.T) {
 type rejectingExporter struct {
 	mu    sync.Mutex
 	calls int
+	err   error
 }
 
 func (e *rejectingExporter) Export(context.Context, []sdklog.Record) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.calls++
+	if e.err != nil {
+		return e.err
+	}
 	return status.Error(codes.InvalidArgument, "unsupported attribute type")
 }
 func (e *rejectingExporter) ForceFlush(context.Context) error { return nil }
@@ -331,5 +335,44 @@ func TestReplayDelaysAreBounded(t *testing.T) {
 	}
 	if replayFirstDelay >= replayMaxDelay {
 		t.Error("the first retry must come well before the cap")
+	}
+}
+
+// A size refusal is deterministic: the same snapshot has the same bytes,
+// so persisting it would replay a poisoned batch forever (ent#800).
+func TestPersistentLogExporter_SizeRefusalIsNotQueued(t *testing.T) {
+	dir := t.TempDir()
+	exp := &rejectingExporter{err: status.Error(codes.ResourceExhausted, "grpc: received message larger than max (5000000 vs. 4194304)")}
+	q := newLogsQueue(dir, 0, testModuleLogger(t))
+	ple := newPersistentLogExporter(exp, q, testModuleLogger(t))
+
+	cfg := LogsSignal{BufferSize: 100, BatchSize: 1, BatchTimeout: time.Hour}
+	pipe := buildLogsPipeline(ple, resource.NewSchemaless(), cfg, "test")
+
+	errsBefore := agentstate.GetOTLPExportErrorsBySignal()["logs"]
+	ctx := context.Background()
+	pipe.emit(ctx, agentstate.LogRecord{
+		Timestamp:         time.Unix(1700000000, 0),
+		Severity:          9,
+		SeverityText:      "INFO",
+		Body:              "too big for the receiver",
+		ProducerProbeName: "syslog",
+	})
+	_ = pipe.provider.ForceFlush(ctx)
+
+	if exp.attempts() == 0 {
+		t.Fatal("the exporter was never called; the test proves nothing")
+	}
+	q.mu.Lock()
+	recs := q.records
+	q.mu.Unlock()
+	if recs != 0 {
+		t.Errorf("a size-refused batch was persisted: queue holds %d records", recs)
+	}
+	if files := countQueueFiles(t, dir); files != 0 {
+		t.Errorf("a size-refused batch left %d files on disk", files)
+	}
+	if got := agentstate.GetOTLPExportErrorsBySignal()["logs"] - errsBefore; got != 1 {
+		t.Errorf("logs export-error delta=%d, want 1", got)
 	}
 }
