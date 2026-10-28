@@ -23,7 +23,7 @@ type pemTracker struct {
 	state map[string]int
 }
 
-var pemState pemTracker
+var pemState, batchPemState pemTracker
 
 const pemMaxBodyRecords = 200
 

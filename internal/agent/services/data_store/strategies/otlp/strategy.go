@@ -739,11 +739,13 @@ const tagProbeType = "probe_type"
 // relay rather than this strategy's store.
 const relayedProbeType = "otlp_receiver"
 
-// dataPointTag returns the value of one tag, or "" when absent.
+// dataPointTag returns the effective value of one tag, or "" when absent.
+// The last occurrence wins, matching how the metric store flattens tags, so
+// the skip test and the probes set agree with the series actually stored.
 func dataPointTag(dp datapoint.DataPoint, key string) string {
-	for _, t := range dp.Tags {
-		if t.Key == key {
-			return t.Value
+	for i := len(dp.Tags) - 1; i >= 0; i-- {
+		if dp.Tags[i].Key == key {
+			return dp.Tags[i].Value
 		}
 	}
 	return ""

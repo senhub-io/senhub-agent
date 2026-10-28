@@ -1,10 +1,15 @@
 package snmppoll
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 // After a restart the registry is empty and fills in the order the probe
@@ -106,5 +111,33 @@ func TestTheHoldBackWindowIsAThirdOfTheAnnouncedInterval(t *testing.T) {
 	reg := newPolledRegistry()
 	if got, want := reg.warmup(), entity.ReportInterval()/3; got != want {
 		t.Errorf("window %v, want a third of the announced interval %v", got, entity.ReportInterval())
+	}
+}
+
+func TestTheStartUpHoldIsLoggedOnceWithItsReason(t *testing.T) {
+	var buf bytes.Buffer
+	zl := zerolog.New(&buf)
+	t0 := time.Date(2026, 9, 30, 6, 2, 46, 0, time.UTC)
+	clock := t0
+	reg := &polledRegistry{byMAC: map[string]registryEntry{}, started: t0, warmupOverride: 2 * time.Minute}
+	core := coldSource(t, reg, &clock, coreSweep())
+	core.moduleLogger = logger.NewModuleLogger(&zl, "test")
+	reg.recordPolled(core.cache.self, core.cache.deviceID, t0)
+
+	for i := 0; i < 3; i++ {
+		clock = t0.Add(time.Duration(i*10) * time.Second)
+		if _, ok := core.Observe(); ok {
+			t.Fatal("published during the hold")
+		}
+	}
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("got %d log lines, want exactly 1: %q", len(lines), buf.String())
+	}
+	for _, want := range []string{`"level":"info"`, `"unresolved_neighbors":1`, `"releases_in"`, "withheld"} {
+		if !strings.Contains(lines[0], want) {
+			t.Errorf("log line %q lacks %s", lines[0], want)
+		}
 	}
 }

@@ -25,6 +25,14 @@ func init() {
 			{Key: "interval", Kind: probes.KindDuration, Default: "60s", Group: "collection", Description: "Metric polling cadence"},
 			{Key: "topology_interval", Kind: probes.KindDuration, Default: "1m", Group: "collection", Description: "Entity and topology sweep cadence"},
 			{Key: "mibs", Kind: probes.KindStringList, Enum: []string{"mib-2", "if-mib"}, Essential: true, Group: "metrics", Description: "Built-in MIB modules to poll; this or custom_mappings is required"},
+			{Key: "interfaces", Kind: probes.KindBlock, Group: "metrics", Description: "Selects which interfaces get per-interface metric series (if-mib); topology entities always keep every interface", Fields: []probes.ParamSpec{
+				{Key: "include", Kind: probes.KindStringList, Description: "Regular expressions; an interface is kept when its ifName or ifDescr matches one. Default: all"},
+				{Key: "exclude", Kind: probes.KindStringList, Description: "Regular expressions; an interface whose ifName or ifDescr matches one is dropped"},
+				{Key: "types", Kind: probes.KindStringList, Description: "ifType allow-list, by name (ethernetCsmacd, ieee8023adLag, l2vlan...) or IANAifType number"},
+				{Key: "admin_up_only", Kind: probes.KindBool, Default: false, Description: "Keep only interfaces whose ifAdminStatus is up; re-read at each topology sweep"},
+				{Key: "oper_up_only", Kind: probes.KindBool, Default: false, Description: "Keep only interfaces whose ifOperStatus is up; re-read at each topology sweep"},
+				{Key: "max_interfaces", Kind: probes.KindInt, Description: "Cap on the interfaces kept, lowest ifIndex first; a warning is logged when it cuts"},
+			}},
 			{Key: "mib_paths", Kind: probes.KindStringList, Group: "metrics", Description: "Local MIB files or folders used to name custom mappings"},
 			{Key: "custom_mappings", Kind: probes.KindBlockList, Group: "metrics", Description: "OID to metric mappings", Fields: []probes.ParamSpec{
 				{Key: "oid", Kind: probes.KindString, Required: true, Description: "OID, leading dot optional"},
