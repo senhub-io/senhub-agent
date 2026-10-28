@@ -13,7 +13,7 @@ Processes" sensor.
 !!! important "Name what you want to watch"
     Without a `filter`, the probe reports the **roll-up only**: the count, the
     CPU and the memory of each process name. The per-process detail appears
-    when you narrow the scope with `by_name`, `by_user` or `top_n`.
+    when you narrow the scope with `by_name` or `by_user`. `top_n` ranks process names and reports the roll-up of the top.
 
     That is deliberate. A process id is part of the identity of a per-process
     series, so an unfiltered view creates a new set of series every time any
@@ -46,16 +46,18 @@ Reports the per-name roll-up for every process by default. Add a `filter` block 
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:dd1862660c09214f02daaa36e3dd6d062fcde84118208e401bf61a56fa6cac50 -->
+<!-- sha256:96d2ffc12b924ab3d10200cf03760cbce7a590a4b16cb2bd251085fda2a5617b -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `interval` | No | `30` | Seconds between collections |
-| `filter` | No | - | Narrows the process table and turns on the per-process detail; empty reports the per-name roll-up over every process |
+| `filter` | No | - | Narrows the process table; by_name and by_user turn on the per-process detail; empty reports the per-name roll-up over every process |
 | `filter.by_name` | No | - | Regular expression (RE2) a process name must match. Example: `^(nginx\|php-fpm)` |
 | `filter.by_user` | No | - | OS user owning the processes; empty accepts every user. Example: `www-data` |
-| `filter.top_n` | No | `0` | Keep only the N processes ranking highest on top_by; 0 keeps all. A positive value also turns on the per-process detail, because it bounds how many processes carry it |
+| `filter.top_n` | No | `0` | Keep only the N processes ranking highest on top_by; 0 keeps all. Ranks process names, summing the measure over processes sharing a name, and reports the per-name roll-up of the N highest; per-process series need detail.per_pid |
 | `filter.top_by` | No | `cpu` | What top_n ranks on: cpu, or memory (resident set, the working set on Windows). Example: `memory` |
+| `detail` | No | - | Per-process series under top_n |
+| `detail.per_pid` | No | `false` | Under top_n, emit per-process series tagged with the process id and creation time. The series set grows with every process that enters the top: only for short observations |
 | `aggregate` | No | - | Roll-up of the processes sharing a name |
 | `aggregate.enabled` | No | `true` | Emit one process count per distinct process name |
 
@@ -114,7 +116,8 @@ Reports the per-name roll-up for every process by default. Add a `filter` block 
   monitoring is, and the filter is what bounds it: only the programs
   you named can produce those series. An unfiltered view reports the
   roll-up alone for that reason.
-- `filter.top_n` is applied after all other filters. It is useful for "monitor the 5 most CPU-hungry processes" scenarios, and it turns on the per-process detail because it bounds how many processes can carry it. Set `filter.top_by: memory` to rank on resident memory instead (the working set on Windows): it names the process behind a low-memory condition.
+- `filter.top_n` is applied after all other filters. It ranks process names, summing `top_by` over the processes that share a name, and reports the per-name roll-up (`process.count`, `process.group.*`) of the N highest. The kept names change from cycle to cycle, but each series is identified by its name alone, so the series count stays bounded. Set `filter.top_by: memory` to rank on resident memory instead (the working set on Windows): it names the process behind a low-memory condition.
+- `detail.per_pid: true` restores per-process series under `top_n`, tagged with `process.pid` and `process.creation.time`. Leave it off for anything that runs for long: every process entering the top creates series that are never reused. On a Windows host following about 24 processes, about 125 series were active at any instant while about 65 000 distinct series accumulated over 7 days. `agent config check` warns when the two are combined.
 - The processes you name with `by_name` or `by_user` also become entities on the topology graph, with an edge to their host. A `top_n` or unfiltered view does not, because its membership changes every cycle.
 
 ## Metric reference
