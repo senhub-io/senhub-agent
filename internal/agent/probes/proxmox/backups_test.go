@@ -174,6 +174,7 @@ func TestCollect_PreviewStoragesOffByDefaultCallNothing(t *testing.T) {
 		}
 	})
 
+	all := map[string]bool{"local-zfs": true, "pbs-main": true, "ceph-pool": true, "ceph-fs": true}
 	for _, tc := range []struct {
 		name  string
 		extra map[string]interface{}
@@ -190,18 +191,28 @@ func TestCollect_PreviewStoragesOffByDefaultCallNothing(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Collect: %v", err)
 			}
-			got := map[string]bool{}
+			usage := map[string]bool{}
+			state := map[string]bool{}
 			for _, dp := range points {
-				if st := tagsMap(dp)["proxmox.storage"]; st != "" {
-					got[st] = true
+				st := tagsMap(dp)["proxmox.storage"]
+				switch {
+				case st == "":
+				case dp.Name == "proxmox.storage.used":
+					usage[st] = true
+				case dp.Name == "proxmox.storage.status":
+					state[st] = true
 				}
 			}
-			if len(got) != len(tc.want) {
-				t.Errorf("storages with series = %v, want %v", got, tc.want)
+			// Usage was published for every storage before the preview flags.
+			if len(usage) != len(all) {
+				t.Errorf("storages with usage = %v, want all of %v", usage, all)
+			}
+			if len(state) != len(tc.want) {
+				t.Errorf("storages with a state series = %v, want %v", state, tc.want)
 			}
 			for st := range tc.want {
-				if !got[st] {
-					t.Errorf("storage %s has no series", st)
+				if !state[st] {
+					t.Errorf("storage %s has no state series", st)
 				}
 			}
 			wantCalls := int32(0)

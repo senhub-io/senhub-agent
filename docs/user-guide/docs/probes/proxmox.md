@@ -29,13 +29,14 @@ usage.
     are not validated in a real environment, they are off by default, and each is
     enabled explicitly (`enable_cluster`, `enable_ha`, `enable_replication`,
     `enable_ceph`, `enable_pbs`). A part left disabled makes no API call and
-    produces no series.
+    produces no series of its own. The usage and capacity of every storage,
+    Ceph and PBS included, are published whatever the flags.
 
 ## Parameters
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:fc4b7daddd3ad3a932004320c4a9aa3cb1c2ff784c2fbdd119cabc7652b28d16 -->
+<!-- sha256:330640f1f8be23556c31eac3ee644b95f0766b65ae8256a086f30884b08e9007 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -44,8 +45,8 @@ usage.
 | `token_secret` | Yes | - | API token secret. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `verify_tls` | No | `true` | Verify the API certificate; false accepts a self-signed one |
 | `node` | No | - | Only this node is collected; empty means every node of the cluster |
-| `enable_pbs` | No | `false` | Preview, not validated in a real environment: include Proxmox Backup Server storages (usage, state, backup archives) |
-| `enable_ceph` | No | `false` | Preview, not validated in a real environment: include Ceph-backed storages (rbd, cephfs) |
+| `enable_pbs` | No | `false` | Preview, not validated in a real environment: state and backup archives of Proxmox Backup Server storages (their usage and capacity are always published) |
+| `enable_ceph` | No | `false` | Preview, not validated in a real environment: state of Ceph-backed storages (rbd, cephfs; their usage and capacity are always published) |
 | `enable_cluster` | No | `false` | Preview, not validated in a real environment: report cluster quorum |
 | `enable_ha` | No | `false` | Preview, not validated in a real environment: report the state of HA-managed guests |
 | `enable_replication` | No | `false` | Preview, not validated in a real environment: report storage replication jobs |
