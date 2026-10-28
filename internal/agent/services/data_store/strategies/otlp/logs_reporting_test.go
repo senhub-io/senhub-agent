@@ -74,8 +74,10 @@ func TestEntityRejectionIsReportedWithTheQueueOff(t *testing.T) {
 		"endpoint":    startRejectingLogsServer(t),
 		"tls":         map[string]interface{}{"enabled": false},
 		"persistence": map[string]interface{}{"enabled": false},
-		"logs":        map[string]interface{}{"enabled": false},
-		"entities":    map[string]interface{}{"enabled": true},
+		"signals": map[string]interface{}{
+			"logs":     map[string]interface{}{"enabled": false},
+			"entities": map[string]interface{}{"enabled": true},
+		},
 	})
 	var buf syncBuffer
 	s.psReporter = newPartialSuccessReporter(bufferModuleLogger(&buf), "export")
@@ -87,8 +89,8 @@ func TestEntityRejectionIsReportedWithTheQueueOff(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = s.Shutdown(context.Background()) })
 
-	if s.logsQueue != nil || s.logs == nil {
-		t.Fatal("the test needs the queue off and the entity pipeline on")
+	if s.logsQueue != nil || s.logs == nil || s.cfg.Logs.Enabled || !s.cfg.Entities.Enabled {
+		t.Fatal("the test needs raw logs off, entities on and the queue off")
 	}
 	for i := 0; i < 2; i++ {
 		scope, rec, err := buildEntityRecord(entityEvent("host", "h-00"+string(rune('1'+i)), "", time.Unix(1_700_000_000, 0)))
