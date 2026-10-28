@@ -121,6 +121,8 @@ otlp:
       batch_size: 1000            # max records per gRPC export
       batch_timeout: 5s           # flush even if batch_size not reached
       buffer_size: 10000          # bounded queue; drop-oldest beyond
+      max_export_bytes: 3145728   # estimated size cap of one export (default 3 MiB);
+                                  # larger batches are split between records
     traces:
       enabled: true               # default false — relays spans ingested by an
                                   # otlp_receiver probe (signals: [traces])
