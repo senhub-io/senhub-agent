@@ -51,7 +51,7 @@ func TestCollect_ReplicationJobs(t *testing.T) {
 			writeJSON(t, w, []interface{}{})
 		})
 	})
-	p := newGuestProbe(t, srv.URL, "")
+	p := newGuestProbeWith(t, srv.URL, "", previewAll)
 
 	points, err := p.Collect()
 	if err != nil {
@@ -144,7 +144,7 @@ func TestCollect_ReplicationEmptyDoesNothing(t *testing.T) {
 			})
 		}
 	})
-	p := newGuestProbe(t, srv.URL, "")
+	p := newGuestProbeWith(t, srv.URL, "", previewAll)
 	var buf bytes.Buffer
 	zl := zerolog.New(&buf)
 	p.moduleLogger = &logger.ModuleLogger{Logger: &zl}
@@ -172,7 +172,7 @@ func TestCollect_ReplicationErrorWarnsAndKeepsUp(t *testing.T) {
 			writeJSON(t, w, []interface{}{})
 		})
 	})
-	p := newGuestProbe(t, srv.URL, "")
+	p := newGuestProbeWith(t, srv.URL, "", previewAll)
 	var buf bytes.Buffer
 	zl := zerolog.New(&buf)
 	p.moduleLogger = &logger.ModuleLogger{Logger: &zl}
@@ -211,7 +211,7 @@ func TestCollect_ReplicationDeniedSilently(t *testing.T) {
 			writeJSON(t, w, []interface{}{})
 		})
 	})
-	p := newGuestProbe(t, srv.URL, "")
+	p := newGuestProbeWith(t, srv.URL, "", previewAll)
 	var buf bytes.Buffer
 	zl := zerolog.New(&buf)
 	p.moduleLogger = &logger.ModuleLogger{Logger: &zl}

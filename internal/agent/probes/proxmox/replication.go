@@ -22,6 +22,9 @@ type pveReplicationJob struct {
 }
 
 func (p *ProxmoxProbe) collectReplication(node string, now time.Time) []data_store.DataPoint {
+	if !p.cfg.EnableReplication {
+		return nil
+	}
 	var jobs []pveReplicationJob
 	if err := p.apiGet(fmt.Sprintf("/nodes/%s/replication", node), &jobs); err != nil {
 		if !p.denied.isDenied(p.moduleLogger, err, node+"/replication", "Sys.Audit on /nodes/"+node) {

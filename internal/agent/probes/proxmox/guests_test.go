@@ -200,3 +200,5 @@ func TestCollect_GuestsFallbackWhenClusterResourcesFails(t *testing.T) {
 		t.Error("probe should be flagged degraded while cluster/resources fails")
 	}
 }
+
+var previewAll = map[string]interface{}{"enable_cluster": true, "enable_ha": true, "enable_replication": true}
