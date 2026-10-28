@@ -489,9 +489,19 @@ func probeHTTPTarget(ctx context.Context, outputType string, params map[string]i
 		return steps
 	}
 	run("reach", func() (string, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodHead, target, nil)
+		method, body := http.MethodHead, io.Reader(nil)
+		if outputType == "event" {
+			// POST, not HEAD: the event intake answers 404 to HEAD and GET
+			// on a route that exists. An empty batch carries no credential
+			// and no event, so nothing is stored.
+			method, body = http.MethodPost, strings.NewReader("[]")
+		}
+		req, err := http.NewRequestWithContext(ctx, method, target, body)
 		if err != nil {
 			return "", err
+		}
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
 		}
 		resp, err := newConnectivityClient(timeout).Do(req)
 		if err != nil {
@@ -500,8 +510,8 @@ func probeHTTPTarget(ctx context.Context, outputType string, params map[string]i
 		_ = resp.Body.Close()
 		detail := fmt.Sprintf("HTTP %d", resp.StatusCode)
 		// A 404 means nothing is served at this address and a 5xx a server
-		// in error: neither is an output that works. A 405 or a 401 still
-		// proves the route exists, which is all this step claims.
+		// in error: neither is an output that works. A 400, 401, 403 or 405
+		// still proves the route exists, which is all this step claims.
 		if resp.StatusCode == http.StatusNotFound || resp.StatusCode >= 500 {
 			return detail, fmt.Errorf("%s answered %s", target, detail)
 		}
