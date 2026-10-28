@@ -22,11 +22,18 @@ usage.
     token_secret: ${secret:proxmox.token_secret}   # OS secret store; inline plaintext is auto-sealed on install
 ```
 
+!!! warning "Validated on a single node"
+    This probe is validated on a single Proxmox VE node (QEMU guests, LXC
+    containers, ZFS and directory storages). Ceph and Proxmox Backup Server (PBS)
+    support are in preview: they are not validated in a real environment, they are
+    off by default, and each is enabled explicitly (`enable_ceph`, `enable_pbs`). A
+    part left disabled makes no API call and produces no series.
+
 ## Parameters
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:ab29f8261ab0433230e24ee32a418dca0590d9edcc788f1231254cb1c561d9ca -->
+<!-- sha256:80c06a441eb47908e2f6645354678d7b29c0f049c6da3f247c17fbc90495dc0b -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -35,6 +42,8 @@ usage.
 | `token_secret` | Yes | - | API token secret. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `verify_tls` | No | `true` | Verify the API certificate; false accepts a self-signed one |
 | `node` | No | - | Only this node is collected; empty means every node of the cluster |
+| `enable_pbs` | No | `false` | Preview, not validated in a real environment: include Proxmox Backup Server storages (usage, state, backup archives) |
+| `enable_ceph` | No | `false` | Preview, not validated in a real environment: include Ceph-backed storages (rbd, cephfs) |
 | `interval` | No | `60` | Seconds between collections |
 | `timeout` | No | `15` | Request timeout in seconds |
 | `instance_name` | No | - | Stable identity override for this cluster |

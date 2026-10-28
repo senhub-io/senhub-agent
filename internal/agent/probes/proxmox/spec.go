@@ -13,6 +13,8 @@ func init() {
 			{Key: "token_secret", Kind: probes.KindString, Required: true, Secret: true, Group: "auth", Description: "API token secret"},
 			{Key: "verify_tls", Kind: probes.KindBool, Default: true, Group: "tls", Description: "Verify the API certificate; false accepts a self-signed one"},
 			{Key: "node", Kind: probes.KindString, Group: "filter", Description: "Only this node is collected; empty means every node of the cluster"},
+			{Key: "enable_pbs", Kind: probes.KindBool, Default: false, Group: "advanced", Description: "Preview, not validated in a real environment: include Proxmox Backup Server storages (usage, state, backup archives)"},
+			{Key: "enable_ceph", Kind: probes.KindBool, Default: false, Group: "advanced", Description: "Preview, not validated in a real environment: include Ceph-backed storages (rbd, cephfs)"},
 			{Key: "interval", Kind: probes.KindInt, Default: 60, Group: "collection", Description: "Seconds between collections"},
 			{Key: "timeout", Kind: probes.KindInt, Default: 15, Group: "collection", Description: "Request timeout in seconds"},
 			{Key: "instance_name", Kind: probes.KindString, Group: "identity", Description: "Stable identity override for this cluster"},

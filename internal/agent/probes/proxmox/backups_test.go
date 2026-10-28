@@ -2,6 +2,7 @@ package proxmox
 
 import (
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -48,7 +49,7 @@ func TestCollect_BackupsAndStorageActive(t *testing.T) {
 	now := time.Now()
 	var tasksQuery string
 	srv := newPVE9Server(t, resourcesReply(t), backupHandlers(t, now, &tasksQuery))
-	p := newGuestProbe(t, srv.URL, "node-a")
+	p := newGuestProbeWith(t, srv.URL, "node-a", map[string]interface{}{"enable_pbs": true})
 
 	points, err := p.Collect()
 	if err != nil {
@@ -151,5 +152,67 @@ func TestCollect_BackupCoverageUnreadableEmitsNothing(t *testing.T) {
 		if dp.Name == "proxmox.backup.job.count" || dp.Name == "proxmox.vm.backup.unprotected.count" {
 			t.Errorf("%s emitted although /cluster/backup is unreadable", dp.Name)
 		}
+	}
+}
+
+func TestCollect_PreviewStoragesOffByDefaultCallNothing(t *testing.T) {
+	var contentCalls atomic.Int32
+	srv := newPVE9Server(t, resourcesReply(t), func(mux *http.ServeMux) {
+		mux.HandleFunc("/api2/json/nodes/node-a/storage", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(t, w, []map[string]interface{}{
+				{"storage": "local-zfs", "type": "zfspool", "content": "images,rootdir", "active": 1, "used": 10, "total": 100},
+				{"storage": "pbs-main", "type": "pbs", "content": "backup", "active": 1, "used": 40, "total": 400},
+				{"storage": "ceph-pool", "type": "rbd", "content": "images,backup", "active": 1, "used": 5, "total": 50},
+				{"storage": "ceph-fs", "type": "cephfs", "content": "backup", "active": 1, "used": 5, "total": 50},
+			})
+		})
+		for _, name := range []string{"pbs-main", "ceph-pool", "ceph-fs"} {
+			mux.HandleFunc("/api2/json/nodes/node-a/storage/"+name+"/content", func(w http.ResponseWriter, r *http.Request) {
+				contentCalls.Add(1)
+				writeJSON(t, w, []interface{}{})
+			})
+		}
+	})
+
+	for _, tc := range []struct {
+		name  string
+		extra map[string]interface{}
+		want  map[string]bool
+	}{
+		{"default", nil, map[string]bool{"local-zfs": true}},
+		{"pbs", map[string]interface{}{"enable_pbs": true}, map[string]bool{"local-zfs": true, "pbs-main": true}},
+		{"ceph", map[string]interface{}{"enable_ceph": true}, map[string]bool{"local-zfs": true, "ceph-pool": true, "ceph-fs": true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			contentCalls.Store(0)
+			p := newGuestProbeWith(t, srv.URL, "node-a", tc.extra)
+			points, err := p.Collect()
+			if err != nil {
+				t.Fatalf("Collect: %v", err)
+			}
+			got := map[string]bool{}
+			for _, dp := range points {
+				if st := tagsMap(dp)["proxmox.storage"]; st != "" {
+					got[st] = true
+				}
+			}
+			if len(got) != len(tc.want) {
+				t.Errorf("storages with series = %v, want %v", got, tc.want)
+			}
+			for st := range tc.want {
+				if !got[st] {
+					t.Errorf("storage %s has no series", st)
+				}
+			}
+			wantCalls := int32(0)
+			for st := range tc.want {
+				if st != "local-zfs" {
+					wantCalls++
+				}
+			}
+			if contentCalls.Load() != wantCalls {
+				t.Errorf("backup archive listings = %d, want %d", contentCalls.Load(), wantCalls)
+			}
+		})
 	}
 }
