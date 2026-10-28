@@ -59,6 +59,9 @@ type collectOptions struct {
 	// being born without their topology join key and then changing label set
 	// once a later sweep names the interface.
 	SkipUnnamedInterfaces bool
+	// SelectedInterfaces restricts walked if_index rows to these ifIndex
+	// values. nil keeps every interface; an empty set keeps none.
+	SelectedInterfaces map[string]bool
 }
 
 // collect runs one poll cycle and returns the decoded datapoints (without
@@ -92,6 +95,7 @@ func collect(client snmpClient, cfg *config, instance, deviceID string, ifNames 
 	// same timeout and retries.
 	silent := false
 	skippedInterfaces := 0
+	unselectedInterfaces := 0
 
 	// Scalars: a single (chunked) Get of all <OID>.0 instances.
 	if len(scalars) > 0 {
@@ -144,6 +148,10 @@ func collect(client snmpClient, cfg *config, instance, deviceID string, ifNames 
 			var extra []tags.Tag
 			if m.IndexLabel != "" {
 				if m.IndexLabel == "if_index" {
+					if options.SelectedInterfaces != nil && !options.SelectedInterfaces[index] {
+						unselectedInterfaces++
+						continue
+					}
 					name := ifNames[index]
 					if name == "" && options.SkipUnnamedInterfaces {
 						skippedInterfaces++
@@ -166,6 +174,13 @@ func collect(client snmpClient, cfg *config, instance, deviceID string, ifNames 
 			Str("target", instance).
 			Int("skipped_interface_rows", skippedInterfaces).
 			Msg("skipping interface metrics whose interface is not named by the current topology snapshot")
+	}
+
+	if unselectedInterfaces > 0 && log != nil {
+		log.Debug().
+			Str("target", instance).
+			Int("unselected_interface_rows", unselectedInterfaces).
+			Msg("skipping interface metrics of interfaces outside the configured selection")
 	}
 
 	return points, answered

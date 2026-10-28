@@ -55,7 +55,7 @@ one series per interface (`if_index` tag).
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:9901d7c60779d5bf53036864a394918c2f131825e011491d96f1633ae337ed18 -->
+<!-- sha256:b4fbb9f846ae713a13bb88cab2d269c0dfb0787fdab70519100fbedd0c08a8a2 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -75,6 +75,13 @@ one series per interface (`if_index` tag).
 | `interval` | No | `60s` | Metric polling cadence |
 | `topology_interval` | No | `1m` | Entity and topology sweep cadence |
 | `mibs` | In practice | - | Built-in MIB modules to poll; this or custom_mappings is required. One of `mib-2`, `if-mib` |
+| `interfaces` | No | - | Selects which interfaces get per-interface metric series (if-mib); topology entities always keep every interface |
+| `interfaces.include` | No | - | Regular expressions; an interface is kept when its ifName or ifDescr matches one. Default: all |
+| `interfaces.exclude` | No | - | Regular expressions; an interface whose ifName or ifDescr matches one is dropped |
+| `interfaces.types` | No | - | ifType allow-list, by name (ethernetCsmacd, ieee8023adLag, l2vlan...) or IANAifType number |
+| `interfaces.admin_up_only` | No | `false` | Keep only interfaces whose ifAdminStatus is up; re-read at each topology sweep |
+| `interfaces.oper_up_only` | No | `false` | Keep only interfaces whose ifOperStatus is up; re-read at each topology sweep |
+| `interfaces.max_interfaces` | No | - | Cap on the interfaces kept, lowest ifIndex first; a warning is logged when it cuts |
 | `mib_paths` | No | - | Local MIB files or folders used to name custom mappings |
 | `custom_mappings` | No | - | OID to metric mappings |
 | `custom_mappings[].oid` | Yes | - | OID, leading dot optional |
@@ -160,6 +167,50 @@ The security level (noAuthNoPriv / authNoPriv / authPriv) is derived
 from which protocols are set — there is no separate field to
 contradict it. Unknown protocol names are startup errors, never a
 silent downgrade. The discovery crawl profile remains v2c-only.
+
+### Interface selection
+
+With `mibs: [if-mib]` the probe emits nine series per row of the interface
+table. A chassis switch with VLAN interfaces and unused ports can expose
+hundreds of rows. The `interfaces` block keeps the series of the interfaces
+you select and drops the others:
+
+```yaml
+params:
+  target: 192.0.2.10
+  mibs: [if-mib]
+  interfaces:
+    include: ['^(Gi|Te)', '^Po']
+    exclude: ['^Vlan']
+    types: [ethernetCsmacd, ieee8023adLag]
+    admin_up_only: true
+    max_interfaces: 48
+```
+
+An interface is kept when it passes every criterion that is set: it matches
+one `include` expression (or none is set), matches no `exclude` expression,
+has one of the listed `types`, and is up where `admin_up_only` or
+`oper_up_only` ask for it. Expressions are matched against `ifName` and
+`ifDescr`. `types` takes an IANAifType name (`ethernetCsmacd`,
+`ieee8023adLag`, `l2vlan`, `propVirtual`, `softwareLoopback`, `tunnel`...) or
+its number. `max_interfaces` keeps the interfaces with the lowest `ifIndex`
+and logs a warning with the number matched and kept when it cuts.
+
+- The selection is read again at each topology sweep (`topology_interval`),
+  not at each metric poll. An interface that comes up or goes down enters or
+  leaves the series at that cadence.
+- `oper_up_only` stops the series of an interface that goes down, so its
+  `oper_status` can no longer report the fault: use `admin_up_only` for the
+  ports you want to alert on.
+- A state the device does not answer for (`ifAdminStatus`, `ifDescr`) counts
+  as not matching. Before the first sweep nothing is selected, so no
+  interface series is emitted until the interfaces are known.
+- A sweep that could not read every interface column keeps the previous
+  selection, so a timed-out walk does not retract the series.
+- The selection narrows what is published, not what is read: the interface
+  table is still walked at each `interval`. It also applies to a
+  `custom_mappings` entry whose `index_label` is `if_index`.
+- Topology is not narrowed: every interface stays an entity, with its links.
 
 ### Custom mappings
 
