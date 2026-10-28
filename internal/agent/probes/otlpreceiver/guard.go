@@ -105,14 +105,14 @@ func (g *ingressGuard) retryAfterSeconds() int {
 	if g == nil || g.bucket == nil || g.bucket.rate <= 0 {
 		return 1
 	}
-	secs := int(math.Ceil(1 / g.bucket.rate))
+	secs := math.Ceil(1 / g.bucket.rate)
 	if secs < 1 {
 		return 1
 	}
 	if secs > maxRetryAfterSeconds {
 		return maxRetryAfterSeconds
 	}
-	return secs
+	return int(secs)
 }
 
 // tokenBucket is a minimal thread-safe token bucket. Hand-rolled

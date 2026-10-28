@@ -535,7 +535,7 @@ func TestIngressGuard_RetryAfterSeconds(t *testing.T) {
 	for _, tc := range []struct {
 		rps  float64
 		want int
-	}{{100, 1}, {1, 1}, {0.4, 3}, {0.001, maxRetryAfterSeconds}} {
+	}{{100, 1}, {1, 1}, {0.4, 3}, {0.001, maxRetryAfterSeconds}, {1e-300, maxRetryAfterSeconds}} {
 		g := newIngressGuard(receiverConfig{RateLimitRPS: tc.rps, RateLimitBurst: 1})
 		if got := g.retryAfterSeconds(); got != tc.want {
 			t.Errorf("rps %g: Retry-After = %d, want %d", tc.rps, got, tc.want)
