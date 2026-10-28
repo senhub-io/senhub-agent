@@ -18,6 +18,7 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/lifecycle"
 	"senhub-agent.go/internal/agent/probes"
+	"senhub-agent.go/internal/agent/probes/filetail"
 	"senhub-agent.go/internal/agent/probes/logparse"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/configuration"
@@ -883,6 +884,9 @@ func validateProbeParams(name, probeType string, params map[string]interface{}) 
 	warnings += w
 	warnings += reportMultilineProblems(name, params)
 	warnings += reportProcessPerPIDProblems(name, probeType, params)
+	if probeType == "filetail" {
+		warnings += reportFiletailProtectedHome(name, params)
+	}
 
 	// Citrix has two accepted formats: nested director block (0.1.87+) or flat director_url/base_url.
 	// Validate manually instead of using a flat required-list.
@@ -1205,6 +1209,24 @@ func reportMultilineProblems(name string, params map[string]interface{}) (warnin
 		return 1
 	}
 	return 0
+}
+
+// reportFiletailProtectedHome warns on a filetail path the packaged systemd
+// unit hides with ProtectHome: such a path stays empty with no other symptom.
+func reportFiletailProtectedHome(name string, params map[string]interface{}) (warnings int) {
+	if runtime.GOOS != "linux" {
+		return 0
+	}
+	paths, _ := types.StringSliceParam(params, "paths")
+	for _, p := range paths {
+		dir, hidden := filetail.HiddenByProtectHome(p)
+		if !hidden {
+			continue
+		}
+		fmt.Printf("         [WARN] Probe %q: %s is under %s, which the systemd unit hides with ProtectHome; if the agent runs as a service, %s\n", name, p, dir, filetail.ProtectHomeFix)
+		warnings++
+	}
+	return warnings
 }
 
 // processPerPIDWarning is the cardinality warning for the process probe

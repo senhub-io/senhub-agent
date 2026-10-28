@@ -137,12 +137,12 @@ func (p *FileTailProbe) warnProtectedHomePaths() {
 		return
 	}
 	for _, configured := range p.config.Paths {
-		dir, hidden := hiddenByProtectHome(configured)
+		dir, hidden := HiddenByProtectHome(configured)
 		if !hidden {
 			continue
 		}
 		p.warn().Str("path", configured).Str("hidden_dir", dir).
-			Msg("Path is under a directory the systemd unit hides with ProtectHome; if the agent runs as a service, add a drop-in (systemctl edit senhub-agent) with [Service] ProtectHome=read-only, then restart")
+			Msg("Path is under a directory the systemd unit hides with ProtectHome; if the agent runs as a service, " + ProtectHomeFix)
 	}
 }
 

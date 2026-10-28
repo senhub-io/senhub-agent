@@ -200,7 +200,8 @@ On Linux, the systemd unit of the agent sets `ProtectHome=true`, which makes
 `/home`, `/root` and `/run/user` appear empty to the service. A path under
 one of them is never read, and `ReadOnlyPaths=` cannot bring it back: with
 `ProtectHome=true` the directories are inaccessible, not read-only. At
-construction the probe logs a warning that names the directory.
+construction the probe logs a warning that names the directory, and
+`agent config check` prints the same warning with the fix.
 
 Override the setting with a drop-in, which survives package upgrades:
 
@@ -219,7 +220,10 @@ sudo systemctl restart senhub-agent
 
 `read-only` exposes the three directories for reading, which is all the
 probe needs. The `senhub` account must also have the Unix permission to
-read the file and to traverse its parent directories. To expose a single
+read the file and to traverse its parent directories. The unit keeps
+`ProtectHome=true` by default: `read-only` lets a compromised agent read
+whatever the `senhub` account may read under `/home`, so it is an opt-in for
+hosts that need it. To expose a single
 directory instead, use `ProtectHome=tmpfs` together with
 `BindReadOnlyPaths=/home/<path>`.
 
