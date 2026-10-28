@@ -185,3 +185,25 @@ func TestAPartialSweepKeepsThePreviousSelection(t *testing.T) {
 		t.Errorf("no previous selection: got %v, want nil", got)
 	}
 }
+
+func TestCapStateChangedWarnsOncePerCut(t *testing.T) {
+	s := &snmpEntitySource{}
+	steps := []struct {
+		capped        bool
+		matched, kept int
+		want          bool
+	}{
+		{true, 120, 100, true},
+		{true, 120, 100, false},
+		{true, 120, 100, false},
+		{true, 130, 100, true},
+		{false, 90, 90, true},
+		{false, 90, 90, false},
+		{true, 130, 100, true},
+	}
+	for i, st := range steps {
+		if got := s.capStateChanged(st.capped, st.matched, st.kept); got != st.want {
+			t.Fatalf("step %d: capStateChanged(%v, %d, %d) = %v, want %v", i, st.capped, st.matched, st.kept, got, st.want)
+		}
+	}
+}

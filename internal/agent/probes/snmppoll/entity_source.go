@@ -146,6 +146,9 @@ type snmpEntitySource struct {
 	// holdLogged marks that the start-up hold was already announced, so a
 	// device held across many reads logs it once.
 	holdLogged bool
+	// capWarned is the matched/kept pair of the last max_interfaces warning,
+	// empty when the last sweep was not capped.
+	capWarned string
 	// deviceID + ifNames are the resolved identity of the polled device and its
 	// ifIndex→ifName map, cached from the last sweep so the METRIC collector can
 	// tag SNMP metrics with network.device.id / network.interface.name — the same
@@ -452,6 +455,23 @@ func (s *snmpEntitySource) SelectedInterfaces() map[string]bool {
 // selectInterfaces evaluates the interface selection against the current
 // ifTable. Evaluated at every sweep, so a port that comes up or goes down
 // enters or leaves the metric series at the sweep cadence.
+// capStateChanged records the max_interfaces cut of this sweep and reports
+// whether it differs from the previous one, so the warning is written once per
+// target and again only when the matched or kept counts move.
+func (s *snmpEntitySource) capStateChanged(capped bool, matched, kept int) bool {
+	key := ""
+	if capped {
+		key = fmt.Sprintf("%d/%d", matched, kept)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if key == s.capWarned {
+		return false
+	}
+	s.capWarned = key
+	return true
+}
+
 func (s *snmpEntitySource) selectInterfaces(client snmpClient, ifaces []ifaceRow) (map[string]bool, bool) {
 	sel := s.cfg.Interfaces
 	if !sel.active() || len(ifaces) == 0 {
@@ -463,7 +483,8 @@ func (s *snmpEntitySource) selectInterfaces(client snmpClient, ifaces []ifaceRow
 			Msg("interface selection: some columns could not be read, their criteria exclude every interface")
 	}
 	selected, matched := sel.selectIndexes(ifaces)
-	if sel.maxInterfaces > 0 && matched > sel.maxInterfaces {
+	capped := sel.maxInterfaces > 0 && matched > sel.maxInterfaces
+	if s.capStateChanged(capped, matched, len(selected)) && capped {
 		s.moduleLogger.Warn().Str("target", s.cfg.Target).
 			Int("matched", matched).Int("kept", len(selected)).Int("max_interfaces", sel.maxInterfaces).
 			Msg("interface selection: max_interfaces reached, metric series of the remaining interfaces are not emitted")
