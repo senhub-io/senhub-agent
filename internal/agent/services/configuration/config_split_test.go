@@ -3,14 +3,17 @@ package configuration
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v2"
 
+	"senhub-agent.go/internal/agent/services/configuration/secret"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -64,8 +67,8 @@ probes:
 
 // TestMigrateToMultiFile_HappyPath drives the full engine on a
 // realistic monolithic file and asserts the resulting multi-file
-// layout: agent.yaml without probes/storage, probes.d/00-host.yaml
-// with the original probes, and one strategies.d file per strategy.
+// layout: agent.yaml without probes/storage, one probes.d file per
+// probe, and one strategies.d file per strategy.
 func TestMigrateToMultiFile_HappyPath(t *testing.T) {
 	dir := t.TempDir()
 	configPath := writeMonolithicFixture(t, dir)
@@ -106,18 +109,16 @@ func TestMigrateToMultiFile_HappyPath(t *testing.T) {
 		t.Error("agent.yaml should still carry config_version and agent globals")
 	}
 
-	// probes.d/00-host.yaml is a YAML array with the original probes.
-	probesPath := filepath.Join(dir, "probes.d", "00-host.yaml")
-	probesRaw, err := os.ReadFile(probesPath)
-	if err != nil {
-		t.Fatalf("read probes.d/00-host.yaml: %v", err)
+	// probes.d holds one fragment per probe, in source order.
+	if result.ProbeCount != 2 {
+		t.Errorf("ProbeCount = %d, want 2", result.ProbeCount)
 	}
-	var migratedProbes []map[string]interface{}
-	if err := yaml.Unmarshal(probesRaw, &migratedProbes); err != nil {
-		t.Fatalf("parse probes fragment: %v", err)
+	probeFiles, _ := filepath.Glob(filepath.Join(dir, "probes.d", "*.yaml"))
+	if len(probeFiles) != 2 {
+		t.Fatalf("probes.d fragments = %v, want 2", probeFiles)
 	}
-	if len(migratedProbes) != 2 {
-		t.Errorf("migrated probes count = %d, want 2", len(migratedProbes))
+	if filepath.Base(probeFiles[0]) != "10-cpu.yaml" || filepath.Base(probeFiles[1]) != "11-memory.yaml" {
+		t.Errorf("fragment names = %v", probeFiles)
 	}
 
 	// strategies.d has one file per strategy. Names are
@@ -279,9 +280,8 @@ func TestMigrateToMultiFile_RemovesLeftoversOfAFailedAttempt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("migration with leftovers of an earlier attempt: %v", err)
 	}
-	body, _ := os.ReadFile(leftover)
-	if strings.Contains(string(body), "stale") {
-		t.Error("the leftover fragment was kept instead of being rewritten from the source")
+	if _, err := os.Stat(leftover); err == nil {
+		t.Error("the leftover fragment was kept instead of being replaced by one file per probe")
 	}
 	if len(backups(t, dir)) != 1 || res.BackupPath == "" {
 		t.Errorf("a successful migration keeps exactly one backup, got %v", backups(t, dir))
@@ -392,3 +392,111 @@ func TestLoadWarnsOfLegacyOnlyWhenTheSplitWillNotRun(t *testing.T) {
 }
 
 const operatorFragment = "- name: mine\n  type: cpu\n"
+
+const mixedMonolithic = `config_version: 2
+agent:
+  key: "migrate-test-key"
+  mode: offline
+storage:
+  - name: http
+    params:
+      port: 8080
+      bind_address: "127.0.0.1"
+probes:
+  - name: cpu
+    type: cpu
+    params:
+      interval: 30
+  - name: lb-main
+    type: netscaler
+    params:
+      host: "10.0.0.1"
+      username: monitor
+      password: "${secret:probe.lb-main.password}"
+      interval: 60
+    governance:
+      owner: team-network
+      criticality: high
+  - name: db.prod/1
+    type: mysql
+    params:
+      dsn: "user@tcp(127.0.0.1:3306)/"
+`
+
+func TestMigrateToMultiFile_OneFilePerProbe(t *testing.T) {
+	mp := secret.NewMemoryProvider()
+	_ = mp.Set("probe.lb-main.password", secret.New("pw-for-test"))
+	secret.SetProvider(mp)
+	t.Cleanup(func() { secret.SetProvider(nil) })
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "agent-config.yaml")
+	if err := os.WriteFile(path, []byte(mixedMonolithic), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before, err := LoadFromDisk(path, nil)
+	if err != nil {
+		t.Fatalf("load source: %v", err)
+	}
+
+	res, err := MigrateToMultiFile(path, nil)
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if res.ProbeCount != 3 {
+		t.Errorf("ProbeCount = %d, want 3", res.ProbeCount)
+	}
+	files, _ := filepath.Glob(filepath.Join(dir, "probes.d", "*.yaml"))
+	want := []string{"10-cpu.yaml", "11-lb-main.yaml", "12-db-prod-1.yaml"}
+	if len(files) != len(want) {
+		t.Fatalf("fragments = %v, want %v", files, want)
+	}
+	for i, f := range files {
+		if filepath.Base(f) != want[i] {
+			t.Errorf("fragment %d = %s, want %s", i, filepath.Base(f), want[i])
+		}
+		body, _ := os.ReadFile(f)
+		if !strings.HasPrefix(string(body), "# Probe ") || !strings.Contains(strings.SplitN(string(body), "\n", 2)[0], migratedFragmentMarker) {
+			t.Errorf("%s: header comment missing or without the migration marker", f)
+		}
+	}
+	lb, _ := os.ReadFile(files[1])
+	for _, frag := range []string{"${secret:probe.lb-main.password}", "governance:", "criticality: high"} {
+		if !strings.Contains(string(lb), frag) {
+			t.Errorf("netscaler fragment lost %q:\n%s", frag, lb)
+		}
+	}
+
+	after, err := LoadFromDisk(path, nil)
+	if err != nil {
+		t.Fatalf("load migrated: %v", err)
+	}
+	if !reflect.DeepEqual(before.Probes, after.Probes) {
+		t.Errorf("merged probes differ after migration:\nbefore %+v\nafter  %+v", before.Probes, after.Probes)
+	}
+
+	again, err := MigrateToMultiFile(path, nil)
+	if err != nil || !again.AlreadyMultiFile {
+		t.Fatalf("rerun: %+v, %v", again, err)
+	}
+	files2, _ := filepath.Glob(filepath.Join(dir, "probes.d", "*.yaml"))
+	if len(files2) != 3 {
+		t.Errorf("rerun changed the fragments: %v", files2)
+	}
+}
+
+func TestSplitProbes_FixedWidthKeepsOrder(t *testing.T) {
+	dir := t.TempDir()
+	list := make([]interface{}, 95)
+	for i := range list {
+		list[i] = map[interface{}]interface{}{"name": fmt.Sprintf("p%d", i), "type": "cpu"}
+	}
+	n, err := splitProbes(list, dir, "ts")
+	if err != nil || n != 95 {
+		t.Fatalf("splitProbes: %d, %v", n, err)
+	}
+	files, _ := filepath.Glob(filepath.Join(dir, "*.yaml"))
+	if len(files) != 95 || filepath.Base(files[0]) != "100-p0.yaml" || filepath.Base(files[94]) != "194-p94.yaml" {
+		t.Errorf("names = %s ... %s (%d)", filepath.Base(files[0]), filepath.Base(files[len(files)-1]), len(files))
+	}
+}

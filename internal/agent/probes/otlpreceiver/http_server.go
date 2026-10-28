@@ -1,11 +1,13 @@
 package otlpreceiver
 
 import (
+	"compress/gzip"
 	"context"
 	"errors"
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -92,7 +94,8 @@ func (p *OTLPReceiverProbe) startHTTP(quitChannel chan struct{}) error {
 
 // authorizeAndReadBody runs the shared ingress preamble for an OTLP/HTTP
 // handler: guard (bearer/CIDR/rate-limit), POST-only, protobuf content type,
-// and a size-capped body read. It writes the error response itself and
+// and a size-capped body read (identity or gzip; the cap applies to the
+// decompressed size). It writes the error response itself and
 // returns ok=false when the request must not proceed.
 func (p *OTLPReceiverProbe) authorizeAndReadBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	if err := p.guard.allow(r.RemoteAddr, r.Header.Get("Authorization")); err != nil {
@@ -122,9 +125,42 @@ func (p *OTLPReceiverProbe) authorizeAndReadBody(w http.ResponseWriter, r *http.
 		return nil, false
 	}
 
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxRecvMsgBytes))
+	raw := &io.LimitedReader{R: r.Body, N: maxRecvMsgBytes + 1}
+	var reader io.Reader = raw
+	switch enc := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Encoding"))); enc {
+	case "", "identity":
+	case "gzip":
+		zr, err := gzip.NewReader(reader)
+		if err != nil {
+			if raw.N == 0 {
+				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+				return nil, false
+			}
+			http.Error(w, "invalid gzip body", http.StatusBadRequest)
+			return nil, false
+		}
+		defer func() {
+			if cerr := zr.Close(); cerr != nil {
+				p.moduleLogger.Debug().Err(cerr).Msg("closing gzip reader")
+			}
+		}()
+		reader = io.LimitReader(zr, maxRecvMsgBytes+1)
+	default:
+		http.Error(w, "unsupported Content-Encoding", http.StatusUnsupportedMediaType)
+		return nil, false
+	}
+
+	body, err := io.ReadAll(reader)
 	if err != nil {
+		if raw.N == 0 {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return nil, false
+		}
 		http.Error(w, "failed to read body", http.StatusBadRequest)
+		return nil, false
+	}
+	if len(body) > maxRecvMsgBytes {
+		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
 		return nil, false
 	}
 	return body, true

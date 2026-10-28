@@ -206,3 +206,23 @@ func TestShutdownIsBoundedWhenCloseHangs(t *testing.T) {
 		t.Fatal("Shutdown waited on a listener Close that never returns")
 	}
 }
+
+func TestShutdownIsBoundedWithoutACallerDeadline(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	svc := New(logger.NewLogger(&cliArgs.ParsedArgs{}), filepath.Join(t.TempDir(), "agent.yaml"), "9.9.9", "abcdef123456")
+	svc.shutdownCap = 200 * time.Millisecond
+	svc.listener = stuckListener{release: release}
+	svc.loopExited = make(chan struct{})
+
+	done := make(chan struct{})
+	go func() {
+		_ = svc.Shutdown(context.Background())
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Shutdown with context.Background() waited on a listener Close that never returns")
+	}
+}
