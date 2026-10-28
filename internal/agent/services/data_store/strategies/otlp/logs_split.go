@@ -132,6 +132,6 @@ func valueBytes(v attribute.Value) int {
 	case attribute.MAP:
 		return attrSetBytes(v.AsMap())
 	default:
-		return len(v.Emit()) + attrOverheadBytes
+		return len(v.String()) + attrOverheadBytes
 	}
 }

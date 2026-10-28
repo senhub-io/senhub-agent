@@ -87,9 +87,9 @@ func entityPayloads(records []sdklog.Record) map[string]string {
 		records[i].WalkAttributes(func(kv attribute.KeyValue) bool {
 			switch string(kv.Key) {
 			case "entity.id":
-				id = kv.Value.Emit()
+				id = kv.Value.String()
 			case "entity.relationships":
-				rels = kv.Value.Emit()
+				rels = kv.Value.String()
 			}
 			return true
 		})
