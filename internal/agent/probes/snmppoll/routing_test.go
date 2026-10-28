@@ -273,3 +273,36 @@ func TestCollectInterfaces_ReportsSkippedOptionalWalks(t *testing.T) {
 		t.Errorf("skipped = %v, want ifMtu and dot3StatsDuplexStatus", skipped)
 	}
 }
+
+// FortiOS-like device: ipCidrRouteTable answers with nothing (no error) and
+// every IPv4 route lives in inetCidrRouteTable.
+func TestCollectRoutes_IPv4OnlyInInetTable(t *testing.T) {
+	rk := inetIndex(inetAddrTypeIPv4, "198.51.100.0", 4, 24)
+	rkDefault := inetIndex(inetAddrTypeIPv4, "0.0.0.0", 4, 0)
+	b := func(col, key string, v any) snmpRawBind {
+		return snmpRawBind{OID: inetCidrRouteEntry + "." + col + "." + key, Value: v}
+	}
+	client := &routeWalkClient{
+		responses: map[string][]snmpRawBind{
+			inetCidrRouteEntry: {
+				b(colInetRouteNextHop, rk, "192.0.2.254"),
+				b(colInetRouteType, rk, routeTypeRemote),
+				b(colInetRouteIfIndex, rk, 4),
+				b(colInetRouteNextHop, rkDefault, "192.0.2.1"),
+				b(colInetRouteType, rkDefault, routeTypeRemote),
+			},
+		},
+	}
+
+	rows, err := collectRoutes(client)
+	if err != nil {
+		t.Fatalf("collectRoutes() error = %v", err)
+	}
+	got := map[string]string{}
+	for _, r := range rows {
+		got[r.Destination] = r.NextHop
+	}
+	if len(rows) != 2 || got["198.51.100.0/24"] != "192.0.2.254" || got["0.0.0.0/0"] != "192.0.2.1" {
+		t.Fatalf("rows = %+v, want the two IPv4 routes read from inetCidrRouteTable", rows)
+	}
+}
