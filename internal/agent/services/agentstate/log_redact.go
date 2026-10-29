@@ -194,7 +194,8 @@ func redactLogRecord(rec LogRecord) LogRecord {
 	pemEnabled := hasRedactRule(rs, "private_key")
 	opensPEM := pemEnabled && hasUnclosedPEMBegin(rec.Body)
 
-	if masked, body := pemState.process(rec, pemEnabled, opensPEM); masked {
+	maskTail := func(s string) string { return maskString(rs, s, rec.ProducerProbeName) }
+	if masked, body := pemState.process(rec, pemEnabled, opensPEM, maskTail); masked {
 		rec.Body = body
 	} else {
 		rec.Body = maskString(rs, rec.Body, rec.ProducerProbeName)
