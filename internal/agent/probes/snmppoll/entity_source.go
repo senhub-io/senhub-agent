@@ -152,6 +152,9 @@ type snmpEntitySource struct {
 	// capWarned is the matched/kept pair of the last max_interfaces warning,
 	// empty when the last sweep was not capped.
 	capWarned string
+	// neighborCapWarned is, per device, the number of neighbours the
+	// max_neighbors bound cut at the last announcement.
+	neighborCapWarned map[string]int
 	// deviceID + ifNames are the resolved identity of the polled device and its
 	// ifIndex→ifName map, cached from the last sweep so the METRIC collector can
 	// tag SNMP metrics with network.device.id / network.interface.name — the same
@@ -1272,7 +1275,11 @@ func (s *snmpEntitySource) appendResolvesNeighbors(obs entity.Observation, res s
 	})
 
 	n := s.maxNeighbors()
-	if omitted := len(candidates) - n; omitted > 0 {
+	omitted := len(candidates) - n
+	if omitted < 0 {
+		omitted = 0
+	}
+	if s.neighborCapChanged(res.deviceID, omitted) {
 		s.moduleLogger.Info().
 			Str("target", s.cfg.Target).
 			Str("device", res.deviceID).
@@ -1280,6 +1287,8 @@ func (s *snmpEntitySource) appendResolvesNeighbors(obs entity.Observation, res s
 			Int("omitted", omitted).
 			Int("max_neighbors", n).
 			Msg("neighbor table bound: some neighbors omitted")
+	}
+	if omitted > 0 {
 		candidates = candidates[:n]
 	}
 
@@ -1346,6 +1355,27 @@ func (s *snmpEntitySource) appendResolvesNeighbors(obs entity.Observation, res s
 		}
 	}
 	return obs
+}
+
+// neighborCapChanged records how many neighbours of a device the bound cut
+// and reports whether a log line is due: the observation is rebuilt at every
+// report, so the cut is announced once, and again only when it moves.
+func (s *snmpEntitySource) neighborCapChanged(deviceID string, omitted int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	prev, seen := s.neighborCapWarned[deviceID]
+	if omitted == 0 {
+		delete(s.neighborCapWarned, deviceID)
+		return false
+	}
+	if seen && prev == omitted {
+		return false
+	}
+	if s.neighborCapWarned == nil {
+		s.neighborCapWarned = map[string]int{}
+	}
+	s.neighborCapWarned[deviceID] = omitted
+	return true
 }
 
 func (s *snmpEntitySource) maxNeighbors() int {
