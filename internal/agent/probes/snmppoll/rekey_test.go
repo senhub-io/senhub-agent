@@ -105,6 +105,30 @@ func newRekeyTestSource(t *testing.T) (*snmpEntitySource, *recordedDeletes) {
 	return s, rec
 }
 
+// testClock drives both the sweeps and the source's own clock, so silent()
+// sees the same time as maybeSweep.
+type testClock struct{ t time.Time }
+
+func (c *testClock) now() time.Time { return c.t }
+
+func newRekeyTestSourceWithClock(t *testing.T) (*snmpEntitySource, *recordedDeletes, *testClock) {
+	t.Helper()
+	s, rec := newRekeyTestSource(t)
+	c := &testClock{t: time.Now()}
+	s.now = c.now
+	return s, rec, c
+}
+
+// sweepFor advances the clock by step and sweeps, n times, observing after
+// each sweep as the entity pump would.
+func sweepFor(s *snmpEntitySource, c *testClock, client snmpClient, n int, step time.Duration) {
+	for i := 0; i < n; i++ {
+		c.t = c.t.Add(step)
+		s.maybeSweep(client, c.t)
+		s.Observe()
+	}
+}
+
 func TestRekey_MasterChangeRetiresTheWholeSubtree(t *testing.T) {
 	s, rec := newRekeyTestSource(t)
 	macA := []byte{0x70, 0x10, 0x6f, 0x0a, 0x0a, 0x0a}
@@ -367,5 +391,97 @@ func TestRekey_FirstIncompleteIDRetiredWhenTheIdentityReadsInFull(t *testing.T) 
 	}
 	if got := rec.retiredOwnedBy(t, first); len(got) == 0 {
 		t.Errorf("the %s id published by the first sweep was not retired as rekeyed", first)
+	}
+}
+
+// An error-status on ENTITY-MIB (genErr) reaches the probe as an empty
+// table, not a failed walk. A device that had chassis serials and suddenly
+// has none keeps its established id, and nothing is retired as rekeyed.
+func TestRekey_VanishedChassisSerialsKeepTheEstablishedID(t *testing.T) {
+	s, rec := newRekeyTestSource(t)
+	full := singleChassisClient()
+	genErr := singleChassisClient()
+	delete(genErr.walkRawResult, oidEntPhysicalClass)
+	delete(genErr.walkRawResult, oidEntPhysicalSerialNum)
+	t0 := time.Now()
+
+	s.maybeSweep(full, t0)
+	s.Observe()
+	const want = "serial:25506:CN14HD90F4"
+	if s.DeviceID() != want {
+		t.Fatalf("first id = %q", s.DeviceID())
+	}
+	s.maybeSweep(genErr, t0.Add(2*time.Minute))
+	obs, _ := s.Observe()
+	if s.DeviceID() != want {
+		t.Fatalf("id while ENTITY-MIB reads empty = %q, want %q kept", s.DeviceID(), want)
+	}
+	if got := devicesIn(obs); len(got) != 1 || got[0] != want {
+		t.Fatalf("devices published = %v, want only %s", got, want)
+	}
+	s.maybeSweep(full, t0.Add(10*time.Minute))
+	for i := 0; i < entity.RekeyAnnounceCycles; i++ {
+		s.Observe()
+	}
+	for _, ev := range rec.events {
+		t.Errorf("retired %v as rekeyed across an ENTITY-MIB error", ev.Entity.ID)
+	}
+}
+
+// The hold on vanished chassis serials ends: past the silence threshold the
+// device is resolved again from what it answers, instead of staying held,
+// and absent, until the agent restarts.
+func TestRekey_VanishedChassisSerialsGuardEnds(t *testing.T) {
+	s, _, c := newRekeyTestSourceWithClock(t)
+	full := singleChassisClient()
+	genErr := singleChassisClient()
+	delete(genErr.walkRawResult, oidEntPhysicalClass)
+	delete(genErr.walkRawResult, oidEntPhysicalSerialNum)
+
+	sweepFor(s, c, full, 1, time.Minute)
+	if s.DeviceID() != "serial:25506:CN14HD90F4" {
+		t.Fatalf("first id = %q", s.DeviceID())
+	}
+	sweepFor(s, c, genErr, 20, 10*time.Minute)
+	if s.DeviceID() != "mac:70-10-6F-0A-0A-0A" {
+		t.Fatalf("id after a lasting loss of the serials = %q, want the device resolved again", s.DeviceID())
+	}
+	if obs, ok := s.Observe(); !ok || len(devicesIn(obs)) != 1 {
+		t.Fatalf("after the hold ended the device must be published again: ok=%v %v", ok, devicesIn(obs))
+	}
+}
+
+// The hold on an identity walk that fails (ent#816) ends the same way, and a
+// device that reads in full again returns under its full id.
+func TestRekey_FailingIdentityWalkHoldEndsAndRecovers(t *testing.T) {
+	s, rec, c := newRekeyTestSourceWithClock(t)
+	full := singleChassisClient()
+	failing := failingWalks{singleChassisClient(), map[string]bool{oidEntPhysicalClass: true, oidEntPhysicalSerialNum: true}}
+
+	sweepFor(s, c, full, 1, time.Minute)
+	sweepFor(s, c, failing, 2, time.Minute)
+	if s.DeviceID() != "serial:25506:CN14HD90F4" {
+		t.Fatalf("id during a short failure = %q, want it held", s.DeviceID())
+	}
+	sweepFor(s, c, failing, 20, 10*time.Minute)
+	if s.DeviceID() != "mac:70-10-6F-0A-0A-0A" {
+		t.Fatalf("id after a lasting failure = %q, want the device resolved again", s.DeviceID())
+	}
+	rec.events = nil
+	sweepFor(s, c, full, 3, 10*time.Minute)
+	if s.DeviceID() != "serial:25506:CN14HD90F4" {
+		t.Fatalf("id once the walks answer again = %q", s.DeviceID())
+	}
+	retired := false
+	for _, ev := range rec.events {
+		if ev.DeleteReason == entity.ReasonRekeyed && ev.Entity.ID[idKeyNetworkDevice] == "mac:70-10-6F-0A-0A-0A" {
+			retired = true
+		}
+	}
+	if !retired {
+		t.Error("the id the device was resolved to during the failure was not retired as rekeyed on its return")
+	}
+	if obs, ok := s.Observe(); !ok || len(devicesIn(obs)) != 1 || devicesIn(obs)[0] != "serial:25506:CN14HD90F4" {
+		t.Fatalf("after recovery: ok=%v %v", ok, devicesIn(obs))
 	}
 }
