@@ -1,6 +1,7 @@
 package snmppoll
 
 import (
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"strconv"
@@ -86,6 +87,9 @@ const (
 	attrHwVendor      = "hw.vendor"
 	attrHwModel       = "hw.model"
 	attrHwFirmwareVer = "hw.firmware_version"
+	attrHwSerial      = "hw.serial_number"
+	attrChassisMAC    = "lldp.chassis.mac"
+	attrEngineID      = "snmp.engine_id"
 
 	// Polled-device identity OIDs (dotted, no leading dot).
 	oidEntPhysicalSerialNum   = "1.3.6.1.2.1.47.1.1.1.1.11" // ENTITY-MIB (per physical entity)
@@ -193,6 +197,11 @@ type snmpEntitySource struct {
 	// identityCollisions counts sweeps whose device id another target of
 	// this agent already holds for a visibly different device.
 	identityCollisions atomic.Uint64
+	// engineMACMismatch is 1 when the last sweep read an engine id that
+	// embeds a MAC other than the chassis MAC; engineMACWarned holds the
+	// last pair logged, so a steady mismatch logs once.
+	engineMACMismatch atomic.Bool
+	engineMACWarned   atomic.Value // string
 }
 
 func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
@@ -621,6 +630,7 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 
 	deviceID := resolveDeviceID(self)
 	s.claimDeviceID(deviceID, self, now)
+	s.checkEngineIDMAC(self)
 	var ifNames map[string]string
 	if len(ifaces) > 0 {
 		ifNames = make(map[string]string, len(ifaces))
@@ -1297,6 +1307,15 @@ func selfAttrs(self deviceIdentity) map[string]any {
 	add(attrHwVendor, self.HwVendor)
 	add(attrHwModel, self.HwModel)
 	add(attrHwFirmwareVer, self.HwFirmware)
+	// The raw identity parts, whichever rung the id took, so the rung a
+	// device would move to is readable from the graph.
+	add(attrHwSerial, strings.TrimSpace(self.Serial))
+	if usableChassisMAC(self.ChassisMAC) {
+		add(attrChassisMAC, macHex(self.ChassisMAC))
+	}
+	if len(self.EngineID) > 0 {
+		add(attrEngineID, hex.EncodeToString(self.EngineID))
+	}
 	return attrs
 }
 
@@ -1444,5 +1463,64 @@ func (s *snmpEntitySource) claimDeviceID(id string, self deviceIdentity, now tim
 			Str("sys_name", self.SysName).
 			Str("other_sys_name", other.sysName).
 			Msg("two SNMP targets resolve to the same device id")
+	}
+}
+
+// checkEngineIDMAC compares the MAC an engine id embeds with the device's
+// chassis MAC. A difference says the engine id was not derived from this
+// chassis (set by configuration, or kept across a stack master change); it
+// does not say which of two devices holds the "right" one.
+func (s *snmpEntitySource) checkEngineIDMAC(self deviceIdentity) {
+	embedded, ok := engineIDMAC(self.EngineID)
+	if !ok || !usableChassisMAC(self.ChassisMAC) {
+		s.engineMACMismatch.Store(false)
+		return
+	}
+	chassis := macHex(self.ChassisMAC)
+	emb := macHex(embedded)
+	if emb == chassis {
+		s.engineMACMismatch.Store(false)
+		return
+	}
+	s.engineMACMismatch.Store(true)
+	pair := emb + "/" + chassis
+	if prev, _ := s.engineMACWarned.Load().(string); prev == pair {
+		return
+	}
+	s.engineMACWarned.Store(pair)
+	s.moduleLogger.Warn().
+		Str("target", s.cfg.Target).
+		Str("engine_id", hex.EncodeToString(self.EngineID)).
+		Str("embedded_mac", emb).
+		Str("chassis_mac", chassis).
+		Msg("snmpEngineID does not embed the chassis MAC")
+}
+
+// EngineIDMACMismatch reports whether the last sweep found an engine id that
+// embeds a MAC other than the chassis MAC.
+func (s *snmpEntitySource) EngineIDMACMismatch() bool {
+	return s.engineMACMismatch.Load()
+}
+
+// penComware is the IANA enterprise number of H3C, under which Comware
+// writes its engine ids.
+const penComware = 25506
+
+// engineIDMAC returns the MAC an snmpEngineID embeds, when its format says
+// so: the RFC 3411 MAC format (byte 5 = 3), or the Comware enterprise
+// format 0x80 followed by six MAC bytes. Any other engine id embeds no MAC
+// this can read.
+func engineIDMAC(e []byte) ([]byte, bool) {
+	if len(e) < 11 || e[0]&0x80 == 0 {
+		return nil, false
+	}
+	pen := int(e[0]&0x7f)<<24 | int(e[1])<<16 | int(e[2])<<8 | int(e[3])
+	switch {
+	case e[4] == 3 && len(e) == 11:
+		return e[5:11], true
+	case e[4] == 0x80 && pen == penComware:
+		return e[5:11], true
+	default:
+		return nil, false
 	}
 }

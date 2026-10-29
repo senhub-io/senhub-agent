@@ -254,3 +254,68 @@ func TestSweep_SharedEngineIDTwoDevices(t *testing.T) {
 		t.Errorf("second target counted %d collisions, want 1", n)
 	}
 }
+
+func TestEngineIDMAC(t *testing.T) {
+	cases := []struct {
+		name   string
+		engine []byte
+		want   string
+	}{
+		{"comware enterprise format", []byte{0x80, 0x00, 0x63, 0xa2, 0x80, 0xdc, 0x68, 0x0c, 0x9e, 0x37, 0x2c}, "DC-68-0C-9E-37-2C"},
+		{"rfc 3411 mac format", []byte{0x80, 0x00, 0x00, 0x09, 0x03, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55}, "00-11-22-33-44-55"},
+		{"enterprise format of another vendor", []byte{0x80, 0x00, 0x00, 0x09, 0x80, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55}, ""},
+		{"text format", []byte{0x80, 0x00, 0x1f, 0x88, 0x04, 'r', 'o', 'u', 't', 'e', 'r'}, ""},
+		{"pre-rfc 3411 engine id", []byte{0x00, 0x00, 0x00, 0x09, 0x03, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55}, ""},
+		{"too short", []byte{0x80, 0x00, 0x63, 0xa2, 0x80, 0xdc}, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, ok := engineIDMAC(c.engine)
+			if c.want == "" {
+				if ok {
+					t.Fatalf("engineIDMAC = %x, want none", got)
+				}
+				return
+			}
+			if !ok || macHex(got) != c.want {
+				t.Fatalf("engineIDMAC = %x,%v, want %s", got, ok, c.want)
+			}
+		})
+	}
+}
+
+func TestCheckEngineIDMAC(t *testing.T) {
+	engine := []byte{0x80, 0x00, 0x63, 0xa2, 0x80, 0xdc, 0x68, 0x0c, 0x9e, 0x37, 0x2c}
+	s := newEntitySource(&config{Target: "192.0.2.1"}, testLogger(t))
+
+	s.checkEngineIDMAC(deviceIdentity{EngineID: engine, ChassisMAC: []byte{0xdc, 0x68, 0x0c, 0x9e, 0x37, 0x2c}})
+	if s.EngineIDMACMismatch() {
+		t.Error("engine id embedding the chassis MAC flagged as a mismatch")
+	}
+	s.checkEngineIDMAC(deviceIdentity{EngineID: engine, ChassisMAC: []byte{0x70, 0x10, 0x6f, 0x01, 0x02, 0x03}})
+	if !s.EngineIDMACMismatch() {
+		t.Error("engine id embedding another MAC not flagged")
+	}
+	if got, _ := s.engineMACWarned.Load().(string); got != "DC-68-0C-9E-37-2C/70-10-6F-01-02-03" {
+		t.Errorf("warned pair = %q", got)
+	}
+	s.checkEngineIDMAC(deviceIdentity{EngineID: engine})
+	if s.EngineIDMACMismatch() {
+		t.Error("no chassis MAC to compare with, yet flagged")
+	}
+}
+
+func TestSelfAttrs_RawIdentityParts(t *testing.T) {
+	a := selfAttrs(deviceIdentity{
+		Serial:     " CN14HD90F4 ",
+		EngineID:   []byte{0x80, 0x00, 0x63, 0xa2},
+		ChassisMAC: []byte{0xdc, 0x68, 0x0c, 0x9e, 0x37, 0x2c},
+		SysName:    "sw1",
+	})
+	if a[attrHwSerial] != "CN14HD90F4" || a[attrEngineID] != "800063a2" || a[attrChassisMAC] != "DC-68-0C-9E-37-2C" {
+		t.Errorf("raw identity parts = serial:%v engine:%v mac:%v", a[attrHwSerial], a[attrEngineID], a[attrChassisMAC])
+	}
+	if _, ok := selfAttrs(deviceIdentity{ChassisMAC: []byte{0, 0, 0, 0, 0, 0}})[attrChassisMAC]; ok {
+		t.Error("an unusable chassis MAC must not be published")
+	}
+}

@@ -44,6 +44,9 @@ const (
 	// metricIdentityCollisions counts sweeps whose device id another target
 	// already holds for a visibly different device.
 	metricIdentityCollisions = "snmp_poll_identity_collisions"
+	// metricEngineIDMACMismatch is 1 when the engine id embeds a MAC other
+	// than the chassis MAC.
+	metricEngineIDMACMismatch = "snmp_poll_engine_id_mac_mismatch"
 	// metricPollDuration is the wall-clock seconds the poll cycle took.
 	metricPollDuration = "senhub.snmp.poll.duration"
 )
