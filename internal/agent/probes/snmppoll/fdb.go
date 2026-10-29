@@ -43,8 +43,11 @@ func collectFDB(client snmpClient) ([]fdbEntry, error) {
 		return nil, fmt.Errorf("bridge FDB walks: basePort %w", bErr)
 	}
 	rows := parseFDBTables(qBinds, legacyBinds, basePortBinds)
-	if qErr != nil && (lErr != nil || len(rows) == 0) {
-		return nil, fmt.Errorf("bridge FDB walks: q-bridge %w; legacy %v", qErr, lErr)
+	if qErr != nil && lErr != nil {
+		return nil, fmt.Errorf("bridge FDB walks: q-bridge %w; legacy %w", qErr, lErr)
+	}
+	if qErr != nil && len(rows) == 0 {
+		return nil, fmt.Errorf("bridge FDB walks: q-bridge %w; legacy table empty", qErr)
 	}
 	return rows, nil
 }
