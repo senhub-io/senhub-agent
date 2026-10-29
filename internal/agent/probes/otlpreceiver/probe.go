@@ -163,11 +163,7 @@ func (p *OTLPReceiverProbe) OnStart(quitChannel chan struct{}) error {
 	agentstate.SeedOTLPReceiverIngested(p.config.Signals.names()...)
 	agentstate.SeedOTLPReceiverCoverage(p.config.Signals.names(), p.coverageOrigins())
 
-	if netbind.IsWildcard(p.config.Address) {
-		p.moduleLogger.Warn().
-			Str("address", p.config.Address).
-			Msg("OTLP receiver bound to ALL interfaces without authentication — restrict `address` or firewall the port")
-	}
+	p.warnIfUnprotectedWildcard()
 
 	switch p.config.Protocol {
 	case protocolGRPC:
@@ -177,6 +173,22 @@ func (p *OTLPReceiverProbe) OnStart(quitChannel chan struct{}) error {
 	default:
 		return fmt.Errorf("unsupported protocol %q", p.config.Protocol)
 	}
+}
+
+// warnIfUnprotectedWildcard warns when the receiver listens on every
+// interface with neither a bearer token nor a source allow-list: any
+// host that can reach the port may then push data. Either control on its
+// own is a restriction, so it silences the warning.
+func (p *OTLPReceiverProbe) warnIfUnprotectedWildcard() {
+	if !netbind.IsWildcard(p.config.Address) {
+		return
+	}
+	if p.config.BearerToken != "" || len(p.config.AllowedCIDRs) > 0 {
+		return
+	}
+	p.moduleLogger.Warn().
+		Str("address", p.config.Address).
+		Msg("OTLP receiver bound to ALL interfaces without authentication — set `bearer_token` or `allowed_cidrs`, restrict `address` or firewall the port")
 }
 
 // OnShutdown gracefully stops whichever server is running.
