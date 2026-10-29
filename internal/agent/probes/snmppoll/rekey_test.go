@@ -454,7 +454,7 @@ func TestRekey_VanishedChassisSerialsGuardEnds(t *testing.T) {
 // The hold on an identity walk that fails (ent#816) ends the same way, and a
 // device that reads in full again returns under its full id.
 func TestRekey_FailingIdentityWalkHoldEndsAndRecovers(t *testing.T) {
-	s, _, c := newRekeyTestSourceWithClock(t)
+	s, rec, c := newRekeyTestSourceWithClock(t)
 	full := singleChassisClient()
 	failing := failingWalks{singleChassisClient(), map[string]bool{oidEntPhysicalClass: true, oidEntPhysicalSerialNum: true}}
 
@@ -467,9 +467,19 @@ func TestRekey_FailingIdentityWalkHoldEndsAndRecovers(t *testing.T) {
 	if s.DeviceID() != "mac:70-10-6F-0A-0A-0A" {
 		t.Fatalf("id after a lasting failure = %q, want the device resolved again", s.DeviceID())
 	}
+	rec.events = nil
 	sweepFor(s, c, full, 3, 10*time.Minute)
 	if s.DeviceID() != "serial:25506:CN14HD90F4" {
 		t.Fatalf("id once the walks answer again = %q", s.DeviceID())
+	}
+	retired := false
+	for _, ev := range rec.events {
+		if ev.DeleteReason == entity.ReasonRekeyed && ev.Entity.ID[idKeyNetworkDevice] == "mac:70-10-6F-0A-0A-0A" {
+			retired = true
+		}
+	}
+	if !retired {
+		t.Error("the id the device was resolved to during the failure was not retired as rekeyed on its return")
 	}
 	if obs, ok := s.Observe(); !ok || len(devicesIn(obs)) != 1 || devicesIn(obs)[0] != "serial:25506:CN14HD90F4" {
 		t.Fatalf("after recovery: ok=%v %v", ok, devicesIn(obs))
