@@ -178,6 +178,20 @@ same device derive byte-identical ids.
   retires the old ids instead of letting them expire. Edges that cascade
   carry no reason. The previous sweep is held in memory only: an id that
   changes while the agent is stopped retires by liveness expiry.
+- **System routes are left out by default (`include_system_routes: false`).**
+  Excluded before the `max_routes` bound: reject and blackhole routes;
+  destinations in `224.0.0.0/4`, `ff00::/8`, `127.0.0.0/8`, `::1/128`,
+  `169.254.0.0/16`, `fe80::/10`; `0.0.0.0/32` and `255.255.255.255/32`; a local
+  host route only when its address is a `network.address` of the same sweep;
+  a local route to the broadcast address of a connected IPv4 prefix. Counted
+  in `senhub.routes.filtered` on the device, emitted at zero. A route this
+  process published and the filter then leaves out departs with
+  `entity.delete.reason = excluded_by_config` (the configuration stops the
+  report; `unmonitored` is the configuration removing the observer): the
+  source's DepartureReason answers it, for polled and discovered devices
+  alike. It is a transition marker: after a restart with the filter in place,
+  earlier routes expire by liveness, and `senhub.routes.filtered` answers in
+  steady state.
 - **An incomplete identity never replaces an established id.** When one of
   the walks the id is built from fails (ENTITY-MIB class or serial,
   sysObjectID, snmpEngineID, sysName) and the id it gives differs from the
