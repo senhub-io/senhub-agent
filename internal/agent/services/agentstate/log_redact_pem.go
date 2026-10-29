@@ -154,6 +154,23 @@ func (t *pemTracker) step(rec LogRecord, enabled, opens bool, mask func(string) 
 	}
 }
 
+// ResumePEMBlock opens a private key block for the source a producer
+// resumes reading in the middle of a key, so the lines it reads next are
+// masked as the rest of that key. Records published with the same probe
+// and attributes belong to that source.
+func ResumePEMBlock(probe string, attrs map[string]string) {
+	if logRedactionDisabled(probe) || !hasRedactRule(loadRedactionRuleset(), "private_key") {
+		return
+	}
+	rec := LogRecord{ProducerProbeName: probe, Attributes: enrichLogAttributes(attrs, probe)}
+	key := sourceKey(rec)
+	pemState.mu.Lock()
+	defer pemState.mu.Unlock()
+	if _, active := pemState.state[key]; !active {
+		pemState.open(key)
+	}
+}
+
 func (t *pemTracker) open(key string) {
 	if t.state == nil {
 		t.state = make(map[string]*pemBlock)

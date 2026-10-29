@@ -586,9 +586,28 @@ func (p *FileTailProbe) startTail(file string) error {
 		p.warn().Err(err).Str("file", file).Msg("persisting bookmark failed")
 	}
 
+	p.resumeInsidePEMBlock(file, offset)
 	go p.consume(file, ts, offset, fp, reopened)
 	p.verifyStartedTail(file, ts)
 	return nil
+}
+
+// resumeInsidePEMBlock keeps masking a private key the file was in the
+// middle of when reading starts at offset: the masking state of a key
+// split over records lives in memory, so a restart of the agent between
+// its BEGIN and END lines would otherwise send the rest of it in clear.
+func (p *FileTailProbe) resumeInsidePEMBlock(file string, offset int64) {
+	open, err := pemBlockOpenBefore(file, offset)
+	if err != nil {
+		p.warn().Err(err).Str("file", file).Msg("could not check for a private key block before the resume offset")
+		return
+	}
+	if !open {
+		return
+	}
+	agentstate.ResumePEMBlock(p.GetName(), map[string]string{"log.file.path": file})
+	p.info().Str("file", file).Int64("offset", offset).
+		Msg("Resuming inside a private key block: the lines that follow are masked up to its END line")
 }
 
 // startupVerifyDelay spaces the two looks verifyStartedTail takes at a new

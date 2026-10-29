@@ -528,3 +528,41 @@ func TestRedactPEMStateKeepsMaskingOrdinaryLine(t *testing.T) {
 		t.Fatalf("redaction count = %d, want 3", got)
 	}
 }
+
+func TestResumePEMBlockMasksRestOfKey(t *testing.T) {
+	setupRedactionTest(t)
+	if errs := ConfigureLogRedaction(true, nil); len(errs) != 0 {
+		t.Fatalf("ConfigureLogRedaction errors: %v", errs)
+	}
+
+	keyLines := generatePEMKeyLines(t)
+	attrs := map[string]string{"log.file.path": "/var/log/resume.log"}
+	ResumePEMBlock("tail", map[string]string{"log.file.path": "/var/log/resume.log"})
+
+	var outputs []string
+	for _, line := range keyLines[10:] {
+		outputs = append(outputs, redactLogRecord(LogRecord{ProducerProbeName: "tail", Attributes: attrs, Body: line}).Body)
+	}
+	assertNoKeyLeak(t, outputs, keyLines)
+	if got := outputs[len(outputs)-1]; got != "***-----END PRIVATE KEY-----" {
+		t.Fatalf("END output = %q", got)
+	}
+	other := redactLogRecord(LogRecord{ProducerProbeName: "tail", Attributes: map[string]string{"log.file.path": "/var/log/other.log"}, Body: keyLines[3]}).Body
+	if other != keyLines[3] {
+		t.Fatalf("other source output = %q, want unchanged", other)
+	}
+	if pemState.len() != 0 {
+		t.Fatalf("pem state has %d entries", pemState.len())
+	}
+}
+
+func TestResumePEMBlockNoopWhenRuleOff(t *testing.T) {
+	setupRedactionTest(t)
+	if errs := ConfigureLogRedaction(false, nil); len(errs) != 0 {
+		t.Fatalf("ConfigureLogRedaction errors: %v", errs)
+	}
+	ResumePEMBlock("tail", map[string]string{"log.file.path": "/var/log/off.log"})
+	if pemState.len() != 0 {
+		t.Fatalf("pem state has %d entries with the rule off", pemState.len())
+	}
+}
