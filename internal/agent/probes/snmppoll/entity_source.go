@@ -88,8 +88,8 @@ const (
 	attrHwModel       = "hw.model"
 	attrHwFirmwareVer = "hw.firmware_version"
 	attrHwSerial      = "hw.serial_number"
-	attrChassisMAC    = "lldp.chassis.mac"
-	attrEngineID      = "snmp.engine_id"
+	attrChassisMAC    = "senhub.lldp.chassis_mac"
+	attrEngineID      = "senhub.snmp.engine_id"
 
 	// Polled-device identity OIDs (dotted, no leading dot).
 	oidEntPhysicalSerialNum   = "1.3.6.1.2.1.47.1.1.1.1.11" // ENTITY-MIB (per physical entity)
