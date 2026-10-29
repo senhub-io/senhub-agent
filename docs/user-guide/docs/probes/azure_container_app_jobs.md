@@ -59,6 +59,10 @@ A second job is a second probe with its own name (`CAJ2`) and its own `APP`; the
 - **`${env:}` inside a value is not expanded.** `SENHUB_PROBE_CAJ_CLIENT_SECRET=${env:AZ_SECRET}` would reach the probe as that literal text. To share the credential between several jobs, point each probe's `CLIENT_SECRET_FILE` at the same mounted secret (`/run/secrets/az_client_secret` above, repeated for `CAJ2`), or declare the probes in `SENHUB_PROBES` (or a `probes.d` file), where `"${env:AZ_CLIENT_SECRET}"` is resolved at every start. See [the environment rule](../configuration.md#no-env-inside-a-value).
 - **Precedence.** The variables overlay the probes of the files and of `SENHUB_PROBES`, key by key, and the variable wins.
 
+### Followed by default with a discovery of the applications
+
+When the applications are discovered from the environment (one `SENHUB_PROBE_<NAME>_TYPE=azure_container_apps` probe with a `DISCOVERY__*` variable), the agent also follows the jobs of the same subscription, without a variable of its own: it adds a probe named `jobs` (type `azure_container_app_jobs`) with the same identity (`TENANT_ID`, `CLIENT_ID`, `CLIENT_SECRET` or `CLIENT_SECRET_FILE`, `SUBSCRIPTION_ID`, and the sovereign-cloud hosts), the same `DISCOVERY__RESOURCE_GROUPS` and the same `DISCOVERY__INTERVAL`; the applications' `INCLUDE` and `EXCLUDE` filters are not carried over. The job probe reads the Azure Resource Manager API and the jobs' console stream, never Log Analytics. `SENHUB_PROBE_JOBS_TYPE=none` turns it off. Any other `SENHUB_PROBE_JOBS_*` variable, a probe named `jobs` in a file or in `SENHUB_PROBES`, or several applications discoveries declared from the environment leave the configuration as it is. A configuration written in files is never extended this way. When the identity may not list jobs, the agent warns once and keeps following the applications.
+
 ## Discovering jobs
 
 Instead of one entry per job, a `discovery:` block follows every job the subscription holds. It takes the same keys as the applications probe; `max_apps` caps the number of jobs followed.
