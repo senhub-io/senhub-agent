@@ -21,6 +21,7 @@ func init() {
 			}},
 			{Key: "retries", Kind: probes.KindInt, Default: 2, Group: "collection", Description: "Retries per request"},
 			{Key: "max_routes", Kind: probes.KindInt, Default: 500, Group: "collection", Description: "Maximum number of route entities emitted per device"},
+			{Key: "max_neighbors", Kind: probes.KindInt, Default: 1000, Group: "collection", Description: "Maximum number of network.neighbor entities (learned MACs) emitted per device; 0 disables the FDB/ARP walk"},
 			{Key: "timeout", Kind: probes.KindDuration, Default: "5s", Group: "collection", Description: "Per-request timeout"},
 			{Key: "interval", Kind: probes.KindDuration, Default: "60s", Group: "collection", Description: "Metric polling cadence"},
 			{Key: "topology_interval", Kind: probes.KindDuration, Default: "1m", Group: "collection", Description: "Entity and topology sweep cadence"},

@@ -96,6 +96,9 @@ func parseIPNetToPhysicalTable(binds []snmpRawBind) []arpEntry {
 		if r.typ == arpTypeInvalid || r.typ < 0 || r.mac == "" {
 			continue
 		}
+		if r.typ == arpTypeLocal {
+			continue
+		}
 		out = append(out, arpEntry{
 			IfIndex: r.ifIndex,
 			IP:      r.ip,
