@@ -479,6 +479,40 @@ curl -X POST http://localhost:8080/api/{agentkey}/debug/logs \
 senhub-agent run --filter probe.netscaler
 ```
 
+## Capturing raw NITRO statistics
+
+When a metric reads 0 or looks wrong, the raw NITRO response shows what the
+appliance really returns. The agent can capture it with the credential of the
+configured probe, so the account does not have to be handed out:
+
+```bash
+senhub-agent probe dump netscaler --out ./nitro-capture \
+  --resources ns,protocolip,system
+```
+
+The command reads the configured `netscaler` probe and its credential through
+the normal configuration resolver (including `${secret:...}` references),
+queries each statistics resource once with a `GET /nitro/v1/stat/<resource>`
+and writes one file per resource, `./nitro-capture/<resource>.json`. It changes
+nothing on the appliance or in the configuration, and the running service is
+not restarted.
+
+| Option | Meaning |
+|---|---|
+| `--out <dir>` | Output directory, created if needed (required) |
+| `--resources <list>` | Comma-separated statistics resources (default `ns,protocolip,system`) |
+| `--probe <name>` | Probe to use when several `netscaler` probes are configured |
+| `--node secondary` | Query `secondary_url` instead of `base_url` |
+| `--config-path <path>` | Configuration file (default: the installed one) |
+
+Credentials are sent as per-request NITRO headers: there is no session cookie,
+and the output files and the command output never contain the password, an API
+key or a header. A response that contains the configured password or API key is
+refused instead of written. Files are created readable by their owner only.
+The captures hold the appliance's counters and state names, so review them
+before sharing. Exit code 0 on success, 1 when a query fails, 2 on a usage or
+configuration error.
+
 ## License Requirements
 
 The NetScaler probe requires a **Pro** or **Enterprise** license.

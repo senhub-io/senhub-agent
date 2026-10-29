@@ -38,6 +38,10 @@ type ifaceRow struct {
 	Mtu        int64  // ifMtu (octets); 0 when unread
 	IfType     int    // IANAifType; 0 when unread
 	Duplex     int    // dot3StatsDuplexStatus (1=unknown,2=half,3=full); 0 when unread
+
+	// Read only when an interface selection is configured.
+	Descr       string // ifDescr
+	AdminStatus int    // ifAdminStatus raw enum; 0 when unread
 }
 
 // collectInterfaces walks the interface name/status/speed columns. ifName is

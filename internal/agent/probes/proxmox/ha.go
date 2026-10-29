@@ -63,6 +63,9 @@ func haQuorate(raw json.RawMessage) *float64 {
 }
 
 func (p *ProxmoxProbe) collectHA(ctx context.Context, now time.Time) []data_store.DataPoint {
+	if !p.cfg.EnableCluster && !p.cfg.EnableHA {
+		return nil
+	}
 	var entries []pveHAEntry
 	if err := p.apiGet(ctx, "/cluster/ha/status/current", &entries); err != nil {
 		if !p.denied.isDenied(p.moduleLogger, err, "cluster/ha/status", "Sys.Audit on /") {
@@ -74,7 +77,7 @@ func (p *ProxmoxProbe) collectHA(ctx context.Context, now time.Time) []data_stor
 	var points []data_store.DataPoint
 
 	for _, entry := range entries {
-		if entry.Type != "quorum" {
+		if !p.cfg.EnableCluster || entry.Type != "quorum" {
 			continue
 		}
 		q := haQuorate(entry.Quorate)
@@ -98,7 +101,7 @@ func (p *ProxmoxProbe) collectHA(ctx context.Context, now time.Time) []data_stor
 	}
 	var services []haServiceState
 	for _, entry := range entries {
-		if entry.Type != "service" || entry.Sid == "" {
+		if !p.cfg.EnableHA || entry.Type != "service" || entry.Sid == "" {
 			continue
 		}
 		state := strings.ToLower(strings.TrimSpace(entry.State))

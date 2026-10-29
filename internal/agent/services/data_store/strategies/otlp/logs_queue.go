@@ -436,6 +436,16 @@ func (q *logsQueue) drainAcked(send func([]persistedLogRecord) error) (int, erro
 		case errors.Is(sendErr, errBatchDiscarded):
 			q.removeFile(name)
 		default:
+			// Part of the batch got through: only the rest stays queued,
+			// or the next replay delivers those records a second time.
+			var rem *replayRemainderError
+			if errors.As(sendErr, &rem) {
+				if len(rem.remaining) == 0 {
+					q.removeFile(name)
+				} else {
+					q.rewriteFile(name, b, rem.remaining)
+				}
+			}
 			return replayed, sendErr
 		}
 	}
@@ -458,6 +468,61 @@ func (q *logsQueue) removeFile(name string) {
 	if q.sizeBytes < 0 {
 		q.sizeBytes = 0
 	}
+	if q.records < 0 {
+		q.records = 0
+	}
+	if q.records == 0 {
+		q.oldestAt = time.Time{}
+	}
+	agentstate.RecordOTLPLogsQueueSize(q.records, q.sizeBytes)
+}
+
+// replayRemainderError carries what a replayed batch still has to deliver.
+type replayRemainderError struct {
+	err       error
+	remaining []persistedLogRecord
+}
+
+func (e *replayRemainderError) Error() string { return e.err.Error() }
+func (e *replayRemainderError) Unwrap() error { return e.err }
+
+// rewriteFile replaces a queued batch with the records it still has to
+// deliver, keeping its name and SavedAt so FIFO order and the age limit
+// are unchanged. On a write failure the old file stays: at-least-once.
+func (q *logsQueue) rewriteFile(name string, old logBatch, remaining []persistedLogRecord) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	path := filepath.Join(q.dir, name)
+	oldSize := int64(0)
+	if info, err := os.Stat(path); err == nil {
+		oldSize = info.Size()
+	}
+	batch := logBatch{Version: logsQueueFileVersion, SavedAt: old.SavedAt, Records: remaining}
+	data, err := json.Marshal(&batch)
+	if err != nil {
+		if q.logger != nil {
+			q.logger.Warn().Err(err).Str("file", name).Msg("OTLP logs queue: failed to marshal remainder batch")
+		}
+		return
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o640); err != nil {
+		if q.logger != nil {
+			q.logger.Warn().Err(err).Str("file", name).Msg("OTLP logs queue: failed to write remainder file")
+		}
+		return
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		if q.logger != nil {
+			q.logger.Warn().Err(err).Str("file", name).Msg("OTLP logs queue: failed to rename remainder file")
+		}
+		return
+	}
+	newSize := int64(len(data))
+	q.sizeBytes += newSize - oldSize
+	q.records += len(remaining) - len(old.Records)
 	if q.records < 0 {
 		q.records = 0
 	}
@@ -642,11 +707,38 @@ func (e *persistentLogExporter) Export(ctx context.Context, records []sdklog.Rec
 
 	// A partial success is not a failed export: what came back with it is.
 	// Counting the refused records here and dropping them from the error
-	// is what keeps a delivered batch out of the dead-letter queue.
-	err := e.reporter.reportRejections(e.wrapped.Export(ctx, records))
+	// is what keeps a delivered batch out of the dead-letter queue. A
+	// split export says which of its records were not delivered: only
+	// those are counted or queued.
+	raw := e.wrapped.Export(ctx, records)
+	var se *splitExportError
+	split := errors.As(raw, &se)
+	err := e.reporter.reportRejections(raw)
 	if err != nil {
 		classified := e.recordFailure(err)
 		e.markFailure()
+
+		if split {
+			if se.rejected > 0 {
+				for i := 0; i < se.rejected; i++ {
+					agentstate.IncrementOTLPDropped("receiver_rejected")
+				}
+				e.warnThrottled(func(ev *zerolog.Event) {
+					ev.Str("error", redactSensitive(err.Error())).
+						Int("records", se.rejected).
+						Msg("OTLP logs export rejected by the receiver; records discarded (not queued — a retry gets the same rejection)")
+				})
+			}
+			if len(se.undelivered) > 0 {
+				e.persist(se.undelivered)
+				e.warnThrottled(func(ev *zerolog.Event) {
+					ev.Str("error", redactSensitive(err.Error())).
+						Int("records", len(se.undelivered)).
+						Msg("OTLP logs export failed; batch persisted to dead-letter queue")
+				})
+			}
+			return err
+		}
 
 		if !exporterrors.IsRetryable(classified) {
 			// The receiver refused the payload on its merits. Persisting
@@ -685,16 +777,23 @@ var errLogsBackendDown = errors.New("otlp logs backend down and the queue did no
 // queue replay uses it, so a failure is never persisted a second time. A
 // cancelled ctx (the agent is stopping) is not a verdict on the backend.
 func (e *persistentLogExporter) exportDirect(ctx context.Context, records []sdklog.Record) error {
-	err := e.reporter.reportRejections(e.wrapped.Export(ctx, records))
+	raw := e.wrapped.Export(ctx, records)
+	var se *splitExportError
+	split := errors.As(raw, &se)
+	err := e.reporter.reportRejections(raw)
 	if err == nil {
 		e.markSuccess()
 		return nil
 	}
-	if errors.Is(ctx.Err(), context.Canceled) {
-		return err
+	if !errors.Is(ctx.Err(), context.Canceled) {
+		if classified := e.recordFailure(err); exporterrors.IsRetryable(classified) && (!split || len(se.undelivered) > 0) {
+			e.markFailure()
+		}
 	}
-	if classified := e.recordFailure(err); exporterrors.IsRetryable(classified) {
-		e.markFailure()
+	if split {
+		// The replay needs to know which records got through even when
+		// it is being cancelled, or the delivered ones are sent again.
+		return &splitExportError{err: err, undelivered: se.undelivered, rejected: se.rejected, dropped: se.dropped}
 	}
 	return err
 }
@@ -932,6 +1031,30 @@ func (r *logsReplayer) sendBatch(prs []persistedLogRecord) error {
 	err := r.exporter.exportDirect(ctx, records)
 	if err == nil {
 		return nil
+	}
+	var se *splitExportError
+	if errors.As(err, &se) {
+		if se.rejected > 0 {
+			for i := 0; i < se.rejected; i++ {
+				agentstate.IncrementOTLPDropped("receiver_rejected")
+			}
+			if r.logger != nil {
+				r.logger.Warn().Str("error", redactSensitive(err.Error())).Int("records", se.rejected).
+					Msg("OTLP logs queue: the receiver refused a queued batch; discarded")
+			}
+		}
+		if len(se.undelivered) == 0 {
+			return errBatchDiscarded
+		}
+		remaining := make([]persistedLogRecord, 0, len(se.undelivered))
+		for _, rec := range se.undelivered {
+			pr, ok := serializeEventLog(rec)
+			if !ok {
+				continue
+			}
+			remaining = append(remaining, pr)
+		}
+		return &replayRemainderError{err: err, remaining: remaining}
 	}
 	if r.ctx.Err() == nil && !exporterrors.IsRetryable(classifyExportError(err)) {
 		for range prs {

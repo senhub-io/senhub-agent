@@ -49,9 +49,12 @@ func TestMigrateToMultiFile_SetsInstallDefaultsAside(t *testing.T) {
 			t.Errorf("default not kept aside: %v", err)
 		}
 	}
-	probes, _ := os.ReadFile(filepath.Join(dir, "probes.d", "00-host.yaml"))
+	probes, _ := os.ReadFile(filepath.Join(dir, "probes.d", "10-cpu.yaml"))
 	if !strings.Contains(string(probes), "migrated from monolithic config") {
-		t.Errorf("probes.d/00-host.yaml should hold the migrated probes, got:\n%s", probes)
+		t.Errorf("probes.d/10-cpu.yaml should hold the migrated cpu probe, got:\n%s", probes)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "probes.d", "00-host.yaml")); err == nil {
+		t.Error("00-host.yaml, set aside as an install default, must not be recreated")
 	}
 }
 

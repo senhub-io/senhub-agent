@@ -185,8 +185,10 @@ mistake.
   most one second later.
 - **Very fast rotation on Windows.** A rotation is noticed within about two seconds. A file renamed away again before that, by a writer that rotates more than once every couple of seconds, can have its whole content missed. Rotations of an ordinary application log, by the hour, the day or a size of several megabytes, are far slower than that.
 - **At-least-once delivery.** Bookmarks are flushed every 2 seconds;
-  after a crash, up to 2 seconds of records may be re-read. Plan
-  deduplication downstream if exact-once matters.
+  after a crash, up to 2 seconds of records may be re-read. A multiline
+  record still being assembled is not part of the saved position: after
+  a crash it is read again, not lost. Plan deduplication downstream if
+  exact-once matters.
 - **Event-driven.** No polling cycle: records ship as lines are
   written.
 - **Start position.** Default is tail-from-now. Set
@@ -200,7 +202,8 @@ On Linux, the systemd unit of the agent sets `ProtectHome=true`, which makes
 `/home`, `/root` and `/run/user` appear empty to the service. A path under
 one of them is never read, and `ReadOnlyPaths=` cannot bring it back: with
 `ProtectHome=true` the directories are inaccessible, not read-only. At
-construction the probe logs a warning that names the directory.
+construction the probe logs a warning that names the directory, and
+`agent config check` prints the same warning with the fix.
 
 Override the setting with a drop-in, which survives package upgrades:
 
@@ -219,7 +222,10 @@ sudo systemctl restart senhub-agent
 
 `read-only` exposes the three directories for reading, which is all the
 probe needs. The `senhub` account must also have the Unix permission to
-read the file and to traverse its parent directories. To expose a single
+read the file and to traverse its parent directories. The unit keeps
+`ProtectHome=true` by default: `read-only` lets a compromised agent read
+whatever the `senhub` account may read under `/home`, so it is an opt-in for
+hosts that need it. To expose a single
 directory instead, use `ProtectHome=tmpfs` together with
 `BindReadOnlyPaths=/home/<path>`.
 
@@ -284,6 +290,7 @@ series' tags.
 | Metric | Name | PRTG channel | Unit | Description |
 |---|---|---|---|---|
 | `senhub.filetail.records_emitted` | `senhub.filetail.records_emitted` | File Tail Records Emitted | # | Cumulative count of log records this file-tail probe has published to the log rail |
+| `senhub.filetail.file_records_emitted` | `senhub.filetail.file_records_emitted` | File Tail Records Emitted {log.file.path} | # | Cumulative count of log records published from one followed file; a file that stays flat while its size grows sends nothing |
 | `senhub.filetail.read_offset` | `senhub.filetail.read_offset` | File Tail Read Offset {log.file.path} | bytes | Byte offset the tail of a followed file has read up to |
 | `senhub.filetail.file_size` | `senhub.filetail.file_size` | File Tail File Size {log.file.path} | bytes | Current size in bytes of a followed file; a healthy tail has a read offset equal to it |
 

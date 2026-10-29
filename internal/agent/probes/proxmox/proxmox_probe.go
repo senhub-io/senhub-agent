@@ -51,8 +51,14 @@ type probeConfig struct {
 	VerifyTLS    bool
 	Node         string // empty = all nodes
 	InstanceName string // optional operator-assigned stable id for the PVE surface entity
-	Interval     time.Duration
-	Timeout      time.Duration
+	EnablePBS    bool   // preview: Proxmox Backup Server storages
+	EnableCeph   bool   // preview: Ceph-backed storages
+
+	EnableCluster     bool // preview: cluster quorum
+	EnableHA          bool // preview: HA resource states
+	EnableReplication bool // preview: storage replication jobs
+	Interval          time.Duration
+	Timeout           time.Duration
 }
 
 // NewProxmoxProbe constructs the probe. Config errors are returned immediately
@@ -122,6 +128,21 @@ func parseConfig(config map[string]interface{}) (probeConfig, error) {
 	}
 	if v, ok := config["instance_name"].(string); ok {
 		cfg.InstanceName = v
+	}
+	if v, ok := config["enable_pbs"].(bool); ok {
+		cfg.EnablePBS = v
+	}
+	if v, ok := config["enable_ceph"].(bool); ok {
+		cfg.EnableCeph = v
+	}
+	if v, ok := config["enable_cluster"].(bool); ok {
+		cfg.EnableCluster = v
+	}
+	if v, ok := config["enable_ha"].(bool); ok {
+		cfg.EnableHA = v
+	}
+	if v, ok := config["enable_replication"].(bool); ok {
+		cfg.EnableReplication = v
 	}
 	if v, ok := types.IntParam(config, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
@@ -323,9 +344,12 @@ func (p *ProxmoxProbe) collectNode(ctx context.Context, n pveNode, guests []pveG
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("node", n.Node).Msg("failed to list storage")
 	}
-	points = append(points, p.collectBackups(ctx, n.Node, known, storages, now)...)
+	enabled := p.withoutPreviewStorages(storages)
+	points = append(points, p.collectBackups(ctx, n.Node, known, enabled, now)...)
 	points = append(points, p.collectFailedTasks(ctx, n.Node, now)...)
 	points = append(points, p.collectReplication(ctx, n.Node, now)...)
+	// Usage and capacity of every storage were already published before the
+	// preview flags existed; only what came with them stays behind the flags.
 	for _, st := range storages {
 		stTags := []tags.Tag{
 			{Key: "proxmox.node", Value: n.Node},
@@ -336,7 +360,7 @@ func (p *ProxmoxProbe) collectNode(ctx context.Context, n pveNode, guests []pveG
 			data_store.DataPoint{Name: "proxmox.storage.used", Value: float64(st.Used), Timestamp: now, Tags: stTags},
 			data_store.DataPoint{Name: "proxmox.storage.total", Value: float64(st.Total), Timestamp: now, Tags: stTags},
 		)
-		if st.Active != nil {
+		if st.Active != nil && p.previewStorageEnabled(st.Type) {
 			points = append(points, stateSeries("proxmox.storage.status", "proxmox.storage.state", []string{"active", "inactive"}, boolState(*st.Active != 0, "active", "inactive"), stTags, now)...)
 		}
 	}
@@ -523,6 +547,7 @@ type pveVMStatus = pveVMListItem
 
 type pveStorageItem struct {
 	Storage string `json:"storage"`
+	Type    string `json:"type"`
 	Used    int64  `json:"used"`
 	Total   int64  `json:"total"`
 	Content string `json:"content"`
@@ -563,4 +588,26 @@ func (p *ProxmoxProbe) fetchStorage(ctx context.Context, node string) ([]pveStor
 	var items []pveStorageItem
 	err := p.apiGet(ctx, fmt.Sprintf("/nodes/%s/storage", node), &items)
 	return items, err
+}
+
+// withoutPreviewStorages drops the storages of a kind whose support is still
+// a preview and not switched on, so they cost no further request.
+func (p *ProxmoxProbe) withoutPreviewStorages(in []pveStorageItem) []pveStorageItem {
+	out := make([]pveStorageItem, 0, len(in))
+	for _, st := range in {
+		if p.previewStorageEnabled(st.Type) {
+			out = append(out, st)
+		}
+	}
+	return out
+}
+
+func (p *ProxmoxProbe) previewStorageEnabled(storageType string) bool {
+	switch storageType {
+	case "pbs":
+		return p.cfg.EnablePBS
+	case "rbd", "cephfs":
+		return p.cfg.EnableCeph
+	}
+	return true
 }

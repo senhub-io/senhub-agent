@@ -1,11 +1,14 @@
 package snmppoll
 
 import (
+	"encoding/hex"
 	"fmt"
+	"net/netip"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
@@ -48,23 +51,26 @@ const (
 	// oper_state is a Toise state-key (closed set, underscore spelling): a change
 	// fires entity.state_changed. The old dotted "oper.state" was silently
 	// demoted to an ordinary attribute — see Toise #87 / the SNMP lot fix.
-	attrOperState   = "oper_state"
-	attrSpeed       = "speed"
-	attrMac         = "mac"
-	attrMtu         = "mtu"
-	attrIfType      = "interface.type"
-	attrDuplex      = "duplex"
-	relConnectedTo  = "connected_to"
-	relHasRoute     = "has_route"
-	relHasInterface = "has_interface"
-	relBoundTo      = "bound_to"
-	relNextHopVia   = "next_hop_via"
-	relMonitors     = "monitors"
-	relRunsOn       = "runs_on"
-	relNeighborOf   = "neighbor_of"
-	relResolvesTo   = "resolves_to"
-	attrBasis       = "basis"
-	attrConfidence  = "confidence"
+	attrOperState         = "oper_state"
+	attrSpeed             = "speed"
+	attrMac               = "mac"
+	attrMtu               = "mtu"
+	attrIfType            = "interface.type"
+	attrDuplex            = "duplex"
+	relConnectedTo        = "connected_to"
+	relHasRoute           = "has_route"
+	relHasInterface       = "has_interface"
+	relBoundTo            = "bound_to"
+	relNextHopVia         = "next_hop_via"
+	relMonitors           = "monitors"
+	relRunsOn             = "runs_on"
+	relNeighborOf         = "neighbor_of"
+	relResolvesTo         = "resolves_to"
+	attrBasis             = "basis"
+	attrConfidence        = "confidence"
+	attrNeighborAddresses = "network.neighbor.addresses"
+	attrNeighborsOmitted  = "senhub.neighbors.omitted"
+	attrNeighborsLimit    = "senhub.neighbors.limit"
 
 	resolveConfidenceARPNDP = 0.9
 	resolveConfidenceFDB    = 0.7
@@ -81,10 +87,14 @@ const (
 	relRetiredForwardsTo = "forwards_to"
 
 	// Polled-device descriptive attribute keys (network.device nameplate).
-	attrSysDescr      = "sys.descr"
-	attrHwVendor      = "hw.vendor"
-	attrHwModel       = "hw.model"
-	attrHwFirmwareVer = "hw.firmware_version"
+	attrSysDescr       = "sys.descr"
+	attrHwVendor       = "hw.vendor"
+	attrHwModel        = "hw.model"
+	attrHwFirmwareVer  = "hw.firmware_version"
+	attrHwSerial       = "hw.serial_number"
+	attrChassisMAC     = "senhub.lldp.chassis_mac"
+	attrEngineID       = "senhub.snmp.engine_id"
+	attrChassisSerials = "senhub.chassis.serial_numbers"
 
 	// Polled-device identity OIDs (dotted, no leading dot).
 	oidEntPhysicalSerialNum   = "1.3.6.1.2.1.47.1.1.1.1.11" // ENTITY-MIB (per physical entity)
@@ -143,6 +153,20 @@ type snmpEntitySource struct {
 	// cache, discovered devices aged out) until the detector collects it.
 	unobserved   []entity.Entity
 	silentMarked bool
+	// holdLogged marks that the start-up hold was already announced, so a
+	// device held across many reads logs it once.
+	holdLogged bool
+	// capWarned is the matched/kept pair of the last max_interfaces warning,
+	// empty when the last sweep was not capped.
+	capWarned string
+	// neighborCapWarned is, per device, the number of neighbours the
+	// max_neighbors bound cut at the last announcement.
+	neighborCapWarned map[string]int
+	// discL2 holds, per discovered device, the last FDB and ARP rows read
+	// successfully, reused when a walk fails. Discovery workers run
+	// concurrently, hence discL2Mu.
+	discL2Mu sync.Mutex
+	discL2   map[string]l2Rows
 	// deviceID + ifNames are the resolved identity of the polled device and its
 	// ifIndex→ifName map, cached from the last sweep so the METRIC collector can
 	// tag SNMP metrics with network.device.id / network.interface.name — the same
@@ -151,6 +175,8 @@ type snmpEntitySource struct {
 	// place), so a reader holding the returned map sees a stable snapshot.
 	deviceID string
 	ifNames  map[string]string
+	// selectedIfaces mirrors the last sweep's interface selection.
+	selectedIfaces map[string]bool
 
 	// discMu guards discObs, the latest discovery crawl observation. The
 	// discovery loop rebuilds it each run and swaps it under this mutex.
@@ -180,6 +206,36 @@ type snmpEntitySource struct {
 	// macIndex is the shared interface-MAC index used for resolves_to and
 	// device-side network.neighbor emission. Defaults to the process-wide index.
 	macIndex *macindex.Index
+
+	// excludedRoutes holds, per device id, the identities of the routes the
+	// system-route filter left out of the last complete read of that device,
+	// so DepartureReason can tell the tracker why they are no longer listed.
+	excludedMu     sync.Mutex
+	excludedRoutes map[string]map[string]bool
+	// identityCollisions counts sweeps whose device id another target of
+	// this agent already holds for a visibly different device.
+	identityCollisions atomic.Uint64
+	// holdReleaseLogged keeps the end-of-hold warning to one per outage; a
+	// successful sweep clears it.
+	holdReleaseLogged atomic.Bool
+	// engineMACMismatch is 1 when the last sweep read an engine id that
+	// embeds a MAC other than the chassis MAC; engineMACWarned holds the
+	// last pair logged, so a steady mismatch logs once.
+	engineMACMismatch atomic.Bool
+	engineMACWarned   atomic.Value // string
+
+	// rekeyMu guards the retirement of a previous id (rekey.go): the
+	// entities to delete with the reason rekeyed, the cycles left to
+	// announce them, and the legacy ids already announced by this process.
+	rekeyMu       sync.Mutex
+	rekeyBase     sweepResult
+	rekeyHaveBase bool
+	rekeyBatches  []rekeyBatch
+	legacyRetired map[string]bool
+	// previousRoutesRetired records the devices whose pre-filter routes
+	// this process has retired (retirePreviousVersionRoutes).
+	previousRoutesRetired map[string]bool
+	publish               func(entity.Event)
 }
 
 func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
@@ -205,6 +261,7 @@ func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
 		hostID:            dbcommon.HostID,
 		hostInterfaceMACs: hostiface.OwnInterfaceMACs,
 		macIndex:          macindex.Default,
+		publish:           entity.PublishEvent,
 	}
 }
 
@@ -221,17 +278,31 @@ func (s *snmpEntitySource) Cadence() time.Duration {
 
 // sweepResult is what one topology sweep read from the device.
 type sweepResult struct {
-	self          deviceIdentity
+	self deviceIdentity
+	// identityHeld marks a sweep refused because an incomplete identity
+	// resolved an id other than the established one.
+	identityHeld  bool
 	topo          lldpTopology
 	routes        []routeRow
 	routesOmitted int
-	ifaces        []ifaceRow
-	addrs         []ipAddr
-	deviceID      string
-	ifNames       map[string]string
-	fdb           []fdbEntry
-	arp           []arpEntry
-	lag           lagData
+	// routesFiltered holds the routes the system-route filter left out.
+	routesFiltered []routeRow
+	// previousVersionRoutes is what an agent without the filter would have
+	// published from the same read: every route up to the bound.
+	previousVersionRoutes []routeRow
+	ifaces                []ifaceRow
+	addrs                 []ipAddr
+	deviceID              string
+	ifNames               map[string]string
+	// selectedIfaces is the ifIndex set that keeps its metric series; nil
+	// when no interface selection is configured.
+	selectedIfaces map[string]bool
+	// selectionStale marks a sweep whose interface columns were not all
+	// read: its selection is not trusted over the previous one.
+	selectionStale bool
+	fdb            []fdbEntry
+	arp            []arpEntry
+	lag            lagData
 	// partial marks a sweep where at least one table walk failed: what is
 	// missing from it was not read, not seen gone.
 	partial bool
@@ -295,15 +366,34 @@ func (s *snmpEntitySource) observeSingle() (entity.Observation, bool) {
 	now := s.now()
 	obs, unresolved := s.build(res, now)
 	if unresolved > 0 && s.registry != nil && s.registry.warming(now) {
+		s.logHold(unresolved, s.registry.warmupRemaining(now))
 		return entity.Observation{}, false
 	}
 	obs = s.appendResolvesNeighbors(obs, res)
+	s.announceRekey()
 	if replaying && !lastSweep.IsZero() {
 		// The cache came from an earlier successful sweep. A consumer must
 		// not see a fresh event_time on facts we have not re-read.
 		stampObservedAt(&obs, lastSweep)
 	}
 	return obs, true
+}
+
+// logHold announces once per instance that the observation is withheld
+// while LLDP neighbours wait to be matched against other polled devices.
+func (s *snmpEntitySource) logHold(unresolved int, remaining time.Duration) {
+	s.mu.Lock()
+	first := !s.holdLogged
+	s.holdLogged = true
+	s.mu.Unlock()
+	if !first {
+		return
+	}
+	s.moduleLogger.Info().
+		Str("target", s.cfg.Target).
+		Int("unresolved_neighbors", unresolved).
+		Dur("releases_in", remaining.Round(time.Second)).
+		Msg("topology withheld during start-up: LLDP neighbours not yet resolved against other polled devices")
 }
 
 // silentAfterSweeps is how many topology intervals of failed sweeps the last
@@ -382,13 +472,13 @@ func (s *snmpEntitySource) build(res sweepResult, now time.Time) (entity.Observa
 		}
 		return resolveDeviceID(n)
 	}
-	obs := buildObservation(res.self, res.topo, res.routes, res.ifaces, res.addrs, resolveNeighbor)
+	obs := buildObservationAs(res.deviceID, res.self, res.topo, res.routes, res.ifaces, res.addrs, resolveNeighbor)
 	dropLinksToDownPorts(&obs, s.registry, now)
 	maxRoutes := s.cfg.MaxRoutes
 	if maxRoutes <= 0 {
 		maxRoutes = defaultMaxRoutes
 	}
-	applyRouteCounters(&obs, res.deviceID, res.routesOmitted, maxRoutes)
+	applyRouteCounters(&obs, res.deviceID, res.routesOmitted, len(res.routesFiltered), maxRoutes)
 	applyLag(&obs, res.lag, res.ifaces, res.deviceID)
 	applyGovernance(obs, s.cfg, res.self, res.deviceID)
 	s.appendLocalRunsOn(&obs, res.deviceID)
@@ -402,6 +492,72 @@ func (s *snmpEntitySource) DeviceID() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.deviceID
+}
+
+// SelectedInterfaces returns the ifIndex set whose metric series are kept, or
+// nil when no interface selection is configured. With a selection configured
+// and no sweep yet, it is an empty set: nothing is selected until the
+// interfaces are known, so the series count never exceeds the bound.
+func (s *snmpEntitySource) SelectedInterfaces() map[string]bool {
+	if !s.cfg.Interfaces.active() {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.selectedIfaces == nil {
+		return map[string]bool{}
+	}
+	return s.selectedIfaces
+}
+
+// selectInterfaces evaluates the interface selection against the current
+// ifTable. Evaluated at every sweep, so a port that comes up or goes down
+// enters or leaves the metric series at the sweep cadence.
+// capStateChanged records the max_interfaces cut of this sweep and reports
+// whether it differs from the previous one, so the warning is written once per
+// target and again only when the matched or kept counts move.
+func (s *snmpEntitySource) capStateChanged(capped bool, matched, kept int) bool {
+	key := ""
+	if capped {
+		key = fmt.Sprintf("%d/%d", matched, kept)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if key == s.capWarned {
+		return false
+	}
+	s.capWarned = key
+	return true
+}
+
+func (s *snmpEntitySource) selectInterfaces(client snmpClient, ifaces []ifaceRow) (map[string]bool, bool) {
+	sel := s.cfg.Interfaces
+	if !sel.active() || len(ifaces) == 0 {
+		return nil, true
+	}
+	skipped := collectSelectionFields(client, ifaces, sel)
+	if len(skipped) > 0 {
+		s.moduleLogger.Warn().Str("target", s.cfg.Target).Strs("skipped_walks", skipped).
+			Msg("interface selection: some columns could not be read, their criteria exclude every interface")
+	}
+	selected, matched := sel.selectIndexes(ifaces)
+	capped := sel.maxInterfaces > 0 && matched > sel.maxInterfaces
+	if s.capStateChanged(capped, matched, len(selected)) && capped {
+		s.moduleLogger.Warn().Str("target", s.cfg.Target).
+			Int("matched", matched).Int("kept", len(selected)).Int("max_interfaces", sel.maxInterfaces).
+			Msg("interface selection: max_interfaces reached, metric series of the remaining interfaces are not emitted")
+	}
+	return selected, len(skipped) == 0
+}
+
+// keepSelectionIfStale keeps the previous selection when this sweep could not
+// read every interface column: a walk that timed out must not retract the
+// series of every interface until the next sweep.
+func keepSelectionIfStale(prev map[string]bool, res sweepResult) map[string]bool {
+	if res.selectionStale && prev != nil {
+		return prev
+	}
+	return res.selectedIfaces
 }
 
 // InterfaceNames returns the ifIndex→ifName map from the last sweep (nil before
@@ -426,6 +582,7 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 
 	bounded := newSweepClient(client, sweepBudget(s.cfg), time.Now)
 	res, ok := s.sweep(bounded, now)
+	degraded := res.partial || bounded.cut || !res.self.identityComplete
 	if bounded.cut {
 		s.moduleLogger.Warn().Str("target", s.cfg.Target).Dur("budget", sweepBudget(s.cfg)).
 			Msg("topology sweep reached its budget; remaining walks skipped")
@@ -447,6 +604,12 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 		s.retryAt = now.Add(delay - s.cfg.Interval/2)
 		known := s.deviceID
 		s.mu.Unlock()
+		if res.identityHeld {
+			s.moduleLogger.Warn().Str("target", s.cfg.Target).Str("device_id", known).
+				Str("incomplete_id", res.deviceID).Dur("retry_in", delay).
+				Msg("topology sweep read an incomplete identity; keeping previous snapshot")
+			return
+		}
 		s.moduleLogger.Warn().Str("target", s.cfg.Target).Bool("silent", bounded.silent).Dur("retry_in", delay).
 			Msg("topology sweep failed; keeping previous snapshot")
 		if s.registry != nil {
@@ -464,15 +627,27 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 
 	s.mu.Lock()
 	s.failingSince = time.Time{}
+	s.holdReleaseLogged.Store(false)
 	s.silentMarked = false
 	s.sweepFailures = 0
 	s.retryAt = time.Time{}
 	s.cache = res
 	s.deviceID = res.deviceID
 	s.ifNames = res.ifNames
+	s.selectedIfaces = keepSelectionIfStale(s.selectedIfaces, res)
 	s.lastSweep = now
 	s.swept = true
 	s.mu.Unlock()
+
+	if !res.partial {
+		s.recordExcludedRoutes(res.deviceID, res.routesFiltered)
+	}
+	if !res.partial && !bounded.cut {
+		recon := res
+		recon.routes = res.previousVersionRoutes
+		s.retirePreviousVersionRoutes(res.deviceID, s.buildQuiet(recon, now), s.buildQuiet(res, now))
+	}
+	s.armRekey(res, degraded, now)
 }
 
 // sweep performs the SNMP reads. Best-effort: a failed LLDP walk still yields
@@ -516,6 +691,39 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	self := readSelfIdentity(client, s.cfg.Target, topo.Local)
 
 	deviceID := resolveDeviceID(self)
+	// An identity walk that failed can resolve a lower rung: never let it
+	// replace an id already established. The sweep is held like a failed
+	// one; a first sweep still publishes, or a device whose ENTITY-MIB an
+	// ACL refuses would never appear.
+	s.mu.Lock()
+	established := s.deviceID
+	hadChassisSerials := len(s.cache.self.ChassisSerials) > 0
+	// A hold that outlasts the silence threshold ends: the target has gone
+	// silent, its entities have left as unmonitored, and the next sweep
+	// starts over as a first sweep. Without an end, a device that lost its
+	// ENTITY-MIB for good would be held, and absent, until the agent restarts.
+	holdExpired := !s.failingSince.IsZero() && now.Sub(s.failingSince) >= silentAfterSweeps*s.interval
+	s.mu.Unlock()
+	if holdExpired && established != "" {
+		if s.holdReleaseLogged.CompareAndSwap(false, true) {
+			s.moduleLogger.Warn().Str("target", s.cfg.Target).Str("device_id", established).
+				Msg("identity read still incomplete after the silence threshold; resolving the device again from what it answers")
+		}
+		established = ""
+		hadChassisSerials = false
+	}
+	// A device that answered an error-status on ENTITY-MIB reads, through
+	// the SNMP library, as an empty table rather than a failed walk. Chassis
+	// serials do not vanish from a running device: their sudden absence is
+	// an incomplete read, not a new identity.
+	if hadChassisSerials && len(self.ChassisSerials) == 0 {
+		self.identityComplete = false
+	}
+	if !self.identityComplete && established != "" && deviceID != established {
+		return sweepResult{self: self, deviceID: deviceID, identityHeld: true}, false
+	}
+	s.claimDeviceID(deviceID, self, now)
+	s.checkEngineIDMAC(self)
 	var ifNames map[string]string
 	if len(ifaces) > 0 {
 		ifNames = make(map[string]string, len(ifaces))
@@ -526,11 +734,16 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 		}
 	}
 
+	selected, selectionComplete := s.selectInterfaces(client, ifaces)
+
 	maxRoutes := s.cfg.MaxRoutes
 	if maxRoutes <= 0 {
 		maxRoutes = defaultMaxRoutes
 	}
-	routes, routesOmitted := selectRoutes(routes, self.MgmtIP, maxRoutes)
+	fc := newRouteFilterContext(routes, addrs, ifaces)
+	sel := selectRoutes(routes, self.MgmtIP, maxRoutes, s.cfg.IncludeSystemRoutes, fc)
+	previousVersionRoutes := selectRoutes(routes, self.MgmtIP, maxRoutes, true, fc).kept
+	routes, routesOmitted := sel.kept, sel.omitted
 	if routesOmitted > 0 {
 		s.moduleLogger.Info().
 			Str("target", s.cfg.Target).
@@ -542,18 +755,26 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 
 	var fdbs []fdbEntry
 	var arps []arpEntry
-	if idx := s.macIndex; idx != nil && idx.Enabled() {
+	if s.l2Wanted() {
+		// A failed walk keeps the previous sweep's rows: a large FDB lost over
+		// UDP is not a table that forgot every MAC, and dropping the rows
+		// would retire and recreate every neighbour of the device.
+		s.mu.Lock()
+		prevFDB, prevARP := s.cache.fdb, s.cache.arp
+		s.mu.Unlock()
 		fdbs, err = collectFDB(client)
 		if err != nil {
 			s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
-				Msg("bridge FDB walk failed; emitting device without neighbor resolution")
-			fdbs = nil
+				Int("kept_rows", len(prevFDB)).
+				Msg("bridge FDB walk failed; keeping the previous rows")
+			fdbs = prevFDB
 		}
 		arps, err = collectARP(client)
 		if err != nil {
 			s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
-				Msg("ARP walk failed; emitting device without neighbor resolution")
-			arps = nil
+				Int("kept_rows", len(prevARP)).
+				Msg("ARP walk failed; keeping the previous rows")
+			arps = prevARP
 		}
 	}
 
@@ -566,7 +787,7 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 		s.registry.recordPolled(self, deviceID, now)
 		s.registry.recordPortStates(deviceID, ifaces, s.interval, now)
 	}
-	if idx := s.macIndex; idx != nil && idx.Enabled() && deviceID != "" {
+	if s.l2Wanted() && deviceID != "" {
 		s.registerInterfaceMacs(deviceID, ifaces)
 	}
 	lag := collectLagData(client, ifaces, s.moduleLogger)
@@ -576,7 +797,7 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	// with a neighbourless ghost, retracting its links as if they had been
 	// seen to go.
 	answered := deviceAnswered(self, topo, routes, ifaces, addrs)
-	return sweepResult{self: self, topo: topo, routes: routes, routesOmitted: routesOmitted, ifaces: ifaces, addrs: addrs, deviceID: deviceID, ifNames: ifNames, fdb: fdbs, arp: arps, lag: lag, partial: partial}, deviceID != "" && answered
+	return sweepResult{self: self, topo: topo, routes: routes, routesOmitted: routesOmitted, routesFiltered: sel.filtered, previousVersionRoutes: previousVersionRoutes, ifaces: ifaces, addrs: addrs, deviceID: deviceID, ifNames: ifNames, selectedIfaces: selected, selectionStale: partial || len(skippedWalks) > 0 || !selectionComplete, fdb: fdbs, arp: arps, lag: lag, partial: partial}, deviceID != "" && answered
 }
 
 // deviceAnswered reports whether any read reached the device, as opposed to
@@ -677,9 +898,13 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 	// to the stack-scoped snmpEngineID rather than a failover-unstable member
 	// serial. Picking the chassis row (not "first serial") also avoids latching
 	// onto a module/PSU serial that can change on a part swap.
-	di.Serial = chassisSerial(client)
+	var serialsRead bool
+	di.Serial, di.ChassisSerials, serialsRead = chassisSerial(client)
+	di.identityComplete = serialsRead
 	// Vendor PEN namespaces the serial (serial is vendor-scoped, not global).
-	if binds, err := client.WalkRaw(oidSysObjectIDBase); err == nil {
+	if binds, err := readScalarRaw(client, oidSysObjectIDBase, oidSysObjectID); err != nil {
+		di.identityComplete = false
+	} else {
 		for _, b := range binds {
 			if b.OID == oidSysObjectID {
 				di.VendorPEN = vendorPEN(asString(b.Value))
@@ -687,14 +912,16 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 		}
 	}
 
-	if binds, err := client.WalkRaw(oidSnmpEngineIDBase); err == nil {
+	if binds, err := readScalarRaw(client, oidSnmpEngineIDBase, oidSnmpEngineID); err != nil {
+		di.identityComplete = false
+	} else {
 		for _, b := range binds {
 			if b.OID == oidSnmpEngineID {
 				di.EngineID = snmpcore.AsBytes(b.Value)
 			}
 		}
 	}
-	if binds, err := client.WalkRaw(oidSysServicesBase); err == nil {
+	if binds, err := readScalarRaw(client, oidSysServicesBase, oidSysServices); err == nil {
 		for _, b := range binds {
 			if b.OID == oidSysServices {
 				if v, ok := snmpcore.AsInt(b.Value); ok {
@@ -703,14 +930,16 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 			}
 		}
 	}
-	if binds, err := client.WalkRaw(oidSysNameBase); err == nil {
+	if binds, err := readScalarRaw(client, oidSysNameBase, oidSysName); err != nil {
+		di.identityComplete = false
+	} else {
 		for _, b := range binds {
 			if b.OID == oidSysName {
 				di.SysName = snmpcore.OctetText(snmpcore.AsBytes(b.Value))
 			}
 		}
 	}
-	if binds, err := client.WalkRaw(oidSysDescrBase); err == nil {
+	if binds, err := readScalarRaw(client, oidSysDescrBase, oidSysDescr); err == nil {
 		for _, b := range binds {
 			if b.OID == oidSysDescr {
 				di.SysDescr = strings.TrimSpace(snmpcore.OctetText(snmpcore.AsBytes(b.Value)))
@@ -771,12 +1000,17 @@ func singleChassisIndex(client snmpClient) string {
 }
 
 // chassisSerial returns the serial of the device's single chassis, or "" when
-// there is no chassis row, no serial, or MORE THAN ONE chassis (a stack —
-// which is identified by its stack-wide snmpEngineID instead). It correlates
-// entPhysicalClass and entPhysicalSerialNum by entPhysical index.
-func chassisSerial(client snmpClient) string {
+// there is no chassis row, no serial, or MORE THAN ONE chassis (a stack,
+// identified further down the ladder instead), and the serials of every
+// chassis row in sortedUnique form. It correlates entPhysicalClass and
+// entPhysicalSerialNum by entPhysical index.
+func chassisSerial(client snmpClient) (single string, all []string, ok bool) {
+	ok = true
 	class := map[string]int{}
-	if binds, err := client.WalkRaw(oidEntPhysicalClass); err == nil {
+	binds, err := client.WalkRaw(oidEntPhysicalClass)
+	if err != nil {
+		ok = false
+	} else {
 		for _, b := range binds {
 			if idx, ok := strings.CutPrefix(b.OID, oidEntPhysicalClass+"."); ok {
 				if v, ok := snmpcore.AsInt(b.Value); ok {
@@ -786,7 +1020,10 @@ func chassisSerial(client snmpClient) string {
 		}
 	}
 	serial := map[string]string{}
-	if binds, err := client.WalkRaw(oidEntPhysicalSerialNum); err == nil {
+	binds, err = client.WalkRaw(oidEntPhysicalSerialNum)
+	if err != nil {
+		ok = false
+	} else {
 		for _, b := range binds {
 			if idx, ok := strings.CutPrefix(b.OID, oidEntPhysicalSerialNum+"."); ok {
 				if sn := strings.TrimSpace(snmpcore.OctetText(snmpcore.AsBytes(b.Value))); sn != "" {
@@ -804,10 +1041,29 @@ func chassisSerial(client snmpClient) string {
 			}
 		}
 	}
+	all = sortedUnique(chassis)
 	if len(chassis) == 1 {
-		return chassis[0]
+		return chassis[0], all, ok
 	}
-	return "" // 0 → no usable serial; >1 → stack, use engineID
+	return "", all, ok // 0 → no usable serial; >1 → stack, use engineID
+}
+
+// sortedUnique sorts byte-wise and drops duplicates, the frozen form of
+// senhub.chassis.serial_numbers: two agents must send the same list.
+func sortedUnique(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := append([]string(nil), in...)
+	sort.Strings(out)
+	n := 1
+	for i := 1; i < len(out); i++ {
+		if out[i] != out[n-1] {
+			out[n] = out[i]
+			n++
+		}
+	}
+	return out[:n]
 }
 
 func asString(v any) string {
@@ -832,7 +1088,12 @@ func asString(v any) string {
 //
 // Returns empty when the device cannot be identified (no usable id rung).
 func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow, ifaces []ifaceRow, addrs []ipAddr, resolveNeighbor func(deviceIdentity) string) entity.Observation {
-	selfID := resolveDeviceID(self)
+	return buildObservationAs(resolveDeviceID(self), self, topo, routes, ifaces, addrs, resolveNeighbor)
+}
+
+// buildObservationAs is buildObservation with the device's own id given, so
+// the subtree an earlier id owned can be rebuilt from today's sweep.
+func buildObservationAs(selfID string, self deviceIdentity, topo lldpTopology, routes []routeRow, ifaces []ifaceRow, addrs []ipAddr, resolveNeighbor func(deviceIdentity) string) entity.Observation {
 	if selfID == "" {
 		return entity.Observation{}
 	}
@@ -978,8 +1239,7 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 	addrSeen := map[string]bool{}
 	for _, a := range addrs {
 		ifName := ifIndexName[a.IfIndex]
-		if ifName == "" || addrSeen[a.IP] ||
-			!entity.AddressEdgeAllowed(a.IP) || entity.IsContainerBridgeIface(ifName) {
+		if addrSeen[a.IP] || !addressPublishable(a.IP, ifName) {
 			continue
 		}
 		addrSeen[a.IP] = true
@@ -1042,7 +1302,320 @@ func interfaceMACOwners(ifaces []ifaceRow) map[string]string {
 	return out
 }
 
+// appendResolvesNeighbors adds the device's link-layer neighbours: every
+// learned MAC when the neighbours parameter is on, otherwise only this host's
+// own NICs, and only when resolves_to is enabled.
 func (s *snmpEntitySource) appendResolvesNeighbors(obs entity.Observation, res sweepResult) entity.Observation {
+	if res.deviceID == "" {
+		return obs
+	}
+	if !s.cfg.Neighbors {
+		return s.appendHostNICNeighbors(obs, res)
+	}
+
+	ownMACs := make(map[string]bool)
+	for _, ifc := range res.ifaces {
+		if canon, ok := entity.CanonicalMACString(ifc.Mac); ok {
+			ownMACs[canon] = true
+		}
+	}
+
+	type rowGroup struct {
+		ports     map[string]bool
+		addresses map[string]bool
+		bases     map[string]bool
+	}
+	groups := map[string]*rowGroup{}
+
+	addRow := func(mac string, ifIndex int, basis, ip string) {
+		canon, ok := entity.CanonicalMACString(mac)
+		if !ok || ownMACs[canon] {
+			return
+		}
+		port := res.ifNames[strconv.Itoa(ifIndex)]
+		if port == "" {
+			return
+		}
+		if basis == "arp" {
+			addr, err := netip.ParseAddr(ip)
+			if err != nil || addr.IsLinkLocalUnicast() {
+				return
+			}
+		}
+		g := groups[canon]
+		if g == nil {
+			g = &rowGroup{
+				ports:     map[string]bool{},
+				addresses: map[string]bool{},
+				bases:     map[string]bool{},
+			}
+			groups[canon] = g
+		}
+		g.ports[port] = true
+		if basis == "arp" {
+			g.addresses[ip] = true
+		}
+		g.bases[basis] = true
+	}
+
+	for _, e := range res.fdb {
+		addRow(e.MAC, e.IfIndex, "fdb", "")
+	}
+	for _, e := range res.arp {
+		addRow(e.MAC, e.IfIndex, "arp", e.IP)
+	}
+	if len(groups) == 0 {
+		applyNeighborCounters(&obs, res.deviceID, 0, s.maxNeighbors())
+		return obs
+	}
+
+	resolutions := map[string]map[string]any{}
+	skipMAC := map[string]bool{}
+
+	hostMACs, err := s.hostInterfaceMACs()
+	if err != nil {
+		s.moduleLogger.Debug().
+			Err(err).
+			Str("target", s.cfg.Target).
+			Msg("host interface MAC scan failed; neighbors emitted without host resolution")
+		hostMACs = map[string]string{}
+	}
+	hostID := s.hostID()
+	for mac := range groups {
+		if hostID != "" && hostMACs[mac] != "" {
+			resolutions[mac] = map[string]any{
+				idKeyHost:          hostID,
+				idKeyInterfaceName: hostMACs[mac],
+			}
+			continue
+		}
+		if e, ok := s.macIndex.Lookup(mac); ok && e.DeviceID != "" && e.Name != "" {
+			if e.DeviceID == res.deviceID {
+				skipMAC[mac] = true
+				continue
+			}
+			resolutions[mac] = map[string]any{
+				idKeyNetworkDevice: e.DeviceID,
+				idKeyInterfaceName: e.Name,
+			}
+		}
+	}
+
+	type candidate struct {
+		mac          string
+		hasResolves  bool
+		hasAddresses bool
+	}
+	candidates := make([]candidate, 0, len(groups))
+	for mac, g := range groups {
+		if skipMAC[mac] {
+			continue
+		}
+		candidates = append(candidates, candidate{
+			mac:          mac,
+			hasResolves:  resolutions[mac] != nil,
+			hasAddresses: len(g.addresses) > 0,
+		})
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].hasResolves != candidates[j].hasResolves {
+			return candidates[i].hasResolves
+		}
+		if candidates[i].hasAddresses != candidates[j].hasAddresses {
+			return candidates[i].hasAddresses
+		}
+		return candidates[i].mac < candidates[j].mac
+	})
+
+	n := s.maxNeighbors()
+	omitted := len(candidates) - n
+	if omitted < 0 {
+		omitted = 0
+	}
+	if s.neighborCapChanged(res.deviceID, omitted) {
+		s.moduleLogger.Info().
+			Str("target", s.cfg.Target).
+			Str("device", res.deviceID).
+			Int("kept", n).
+			Int("omitted", omitted).
+			Int("max_neighbors", n).
+			Msg("neighbor table bound: some neighbors omitted")
+	}
+	if omitted > 0 {
+		candidates = candidates[:n]
+	}
+	applyNeighborCounters(&obs, res.deviceID, omitted, n)
+
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].mac < candidates[j].mac })
+
+	for _, cand := range candidates {
+		mac := cand.mac
+		g := groups[mac]
+		id := map[string]any{idKeyNetworkDevice: res.deviceID, idKeyNeighborMAC: mac}
+		attrs := map[string]any{}
+
+		if len(g.addresses) > 0 {
+			attrs[attrNeighborAddresses] = sortedStrings(g.addresses)
+		}
+
+		ports := sortedStrings(g.ports)
+		scope := entity.ScopeSNMPARP
+		if g.bases["fdb"] {
+			scope = entity.ScopeSNMPFDB
+		}
+
+		obs.Entities = append(obs.Entities, entity.Entity{
+			Type:       entityTypeNetworkNeighbor,
+			ID:         id,
+			Scope:      scope,
+			Attributes: attrs,
+		})
+
+		for _, port := range ports {
+			obs.Relations = append(obs.Relations, entity.Relation{
+				Type:     relNeighborOf,
+				FromType: entityTypeNetworkNeighbor,
+				FromID:   id,
+				ToType:   entityTypeNetworkInterface,
+				ToID:     interfacePortKey(res.deviceID, port),
+			})
+		}
+
+		if target := resolutions[mac]; target != nil {
+			for _, basis := range []string{"fdb", "arp"} {
+				if !g.bases[basis] {
+					continue
+				}
+				conf := resolveConfidenceARPNDP
+				if basis == "fdb" {
+					conf = resolveConfidenceFDB
+				}
+				obs.Relations = append(obs.Relations, entity.Relation{
+					Type:     relResolvesTo,
+					FromType: entityTypeNetworkNeighbor,
+					FromID:   id,
+					ToType:   entityTypeNetworkInterface,
+					ToID:     target,
+					Attributes: map[string]any{
+						attrBasis:      basis,
+						attrConfidence: conf,
+					},
+				})
+			}
+		}
+	}
+	return obs
+}
+
+type l2Rows struct {
+	fdb []fdbEntry
+	arp []arpEntry
+}
+
+// discoveredL2Rows reads a discovered device's FDB and ARP tables, keeping
+// the last successful read of a table whose walk fails, as the sweep of the
+// polled target does.
+func (s *snmpEntitySource) discoveredL2Rows(deviceID string, client snmpClient) ([]fdbEntry, []arpEntry) {
+	s.discL2Mu.Lock()
+	prev := s.discL2[deviceID]
+	s.discL2Mu.Unlock()
+	next := prev
+	if fdbs, err := collectFDB(client); err == nil {
+		next.fdb = fdbs
+	} else {
+		s.moduleLogger.Debug().Err(err).Str("device", deviceID).Int("kept_rows", len(prev.fdb)).
+			Msg("bridge FDB walk failed; keeping the previous rows")
+	}
+	if arps, err := collectARP(client); err == nil {
+		next.arp = arps
+	} else {
+		s.moduleLogger.Debug().Err(err).Str("device", deviceID).Int("kept_rows", len(prev.arp)).
+			Msg("ARP walk failed; keeping the previous rows")
+	}
+	s.discL2Mu.Lock()
+	if s.discL2 == nil {
+		s.discL2 = map[string]l2Rows{}
+	}
+	s.discL2[deviceID] = next
+	s.discL2Mu.Unlock()
+	return next.fdb, next.arp
+}
+
+// forgetDiscoveredL2 drops what is kept for a discovered device that left:
+// its rows and its announced neighbour cut.
+func (s *snmpEntitySource) forgetDiscoveredL2(deviceID string) {
+	s.discL2Mu.Lock()
+	delete(s.discL2, deviceID)
+	s.discL2Mu.Unlock()
+	s.mu.Lock()
+	delete(s.neighborCapWarned, deviceID)
+	s.mu.Unlock()
+}
+
+// neighborCapChanged records how many neighbours of a device the bound cut
+// and reports whether a log line is due: the observation is rebuilt at every
+// report, so the cut is announced once, and again only when it moves.
+func (s *snmpEntitySource) neighborCapChanged(deviceID string, omitted int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	prev, seen := s.neighborCapWarned[deviceID]
+	if omitted == 0 {
+		delete(s.neighborCapWarned, deviceID)
+		return false
+	}
+	if seen && prev == omitted {
+		return false
+	}
+	if s.neighborCapWarned == nil {
+		s.neighborCapWarned = map[string]int{}
+	}
+	s.neighborCapWarned[deviceID] = omitted
+	return true
+}
+
+// applyNeighborCounters publishes the max_neighbors cut on the device, so a
+// table cut by the bound is never read as a complete one.
+func applyNeighborCounters(obs *entity.Observation, deviceID string, omitted, limit int) {
+	for i := range obs.Entities {
+		if obs.Entities[i].Type == entityTypeNetworkDevice && obs.Entities[i].ID[idKeyNetworkDevice] == deviceID {
+			if obs.Entities[i].Attributes == nil {
+				obs.Entities[i].Attributes = map[string]any{}
+			}
+			obs.Entities[i].Attributes[attrNeighborsOmitted] = int64(omitted)
+			obs.Entities[i].Attributes[attrNeighborsLimit] = int64(limit)
+			return
+		}
+	}
+}
+
+// l2Wanted reports whether the FDB and ARP tables are read: for the
+// learned-neighbour inventory, or for the host-NIC resolution.
+func (s *snmpEntitySource) l2Wanted() bool {
+	return s.cfg.Neighbors || (s.macIndex != nil && s.macIndex.Enabled())
+}
+
+func (s *snmpEntitySource) maxNeighbors() int {
+	if s.cfg.MaxNeighbors <= 0 {
+		return defaultMaxNeighbors
+	}
+	return s.cfg.MaxNeighbors
+}
+
+func sortedStrings(set map[string]bool) []string {
+	out := make([]string, 0, len(set))
+	for s := range set {
+		if s != "" {
+			out = append(out, s)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// appendHostNICNeighbors keeps, of the device's FDB and ARP rows, only the
+// MACs of this agent host's own NICs: the port the host is plugged into.
+// It is what runs when the learned-neighbour inventory is off.
+func (s *snmpEntitySource) appendHostNICNeighbors(obs entity.Observation, res sweepResult) entity.Observation {
 	if s.macIndex == nil || !s.macIndex.Enabled() || res.deviceID == "" {
 		return obs
 	}
@@ -1190,6 +1763,18 @@ func selfAttrs(self deviceIdentity) map[string]any {
 	add(attrHwVendor, self.HwVendor)
 	add(attrHwModel, self.HwModel)
 	add(attrHwFirmwareVer, self.HwFirmware)
+	// The raw identity parts, whichever rung the id took, so the rung a
+	// device would move to is readable from the graph.
+	add(attrHwSerial, strings.TrimSpace(self.Serial))
+	if len(self.ChassisSerials) > 0 {
+		attrs[attrChassisSerials] = append([]string(nil), self.ChassisSerials...)
+	}
+	if usableChassisMAC(self.ChassisMAC) {
+		add(attrChassisMAC, macHex(self.ChassisMAC))
+	}
+	if len(self.EngineID) > 0 {
+		add(attrEngineID, hex.EncodeToString(self.EngineID))
+	}
 	return attrs
 }
 
@@ -1272,6 +1857,31 @@ func droppedEntities(before, after entity.Observation) []entity.Entity {
 	return out
 }
 
+// addressPublishable is the rule buildObservation applies before it emits an
+// interface address as a network.address bound to its interface.
+func addressPublishable(ip, ifName string) bool {
+	return ifName != "" && entity.AddressEdgeAllowed(ip) && !entity.IsContainerBridgeIface(ifName)
+}
+
+// publishedAddresses is the set of addresses buildObservation emits as
+// network.address for these rows, keyed on the canonical address text.
+func publishedAddresses(addrs []ipAddr, ifaces []ifaceRow) map[string]bool {
+	ifIndexName := make(map[string]string, len(ifaces))
+	for _, ifc := range ifaces {
+		ifIndexName[ifc.Index] = ifc.Name
+	}
+	out := map[string]bool{}
+	for _, a := range addrs {
+		if !addressPublishable(a.IP, ifIndexName[a.IfIndex]) {
+			continue
+		}
+		if ip, err := netip.ParseAddr(a.IP); err == nil {
+			out[ip.Unmap().String()] = true
+		}
+	}
+	return out
+}
+
 func entityIdentity(e entity.Entity) string {
 	keys := make([]string, 0, len(e.ID))
 	for k := range e.ID {
@@ -1291,10 +1901,44 @@ func entityIdentity(e entity.Entity) string {
 // neighbour that stops being listed aged out, not seen to leave. Devices,
 // interfaces and routes keep the default.
 func (s *snmpEntitySource) DepartureReason(e entity.Entity) string {
-	if e.Type == entityTypeNetworkNeighbor {
+	switch e.Type {
+	case entityTypeNetworkNeighbor:
 		return entity.ReasonAgedOut
+	case entityTypeNetworkRoute:
+		if s.routeExcluded(e) {
+			return entity.ReasonExcludedByConfig
+		}
 	}
 	return ""
+}
+
+// recordExcludedRoutes replaces the set of routes the filter left out of the
+// last complete read of deviceID.
+func (s *snmpEntitySource) recordExcludedRoutes(deviceID string, filtered []routeRow) {
+	if deviceID == "" {
+		return
+	}
+	set := make(map[string]bool, len(filtered))
+	for _, nr := range filtered {
+		set[entityIdentity(routeFilterEntity(deviceID, nr))] = true
+	}
+	s.excludedMu.Lock()
+	defer s.excludedMu.Unlock()
+	if s.excludedRoutes == nil {
+		s.excludedRoutes = map[string]map[string]bool{}
+	}
+	if len(set) == 0 {
+		delete(s.excludedRoutes, deviceID)
+		return
+	}
+	s.excludedRoutes[deviceID] = set
+}
+
+func (s *snmpEntitySource) routeExcluded(e entity.Entity) bool {
+	deviceID, _ := e.ID[idKeyNetworkDevice].(string)
+	s.excludedMu.Lock()
+	defer s.excludedMu.Unlock()
+	return s.excludedRoutes[deviceID][entityIdentity(e)]
 }
 
 var (
@@ -1307,4 +1951,94 @@ func (s *snmpEntitySource) discoveryView() (entity.Observation, bool) {
 	s.discMu.Lock()
 	defer s.discMu.Unlock()
 	return s.discObs, s.discRan
+}
+
+// IdentityCollisions returns the number of times a distinct target resolved to
+// a device id already claimed by another target with evidence of a different
+// physical device.
+func (s *snmpEntitySource) IdentityCollisions() uint64 {
+	return s.identityCollisions.Load()
+}
+
+// claimDeviceID records the resolved device id for s.cfg.Target and, on a
+// collision with a different target, increments the collision counter and logs
+// once per colliding pair. Call this immediately after resolveDeviceID(self) in
+// sweep.
+func (s *snmpEntitySource) claimDeviceID(id string, self deviceIdentity, now time.Time) {
+	if s.registry == nil || id == "" {
+		return
+	}
+	other, collided, firstWarn := s.registry.claimID(id, s.cfg.Target, self, now)
+	if !collided {
+		return
+	}
+	s.identityCollisions.Add(1)
+	if firstWarn {
+		s.moduleLogger.Warn().
+			Str("target", s.cfg.Target).
+			Str("other_target", other.target).
+			Str("device_id", id).
+			Str("sys_name", self.SysName).
+			Str("other_sys_name", other.sysName).
+			Msg("two SNMP targets resolve to the same device id")
+	}
+}
+
+// checkEngineIDMAC compares the MAC an engine id embeds with the device's
+// chassis MAC. A difference says the engine id was not derived from this
+// chassis (set by configuration, or kept across a stack master change); it
+// does not say which of two devices holds the "right" one.
+func (s *snmpEntitySource) checkEngineIDMAC(self deviceIdentity) {
+	embedded, ok := engineIDMAC(self.EngineID)
+	if !ok || !usableChassisMAC(self.ChassisMAC) {
+		s.engineMACMismatch.Store(false)
+		return
+	}
+	chassis := macHex(self.ChassisMAC)
+	emb := macHex(embedded)
+	if emb == chassis {
+		s.engineMACMismatch.Store(false)
+		return
+	}
+	s.engineMACMismatch.Store(true)
+	pair := emb + "/" + chassis
+	if prev, _ := s.engineMACWarned.Load().(string); prev == pair {
+		return
+	}
+	s.engineMACWarned.Store(pair)
+	s.moduleLogger.Warn().
+		Str("target", s.cfg.Target).
+		Str("engine_id", hex.EncodeToString(self.EngineID)).
+		Str("embedded_mac", emb).
+		Str("chassis_mac", chassis).
+		Msg("snmpEngineID does not embed the chassis MAC")
+}
+
+// EngineIDMACMismatch reports whether the last sweep found an engine id that
+// embeds a MAC other than the chassis MAC.
+func (s *snmpEntitySource) EngineIDMACMismatch() bool {
+	return s.engineMACMismatch.Load()
+}
+
+// penComware is the IANA enterprise number of H3C, under which Comware
+// writes its engine ids.
+const penComware = 25506
+
+// engineIDMAC returns the MAC an snmpEngineID embeds, when its format says
+// so: the RFC 3411 MAC format (byte 5 = 3), or the Comware enterprise
+// format 0x80 followed by six MAC bytes. Any other engine id embeds no MAC
+// this can read.
+func engineIDMAC(e []byte) ([]byte, bool) {
+	if len(e) < 11 || e[0]&0x80 == 0 {
+		return nil, false
+	}
+	pen := int(e[0]&0x7f)<<24 | int(e[1])<<16 | int(e[2])<<8 | int(e[3])
+	switch {
+	case e[4] == 3 && len(e) == 11:
+		return e[5:11], true
+	case e[4] == 0x80 && pen == penComware:
+		return e[5:11], true
+	default:
+		return nil, false
+	}
 }

@@ -66,6 +66,7 @@ Emitted when an OTLP output is configured.
 | `senhub_agent_otlp_checkpoint_size_bytes` | gauge | Size in bytes of the most recently written OTLP checkpoint file. 0 when persistence disabled or no save has succeeded yet. |
 | `senhub_agent_otlp_dropped_log_records_total` | counter | Cumulative count of log records dropped due to subscriber backpressure on the agent log channel. |
 | `senhub_agent_otlp_dropped_span_batches_total` | counter | Cumulative count of received span batches dropped due to backpressure on the agent span channel (the trace relay could not keep up). |
+| `senhub_agent_otlp_dropped_total` | counter | Records dropped before or during an OTLP export, by `reason`: `store_cap`, `probe_cardinality`, `memory_soft_limit`, `memory_hard_limit`, `staleness` (metrics); `logs_queue_full`, `dropped_by_age` (logs queue limits); `receiver_rejected` (the receiver refused the records on their merits); `record_too_large` (a single log record larger than the receiver accepts). Every reason is emitted from start at 0. |
 | `senhub_agent_otlp_endpoint_switches_total` | counter | Cumulative endpoint failover switches (the active OTLP endpoint changed). Rising means the primary is flapping. |
 | `senhub_agent_otlp_export_duration_seconds` | gauge | Wall-clock duration of the most recent successful OTLP metrics export. |
 | `senhub_agent_otlp_logs_pushed_total` | counter | Cumulative count of log records emitted via OTLP/gRPC. |

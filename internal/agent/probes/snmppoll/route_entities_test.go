@@ -197,7 +197,8 @@ func TestSelectRoutes_Bound(t *testing.T) {
 		routes = append(routes, routeRow{Destination: dest, Type: routeTypeRemote, NextHop: "10.0.0.254"})
 	}
 
-	kept, omitted := selectRoutes(routes, self.MgmtIP, 500)
+	sel := selectRoutes(routes, self.MgmtIP, 500, false, routeFilterContext{})
+	kept, omitted := sel.kept, sel.omitted
 	if omitted != 203 {
 		t.Fatalf("omitted = %d, want 203", omitted)
 	}
@@ -224,7 +225,7 @@ func TestSelectRoutes_Bound(t *testing.T) {
 	obs := entity.Observation{}
 	obs.Entities = append(obs.Entities, deviceEntity("dev1", nil, entity.ScopeSNMPIFMIB))
 	appendRouteEntities(&obs, "dev1", self, kept, nil, map[string]bool{})
-	applyRouteCounters(&obs, "dev1", omitted, 500)
+	applyRouteCounters(&obs, "dev1", omitted, 0, 500)
 
 	dev := obs.Entities[0]
 	if got := dev.Attributes[attrRoutesOmitted]; got != int64(203) {
@@ -251,7 +252,7 @@ func TestRouteCountersZeroWhenNoOmission(t *testing.T) {
 	appendRouteEntities(&obs, "dev1", deviceIdentity{MgmtIP: "192.0.2.1"}, []routeRow{
 		{Destination: "10.0.1.0/24", Type: routeTypeLocal, IfIndex: "5"},
 	}, nil, map[string]bool{})
-	applyRouteCounters(&obs, "dev1", 0, 500)
+	applyRouteCounters(&obs, "dev1", 0, 0, 500)
 
 	dev := obs.Entities[0]
 	if got := dev.Attributes[attrRoutesOmitted]; got != int64(0) {
