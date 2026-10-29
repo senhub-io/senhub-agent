@@ -1,11 +1,13 @@
 package snmppoll
 
 import (
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
@@ -81,10 +83,14 @@ const (
 	relRetiredForwardsTo = "forwards_to"
 
 	// Polled-device descriptive attribute keys (network.device nameplate).
-	attrSysDescr      = "sys.descr"
-	attrHwVendor      = "hw.vendor"
-	attrHwModel       = "hw.model"
-	attrHwFirmwareVer = "hw.firmware_version"
+	attrSysDescr       = "sys.descr"
+	attrHwVendor       = "hw.vendor"
+	attrHwModel        = "hw.model"
+	attrHwFirmwareVer  = "hw.firmware_version"
+	attrHwSerial       = "hw.serial_number"
+	attrChassisMAC     = "senhub.lldp.chassis_mac"
+	attrEngineID       = "senhub.snmp.engine_id"
+	attrChassisSerials = "senhub.chassis.serial_numbers"
 
 	// Polled-device identity OIDs (dotted, no leading dot).
 	oidEntPhysicalSerialNum   = "1.3.6.1.2.1.47.1.1.1.1.11" // ENTITY-MIB (per physical entity)
@@ -188,6 +194,25 @@ type snmpEntitySource struct {
 	// macIndex is the shared interface-MAC index used for resolves_to and
 	// device-side network.neighbor emission. Defaults to the process-wide index.
 	macIndex *macindex.Index
+
+	// identityCollisions counts sweeps whose device id another target of
+	// this agent already holds for a visibly different device.
+	identityCollisions atomic.Uint64
+	// engineMACMismatch is 1 when the last sweep read an engine id that
+	// embeds a MAC other than the chassis MAC; engineMACWarned holds the
+	// last pair logged, so a steady mismatch logs once.
+	engineMACMismatch atomic.Bool
+	engineMACWarned   atomic.Value // string
+
+	// rekeyMu guards the retirement of a previous id (rekey.go): the
+	// entities to delete with the reason rekeyed, the cycles left to
+	// announce them, and the legacy ids already announced by this process.
+	rekeyMu       sync.Mutex
+	rekeyBase     sweepResult
+	rekeyHaveBase bool
+	rekeyBatches  []rekeyBatch
+	legacyRetired map[string]bool
+	publish       func(entity.Event)
 }
 
 func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
@@ -213,6 +238,7 @@ func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
 		hostID:            dbcommon.HostID,
 		hostInterfaceMACs: hostiface.OwnInterfaceMACs,
 		macIndex:          macindex.Default,
+		publish:           entity.PublishEvent,
 	}
 }
 
@@ -229,7 +255,10 @@ func (s *snmpEntitySource) Cadence() time.Duration {
 
 // sweepResult is what one topology sweep read from the device.
 type sweepResult struct {
-	self          deviceIdentity
+	self deviceIdentity
+	// identityHeld marks a sweep refused because an incomplete identity
+	// resolved an id other than the established one.
+	identityHeld  bool
 	topo          lldpTopology
 	routes        []routeRow
 	routesOmitted int
@@ -313,6 +342,7 @@ func (s *snmpEntitySource) observeSingle() (entity.Observation, bool) {
 		return entity.Observation{}, false
 	}
 	obs = s.appendResolvesNeighbors(obs, res)
+	s.announceRekey()
 	if replaying && !lastSweep.IsZero() {
 		// The cache came from an earlier successful sweep. A consumer must
 		// not see a fresh event_time on facts we have not re-read.
@@ -414,7 +444,7 @@ func (s *snmpEntitySource) build(res sweepResult, now time.Time) (entity.Observa
 		}
 		return resolveDeviceID(n)
 	}
-	obs := buildObservation(res.self, res.topo, res.routes, res.ifaces, res.addrs, resolveNeighbor)
+	obs := buildObservationAs(res.deviceID, res.self, res.topo, res.routes, res.ifaces, res.addrs, resolveNeighbor)
 	dropLinksToDownPorts(&obs, s.registry, now)
 	maxRoutes := s.cfg.MaxRoutes
 	if maxRoutes <= 0 {
@@ -524,6 +554,7 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 
 	bounded := newSweepClient(client, sweepBudget(s.cfg), time.Now)
 	res, ok := s.sweep(bounded, now)
+	degraded := res.partial || bounded.cut || !res.self.identityComplete
 	if bounded.cut {
 		s.moduleLogger.Warn().Str("target", s.cfg.Target).Dur("budget", sweepBudget(s.cfg)).
 			Msg("topology sweep reached its budget; remaining walks skipped")
@@ -545,6 +576,12 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 		s.retryAt = now.Add(delay - s.cfg.Interval/2)
 		known := s.deviceID
 		s.mu.Unlock()
+		if res.identityHeld {
+			s.moduleLogger.Warn().Str("target", s.cfg.Target).Str("device_id", known).
+				Str("incomplete_id", res.deviceID).Dur("retry_in", delay).
+				Msg("topology sweep read an incomplete identity; keeping previous snapshot")
+			return
+		}
 		s.moduleLogger.Warn().Str("target", s.cfg.Target).Bool("silent", bounded.silent).Dur("retry_in", delay).
 			Msg("topology sweep failed; keeping previous snapshot")
 		if s.registry != nil {
@@ -572,6 +609,7 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 	s.lastSweep = now
 	s.swept = true
 	s.mu.Unlock()
+	s.armRekey(res, degraded, now)
 }
 
 // sweep performs the SNMP reads. Best-effort: a failed LLDP walk still yields
@@ -615,6 +653,18 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	self := readSelfIdentity(client, s.cfg.Target, topo.Local)
 
 	deviceID := resolveDeviceID(self)
+	// An identity walk that failed can resolve a lower rung: never let it
+	// replace an id already established. The sweep is held like a failed
+	// one; a first sweep still publishes, or a device whose ENTITY-MIB an
+	// ACL refuses would never appear.
+	s.mu.Lock()
+	established := s.deviceID
+	s.mu.Unlock()
+	if !self.identityComplete && established != "" && deviceID != established {
+		return sweepResult{self: self, deviceID: deviceID, identityHeld: true}, false
+	}
+	s.claimDeviceID(deviceID, self, now)
+	s.checkEngineIDMAC(self)
 	var ifNames map[string]string
 	if len(ifaces) > 0 {
 		ifNames = make(map[string]string, len(ifaces))
@@ -778,9 +828,13 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 	// to the stack-scoped snmpEngineID rather than a failover-unstable member
 	// serial. Picking the chassis row (not "first serial") also avoids latching
 	// onto a module/PSU serial that can change on a part swap.
-	di.Serial = chassisSerial(client)
+	var serialsRead bool
+	di.Serial, di.ChassisSerials, serialsRead = chassisSerial(client)
+	di.identityComplete = serialsRead
 	// Vendor PEN namespaces the serial (serial is vendor-scoped, not global).
-	if binds, err := client.WalkRaw(oidSysObjectIDBase); err == nil {
+	if binds, err := client.WalkRaw(oidSysObjectIDBase); err != nil {
+		di.identityComplete = false
+	} else {
 		for _, b := range binds {
 			if b.OID == oidSysObjectID {
 				di.VendorPEN = vendorPEN(asString(b.Value))
@@ -788,7 +842,9 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 		}
 	}
 
-	if binds, err := client.WalkRaw(oidSnmpEngineIDBase); err == nil {
+	if binds, err := client.WalkRaw(oidSnmpEngineIDBase); err != nil {
+		di.identityComplete = false
+	} else {
 		for _, b := range binds {
 			if b.OID == oidSnmpEngineID {
 				di.EngineID = snmpcore.AsBytes(b.Value)
@@ -804,7 +860,9 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 			}
 		}
 	}
-	if binds, err := client.WalkRaw(oidSysNameBase); err == nil {
+	if binds, err := client.WalkRaw(oidSysNameBase); err != nil {
+		di.identityComplete = false
+	} else {
 		for _, b := range binds {
 			if b.OID == oidSysName {
 				di.SysName = snmpcore.OctetText(snmpcore.AsBytes(b.Value))
@@ -872,12 +930,17 @@ func singleChassisIndex(client snmpClient) string {
 }
 
 // chassisSerial returns the serial of the device's single chassis, or "" when
-// there is no chassis row, no serial, or MORE THAN ONE chassis (a stack —
-// which is identified by its stack-wide snmpEngineID instead). It correlates
-// entPhysicalClass and entPhysicalSerialNum by entPhysical index.
-func chassisSerial(client snmpClient) string {
+// there is no chassis row, no serial, or MORE THAN ONE chassis (a stack,
+// identified further down the ladder instead), and the serials of every
+// chassis row in sortedUnique form. It correlates entPhysicalClass and
+// entPhysicalSerialNum by entPhysical index.
+func chassisSerial(client snmpClient) (single string, all []string, ok bool) {
+	ok = true
 	class := map[string]int{}
-	if binds, err := client.WalkRaw(oidEntPhysicalClass); err == nil {
+	binds, err := client.WalkRaw(oidEntPhysicalClass)
+	if err != nil {
+		ok = false
+	} else {
 		for _, b := range binds {
 			if idx, ok := strings.CutPrefix(b.OID, oidEntPhysicalClass+"."); ok {
 				if v, ok := snmpcore.AsInt(b.Value); ok {
@@ -887,7 +950,10 @@ func chassisSerial(client snmpClient) string {
 		}
 	}
 	serial := map[string]string{}
-	if binds, err := client.WalkRaw(oidEntPhysicalSerialNum); err == nil {
+	binds, err = client.WalkRaw(oidEntPhysicalSerialNum)
+	if err != nil {
+		ok = false
+	} else {
 		for _, b := range binds {
 			if idx, ok := strings.CutPrefix(b.OID, oidEntPhysicalSerialNum+"."); ok {
 				if sn := strings.TrimSpace(snmpcore.OctetText(snmpcore.AsBytes(b.Value))); sn != "" {
@@ -905,10 +971,29 @@ func chassisSerial(client snmpClient) string {
 			}
 		}
 	}
+	all = sortedUnique(chassis)
 	if len(chassis) == 1 {
-		return chassis[0]
+		return chassis[0], all, ok
 	}
-	return "" // 0 → no usable serial; >1 → stack, use engineID
+	return "", all, ok // 0 → no usable serial; >1 → stack, use engineID
+}
+
+// sortedUnique sorts byte-wise and drops duplicates, the frozen form of
+// senhub.chassis.serial_numbers: two agents must send the same list.
+func sortedUnique(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := append([]string(nil), in...)
+	sort.Strings(out)
+	n := 1
+	for i := 1; i < len(out); i++ {
+		if out[i] != out[n-1] {
+			out[n] = out[i]
+			n++
+		}
+	}
+	return out[:n]
 }
 
 func asString(v any) string {
@@ -933,7 +1018,12 @@ func asString(v any) string {
 //
 // Returns empty when the device cannot be identified (no usable id rung).
 func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow, ifaces []ifaceRow, addrs []ipAddr, resolveNeighbor func(deviceIdentity) string) entity.Observation {
-	selfID := resolveDeviceID(self)
+	return buildObservationAs(resolveDeviceID(self), self, topo, routes, ifaces, addrs, resolveNeighbor)
+}
+
+// buildObservationAs is buildObservation with the device's own id given, so
+// the subtree an earlier id owned can be rebuilt from today's sweep.
+func buildObservationAs(selfID string, self deviceIdentity, topo lldpTopology, routes []routeRow, ifaces []ifaceRow, addrs []ipAddr, resolveNeighbor func(deviceIdentity) string) entity.Observation {
 	if selfID == "" {
 		return entity.Observation{}
 	}
@@ -1291,6 +1381,18 @@ func selfAttrs(self deviceIdentity) map[string]any {
 	add(attrHwVendor, self.HwVendor)
 	add(attrHwModel, self.HwModel)
 	add(attrHwFirmwareVer, self.HwFirmware)
+	// The raw identity parts, whichever rung the id took, so the rung a
+	// device would move to is readable from the graph.
+	add(attrHwSerial, strings.TrimSpace(self.Serial))
+	if len(self.ChassisSerials) > 0 {
+		attrs[attrChassisSerials] = append([]string(nil), self.ChassisSerials...)
+	}
+	if usableChassisMAC(self.ChassisMAC) {
+		add(attrChassisMAC, macHex(self.ChassisMAC))
+	}
+	if len(self.EngineID) > 0 {
+		add(attrEngineID, hex.EncodeToString(self.EngineID))
+	}
 	return attrs
 }
 
@@ -1408,4 +1510,94 @@ func (s *snmpEntitySource) discoveryView() (entity.Observation, bool) {
 	s.discMu.Lock()
 	defer s.discMu.Unlock()
 	return s.discObs, s.discRan
+}
+
+// IdentityCollisions returns the number of times a distinct target resolved to
+// a device id already claimed by another target with evidence of a different
+// physical device.
+func (s *snmpEntitySource) IdentityCollisions() uint64 {
+	return s.identityCollisions.Load()
+}
+
+// claimDeviceID records the resolved device id for s.cfg.Target and, on a
+// collision with a different target, increments the collision counter and logs
+// once per colliding pair. Call this immediately after resolveDeviceID(self) in
+// sweep.
+func (s *snmpEntitySource) claimDeviceID(id string, self deviceIdentity, now time.Time) {
+	if s.registry == nil || id == "" {
+		return
+	}
+	other, collided, firstWarn := s.registry.claimID(id, s.cfg.Target, self, now)
+	if !collided {
+		return
+	}
+	s.identityCollisions.Add(1)
+	if firstWarn {
+		s.moduleLogger.Warn().
+			Str("target", s.cfg.Target).
+			Str("other_target", other.target).
+			Str("device_id", id).
+			Str("sys_name", self.SysName).
+			Str("other_sys_name", other.sysName).
+			Msg("two SNMP targets resolve to the same device id")
+	}
+}
+
+// checkEngineIDMAC compares the MAC an engine id embeds with the device's
+// chassis MAC. A difference says the engine id was not derived from this
+// chassis (set by configuration, or kept across a stack master change); it
+// does not say which of two devices holds the "right" one.
+func (s *snmpEntitySource) checkEngineIDMAC(self deviceIdentity) {
+	embedded, ok := engineIDMAC(self.EngineID)
+	if !ok || !usableChassisMAC(self.ChassisMAC) {
+		s.engineMACMismatch.Store(false)
+		return
+	}
+	chassis := macHex(self.ChassisMAC)
+	emb := macHex(embedded)
+	if emb == chassis {
+		s.engineMACMismatch.Store(false)
+		return
+	}
+	s.engineMACMismatch.Store(true)
+	pair := emb + "/" + chassis
+	if prev, _ := s.engineMACWarned.Load().(string); prev == pair {
+		return
+	}
+	s.engineMACWarned.Store(pair)
+	s.moduleLogger.Warn().
+		Str("target", s.cfg.Target).
+		Str("engine_id", hex.EncodeToString(self.EngineID)).
+		Str("embedded_mac", emb).
+		Str("chassis_mac", chassis).
+		Msg("snmpEngineID does not embed the chassis MAC")
+}
+
+// EngineIDMACMismatch reports whether the last sweep found an engine id that
+// embeds a MAC other than the chassis MAC.
+func (s *snmpEntitySource) EngineIDMACMismatch() bool {
+	return s.engineMACMismatch.Load()
+}
+
+// penComware is the IANA enterprise number of H3C, under which Comware
+// writes its engine ids.
+const penComware = 25506
+
+// engineIDMAC returns the MAC an snmpEngineID embeds, when its format says
+// so: the RFC 3411 MAC format (byte 5 = 3), or the Comware enterprise
+// format 0x80 followed by six MAC bytes. Any other engine id embeds no MAC
+// this can read.
+func engineIDMAC(e []byte) ([]byte, bool) {
+	if len(e) < 11 || e[0]&0x80 == 0 {
+		return nil, false
+	}
+	pen := int(e[0]&0x7f)<<24 | int(e[1])<<16 | int(e[2])<<8 | int(e[3])
+	switch {
+	case e[4] == 3 && len(e) == 11:
+		return e[5:11], true
+	case e[4] == 0x80 && pen == penComware:
+		return e[5:11], true
+	default:
+		return nil, false
+	}
 }

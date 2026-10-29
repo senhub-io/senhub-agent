@@ -227,6 +227,16 @@ func (p *snmppollProbe) Collect() ([]data_store.DataPoint, error) {
 		data_store.DataPoint{Name: metricPollDuration, Timestamp: end, Value: end.Sub(start).Seconds(), Tags: statusTags(p.instance)},
 	)
 
+	if p.entitySource != nil {
+		points = append(points, data_store.DataPoint{Name: metricIdentityCollisions, Timestamp: end,
+			Value: float64(p.entitySource.IdentityCollisions()), Tags: statusTags(p.instance)})
+		mismatch := 0.0
+		if p.entitySource.EngineIDMACMismatch() {
+			mismatch = 1
+		}
+		points = append(points, data_store.DataPoint{Name: metricEngineIDMACMismatch, Timestamp: end,
+			Value: mismatch, Tags: statusTags(p.instance)})
+	}
 	if p.cfg.Discovery != nil {
 		points = append(points, p.discoveryDataPoints(end)...)
 	}
