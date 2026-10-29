@@ -50,7 +50,7 @@ func sameLogicalDevice(a, b deviceIdentity) bool {
 			}
 		}
 	}
-	return len(a.EngineID) > 0 && string(a.EngineID) == string(b.EngineID)
+	return false
 }
 
 // armRekey compares a successful sweep with the previous one and with the

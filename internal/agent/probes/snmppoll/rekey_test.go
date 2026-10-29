@@ -53,7 +53,9 @@ func stackClient(chassisMAC []byte) *fakeClient {
 			{OID: oidEntPhysicalSerialNum + ".1", Value: []byte("M1")},
 			{OID: oidEntPhysicalSerialNum + ".2", Value: []byte("M2")},
 		},
-		oidSysObjectIDBase:  {{OID: oidSysObjectID, Value: "1.3.6.1.4.1.25506.1.1"}},
+		oidSysObjectIDBase: {{OID: oidSysObjectID, Value: "1.3.6.1.4.1.25506.1.1"}},
+		// The 11-byte form of a Comware engine id; a real one has 15 bytes,
+		// with the suffix 00000001.
 		oidSnmpEngineIDBase: {{OID: oidSnmpEngineID, Value: []byte{0x80, 0x00, 0x63, 0xa2, 0x80, 0xdc, 0x68, 0x0c, 0x9e, 0x37, 0x2c}}},
 		oidSysNameBase:      {{OID: oidSysName, Value: []byte("core-stack")}},
 		lldpLocBase: {
@@ -172,5 +174,38 @@ func TestRekey_DifferentDeviceBehindTheTargetIsNotARekey(t *testing.T) {
 	s.Observe()
 	for _, ev := range rec.events {
 		t.Errorf("unexpected rekeyed delete of %v", ev.Entity.ID)
+	}
+}
+
+// A copied configuration: the target now answers for another switch that
+// carries the same engine id, under another name and chassis MAC. That is a
+// different device, not a re-identification.
+func TestRekey_SameEngineIDOtherDeviceIsNotARekey(t *testing.T) {
+	s, rec := newRekeyTestSource(t)
+	engine := []byte{0x80, 0x00, 0x63, 0xa2, 0x80, 0xdc, 0x68, 0x0c, 0x9e, 0x37, 0x2c}
+	mk := func(sysName string, mac []byte) *fakeClient {
+		return &fakeClient{walkRawResult: map[string][]snmpRawBind{
+			oidSnmpEngineIDBase: {{OID: oidSnmpEngineID, Value: engine}},
+			oidSysNameBase:      {{OID: oidSysName, Value: []byte(sysName)}},
+			lldpLocBase: {
+				{OID: lldpLocChassisIdSubtype, Type: gosnmp.Integer, Value: subtypeMacAddress},
+				{OID: lldpLocChassisId, Type: gosnmp.OctetString, Value: mac},
+			},
+			ifName: {{OID: ifName + ".1", Value: []byte("GE1/0/1")}},
+		}}
+	}
+	t0 := time.Now()
+	s.maybeSweep(mk("access-sw", []byte{0x70, 0x10, 0x6f, 0x0a, 0x0a, 0x0a}), t0)
+	s.Observe()
+	first := s.DeviceID()
+	rec.events = nil // the legacy engine: id of the first device is retired on its first sweep
+	s.maybeSweep(mk("core-sw", []byte{0x70, 0x10, 0x6f, 0x0b, 0x0b, 0x0b}), t0.Add(2*time.Minute))
+	for i := 0; i < entity.RekeyAnnounceCycles; i++ {
+		s.Observe()
+	}
+	for _, ev := range rec.events {
+		if ev.Entity.ID[idKeyNetworkDevice] == first {
+			t.Errorf("retired %v as rekeyed although another device answers the target", ev.Entity.ID)
+		}
 	}
 }

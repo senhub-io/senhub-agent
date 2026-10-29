@@ -131,8 +131,9 @@ same device derive byte-identical ids.
 - **`network.device.id` — single key, subtype-prefixed precedence:**
   `serial:<PEN>:<entPhysicalSerialNum>` > `mac:<LLDP lldpLocChassisId, only
   when its subtype is MAC and it is a unicast 6-byte address>` >
-  `engine:<snmpEngineID>` > `mac:<any other MAC chassis-id>` >
-  `name:<sysName>` > `mgmt:<ip>`. The chassis MAC is factory-assigned; the engine id is
+  `engine:<snmpEngineID>` > `name:<sysName>` > `mgmt:<ip>`. A chassis-id
+  that is not a usable MAC is never an id (two neighbours announcing the
+  zero MAC would merge). The chassis MAC is factory-assigned; the engine id is
   configurable and has been found copied between distinct switches, so it
   ranks after the chassis MAC and is used when LLDP is off or its chassis-id
   is not a MAC. Two identity-semantics
@@ -167,7 +168,7 @@ same device derive byte-identical ids.
   word is the agent's existing `entity.ReasonRekeyed` and is frozen: no other
   spelling. When a successful sweep of a target resolves an id different from
   the previous sweep of the same target, and the two read the same logical
-  device (same `sys.name`, a chassis serial in common, or the same engine id;
+  device (same `sys.name` or a chassis serial in common, never the engine id alone;
   a hardware replacement under the same name counts as the same device),
   every entity the previous id owned (the device, its interfaces, routes,
   neighbours, LAGs and anything else keyed on that `network.device.id`) is

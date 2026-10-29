@@ -271,7 +271,8 @@ type deviceIdentity struct {
 // factory-assigned and survives configuration copies; the engine id is
 // configurable and has been seen duplicated on distinct devices. A chassis-id
 // that is not a usable unicast MAC (all zero, broadcast, multicast, not six
-// bytes) ranks after the engine id instead. A stack with no single chassis
+// bytes) is never an id: two neighbours announcing 00:00:00:00:00:00 would
+// merge. A stack with no single chassis
 // serial uses its stack chassis MAC when LLDP exposes it, else the engine id.
 // The chosen value is canonicalized so two observers of the same device derive
 // byte-identical ids. Everything not chosen (raw chassis-id, sysName, mgmt IP,
@@ -288,10 +289,6 @@ func resolveDeviceID(id deviceIdentity) string {
 		return "mac:" + macHex(id.ChassisMAC)
 	case len(id.EngineID) > 0:
 		return "engine:" + hex.EncodeToString(id.EngineID)
-	// A chassis-id that is not a plausible unicast MAC still beats the
-	// sysName, which is all an LLDP neighbour has left after it.
-	case len(id.ChassisMAC) > 0:
-		return "mac:" + macHex(id.ChassisMAC)
 	case strings.TrimSpace(id.SysName) != "":
 		return "name:" + strings.TrimSpace(id.SysName)
 	case strings.TrimSpace(id.MgmtIP) != "":

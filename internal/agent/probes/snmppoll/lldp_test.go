@@ -53,9 +53,22 @@ func TestVendorPEN(t *testing.T) {
 
 func TestNeighborIdentity(t *testing.T) {
 	// MAC chassis subtype → usable mac id.
-	macN := lldpNeighbor{ChassisIdSubtype: subtypeMacAddress, ChassisId: []byte{0xaa, 0xbb}, SysName: "n1"}
-	if got := resolveDeviceID(neighborIdentity(macN)); got != "mac:AA-BB" {
-		t.Errorf("mac neighbor id = %q, want mac:AA-BB", got)
+	macN := lldpNeighbor{ChassisIdSubtype: subtypeMacAddress, ChassisId: []byte{0xaa, 0xbb, 0xcc, 0x00, 0x00, 0x01}, SysName: "n1"}
+	if got := resolveDeviceID(neighborIdentity(macN)); got != "mac:AA-BB-CC-00-00-01" {
+		t.Errorf("mac neighbor id = %q, want mac:AA-BB-CC-00-00-01", got)
+	}
+	// A chassis-id that is not a usable MAC is never an id: two neighbours
+	// announcing the zero MAC must not merge, they fall to their sysName.
+	for _, bad := range [][]byte{{0xaa, 0xbb}, {0, 0, 0, 0, 0, 0}, {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}} {
+		n := lldpNeighbor{ChassisIdSubtype: subtypeMacAddress, ChassisId: bad, SysName: "n1"}
+		if got := resolveDeviceID(neighborIdentity(n)); got != "name:n1" {
+			t.Errorf("neighbor with chassis-id %x: id = %q, want name:n1", bad, got)
+		}
+	}
+	z1 := lldpNeighbor{ChassisIdSubtype: subtypeMacAddress, ChassisId: []byte{0, 0, 0, 0, 0, 0}, SysName: "edge-1"}
+	z2 := lldpNeighbor{ChassisIdSubtype: subtypeMacAddress, ChassisId: []byte{0, 0, 0, 0, 0, 0}, SysName: "edge-2"}
+	if resolveDeviceID(neighborIdentity(z1)) == resolveDeviceID(neighborIdentity(z2)) {
+		t.Errorf("two neighbours announcing the zero MAC merged into %q", resolveDeviceID(neighborIdentity(z1)))
 	}
 	// Non-MAC chassis subtype → fall back to advertised sysName.
 	localN := lldpNeighbor{ChassisIdSubtype: 7, ChassisId: []byte("edge-b"), SysName: "n2"}
