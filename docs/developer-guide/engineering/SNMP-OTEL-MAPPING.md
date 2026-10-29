@@ -186,7 +186,10 @@ same device derive byte-identical ids.
   back-off, and the agent logs "topology sweep read an incomplete identity;
   keeping previous snapshot". A first sweep publishes whatever it resolves
   (a device whose ENTITY-MIB an ACL refuses still appears), and a walk that
-  answers with no row (no ENTITY-MIB) is a complete read. Once that first
+  answers with no row (no ENTITY-MIB) is a complete read, except for a
+  device that had chassis serials: the SNMP library reports an error-status
+  (genErr, noAccess) as an empty table, and chassis serials do not vanish
+  from a running device, so their sudden absence is an incomplete read. Once that first
   device reads in full, the id its first sweep published is retired as
   `rekeyed` (same rules as above). A target held this way for three
   topology intervals goes silent like any failing target, so a permanent

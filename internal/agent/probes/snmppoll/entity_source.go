@@ -659,7 +659,15 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	// ACL refuses would never appear.
 	s.mu.Lock()
 	established := s.deviceID
+	hadChassisSerials := len(s.cache.self.ChassisSerials) > 0
 	s.mu.Unlock()
+	// A device that answered an error-status on ENTITY-MIB reads, through
+	// the SNMP library, as an empty table rather than a failed walk. Chassis
+	// serials do not vanish from a running device: their sudden absence is
+	// an incomplete read, not a new identity.
+	if hadChassisSerials && len(self.ChassisSerials) == 0 {
+		self.identityComplete = false
+	}
 	if !self.identityComplete && established != "" && deviceID != established {
 		return sweepResult{self: self, deviceID: deviceID, identityHeld: true}, false
 	}

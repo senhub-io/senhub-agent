@@ -369,3 +369,37 @@ func TestRekey_FirstIncompleteIDRetiredWhenTheIdentityReadsInFull(t *testing.T) 
 		t.Errorf("the %s id published by the first sweep was not retired as rekeyed", first)
 	}
 }
+
+// An error-status on ENTITY-MIB (genErr) reaches the probe as an empty
+// table, not a failed walk. A device that had chassis serials and suddenly
+// has none keeps its established id, and nothing is retired as rekeyed.
+func TestRekey_VanishedChassisSerialsKeepTheEstablishedID(t *testing.T) {
+	s, rec := newRekeyTestSource(t)
+	full := singleChassisClient()
+	genErr := singleChassisClient()
+	delete(genErr.walkRawResult, oidEntPhysicalClass)
+	delete(genErr.walkRawResult, oidEntPhysicalSerialNum)
+	t0 := time.Now()
+
+	s.maybeSweep(full, t0)
+	s.Observe()
+	const want = "serial:25506:CN14HD90F4"
+	if s.DeviceID() != want {
+		t.Fatalf("first id = %q", s.DeviceID())
+	}
+	s.maybeSweep(genErr, t0.Add(2*time.Minute))
+	obs, _ := s.Observe()
+	if s.DeviceID() != want {
+		t.Fatalf("id while ENTITY-MIB reads empty = %q, want %q kept", s.DeviceID(), want)
+	}
+	if got := devicesIn(obs); len(got) != 1 || got[0] != want {
+		t.Fatalf("devices published = %v, want only %s", got, want)
+	}
+	s.maybeSweep(full, t0.Add(10*time.Minute))
+	for i := 0; i < entity.RekeyAnnounceCycles; i++ {
+		s.Observe()
+	}
+	for _, ev := range rec.events {
+		t.Errorf("retired %v as rekeyed across an ENTITY-MIB error", ev.Entity.ID)
+	}
+}
