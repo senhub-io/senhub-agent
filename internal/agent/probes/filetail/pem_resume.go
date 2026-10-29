@@ -1,6 +1,7 @@
 package filetail
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -37,7 +38,7 @@ func pemBlockOpenBefore(path string, offset int64) (bool, error) {
 
 	buf := make([]byte, int(offset-start))
 	n, err := f.ReadAt(buf, start)
-	if err != nil && err != io.EOF {
+	if err != nil && !errors.Is(err, io.EOF) {
 		return false, fmt.Errorf("filetail: reading %s before offset %d: %w", path, offset, err)
 	}
 	window := buf[:n]
