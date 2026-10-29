@@ -39,6 +39,9 @@ const (
 	// routes are always kept; the rest are sorted deterministically and cut.
 	defaultMaxRoutes = 500
 
+	// Neighbor table bound: a core switch can learn thousands of MACs.
+	defaultMaxNeighbors = 1000
+
 	// metricUp is 1 when the last poll reached the device, 0 otherwise.
 	metricUp = "senhub.snmp.up"
 	// metricIdentityCollisions counts sweeps whose device id another target
@@ -92,6 +95,10 @@ type config struct {
 	TopologyInterval time.Duration
 	// MaxRoutes bounds the number of network.route entities emitted per device.
 	MaxRoutes int
+	// Neighbors publishes every MAC a device learned as a network.neighbor.
+	Neighbors bool
+	// MaxNeighbors bounds the number of network.neighbor entities emitted per device.
+	MaxNeighbors int
 
 	// Interfaces narrows the per-interface metric series (nil: every
 	// interface). Topology entities are never narrowed.
@@ -151,12 +158,13 @@ func parseConfig(raw map[string]interface{}) (*config, error) {
 	var errs []string
 
 	cfg := &config{
-		Port:      defaultPort,
-		Community: defaultCommunity,
-		Timeout:   defaultTimeout,
-		Retries:   defaultRetries,
-		Interval:  defaultInterval,
-		MaxRoutes: defaultMaxRoutes,
+		Port:         defaultPort,
+		Community:    defaultCommunity,
+		Timeout:      defaultTimeout,
+		Retries:      defaultRetries,
+		Interval:     defaultInterval,
+		MaxRoutes:    defaultMaxRoutes,
+		MaxNeighbors: defaultMaxNeighbors,
 	}
 
 	if target, _ := raw["target"].(string); strings.TrimSpace(target) != "" {
@@ -206,6 +214,17 @@ func parseConfig(raw map[string]interface{}) (*config, error) {
 			errs = append(errs, "max_routes must be at least 1")
 		} else {
 			cfg.MaxRoutes = v
+		}
+	}
+
+	if v, ok := types.BoolParam(raw, "neighbors"); ok {
+		cfg.Neighbors = v
+	}
+	if v, ok := types.IntParam(raw, "max_neighbors"); ok {
+		if v < 1 {
+			errs = append(errs, "max_neighbors must be at least 1")
+		} else {
+			cfg.MaxNeighbors = v
 		}
 	}
 

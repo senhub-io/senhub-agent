@@ -3,6 +3,7 @@ package snmppoll
 import (
 	"encoding/hex"
 	"fmt"
+	"net/netip"
 	"sort"
 	"strconv"
 	"strings"
@@ -50,23 +51,26 @@ const (
 	// oper_state is a Toise state-key (closed set, underscore spelling): a change
 	// fires entity.state_changed. The old dotted "oper.state" was silently
 	// demoted to an ordinary attribute — see Toise #87 / the SNMP lot fix.
-	attrOperState   = "oper_state"
-	attrSpeed       = "speed"
-	attrMac         = "mac"
-	attrMtu         = "mtu"
-	attrIfType      = "interface.type"
-	attrDuplex      = "duplex"
-	relConnectedTo  = "connected_to"
-	relHasRoute     = "has_route"
-	relHasInterface = "has_interface"
-	relBoundTo      = "bound_to"
-	relNextHopVia   = "next_hop_via"
-	relMonitors     = "monitors"
-	relRunsOn       = "runs_on"
-	relNeighborOf   = "neighbor_of"
-	relResolvesTo   = "resolves_to"
-	attrBasis       = "basis"
-	attrConfidence  = "confidence"
+	attrOperState         = "oper_state"
+	attrSpeed             = "speed"
+	attrMac               = "mac"
+	attrMtu               = "mtu"
+	attrIfType            = "interface.type"
+	attrDuplex            = "duplex"
+	relConnectedTo        = "connected_to"
+	relHasRoute           = "has_route"
+	relHasInterface       = "has_interface"
+	relBoundTo            = "bound_to"
+	relNextHopVia         = "next_hop_via"
+	relMonitors           = "monitors"
+	relRunsOn             = "runs_on"
+	relNeighborOf         = "neighbor_of"
+	relResolvesTo         = "resolves_to"
+	attrBasis             = "basis"
+	attrConfidence        = "confidence"
+	attrNeighborAddresses = "network.neighbor.addresses"
+	attrNeighborsOmitted  = "senhub.neighbors.omitted"
+	attrNeighborsLimit    = "senhub.neighbors.limit"
 
 	resolveConfidenceARPNDP = 0.9
 	resolveConfidenceFDB    = 0.7
@@ -155,6 +159,14 @@ type snmpEntitySource struct {
 	// capWarned is the matched/kept pair of the last max_interfaces warning,
 	// empty when the last sweep was not capped.
 	capWarned string
+	// neighborCapWarned is, per device, the number of neighbours the
+	// max_neighbors bound cut at the last announcement.
+	neighborCapWarned map[string]int
+	// discL2 holds, per discovered device, the last FDB and ARP rows read
+	// successfully, reused when a walk fails. Discovery workers run
+	// concurrently, hence discL2Mu.
+	discL2Mu sync.Mutex
+	discL2   map[string]l2Rows
 	// deviceID + ifNames are the resolved identity of the polled device and its
 	// ifIndex→ifName map, cached from the last sweep so the METRIC collector can
 	// tag SNMP metrics with network.device.id / network.interface.name — the same
@@ -712,18 +724,26 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 
 	var fdbs []fdbEntry
 	var arps []arpEntry
-	if idx := s.macIndex; idx != nil && idx.Enabled() {
+	if s.l2Wanted() {
+		// A failed walk keeps the previous sweep's rows: a large FDB lost over
+		// UDP is not a table that forgot every MAC, and dropping the rows
+		// would retire and recreate every neighbour of the device.
+		s.mu.Lock()
+		prevFDB, prevARP := s.cache.fdb, s.cache.arp
+		s.mu.Unlock()
 		fdbs, err = collectFDB(client)
 		if err != nil {
 			s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
-				Msg("bridge FDB walk failed; emitting device without neighbor resolution")
-			fdbs = nil
+				Int("kept_rows", len(prevFDB)).
+				Msg("bridge FDB walk failed; keeping the previous rows")
+			fdbs = prevFDB
 		}
 		arps, err = collectARP(client)
 		if err != nil {
 			s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
-				Msg("ARP walk failed; emitting device without neighbor resolution")
-			arps = nil
+				Int("kept_rows", len(prevARP)).
+				Msg("ARP walk failed; keeping the previous rows")
+			arps = prevARP
 		}
 	}
 
@@ -736,7 +756,7 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 		s.registry.recordPolled(self, deviceID, now)
 		s.registry.recordPortStates(deviceID, ifaces, s.interval, now)
 	}
-	if idx := s.macIndex; idx != nil && idx.Enabled() && deviceID != "" {
+	if s.l2Wanted() && deviceID != "" {
 		s.registerInterfaceMacs(deviceID, ifaces)
 	}
 	lag := collectLagData(client, ifaces, s.moduleLogger)
@@ -1252,7 +1272,320 @@ func interfaceMACOwners(ifaces []ifaceRow) map[string]string {
 	return out
 }
 
+// appendResolvesNeighbors adds the device's link-layer neighbours: every
+// learned MAC when the neighbours parameter is on, otherwise only this host's
+// own NICs, and only when resolves_to is enabled.
 func (s *snmpEntitySource) appendResolvesNeighbors(obs entity.Observation, res sweepResult) entity.Observation {
+	if res.deviceID == "" {
+		return obs
+	}
+	if !s.cfg.Neighbors {
+		return s.appendHostNICNeighbors(obs, res)
+	}
+
+	ownMACs := make(map[string]bool)
+	for _, ifc := range res.ifaces {
+		if canon, ok := entity.CanonicalMACString(ifc.Mac); ok {
+			ownMACs[canon] = true
+		}
+	}
+
+	type rowGroup struct {
+		ports     map[string]bool
+		addresses map[string]bool
+		bases     map[string]bool
+	}
+	groups := map[string]*rowGroup{}
+
+	addRow := func(mac string, ifIndex int, basis, ip string) {
+		canon, ok := entity.CanonicalMACString(mac)
+		if !ok || ownMACs[canon] {
+			return
+		}
+		port := res.ifNames[strconv.Itoa(ifIndex)]
+		if port == "" {
+			return
+		}
+		if basis == "arp" {
+			addr, err := netip.ParseAddr(ip)
+			if err != nil || addr.IsLinkLocalUnicast() {
+				return
+			}
+		}
+		g := groups[canon]
+		if g == nil {
+			g = &rowGroup{
+				ports:     map[string]bool{},
+				addresses: map[string]bool{},
+				bases:     map[string]bool{},
+			}
+			groups[canon] = g
+		}
+		g.ports[port] = true
+		if basis == "arp" {
+			g.addresses[ip] = true
+		}
+		g.bases[basis] = true
+	}
+
+	for _, e := range res.fdb {
+		addRow(e.MAC, e.IfIndex, "fdb", "")
+	}
+	for _, e := range res.arp {
+		addRow(e.MAC, e.IfIndex, "arp", e.IP)
+	}
+	if len(groups) == 0 {
+		applyNeighborCounters(&obs, res.deviceID, 0, s.maxNeighbors())
+		return obs
+	}
+
+	resolutions := map[string]map[string]any{}
+	skipMAC := map[string]bool{}
+
+	hostMACs, err := s.hostInterfaceMACs()
+	if err != nil {
+		s.moduleLogger.Debug().
+			Err(err).
+			Str("target", s.cfg.Target).
+			Msg("host interface MAC scan failed; neighbors emitted without host resolution")
+		hostMACs = map[string]string{}
+	}
+	hostID := s.hostID()
+	for mac := range groups {
+		if hostID != "" && hostMACs[mac] != "" {
+			resolutions[mac] = map[string]any{
+				idKeyHost:          hostID,
+				idKeyInterfaceName: hostMACs[mac],
+			}
+			continue
+		}
+		if e, ok := s.macIndex.Lookup(mac); ok && e.DeviceID != "" && e.Name != "" {
+			if e.DeviceID == res.deviceID {
+				skipMAC[mac] = true
+				continue
+			}
+			resolutions[mac] = map[string]any{
+				idKeyNetworkDevice: e.DeviceID,
+				idKeyInterfaceName: e.Name,
+			}
+		}
+	}
+
+	type candidate struct {
+		mac          string
+		hasResolves  bool
+		hasAddresses bool
+	}
+	candidates := make([]candidate, 0, len(groups))
+	for mac, g := range groups {
+		if skipMAC[mac] {
+			continue
+		}
+		candidates = append(candidates, candidate{
+			mac:          mac,
+			hasResolves:  resolutions[mac] != nil,
+			hasAddresses: len(g.addresses) > 0,
+		})
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].hasResolves != candidates[j].hasResolves {
+			return candidates[i].hasResolves
+		}
+		if candidates[i].hasAddresses != candidates[j].hasAddresses {
+			return candidates[i].hasAddresses
+		}
+		return candidates[i].mac < candidates[j].mac
+	})
+
+	n := s.maxNeighbors()
+	omitted := len(candidates) - n
+	if omitted < 0 {
+		omitted = 0
+	}
+	if s.neighborCapChanged(res.deviceID, omitted) {
+		s.moduleLogger.Info().
+			Str("target", s.cfg.Target).
+			Str("device", res.deviceID).
+			Int("kept", n).
+			Int("omitted", omitted).
+			Int("max_neighbors", n).
+			Msg("neighbor table bound: some neighbors omitted")
+	}
+	if omitted > 0 {
+		candidates = candidates[:n]
+	}
+	applyNeighborCounters(&obs, res.deviceID, omitted, n)
+
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].mac < candidates[j].mac })
+
+	for _, cand := range candidates {
+		mac := cand.mac
+		g := groups[mac]
+		id := map[string]any{idKeyNetworkDevice: res.deviceID, idKeyNeighborMAC: mac}
+		attrs := map[string]any{}
+
+		if len(g.addresses) > 0 {
+			attrs[attrNeighborAddresses] = sortedStrings(g.addresses)
+		}
+
+		ports := sortedStrings(g.ports)
+		scope := entity.ScopeSNMPARP
+		if g.bases["fdb"] {
+			scope = entity.ScopeSNMPFDB
+		}
+
+		obs.Entities = append(obs.Entities, entity.Entity{
+			Type:       entityTypeNetworkNeighbor,
+			ID:         id,
+			Scope:      scope,
+			Attributes: attrs,
+		})
+
+		for _, port := range ports {
+			obs.Relations = append(obs.Relations, entity.Relation{
+				Type:     relNeighborOf,
+				FromType: entityTypeNetworkNeighbor,
+				FromID:   id,
+				ToType:   entityTypeNetworkInterface,
+				ToID:     interfacePortKey(res.deviceID, port),
+			})
+		}
+
+		if target := resolutions[mac]; target != nil {
+			for _, basis := range []string{"fdb", "arp"} {
+				if !g.bases[basis] {
+					continue
+				}
+				conf := resolveConfidenceARPNDP
+				if basis == "fdb" {
+					conf = resolveConfidenceFDB
+				}
+				obs.Relations = append(obs.Relations, entity.Relation{
+					Type:     relResolvesTo,
+					FromType: entityTypeNetworkNeighbor,
+					FromID:   id,
+					ToType:   entityTypeNetworkInterface,
+					ToID:     target,
+					Attributes: map[string]any{
+						attrBasis:      basis,
+						attrConfidence: conf,
+					},
+				})
+			}
+		}
+	}
+	return obs
+}
+
+type l2Rows struct {
+	fdb []fdbEntry
+	arp []arpEntry
+}
+
+// discoveredL2Rows reads a discovered device's FDB and ARP tables, keeping
+// the last successful read of a table whose walk fails, as the sweep of the
+// polled target does.
+func (s *snmpEntitySource) discoveredL2Rows(deviceID string, client snmpClient) ([]fdbEntry, []arpEntry) {
+	s.discL2Mu.Lock()
+	prev := s.discL2[deviceID]
+	s.discL2Mu.Unlock()
+	next := prev
+	if fdbs, err := collectFDB(client); err == nil {
+		next.fdb = fdbs
+	} else {
+		s.moduleLogger.Debug().Err(err).Str("device", deviceID).Int("kept_rows", len(prev.fdb)).
+			Msg("bridge FDB walk failed; keeping the previous rows")
+	}
+	if arps, err := collectARP(client); err == nil {
+		next.arp = arps
+	} else {
+		s.moduleLogger.Debug().Err(err).Str("device", deviceID).Int("kept_rows", len(prev.arp)).
+			Msg("ARP walk failed; keeping the previous rows")
+	}
+	s.discL2Mu.Lock()
+	if s.discL2 == nil {
+		s.discL2 = map[string]l2Rows{}
+	}
+	s.discL2[deviceID] = next
+	s.discL2Mu.Unlock()
+	return next.fdb, next.arp
+}
+
+// forgetDiscoveredL2 drops what is kept for a discovered device that left:
+// its rows and its announced neighbour cut.
+func (s *snmpEntitySource) forgetDiscoveredL2(deviceID string) {
+	s.discL2Mu.Lock()
+	delete(s.discL2, deviceID)
+	s.discL2Mu.Unlock()
+	s.mu.Lock()
+	delete(s.neighborCapWarned, deviceID)
+	s.mu.Unlock()
+}
+
+// neighborCapChanged records how many neighbours of a device the bound cut
+// and reports whether a log line is due: the observation is rebuilt at every
+// report, so the cut is announced once, and again only when it moves.
+func (s *snmpEntitySource) neighborCapChanged(deviceID string, omitted int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	prev, seen := s.neighborCapWarned[deviceID]
+	if omitted == 0 {
+		delete(s.neighborCapWarned, deviceID)
+		return false
+	}
+	if seen && prev == omitted {
+		return false
+	}
+	if s.neighborCapWarned == nil {
+		s.neighborCapWarned = map[string]int{}
+	}
+	s.neighborCapWarned[deviceID] = omitted
+	return true
+}
+
+// applyNeighborCounters publishes the max_neighbors cut on the device, so a
+// table cut by the bound is never read as a complete one.
+func applyNeighborCounters(obs *entity.Observation, deviceID string, omitted, limit int) {
+	for i := range obs.Entities {
+		if obs.Entities[i].Type == entityTypeNetworkDevice && obs.Entities[i].ID[idKeyNetworkDevice] == deviceID {
+			if obs.Entities[i].Attributes == nil {
+				obs.Entities[i].Attributes = map[string]any{}
+			}
+			obs.Entities[i].Attributes[attrNeighborsOmitted] = int64(omitted)
+			obs.Entities[i].Attributes[attrNeighborsLimit] = int64(limit)
+			return
+		}
+	}
+}
+
+// l2Wanted reports whether the FDB and ARP tables are read: for the
+// learned-neighbour inventory, or for the host-NIC resolution.
+func (s *snmpEntitySource) l2Wanted() bool {
+	return s.cfg.Neighbors || (s.macIndex != nil && s.macIndex.Enabled())
+}
+
+func (s *snmpEntitySource) maxNeighbors() int {
+	if s.cfg.MaxNeighbors <= 0 {
+		return defaultMaxNeighbors
+	}
+	return s.cfg.MaxNeighbors
+}
+
+func sortedStrings(set map[string]bool) []string {
+	out := make([]string, 0, len(set))
+	for s := range set {
+		if s != "" {
+			out = append(out, s)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// appendHostNICNeighbors keeps, of the device's FDB and ARP rows, only the
+// MACs of this agent host's own NICs: the port the host is plugged into.
+// It is what runs when the learned-neighbour inventory is off.
+func (s *snmpEntitySource) appendHostNICNeighbors(obs entity.Observation, res sweepResult) entity.Observation {
 	if s.macIndex == nil || !s.macIndex.Enabled() || res.deviceID == "" {
 		return obs
 	}
