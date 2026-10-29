@@ -659,3 +659,23 @@ func mustReadOnlyBatch(t *testing.T, q *logsQueue) logBatch {
 	}
 	return b
 }
+
+func TestIsSizeRefusal_CollectorBadRequestBodyTooLarge(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"413", fmt.Errorf("failed to send logs to http://c:4318/v1/logs: 413 Request Entity Too Large (body: )"), true},
+		{"collector 400 body too large", fmt.Errorf("failed to send logs to http://c:4318/v1/logs: 400 Bad Request (body: http: request body too large)"), true},
+		{"other 400", fmt.Errorf("failed to send logs to http://c:4318/v1/logs: 400 Bad Request (body: unknown field)"), false},
+		{"response body too large is not a refusal", fmt.Errorf("response body too large: exceeded 4096 bytes"), false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := isSizeRefusal(c.err); got != c.want {
+				t.Errorf("isSizeRefusal(%q) = %v, want %v", c.err, got, c.want)
+			}
+		})
+	}
+}

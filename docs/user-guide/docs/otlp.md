@@ -657,7 +657,9 @@ so gzip does not help with this limit. Parts are cut between records; an
 entity event always keeps its complete relationships.
 
 When the collector still refuses a part for its size (gRPC
-`RESOURCE_EXHAUSTED` without a retry hint, or HTTP 413), the agent halves
+`RESOURCE_EXHAUSTED` without a retry hint, HTTP 413, or the HTTP 400
+"request body too large" the OpenTelemetry Collector answers over its
+`max_request_body_size`), the agent halves
 the part and sends each half, down to a single record, then sends the
 following batches under a lower limit: half of the refused size, never
 below 64 KiB. It logs this once:

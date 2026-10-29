@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"sync/atomic"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -134,7 +135,13 @@ func isSizeRefusal(err error) bool {
 		return st.Code() == codes.ResourceExhausted && !hasRetryInfo(st)
 	}
 	code, ok := httpStatusFromError(err)
-	return ok && code == http.StatusRequestEntityTooLarge
+	if !ok {
+		return false
+	}
+	// The OpenTelemetry Collector answers a body over its
+	// max_request_body_size with 400, its message saying so, not 413.
+	return code == http.StatusRequestEntityTooLarge ||
+		(code == http.StatusBadRequest && strings.Contains(err.Error(), "request body too large"))
 }
 
 // splitRun is the outcome of one Export across its parts.
