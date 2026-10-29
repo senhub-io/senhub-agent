@@ -1,9 +1,14 @@
 package app
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"senhub-agent.go/internal/agent/services/configuration/secret"
+	"senhub-agent.go/internal/cliexit"
 )
 
 // secretHasFlag decides whether `secret rm` skips its confirmation
@@ -89,5 +94,58 @@ func TestReadSecretValue_FromFile(t *testing.T) {
 func TestReadSecretValue_FromFileMissingPath(t *testing.T) {
 	if _, err := readSecretValue([]string{"set", "db.password", "--from-file"}); err == nil {
 		t.Error("--from-file with no path should error")
+	}
+}
+
+type fakeSecretProvider struct {
+	secret.Provider
+	deleted []string
+}
+
+func (f *fakeSecretProvider) Delete(name string) error {
+	f.deleted = append(f.deleted, name)
+	return nil
+}
+
+func TestRunSecretRm(t *testing.T) {
+	cases := []struct {
+		name        string
+		yes         bool
+		input       string
+		interactive bool
+		wantCode    int
+		wantDeleted bool
+		wantErr     string
+	}{
+		{"yes removes without reading", true, "", false, cliexit.OK, true, ""},
+		{"piped y removes", false, "y\n", false, cliexit.OK, true, ""},
+		{"piped Y without newline removes", false, "Y", false, cliexit.OK, true, ""},
+		{"piped n cancels non-zero", false, "n\n", false, cliexit.Failure, false, "Cancelled"},
+		{"piped garbage cancels non-zero", false, "maybe\n", false, cliexit.Failure, false, "Cancelled"},
+		{"empty stdin fails with the --yes hint", false, "", false, cliexit.Failure, false, "pass --yes (or -y)"},
+		{"terminal y removes", false, "y\n", true, cliexit.OK, true, ""},
+		{"terminal empty answer cancels", false, "\n", true, cliexit.Failure, false, "Cancelled"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &fakeSecretProvider{}
+			var out, errOut bytes.Buffer
+			code := runSecretRm(p, "tok", tc.yes, strings.NewReader(tc.input), tc.interactive, &out, &errOut)
+			if code != tc.wantCode {
+				t.Errorf("exit code = %d, want %d", code, tc.wantCode)
+			}
+			if got := len(p.deleted) == 1; got != tc.wantDeleted {
+				t.Errorf("deleted = %v, want %v", p.deleted, tc.wantDeleted)
+			}
+			if !strings.Contains(errOut.String(), tc.wantErr) {
+				t.Errorf("stderr = %q, want it to contain %q", errOut.String(), tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestSecretHasShortYesFlag(t *testing.T) {
+	if !secretHasFlag([]string{"rm", "-y", "grafana"}, "-y") {
+		t.Error("-y not detected")
 	}
 }

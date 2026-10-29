@@ -70,7 +70,7 @@ The store files are owned by the account the agent runs as and readable only by 
 | `secret set <name>` | Store or replace a secret. The value comes from a hidden prompt (interactive), a line of stdin (piped), or `--from-file <path>`. |
 | `secret get <name>` | Print a secret value to stdout — a deliberate reveal. Warns when the output is not a terminal. |
 | `secret list` | List secret NAMES only (never values). |
-| `secret rm <name>` | Delete a secret. |
+| `secret rm <name>` | Delete a secret. Prompts `[y/N]`; `--yes` (or `-y`) skips the prompt, for scripts and scheduled tasks. A piped `y` is accepted too. If the answer is not `y`, or stdin is empty and `--yes` is absent, the secret is kept, a message goes to stderr and the exit code is non-zero. |
 | `secret migrate` | Move inline plaintext secrets out of the config into the store and rewrite them as `${secret:}` references (see [Sealing inline secrets](#sealing-inline-secrets-into-the-store)). With `--wire-unit`, then wire the systemd-creds drop-in. |
 | `secret status` | Show the active backend and store location and the number of stored secrets. |
 | `secret wire-unit` | (Linux/systemd-creds) Regenerate the unit credential drop-in from `creds.d/`, or remove it when the store is empty. |
