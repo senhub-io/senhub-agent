@@ -789,7 +789,7 @@ Configuration is valid.
 
 ## Multi-File Configuration Layout
 
-The multi-file layout is what `install`, `config init` and the Windows MSI generate. An existing monolithic `agent-config.yaml` continues to work unchanged, and `senhub-agent config migrate` converts it.
+The multi-file layout is what `install`, `config init` and the Windows MSI generate. An existing monolithic `agent-config.yaml` is converted by the agent itself at its next start (see [Backward compatibility](#backward-compatibility)); `senhub-agent config migrate` does the same conversion on demand.
 
 ### Per-OS default paths
 
@@ -860,11 +860,17 @@ http:
 
 ### Backward compatibility
 
-If `agent.yaml` (or `agent-config.yaml`) contains a top-level `probes:` or `storage:` block, the agent uses the **legacy monolithic** path and **ignores** `probes.d/` and `strategies.d/`. A WARN log surfaces the situation so you can migrate at your own pace:
+At each start, a main file that contains a top-level `probes:` or `storage:` block is split into the multi-file layout before it is loaded, by the same engine as `senhub-agent config migrate`. The globals stay in the main file, each strategy goes to its own `strategies.d/` file, and each probe to its own `probes.d/NN-<name>.yaml`, numbered from 10 in the original order (from 0.6.5; 0.6.2 to 0.6.4 put every probe in `probes.d/00-host.yaml`). Fragments the installer laid down and that were never edited (an empty file, or the default `probes.d/00-host.yaml`, `probes.d/05-services.yaml`, `probes.d/06-swarm.yaml` or `strategies.d/00-http.yaml`) are set aside with the suffix `.install-default` rather than blocking the split (from 0.6.4; earlier versions refused to split beside them). A fragment you wrote yourself still blocks it, since the split would start what the monolithic file had been ignoring. The agent checks that the split layout resolves to the same configuration as the original file, and restores the original otherwise. Inline secrets are then sealed into the secret store, as at any start. The log says which happened:
+
+> Harmonised monolithic config to multi-file layout
+
+> Monolithic config not split; continuing with the current layout
+
+When the split does not happen, for instance when the file is newer than the agent understands or the check above fails, the agent uses the **legacy monolithic** path and **ignores** `probes.d/` and `strategies.d/`:
 
 > Legacy monolithic config detected (top-level probes:/storage: present) — *.d/ directories are IGNORED. Migrate by trimming probes and storage out of the top file.
 
-To migrate: remove the inline `probes:` and `storage:` blocks from `agent.yaml`, redistribute their entries across `probes.d/` and `strategies.d/`, restart the agent.
+A tool that writes the monolithic file (Ansible, a deployment script) sees it rewritten at the next start. Point the tool at the multi-file layout, or run `senhub-agent config migrate` once and manage the fragments from then on.
 
 ## Environment and File Substitution
 
