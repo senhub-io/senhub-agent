@@ -573,7 +573,7 @@ func (p *FileTailProbe) startTail(file string) error {
 		p.warn().Err(err).Str("file", file).Msg("failed to start tail")
 		return fmt.Errorf("failed to start tail: %w", err)
 	}
-	ts := &tailState{t: t, opened: opened, handle: handle, headFP: fp}
+	ts := &tailState{t: t, opened: opened, handle: handle, headFP: fp, done: make(chan struct{})}
 	ts.offset.Store(offset)
 	p.tailing[file] = ts
 	p.wg.Add(1)
@@ -660,6 +660,9 @@ type tailState struct {
 	// headFP is the fingerprint of the first bytes of the file as read, or
 	// "" while the file is shorter than the fingerprint window.
 	headFP string
+
+	// done is closed when the consume goroutine for this tail has returned.
+	done chan struct{}
 }
 
 func (ts *tailState) setHead(fp string) {
@@ -859,6 +862,11 @@ func (p *FileTailProbe) restartStalledTails() {
 	}
 }
 
+// consumeExitTimeout bounds how long a restart waits for the replaced
+// tail's reader to hand over its last lines. A read blocked on a hung
+// mount never returns; the restart then goes ahead and may replay them.
+var consumeExitTimeout = 5 * time.Second
+
 func (p *FileTailProbe) restartStalledTail(file string, ts *tailState, reason string, resume bool) {
 	// A rotation can land between the look that asked for a resume and
 	// here; the offset belongs to the file that was read, not to the one
@@ -881,6 +889,18 @@ func (p *FileTailProbe) restartStalledTail(file string, ts *tailState, reason st
 		Msg("tail does not follow its file; restarting it")
 
 	ts.t.Kill(nil)
+	// The library can still hand over lines it had read when it was killed,
+	// and the replaced reader publishes them: the offset is taken once that
+	// reader has returned, or the new tail starts before them and sends
+	// them again.
+	timer := time.NewTimer(consumeExitTimeout)
+	select {
+	case <-ts.done:
+		timer.Stop()
+	case <-timer.C:
+		p.warn().Str("file", file).Dur("waited", consumeExitTimeout).
+			Msg("the replaced tail did not stop in time; lines it still hands over may be read twice")
+	}
 	entry := bookmarkEntry{}
 	if resume {
 		entry = bookmarkEntry{Offset: ts.offset.Load(), Fingerprint: fingerprint(file, DefaultFingerprintLength)}
@@ -943,6 +963,7 @@ func (r *reopenSignal) send(ev reopenEvent) {
 func (p *FileTailProbe) consume(file string, ts *tailState, startOffset int64, fp string, reopened <-chan reopenEvent) {
 	t := ts.t
 	defer p.wg.Done()
+	defer close(ts.done)
 	var retired []*retiredFile
 	defer func() {
 		closeQuietly(ts.handle)
@@ -958,6 +979,10 @@ func (p *FileTailProbe) consume(file string, ts *tailState, startOffset int64, f
 	lastOffset := startOffset
 
 	persist := func() {
+		// Once superseded, the tail that replaced this one owns the bookmark.
+		if ts.superseded.Load() {
+			return
+		}
 		// A file below the fingerprint window has none yet. Once the offset
 		// shows the window was read, take it, provided the path still holds
 		// at least that many bytes.
