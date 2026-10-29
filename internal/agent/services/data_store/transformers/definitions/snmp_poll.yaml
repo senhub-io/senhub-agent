@@ -114,6 +114,19 @@ metrics:
       instance: snmp.target
       reason: reason
 
+  - name: "snmp_poll_identity_collisions"
+    channel: "snmp_identity_collisions"
+    display_name: "SNMP {instance} Identity Collisions"
+    unit: "#"
+    category: "status"
+    description: "Sweeps since the agent started in which this target resolved to a device id another target of the same agent holds for a different device (other sysName or chassis MAC)"
+    otel:
+      name: senhub.snmp.identity.collisions
+      unit: "{sweep}"
+      type: counter
+    tag_to_attribute:
+      instance: snmp.target
+
   - name: "snmp_poll_discovery_seeds"
     channel: "snmp_discovery_seeds_{source}"
     display_name: "SNMP {instance} Discovery Seeds {source}"

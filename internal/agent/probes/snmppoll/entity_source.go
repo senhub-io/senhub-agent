@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
@@ -188,6 +189,10 @@ type snmpEntitySource struct {
 	// macIndex is the shared interface-MAC index used for resolves_to and
 	// device-side network.neighbor emission. Defaults to the process-wide index.
 	macIndex *macindex.Index
+
+	// identityCollisions counts sweeps whose device id another target of
+	// this agent already holds for a visibly different device.
+	identityCollisions atomic.Uint64
 }
 
 func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
@@ -615,6 +620,7 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	self := readSelfIdentity(client, s.cfg.Target, topo.Local)
 
 	deviceID := resolveDeviceID(self)
+	s.claimDeviceID(deviceID, self, now)
 	var ifNames map[string]string
 	if len(ifaces) > 0 {
 		ifNames = make(map[string]string, len(ifaces))
@@ -1408,4 +1414,35 @@ func (s *snmpEntitySource) discoveryView() (entity.Observation, bool) {
 	s.discMu.Lock()
 	defer s.discMu.Unlock()
 	return s.discObs, s.discRan
+}
+
+// IdentityCollisions returns the number of times a distinct target resolved to
+// a device id already claimed by another target with evidence of a different
+// physical device.
+func (s *snmpEntitySource) IdentityCollisions() uint64 {
+	return s.identityCollisions.Load()
+}
+
+// claimDeviceID records the resolved device id for s.cfg.Target and, on a
+// collision with a different target, increments the collision counter and logs
+// once per colliding pair. Call this immediately after resolveDeviceID(self) in
+// sweep.
+func (s *snmpEntitySource) claimDeviceID(id string, self deviceIdentity, now time.Time) {
+	if s.registry == nil || id == "" {
+		return
+	}
+	other, collided, firstWarn := s.registry.claimID(id, s.cfg.Target, self, now)
+	if !collided {
+		return
+	}
+	s.identityCollisions.Add(1)
+	if firstWarn {
+		s.moduleLogger.Warn().
+			Str("target", s.cfg.Target).
+			Str("other_target", other.target).
+			Str("device_id", id).
+			Str("sys_name", self.SysName).
+			Str("other_sys_name", other.sysName).
+			Msg("two SNMP targets resolve to the same device id")
+	}
 }

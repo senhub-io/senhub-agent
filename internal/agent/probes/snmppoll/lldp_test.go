@@ -20,7 +20,8 @@ func TestResolveDeviceID_Precedence(t *testing.T) {
 	}{
 		{"serial+PEN wins", full, "serial:9:FOC1234"},
 		{"serial without PEN falls to engine", deviceIdentity{Serial: "FOC1234", EngineID: []byte{0x01}, SysName: "x"}, "engine:01"},
-		{"engine when no serial", deviceIdentity{EngineID: []byte{0x80, 0x01, 0x02}, ChassisMAC: mac, SysName: "x"}, "engine:800102"},
+		{"mac before engine", deviceIdentity{EngineID: []byte{0x80, 0x01, 0x02}, ChassisMAC: mac, SysName: "x"}, "mac:00-11-22-33-44-55"},
+		{"engine when no serial and no MAC", deviceIdentity{EngineID: []byte{0x80, 0x01, 0x02}, SysName: "x"}, "engine:800102"},
 		{"mac when no serial/engine", deviceIdentity{ChassisMAC: mac, SysName: "x"}, "mac:00-11-22-33-44-55"},
 		{"name when only name", deviceIdentity{SysName: "  sw1 "}, "name:sw1"},
 		{"mgmt last resort v4", deviceIdentity{MgmtIP: "192.0.2.10"}, "mgmt:192.0.2.10"},

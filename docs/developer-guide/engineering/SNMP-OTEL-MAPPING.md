@@ -128,18 +128,21 @@ Toise does NOT normalize or merge ids — the producer canonicalizes and
 emits exact ids per source; convergence happens because two observers of the
 same device derive byte-identical ids.
 
-- **`network.device.id` — single key, subtype-prefixed, frozen precedence:**
-  `serial:<PEN>:<entPhysicalSerialNum>` > `engine:<snmpEngineID>` >
-  `mac:<LLDP chassis-id, only when subtype is MAC>` > `name:<sysName>` >
-  `mgmt:<ip>`. Identity does **not** anchor on LLDP (often disabled); it
-  anchors on the SNMP-readable serial/engine id. Two identity-semantics
+- **`network.device.id` — single key, subtype-prefixed precedence:**
+  `serial:<PEN>:<entPhysicalSerialNum>` > `mac:<LLDP lldpLocChassisId, only
+  when its subtype is MAC and it is a unicast 6-byte address>` >
+  `engine:<snmpEngineID>` > `mac:<any other MAC chassis-id>` >
+  `name:<sysName>` > `mgmt:<ip>`. The chassis MAC is factory-assigned; the engine id is
+  configurable and has been found copied between distinct switches, so it
+  ranks after the chassis MAC and is used when LLDP is off or its chassis-id
+  is not a MAC. Two identity-semantics
   rules on the serial rung (Toise Q1/Q2): a serial is vendor-scoped, so it is
   namespaced by the vendor **IANA PEN** read from `sysObjectID`
-  (`serial:<PEN>:<serial>`); without a PEN it falls through to `engine`
-  (globally unique by RFC 3411). The serial is taken only when there is
+  (`serial:<PEN>:<serial>`); without a PEN it falls through to the chassis
+  MAC. The serial is taken only when there is
   **exactly one** `entPhysicalClass=chassis` row — a **stack** (N chassis)
-  leaves it empty and uses the stack-wide `engineID` (one logical device per
-  SNMP management entity, failover-stable; a master-member serial would flap),
+  leaves it empty and uses the stack chassis MAC, else the stack-wide
+  `engineID` (a master-member serial would flap),
   and this also avoids latching onto a swappable module/PSU serial. Everything
   not chosen as the id goes in **descriptive attributes** (dotted lowercase,
   frozen casing — `sys.name`, `sys.descr` (sysDescr.0) (not the polled

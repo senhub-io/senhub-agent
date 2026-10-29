@@ -417,6 +417,7 @@ series' tags.
 | `senhub.snmp.discovery.runs` | `snmp_poll_discovery_runs` | SNMP {instance} Discovery Runs | # | Discovery crawls run since the agent started |
 | `senhub.snmp.discovery.duration` | `snmp_poll_discovery_last_duration_seconds` | SNMP {instance} Discovery Duration | s | Wall-clock time of the last discovery crawl |
 | `senhub.snmp.discovery.failures` | `snmp_poll_discovery_failures` | SNMP {instance} Discovery Failures {reason} | # | Devices the crawl could not use since the agent started, by reason: unreachable (no SNMP answer) or identity (no device id resolvable) |
+| `senhub.snmp.identity.collisions` | `snmp_poll_identity_collisions` | SNMP {instance} Identity Collisions | # | Sweeps since the agent started in which this target resolved to a device id another target of the same agent holds for a different device (other sysName or chassis MAC) |
 | `senhub.snmp.discovery.seeds` | `snmp_poll_discovery_seeds` | SNMP {instance} Discovery Seeds {source} | # | Seeds the last discovery crawl started from, by source: configured (discovery.seeds) or host (the host's default gateways) |
 | `snmp.sys.uptime` | `snmp.sys.uptime` | SNMP {instance} Uptime | centiseconds | sysUpTime — time since the network management portion of the system was last re-initialized (hundredths of a second) |
 | `snmp.interface.in_octets` | `snmp.interface.in_octets` | SNMP {instance} IF{if_index} In Octets | bytes | ifInOctets — total octets received on the interface |
