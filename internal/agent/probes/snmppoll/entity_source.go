@@ -877,7 +877,7 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 	di.Serial, di.ChassisSerials, serialsRead = chassisSerial(client)
 	di.identityComplete = serialsRead
 	// Vendor PEN namespaces the serial (serial is vendor-scoped, not global).
-	if binds, err := client.WalkRaw(oidSysObjectIDBase); err != nil {
+	if binds, err := readScalarRaw(client, oidSysObjectIDBase, oidSysObjectID); err != nil {
 		di.identityComplete = false
 	} else {
 		for _, b := range binds {
@@ -887,7 +887,7 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 		}
 	}
 
-	if binds, err := client.WalkRaw(oidSnmpEngineIDBase); err != nil {
+	if binds, err := readScalarRaw(client, oidSnmpEngineIDBase, oidSnmpEngineID); err != nil {
 		di.identityComplete = false
 	} else {
 		for _, b := range binds {
@@ -896,7 +896,7 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 			}
 		}
 	}
-	if binds, err := client.WalkRaw(oidSysServicesBase); err == nil {
+	if binds, err := readScalarRaw(client, oidSysServicesBase, oidSysServices); err == nil {
 		for _, b := range binds {
 			if b.OID == oidSysServices {
 				if v, ok := snmpcore.AsInt(b.Value); ok {
@@ -905,7 +905,7 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 			}
 		}
 	}
-	if binds, err := client.WalkRaw(oidSysNameBase); err != nil {
+	if binds, err := readScalarRaw(client, oidSysNameBase, oidSysName); err != nil {
 		di.identityComplete = false
 	} else {
 		for _, b := range binds {
@@ -914,7 +914,7 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 			}
 		}
 	}
-	if binds, err := client.WalkRaw(oidSysDescrBase); err == nil {
+	if binds, err := readScalarRaw(client, oidSysDescrBase, oidSysDescr); err == nil {
 		for _, b := range binds {
 			if b.OID == oidSysDescr {
 				di.SysDescr = strings.TrimSpace(snmpcore.OctetText(snmpcore.AsBytes(b.Value)))
