@@ -127,7 +127,7 @@ anything about the resource.
 | `terminated` | The source read successfully and no longer lists it | It ended |
 | `parent_removed` | It lost the relation that anchored it | Follows its parent |
 | `unmonitored` | The agent stopped observing: the probe was removed or stopped, or the source failed for too long | Nothing. It may still be running |
-| `rekeyed` | The resource is the same, the agent now identifies it differently, as when `systemd` units moved from `service.instance` to `host.service` | Nothing happened |
+| `rekeyed` | The resource is the same, the agent now identifies it differently, as when `systemd` units moved from `service.instance` to `host.service`, or when an SNMP device's id changes while it stays the same device (a stack whose chassis MAC follows a new master) | Nothing happened |
 | `aged_out` | A cache the source reads forgot the entry, such as an ARP entry | Nothing was seen leaving |
 
 The consumer adds its own account of who decided the deletion. The two

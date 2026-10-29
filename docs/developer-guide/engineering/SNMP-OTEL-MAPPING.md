@@ -152,6 +152,31 @@ same device derive byte-identical ids.
   ENTITY-MIB `entPhysicalMfgName`/`ModelName`/`FirmwareRev` of the **single**
   chassis row), never as a second identity key. These make the device readable
   in a backend instead of just its cryptic id; neighbours carry `sys.name`.
+  The raw identity parts ride as attributes too, whichever rung the id took,
+  so the effect of a precedence rule is measured from the graph:
+  `hw.serial_number` (the single chassis serial), `senhub.lldp.chassis_mac`
+  (only a usable unicast MAC of subtype 4), `senhub.snmp.engine_id` (lowercase
+  hex) and `senhub.chassis.serial_numbers`. The last one has a **frozen form**,
+  because two agents building it differently would rewrite it every report:
+  the serial of every `entPhysicalClass=chassis` row (one per stack member),
+  trimmed, case kept, sorted by byte value ascending, duplicates dropped,
+  joined by `,` with no space, and **omitted** (never sent empty) when no
+  chassis serial is read. It is derived from the chassis `hw.component`
+  entities planned by ent#798, which will be authoritative once they exist.
+- **Re-identification is announced (`entity.delete.reason = rekeyed`).** The
+  word is the agent's existing `entity.ReasonRekeyed` and is frozen: no other
+  spelling. When a successful sweep of a target resolves an id different from
+  the previous sweep of the same target, and the two read the same logical
+  device (same `sys.name`, a chassis serial in common, or the same engine id;
+  a hardware replacement under the same name counts as the same device),
+  every entity the previous id owned (the device, its interfaces, routes,
+  neighbours, LAGs and anything else keyed on that `network.device.id`) is
+  deleted explicitly with the reason `rekeyed`, on three consecutive
+  observation cycles. The same applies once per process to the id the
+  precedence before 0.6.5 (`engine:` above `mac:`) gives, so an upgrade
+  retires the old ids instead of letting them expire. Edges that cascade
+  carry no reason. The previous sweep is held in memory only: an id that
+  changes while the agent is stopped retires by liveness expiry.
   Canonicalization (producer side): `mac` = uppercase hex `-`-separated
   (`BC-24-11-1B-04-82`, the OpenTelemetry form, `entity.CanonicalMAC`);
   `engine`/`PEN` = lowercase hex / decimal; `serial`/`name` = trimmed (case

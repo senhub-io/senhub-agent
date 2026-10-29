@@ -247,13 +247,16 @@ func localPortOf(rowKey string) string {
 // NOT anchor on LLDP: the polled device's id comes from its serial / engine
 // id read over SNMP, so it is stable even when LLDP is disabled.
 type deviceIdentity struct {
-	Serial     string // entPhysicalSerialNum of the *single* chassis (empty for a stack)
-	VendorPEN  string // IANA enterprise number from sysObjectID — namespaces Serial
-	EngineID   []byte // snmpEngineID — configurable (and seen copied), so it ranks after the chassis MAC
-	ChassisMAC []byte // LLDP lldpLocChassisId / remote chassis-id, only when its subtype is MAC
-	SysName    string // sysName / lldpRemSysName
-	MgmtIP     string // the polled target address (mutable — last resort)
-	Services   int    // sysServices bitmask — descriptive device.role (router/switch)
+	Serial string // entPhysicalSerialNum of the *single* chassis (empty for a stack)
+	// ChassisSerials is every chassis row's serial (one per stack member),
+	// trimmed, byte-sorted, deduplicated. Descriptive only.
+	ChassisSerials []string
+	VendorPEN      string // IANA enterprise number from sysObjectID — namespaces Serial
+	EngineID       []byte // snmpEngineID — configurable (and seen copied), so it ranks after the chassis MAC
+	ChassisMAC     []byte // LLDP lldpLocChassisId / remote chassis-id, only when its subtype is MAC
+	SysName        string // sysName / lldpRemSysName
+	MgmtIP         string // the polled target address (mutable — last resort)
+	Services       int    // sysServices bitmask — descriptive device.role (router/switch)
 
 	// Descriptive-only (never identity): hardware nameplate of the single
 	// chassis (ENTITY-MIB) and the device's sysDescr line.

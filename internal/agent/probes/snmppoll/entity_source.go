@@ -83,13 +83,14 @@ const (
 	relRetiredForwardsTo = "forwards_to"
 
 	// Polled-device descriptive attribute keys (network.device nameplate).
-	attrSysDescr      = "sys.descr"
-	attrHwVendor      = "hw.vendor"
-	attrHwModel       = "hw.model"
-	attrHwFirmwareVer = "hw.firmware_version"
-	attrHwSerial      = "hw.serial_number"
-	attrChassisMAC    = "senhub.lldp.chassis_mac"
-	attrEngineID      = "senhub.snmp.engine_id"
+	attrSysDescr       = "sys.descr"
+	attrHwVendor       = "hw.vendor"
+	attrHwModel        = "hw.model"
+	attrHwFirmwareVer  = "hw.firmware_version"
+	attrHwSerial       = "hw.serial_number"
+	attrChassisMAC     = "senhub.lldp.chassis_mac"
+	attrEngineID       = "senhub.snmp.engine_id"
+	attrChassisSerials = "senhub.chassis.serial_numbers"
 
 	// Polled-device identity OIDs (dotted, no leading dot).
 	oidEntPhysicalSerialNum   = "1.3.6.1.2.1.47.1.1.1.1.11" // ENTITY-MIB (per physical entity)
@@ -202,6 +203,15 @@ type snmpEntitySource struct {
 	// last pair logged, so a steady mismatch logs once.
 	engineMACMismatch atomic.Bool
 	engineMACWarned   atomic.Value // string
+
+	// rekeyMu guards the retirement of a previous id (rekey.go): the
+	// entities to delete with the reason rekeyed, the cycles left to
+	// announce them, and the legacy ids already announced by this process.
+	rekeyMu       sync.Mutex
+	rekeyRetired  []entity.Entity
+	rekeyLeft     int
+	legacyRetired map[string]bool
+	publish       func(entity.Event)
 }
 
 func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
@@ -227,6 +237,7 @@ func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
 		hostID:            dbcommon.HostID,
 		hostInterfaceMACs: hostiface.OwnInterfaceMACs,
 		macIndex:          macindex.Default,
+		publish:           entity.PublishEvent,
 	}
 }
 
@@ -327,6 +338,7 @@ func (s *snmpEntitySource) observeSingle() (entity.Observation, bool) {
 		return entity.Observation{}, false
 	}
 	obs = s.appendResolvesNeighbors(obs, res)
+	s.announceRekey()
 	if replaying && !lastSweep.IsZero() {
 		// The cache came from an earlier successful sweep. A consumer must
 		// not see a fresh event_time on facts we have not re-read.
@@ -428,7 +440,7 @@ func (s *snmpEntitySource) build(res sweepResult, now time.Time) (entity.Observa
 		}
 		return resolveDeviceID(n)
 	}
-	obs := buildObservation(res.self, res.topo, res.routes, res.ifaces, res.addrs, resolveNeighbor)
+	obs := buildObservationAs(res.deviceID, res.self, res.topo, res.routes, res.ifaces, res.addrs, resolveNeighbor)
 	dropLinksToDownPorts(&obs, s.registry, now)
 	maxRoutes := s.cfg.MaxRoutes
 	if maxRoutes <= 0 {
@@ -586,6 +598,7 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 	s.lastSweep = now
 	s.swept = true
 	s.mu.Unlock()
+	s.armRekey(prev, hadPrev, res, now)
 }
 
 // sweep performs the SNMP reads. Best-effort: a failed LLDP walk still yields
@@ -794,7 +807,7 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 	// to the stack-scoped snmpEngineID rather than a failover-unstable member
 	// serial. Picking the chassis row (not "first serial") also avoids latching
 	// onto a module/PSU serial that can change on a part swap.
-	di.Serial = chassisSerial(client)
+	di.Serial, di.ChassisSerials = chassisSerial(client)
 	// Vendor PEN namespaces the serial (serial is vendor-scoped, not global).
 	if binds, err := client.WalkRaw(oidSysObjectIDBase); err == nil {
 		for _, b := range binds {
@@ -888,10 +901,11 @@ func singleChassisIndex(client snmpClient) string {
 }
 
 // chassisSerial returns the serial of the device's single chassis, or "" when
-// there is no chassis row, no serial, or MORE THAN ONE chassis (a stack —
-// which is identified by its stack-wide snmpEngineID instead). It correlates
-// entPhysicalClass and entPhysicalSerialNum by entPhysical index.
-func chassisSerial(client snmpClient) string {
+// there is no chassis row, no serial, or MORE THAN ONE chassis (a stack,
+// identified further down the ladder instead), and the serials of every
+// chassis row in sortedUnique form. It correlates entPhysicalClass and
+// entPhysicalSerialNum by entPhysical index.
+func chassisSerial(client snmpClient) (single string, all []string) {
 	class := map[string]int{}
 	if binds, err := client.WalkRaw(oidEntPhysicalClass); err == nil {
 		for _, b := range binds {
@@ -921,10 +935,29 @@ func chassisSerial(client snmpClient) string {
 			}
 		}
 	}
+	all = sortedUnique(chassis)
 	if len(chassis) == 1 {
-		return chassis[0]
+		return chassis[0], all
 	}
-	return "" // 0 → no usable serial; >1 → stack, use engineID
+	return "", all // 0 → no usable serial; >1 → stack, use engineID
+}
+
+// sortedUnique sorts byte-wise and drops duplicates, the frozen form of
+// senhub.chassis.serial_numbers: two agents must build the same string.
+func sortedUnique(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := append([]string(nil), in...)
+	sort.Strings(out)
+	n := 1
+	for i := 1; i < len(out); i++ {
+		if out[i] != out[n-1] {
+			out[n] = out[i]
+			n++
+		}
+	}
+	return out[:n]
 }
 
 func asString(v any) string {
@@ -949,7 +982,12 @@ func asString(v any) string {
 //
 // Returns empty when the device cannot be identified (no usable id rung).
 func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow, ifaces []ifaceRow, addrs []ipAddr, resolveNeighbor func(deviceIdentity) string) entity.Observation {
-	selfID := resolveDeviceID(self)
+	return buildObservationAs(resolveDeviceID(self), self, topo, routes, ifaces, addrs, resolveNeighbor)
+}
+
+// buildObservationAs is buildObservation with the device's own id given, so
+// the subtree an earlier id owned can be rebuilt from today's sweep.
+func buildObservationAs(selfID string, self deviceIdentity, topo lldpTopology, routes []routeRow, ifaces []ifaceRow, addrs []ipAddr, resolveNeighbor func(deviceIdentity) string) entity.Observation {
 	if selfID == "" {
 		return entity.Observation{}
 	}
@@ -1310,6 +1348,7 @@ func selfAttrs(self deviceIdentity) map[string]any {
 	// The raw identity parts, whichever rung the id took, so the rung a
 	// device would move to is readable from the graph.
 	add(attrHwSerial, strings.TrimSpace(self.Serial))
+	add(attrChassisSerials, strings.Join(self.ChassisSerials, ","))
 	if usableChassisMAC(self.ChassisMAC) {
 		add(attrChassisMAC, macHex(self.ChassisMAC))
 	}
