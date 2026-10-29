@@ -1,6 +1,7 @@
 package snmppoll
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"sort"
@@ -9,8 +10,10 @@ import (
 	"time"
 
 	"github.com/gosnmp/gosnmp"
+	"github.com/rs/zerolog"
 
 	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 func TestChassisSerials_FrozenForm(t *testing.T) {
@@ -483,5 +486,85 @@ func TestRekey_FailingIdentityWalkHoldEndsAndRecovers(t *testing.T) {
 	}
 	if obs, ok := s.Observe(); !ok || len(devicesIn(obs)) != 1 || devicesIn(obs)[0] != "serial:25506:CN14HD90F4" {
 		t.Fatalf("after recovery: ok=%v %v", ok, devicesIn(obs))
+	}
+}
+
+func TestRekey_VanishedSerialsReturnRetiresTheInterimIDAsRekeyed(t *testing.T) {
+	s, rec, c := newRekeyTestSourceWithClock(t)
+	full := singleChassisClient()
+	genErr := singleChassisClient()
+	delete(genErr.walkRawResult, oidEntPhysicalClass)
+	delete(genErr.walkRawResult, oidEntPhysicalSerialNum)
+
+	sweepFor(s, c, full, 1, time.Minute)
+	sweepFor(s, c, genErr, 20, 10*time.Minute)
+	interim := s.DeviceID()
+	if interim == "serial:25506:CN14HD90F4" {
+		t.Fatalf("hold did not end")
+	}
+	rec.events = nil
+	sweepFor(s, c, full, 3, 10*time.Minute)
+	got := false
+	for _, ev := range rec.events {
+		if ev.DeleteReason == entity.ReasonRekeyed && ev.Entity.ID[idKeyNetworkDevice] == interim {
+			got = true
+		}
+	}
+	if !got {
+		t.Errorf("interim id %s not retired as rekeyed on return; events: %d", interim, len(rec.events))
+	}
+}
+
+// A hold that ends while the reads keep failing logs its end once per
+// outage, not at every retry past the threshold.
+func TestRekey_HoldReleaseLoggedOncePerOutage(t *testing.T) {
+	var buf bytes.Buffer
+	zl := zerolog.New(&buf)
+	s, _, c := newRekeyTestSourceWithClock(t)
+	s.moduleLogger = logger.NewModuleLogger(&zl, "test")
+	full := singleChassisClient()
+	failing := failingWalks{singleChassisClient(), map[string]bool{oidEntPhysicalClass: true, oidEntPhysicalSerialNum: true, oidSysNameBase: true, lldpLocBase: true}}
+	sweepFor(s, c, full, 1, time.Minute)
+	sweepFor(s, c, failing, 30, 10*time.Minute)
+	if n := strings.Count(buf.String(), "still incomplete after the silence threshold"); n != 1 {
+		t.Errorf("end of hold logged %d times during one outage, want once", n)
+	}
+}
+
+// getRawClient answers scalar GETs on its own, as an agent does whose
+// GETBULK walks run into a table answering genErr.
+type getRawClient struct {
+	*fakeClient
+	scalars map[string]snmpRawBind
+}
+
+func (c getRawClient) GetRaw(oids []string) ([]snmpRawBind, error) {
+	var out []snmpRawBind
+	for _, o := range oids {
+		if b, ok := c.scalars[o]; ok {
+			out = append(out, b)
+		} else {
+			out = append(out, snmpRawBind{OID: o, Type: gosnmp.NoSuchObject})
+		}
+	}
+	return out, nil
+}
+
+// A walk from sysName that dies on a later genErr table returns nothing; the
+// GET of sysName.0 still answers, and the identity keeps its name.
+func TestReadSelfIdentity_ScalarsReadByGetWhenTheWalkIsCut(t *testing.T) {
+	c := singleChassisClient()
+	delete(c.walkRawResult, oidSysNameBase)
+	delete(c.walkRawResult, oidSysObjectIDBase)
+	g := getRawClient{fakeClient: c, scalars: map[string]snmpRawBind{
+		oidSysName:     {OID: oidSysName, Type: gosnmp.OctetString, Value: []byte("access-sw")},
+		oidSysObjectID: {OID: oidSysObjectID, Type: gosnmp.ObjectIdentifier, Value: "1.3.6.1.4.1.25506.1.1"},
+	}}
+	di := readSelfIdentity(g, "192.0.2.1", lldpLocal{})
+	if di.SysName != "access-sw" || di.VendorPEN != "25506" {
+		t.Errorf("identity = sysName %q PEN %q, want access-sw and 25506 from the GET", di.SysName, di.VendorPEN)
+	}
+	if got := readSelfIdentity(c, "192.0.2.1", lldpLocal{}).SysName; got != "" {
+		t.Fatalf("fixture: the walk alone should lose sysName, got %q", got)
 	}
 }

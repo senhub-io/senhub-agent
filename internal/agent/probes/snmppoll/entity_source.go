@@ -207,9 +207,17 @@ type snmpEntitySource struct {
 	// device-side network.neighbor emission. Defaults to the process-wide index.
 	macIndex *macindex.Index
 
+	// excludedRoutes holds, per device id, the identities of the routes the
+	// system-route filter left out of the last complete read of that device,
+	// so DepartureReason can tell the tracker why they are no longer listed.
+	excludedMu     sync.Mutex
+	excludedRoutes map[string]map[string]bool
 	// identityCollisions counts sweeps whose device id another target of
 	// this agent already holds for a visibly different device.
 	identityCollisions atomic.Uint64
+	// holdReleaseLogged keeps the end-of-hold warning to one per outage; a
+	// successful sweep clears it.
+	holdReleaseLogged atomic.Bool
 	// engineMACMismatch is 1 when the last sweep read an engine id that
 	// embeds a MAC other than the chassis MAC; engineMACWarned holds the
 	// last pair logged, so a steady mismatch logs once.
@@ -224,7 +232,10 @@ type snmpEntitySource struct {
 	rekeyHaveBase bool
 	rekeyBatches  []rekeyBatch
 	legacyRetired map[string]bool
-	publish       func(entity.Event)
+	// previousRoutesRetired records the devices whose pre-filter routes
+	// this process has retired (retirePreviousVersionRoutes).
+	previousRoutesRetired map[string]bool
+	publish               func(entity.Event)
 }
 
 func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
@@ -274,10 +285,15 @@ type sweepResult struct {
 	topo          lldpTopology
 	routes        []routeRow
 	routesOmitted int
-	ifaces        []ifaceRow
-	addrs         []ipAddr
-	deviceID      string
-	ifNames       map[string]string
+	// routesFiltered holds the routes the system-route filter left out.
+	routesFiltered []routeRow
+	// previousVersionRoutes is what an agent without the filter would have
+	// published from the same read: every route up to the bound.
+	previousVersionRoutes []routeRow
+	ifaces                []ifaceRow
+	addrs                 []ipAddr
+	deviceID              string
+	ifNames               map[string]string
 	// selectedIfaces is the ifIndex set that keeps its metric series; nil
 	// when no interface selection is configured.
 	selectedIfaces map[string]bool
@@ -462,7 +478,7 @@ func (s *snmpEntitySource) build(res sweepResult, now time.Time) (entity.Observa
 	if maxRoutes <= 0 {
 		maxRoutes = defaultMaxRoutes
 	}
-	applyRouteCounters(&obs, res.deviceID, res.routesOmitted, maxRoutes)
+	applyRouteCounters(&obs, res.deviceID, res.routesOmitted, len(res.routesFiltered), maxRoutes)
 	applyLag(&obs, res.lag, res.ifaces, res.deviceID)
 	applyGovernance(obs, s.cfg, res.self, res.deviceID)
 	s.appendLocalRunsOn(&obs, res.deviceID)
@@ -611,6 +627,7 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 
 	s.mu.Lock()
 	s.failingSince = time.Time{}
+	s.holdReleaseLogged.Store(false)
 	s.silentMarked = false
 	s.sweepFailures = 0
 	s.retryAt = time.Time{}
@@ -621,6 +638,15 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 	s.lastSweep = now
 	s.swept = true
 	s.mu.Unlock()
+
+	if !res.partial {
+		s.recordExcludedRoutes(res.deviceID, res.routesFiltered)
+	}
+	if !res.partial && !bounded.cut {
+		recon := res
+		recon.routes = res.previousVersionRoutes
+		s.retirePreviousVersionRoutes(res.deviceID, s.buildQuiet(recon, now), s.buildQuiet(res, now))
+	}
 	s.armRekey(res, degraded, now)
 }
 
@@ -679,8 +705,10 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	holdExpired := !s.failingSince.IsZero() && now.Sub(s.failingSince) >= silentAfterSweeps*s.interval
 	s.mu.Unlock()
 	if holdExpired && established != "" {
-		s.moduleLogger.Warn().Str("target", s.cfg.Target).Str("device_id", established).
-			Msg("identity read still incomplete after the silence threshold; resolving the device again from what it answers")
+		if s.holdReleaseLogged.CompareAndSwap(false, true) {
+			s.moduleLogger.Warn().Str("target", s.cfg.Target).Str("device_id", established).
+				Msg("identity read still incomplete after the silence threshold; resolving the device again from what it answers")
+		}
 		established = ""
 		hadChassisSerials = false
 	}
@@ -712,7 +740,10 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	if maxRoutes <= 0 {
 		maxRoutes = defaultMaxRoutes
 	}
-	routes, routesOmitted := selectRoutes(routes, self.MgmtIP, maxRoutes)
+	fc := newRouteFilterContext(routes, addrs, ifaces)
+	sel := selectRoutes(routes, self.MgmtIP, maxRoutes, s.cfg.IncludeSystemRoutes, fc)
+	previousVersionRoutes := selectRoutes(routes, self.MgmtIP, maxRoutes, true, fc).kept
+	routes, routesOmitted := sel.kept, sel.omitted
 	if routesOmitted > 0 {
 		s.moduleLogger.Info().
 			Str("target", s.cfg.Target).
@@ -766,7 +797,7 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	// with a neighbourless ghost, retracting its links as if they had been
 	// seen to go.
 	answered := deviceAnswered(self, topo, routes, ifaces, addrs)
-	return sweepResult{self: self, topo: topo, routes: routes, routesOmitted: routesOmitted, ifaces: ifaces, addrs: addrs, deviceID: deviceID, ifNames: ifNames, selectedIfaces: selected, selectionStale: partial || len(skippedWalks) > 0 || !selectionComplete, fdb: fdbs, arp: arps, lag: lag, partial: partial}, deviceID != "" && answered
+	return sweepResult{self: self, topo: topo, routes: routes, routesOmitted: routesOmitted, routesFiltered: sel.filtered, previousVersionRoutes: previousVersionRoutes, ifaces: ifaces, addrs: addrs, deviceID: deviceID, ifNames: ifNames, selectedIfaces: selected, selectionStale: partial || len(skippedWalks) > 0 || !selectionComplete, fdb: fdbs, arp: arps, lag: lag, partial: partial}, deviceID != "" && answered
 }
 
 // deviceAnswered reports whether any read reached the device, as opposed to
@@ -871,7 +902,7 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 	di.Serial, di.ChassisSerials, serialsRead = chassisSerial(client)
 	di.identityComplete = serialsRead
 	// Vendor PEN namespaces the serial (serial is vendor-scoped, not global).
-	if binds, err := client.WalkRaw(oidSysObjectIDBase); err != nil {
+	if binds, err := readScalarRaw(client, oidSysObjectIDBase, oidSysObjectID); err != nil {
 		di.identityComplete = false
 	} else {
 		for _, b := range binds {
@@ -881,7 +912,7 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 		}
 	}
 
-	if binds, err := client.WalkRaw(oidSnmpEngineIDBase); err != nil {
+	if binds, err := readScalarRaw(client, oidSnmpEngineIDBase, oidSnmpEngineID); err != nil {
 		di.identityComplete = false
 	} else {
 		for _, b := range binds {
@@ -890,7 +921,7 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 			}
 		}
 	}
-	if binds, err := client.WalkRaw(oidSysServicesBase); err == nil {
+	if binds, err := readScalarRaw(client, oidSysServicesBase, oidSysServices); err == nil {
 		for _, b := range binds {
 			if b.OID == oidSysServices {
 				if v, ok := snmpcore.AsInt(b.Value); ok {
@@ -899,7 +930,7 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 			}
 		}
 	}
-	if binds, err := client.WalkRaw(oidSysNameBase); err != nil {
+	if binds, err := readScalarRaw(client, oidSysNameBase, oidSysName); err != nil {
 		di.identityComplete = false
 	} else {
 		for _, b := range binds {
@@ -908,7 +939,7 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 			}
 		}
 	}
-	if binds, err := client.WalkRaw(oidSysDescrBase); err == nil {
+	if binds, err := readScalarRaw(client, oidSysDescrBase, oidSysDescr); err == nil {
 		for _, b := range binds {
 			if b.OID == oidSysDescr {
 				di.SysDescr = strings.TrimSpace(snmpcore.OctetText(snmpcore.AsBytes(b.Value)))
@@ -1208,8 +1239,7 @@ func buildObservationAs(selfID string, self deviceIdentity, topo lldpTopology, r
 	addrSeen := map[string]bool{}
 	for _, a := range addrs {
 		ifName := ifIndexName[a.IfIndex]
-		if ifName == "" || addrSeen[a.IP] ||
-			!entity.AddressEdgeAllowed(a.IP) || entity.IsContainerBridgeIface(ifName) {
+		if addrSeen[a.IP] || !addressPublishable(a.IP, ifName) {
 			continue
 		}
 		addrSeen[a.IP] = true
@@ -1827,6 +1857,31 @@ func droppedEntities(before, after entity.Observation) []entity.Entity {
 	return out
 }
 
+// addressPublishable is the rule buildObservation applies before it emits an
+// interface address as a network.address bound to its interface.
+func addressPublishable(ip, ifName string) bool {
+	return ifName != "" && entity.AddressEdgeAllowed(ip) && !entity.IsContainerBridgeIface(ifName)
+}
+
+// publishedAddresses is the set of addresses buildObservation emits as
+// network.address for these rows, keyed on the canonical address text.
+func publishedAddresses(addrs []ipAddr, ifaces []ifaceRow) map[string]bool {
+	ifIndexName := make(map[string]string, len(ifaces))
+	for _, ifc := range ifaces {
+		ifIndexName[ifc.Index] = ifc.Name
+	}
+	out := map[string]bool{}
+	for _, a := range addrs {
+		if !addressPublishable(a.IP, ifIndexName[a.IfIndex]) {
+			continue
+		}
+		if ip, err := netip.ParseAddr(a.IP); err == nil {
+			out[ip.Unmap().String()] = true
+		}
+	}
+	return out
+}
+
 func entityIdentity(e entity.Entity) string {
 	keys := make([]string, 0, len(e.ID))
 	for k := range e.ID {
@@ -1846,10 +1901,44 @@ func entityIdentity(e entity.Entity) string {
 // neighbour that stops being listed aged out, not seen to leave. Devices,
 // interfaces and routes keep the default.
 func (s *snmpEntitySource) DepartureReason(e entity.Entity) string {
-	if e.Type == entityTypeNetworkNeighbor {
+	switch e.Type {
+	case entityTypeNetworkNeighbor:
 		return entity.ReasonAgedOut
+	case entityTypeNetworkRoute:
+		if s.routeExcluded(e) {
+			return entity.ReasonExcludedByConfig
+		}
 	}
 	return ""
+}
+
+// recordExcludedRoutes replaces the set of routes the filter left out of the
+// last complete read of deviceID.
+func (s *snmpEntitySource) recordExcludedRoutes(deviceID string, filtered []routeRow) {
+	if deviceID == "" {
+		return
+	}
+	set := make(map[string]bool, len(filtered))
+	for _, nr := range filtered {
+		set[entityIdentity(routeFilterEntity(deviceID, nr))] = true
+	}
+	s.excludedMu.Lock()
+	defer s.excludedMu.Unlock()
+	if s.excludedRoutes == nil {
+		s.excludedRoutes = map[string]map[string]bool{}
+	}
+	if len(set) == 0 {
+		delete(s.excludedRoutes, deviceID)
+		return
+	}
+	s.excludedRoutes[deviceID] = set
+}
+
+func (s *snmpEntitySource) routeExcluded(e entity.Entity) bool {
+	deviceID, _ := e.ID[idKeyNetworkDevice].(string)
+	s.excludedMu.Lock()
+	defer s.excludedMu.Unlock()
+	return s.excludedRoutes[deviceID][entityIdentity(e)]
 }
 
 var (
