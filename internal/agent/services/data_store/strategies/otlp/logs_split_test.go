@@ -2,6 +2,7 @@ package otlp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -182,8 +183,8 @@ func TestSplittingLogExporter_MixedErrorKeepsOnlyUndelivered(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	se, ok := err.(*splitExportError)
-	if !ok {
+	var se *splitExportError
+	if !errors.As(err, &se) {
 		t.Fatalf("expected *splitExportError, got %T", err)
 	}
 	if len(se.undelivered) != 1 {

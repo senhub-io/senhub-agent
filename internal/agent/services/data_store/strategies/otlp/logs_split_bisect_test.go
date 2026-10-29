@@ -2,6 +2,7 @@ package otlp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -385,7 +386,8 @@ func TestSplitBisect_RetryInfoIsNotBisected(t *testing.T) {
 	if !exporterrors.IsRetryable(classifyExportError(err)) {
 		t.Fatalf("expected retryable, got %v", err)
 	}
-	if se, ok := err.(*splitExportError); ok {
+	var se *splitExportError
+	if errors.As(err, &se) {
 		t.Fatalf("should not be splitExportError, got %T", se)
 	}
 	if sink.calls != 1 {
@@ -411,8 +413,8 @@ func TestSplitBisect_TransientPartReturnsOnlyUndelivered(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	se, ok := err.(*splitExportError)
-	if !ok {
+	var se *splitExportError
+	if !errors.As(err, &se) {
 		t.Fatalf("expected *splitExportError, got %T", err)
 	}
 	if se.rejected != 0 || se.dropped != 0 {
@@ -457,8 +459,8 @@ func TestSplitBisect_CancelledContextStops(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	se, ok := err.(*splitExportError)
-	if !ok {
+	var se *splitExportError
+	if !errors.As(err, &se) {
 		t.Fatalf("expected *splitExportError, got %T", err)
 	}
 	if len(se.undelivered) != len(rec.exports[0]) {
