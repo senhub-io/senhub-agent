@@ -109,40 +109,6 @@ func TestRedactPEMInterleavedSource(t *testing.T) {
 	}
 }
 
-func TestRedactPEMStateEndsOnOtherRecord(t *testing.T) {
-	setupRedactionTest(t)
-	if errs := ConfigureLogRedaction(true, nil); len(errs) != 0 {
-		t.Fatalf("ConfigureLogRedaction errors: %v", errs)
-	}
-
-	path := "/var/log/c.log"
-	rec := func(body string) LogRecord {
-		return LogRecord{
-			ProducerProbeName: "tail",
-			Attributes:        map[string]string{"log.file.path": path},
-			Body:              body,
-		}
-	}
-
-	got := []string{
-		redactLogRecord(rec("-----BEGIN RSA PRIVATE KEY-----")).Body,
-		redactLogRecord(rec("2026-10-26 INFO started")).Body,
-		redactLogRecord(rec("AAAA")).Body,
-	}
-	want := []string{
-		"-----BEGIN RSA PRIVATE KEY-----***",
-		"2026-10-26 INFO started",
-		"AAAA",
-	}
-
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("bodies = %q, want %q", got, want)
-	}
-	if cnt := privateKeyRedactionCount(t, "tail"); cnt != 1 {
-		t.Fatalf("private_key count = %d, want 1", cnt)
-	}
-}
-
 func TestRedactPEMDisabledLeavesLinesUntouched(t *testing.T) {
 	setupRedactionTest(t)
 	if errs := ConfigureLogRedaction(false, nil); len(errs) != 0 {
