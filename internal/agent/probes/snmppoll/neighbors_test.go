@@ -116,7 +116,7 @@ func TestNeighbors_SkipsOwnDeviceMAC(t *testing.T) {
 	t.Run("interface MAC", func(t *testing.T) {
 		s := resolveTestSource(t, false)
 		res := switchSweep()
-		res.ifaces = []ifaceRow{{Index: "7", Name: "Ethernet7", Mac: foreignMAC}}
+		res.ifaces = []ifaceRow{{Index: "7", Name: "Ethernet7", Mac: "00:50:56:cc:dd:02"}}
 		obs := s.appendResolvesNeighbors(entity.Observation{}, res)
 		for _, e := range obs.Entities {
 			if e.ID[idKeyNeighborMAC].(string) == foreignMAC {

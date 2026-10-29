@@ -1153,8 +1153,8 @@ func (s *snmpEntitySource) appendResolvesNeighbors(obs entity.Observation, res s
 
 	ownMACs := make(map[string]bool)
 	for _, ifc := range res.ifaces {
-		if ifc.Mac != "" {
-			ownMACs[ifc.Mac] = true
+		if canon, ok := entity.CanonicalMACString(ifc.Mac); ok {
+			ownMACs[canon] = true
 		}
 	}
 
