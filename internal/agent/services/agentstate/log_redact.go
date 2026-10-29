@@ -30,6 +30,7 @@ type redactRule struct {
 	re          *regexp.Regexp
 	replacement string
 	precheck    func(string) bool
+	scan        func(string) (string, int)
 }
 
 type redactionRuleset struct {
@@ -48,16 +49,36 @@ var (
 
 var builtinRedactRules = []redactRule{
 	{
-		name:        "credential_param",
-		re:          regexp.MustCompile(`(?i)(["']?\b(?:password|passwd|pwd|passhash|apikey|api_key|token|access_token|secret)["']?\s*[=:]\s*["']?)([^\s&"',;]+)`),
+		// A bearer credential written outside an Authorization header. Sixteen
+		// characters or more, so the word "bearer" in prose is left alone.
+		name:        "bearer_token",
+		re:          regexp.MustCompile(`(?i)(\bbearer\s+)([A-Za-z0-9._~+/=-]{16,})`),
 		replacement: "${1}***",
-		precheck:    credentialParamPrecheck,
+		precheck:    func(s string) bool { return containsFold(s, "bearer") },
+	},
+	{
+		name: "credential_param",
+		scan: scanCredentialParam,
 	},
 	{
 		name:        "authorization_header",
 		re:          regexp.MustCompile(`(?i)(\b(?:proxy-authorization|authorization)\b\s*["']?[=:]\s*["']?\s*)(?:(Digest\s+)([^\r\n]+)|((?:Bearer|Basic|Digest|Negotiate|NTLM)\s+)?([^\s"',;]+))`),
 		replacement: "${1}${2}${4}***",
 		precheck:    authorizationHeaderPrecheck,
+	},
+	{
+		// user:password@ in a URL authority. The scheme and user are kept.
+		name:        "url_userinfo",
+		re:          regexp.MustCompile(`(\b[A-Za-z][A-Za-z0-9+.-]*://[^\s/:@"'?#]+:)([^\s/@"'?#]+)(@)`),
+		replacement: "${1}***${3}",
+		precheck:    func(s string) bool { return strings.Contains(s, "://") && strings.Contains(s, "@") },
+	},
+	{
+		// A secret carried in a URL query string under a generic name, which
+		// credential_param does not list because outside a query it is common
+		// text: ?key=..., &sig=..., &access_key=...
+		name: "url_query_secret",
+		scan: scanURLQuerySecret,
 	},
 	{
 		// PRTG writes its licence key in clear in Core.log and
@@ -166,11 +187,15 @@ func LogRedactedCounts() []LogRedactedCount {
 }
 
 func redactLogRecord(rec LogRecord) LogRecord {
+	if logRedactionDisabled(rec.ProducerProbeName) {
+		return rec
+	}
 	rs := loadRedactionRuleset()
 	pemEnabled := hasRedactRule(rs, "private_key")
 	opensPEM := pemEnabled && hasUnclosedPEMBegin(rec.Body)
 
-	if masked, body := pemState.process(rec, pemEnabled, opensPEM); masked {
+	maskTail := func(s string) string { return maskString(rs, s, rec.ProducerProbeName) }
+	if masked, body := pemState.process(rec, pemEnabled, opensPEM, maskTail); masked {
 		rec.Body = body
 	} else {
 		rec.Body = maskString(rs, rec.Body, rec.ProducerProbeName)
@@ -184,6 +209,7 @@ func redactLogRecord(rec LogRecord) LogRecord {
 func resetLogRedactionForTest() {
 	redactionConfig.Store(buildDefaultRedactionRuleset())
 	pemState.reset()
+	batchPemState.reset()
 	var keys []redactionCounterKey
 	redactionCounters.Range(func(k, _ any) bool {
 		keys = append(keys, k.(redactionCounterKey))
@@ -270,6 +296,14 @@ func maskString(rs *redactionRuleset, s, probe string) string {
 	for i := range rs.rules {
 		rule := &rs.rules[i]
 		if rule.precheck != nil && !rule.precheck(out) {
+			continue
+		}
+		if rule.scan != nil {
+			var n int
+			out, n = rule.scan(out)
+			for ; n > 0; n-- {
+				recordRedaction(probe, rule.name)
+			}
 			continue
 		}
 		out = applyRedactRule(rule, out, probe)
@@ -424,15 +458,6 @@ func recordRedaction(probe, rule string) {
 	val.(*atomic.Uint64).Add(1)
 }
 
-func credentialParamPrecheck(s string) bool {
-	return containsFold(s, "pass") ||
-		containsFold(s, "pwd") ||
-		containsFold(s, "apikey") ||
-		containsFold(s, "api_key") ||
-		containsFold(s, "token") ||
-		containsFold(s, "secret")
-}
-
 func authorizationHeaderPrecheck(s string) bool {
 	return containsFold(s, "authorization")
 }
@@ -479,7 +504,8 @@ func ResetLogRedactionForTest() {
 var credentialKeys = map[string]string{
 	"password": "credential_param", "passwd": "credential_param", "pwd": "credential_param",
 	"passhash": "credential_param", "apikey": "credential_param", "api_key": "credential_param",
-	"token": "credential_param", "access_token": "credential_param", "secret": "credential_param",
+	"token": "credential_param", "access_token": "credential_param", "refresh_token": "credential_param", "id_token": "credential_param",
+	"client_secret": "credential_param", "secret": "credential_param",
 	"authorization": "authorization_header", "proxy-authorization": "authorization_header",
 }
 

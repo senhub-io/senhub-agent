@@ -20,9 +20,9 @@ func TestHiddenByProtectHome(t *testing.T) {
 		{"relative/home/app.log", "", false},
 	}
 	for _, c := range cases {
-		dir, got := hiddenByProtectHome(c.path)
+		dir, got := HiddenByProtectHome(c.path)
 		if got != c.want || dir != c.dir {
-			t.Errorf("hiddenByProtectHome(%q) = %q, %v; want %q, %v", c.path, dir, got, c.dir, c.want)
+			t.Errorf("HiddenByProtectHome(%q) = %q, %v; want %q, %v", c.path, dir, got, c.dir, c.want)
 		}
 	}
 }

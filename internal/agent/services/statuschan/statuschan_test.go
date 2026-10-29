@@ -206,3 +206,50 @@ func TestShutdownIsBoundedWhenCloseHangs(t *testing.T) {
 		t.Fatal("Shutdown waited on a listener Close that never returns")
 	}
 }
+
+func TestShutdownIsBoundedWithoutACallerDeadline(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	svc := New(logger.NewLogger(&cliArgs.ParsedArgs{}), filepath.Join(t.TempDir(), "agent.yaml"), "9.9.9", "abcdef123456")
+	svc.shutdownCap = 200 * time.Millisecond
+	svc.listener = stuckListener{release: release}
+	svc.loopExited = make(chan struct{})
+
+	done := make(chan struct{})
+	go func() {
+		_ = svc.Shutdown(context.Background())
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Shutdown with context.Background() waited on a listener Close that never returns")
+	}
+}
+
+func TestShutdownHonoursALongerCallerDeadline(t *testing.T) {
+	release := make(chan struct{})
+	svc := New(logger.NewLogger(&cliArgs.ParsedArgs{}), filepath.Join(t.TempDir(), "agent.yaml"), "9.9.9", "abcdef123456")
+	svc.shutdownCap = 50 * time.Millisecond
+	svc.listener = stuckListener{release: release}
+	svc.loopExited = make(chan struct{})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 600*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	done := make(chan struct{})
+	go func() {
+		_ = svc.Shutdown(ctx)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		close(release)
+		t.Fatal("Shutdown waited on a listener Close that never returns")
+	}
+	close(release)
+	if elapsed := time.Since(start); elapsed < 400*time.Millisecond {
+		t.Fatalf("Shutdown returned after %v, the caller deadline was cut short by the cap", elapsed)
+	}
+}

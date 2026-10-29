@@ -351,6 +351,7 @@ func (p *snmppollProbe) retainRecentlySeen(fresh map[string]discoveredTopologyRe
 			if st.misses >= discoveryMissGrace {
 				if p.entitySource != nil {
 					p.entitySource.markUnobserved(st.obs.Entities)
+					p.entitySource.forgetDiscoveredL2(id)
 				}
 				delete(p.discovered, id)
 				continue
@@ -498,25 +499,30 @@ func (p *snmppollProbe) pollDiscoveredDevice(ctx context.Context, d discoveredDe
 	if maxRoutes <= 0 {
 		maxRoutes = defaultMaxRoutes
 	}
-	routes, routesOmitted := selectRoutes(routes, self.MgmtIP, maxRoutes)
+	fc := newRouteFilterContext(routes, addrs, ifaces)
+	sel := selectRoutes(routes, self.MgmtIP, maxRoutes, p.cfg.IncludeSystemRoutes, fc)
+	previousVersionRoutes := selectRoutes(routes, self.MgmtIP, maxRoutes, true, fc).kept
+	routes, routesOmitted := sel.kept, sel.omitted
 	obs := buildObservation(self, topo, routes, ifaces, addrs, resolveNeighbor)
+	if !partial && p.entitySource != nil {
+		previous := buildObservation(self, topo, previousVersionRoutes, ifaces, addrs, resolveNeighbor)
+		p.entitySource.retirePreviousVersionRoutes(deviceID, previous, obs)
+	}
 	if p.entitySource != nil {
 		dropLinksToDownPorts(&obs, p.entitySource.registry, time.Now())
 	}
-	applyRouteCounters(&obs, deviceID, routesOmitted, maxRoutes)
+	applyRouteCounters(&obs, deviceID, routesOmitted, len(sel.filtered), maxRoutes)
+	if !partial && p.entitySource != nil {
+		p.entitySource.recordExcludedRoutes(deviceID, sel.filtered)
+	}
 	applyLag(&obs, collectLagData(client, ifaces, p.moduleLogger), ifaces, deviceID)
 	applyDiscoveredGovernance(&obs, p.cfg.Discovery.GovernanceRules, self, deviceID)
 	// The gateway and the access switch are usually discovered, not the
 	// polled target: the MAC resolution must cover them too.
-	if es := p.entitySource; es != nil && es.macIndex != nil && es.macIndex.Enabled() {
+	if es := p.entitySource; es != nil && es.l2Wanted() {
 		es.registerInterfaceMacs(deviceID, ifaces)
-		res := sweepResult{deviceID: deviceID, ifNames: ifaceNameMap(ifaces)}
-		if fdbs, err := collectFDB(client); err == nil {
-			res.fdb = fdbs
-		}
-		if arps, err := collectARP(client); err == nil {
-			res.arp = arps
-		}
+		res := sweepResult{deviceID: deviceID, ifNames: ifaceNameMap(ifaces), ifaces: ifaces}
+		res.fdb, res.arp = es.discoveredL2Rows(deviceID, client)
 		obs = es.appendResolvesNeighbors(obs, res)
 	}
 	return discoveredTopologyResult{obs: obs, partial: partial}

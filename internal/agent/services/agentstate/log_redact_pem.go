@@ -2,30 +2,56 @@ package agentstate
 
 import (
 	"regexp"
-	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 var (
-	pemBeginRe      = regexp.MustCompile(`-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----`)
-	pemEndRe        = regexp.MustCompile(`-----END [A-Z0-9 ]*PRIVATE KEY-----`)
-	pemEndMaskRe    = regexp.MustCompile(`^[\s\S]*?(-----END [A-Z0-9 ]*PRIVATE KEY-----)`)
-	pemBase64LineRe = regexp.MustCompile(`^[A-Za-z0-9+/=]+$`)
+	pemBeginRe = regexp.MustCompile(`-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----`)
+	pemEndRe   = regexp.MustCompile(`-----END [A-Z0-9 ]*PRIVATE KEY-----`)
 )
+
+const (
+	pemMaxBodyRecords = 200
+	pemMaxBodyBytes   = 64 << 10
+)
+
+// pemBlock is the open private key block of one source: the records it
+// may still mask and what it has masked so far.
+type pemBlock struct {
+	remaining int
+	masked    int
+	bytes     int
+}
 
 // pemTracker remembers the sources whose last record opened a private key
 // block without closing it: a file read without folding delivers each PEM
-// line as its own record, which no per-record pattern can see. An entry
-// lives only while the block is open and is capped, so a stray BEGIN line
-// cannot mask unrelated records for long.
+// line as its own record, which no per-record pattern can see. While a
+// block is open every record of its source is masked, whatever it holds,
+// until the END line. The block is bounded in records and bytes, so a
+// stray BEGIN line cannot mask a source for long.
 type pemTracker struct {
 	mu    sync.Mutex
-	state map[string]int
+	state map[string]*pemBlock
 }
 
-var pemState pemTracker
+var pemState, batchPemState pemTracker
 
-const pemMaxBodyRecords = 200
+// PEMOverflowHandler is told that a private key block was abandoned
+// because it reached its bound without an END line.
+type PEMOverflowHandler func(probe, source string, records, bytes int)
+
+var pemOverflowHandler atomic.Pointer[PEMOverflowHandler]
+
+// SetPEMOverflowHandler installs the handler told when a source's private
+// key block is abandoned at its bound; nil removes it.
+func SetPEMOverflowHandler(fn PEMOverflowHandler) {
+	if fn == nil {
+		pemOverflowHandler.Store(nil)
+		return
+	}
+	pemOverflowHandler.Store(&fn)
+}
 
 func sourceKey(rec LogRecord) string {
 	attrs := rec.Attributes
@@ -36,6 +62,15 @@ func sourceKey(rec LogRecord) string {
 		attrs["container.name"] + "\x00" +
 		attrs["syslog.hostname"] + "\x00" +
 		attrs["syslog.appname"]
+}
+
+func sourceDescription(rec LogRecord) string {
+	for _, k := range []string{"log.file.path", "log.iostream", "systemd.unit", "container.name", "syslog.appname", "syslog.hostname"} {
+		if v := rec.Attributes[k]; v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func (t *pemTracker) reset() {
@@ -50,56 +85,97 @@ func (t *pemTracker) len() int {
 	return len(t.state)
 }
 
-func (t *pemTracker) process(rec LogRecord, enabled, opens bool) (bool, string) {
+type pemOverflow struct {
+	probe, source  string
+	records, bytes int
+}
+
+// process masks rec when its source has an open private key block and
+// reports whether it did. mask applies the other rules to the text that
+// follows an END line in the same record.
+func (t *pemTracker) process(rec LogRecord, enabled, opens bool, mask func(string) string) (bool, string) {
+	masked, body, overflow := t.step(rec, enabled, opens, mask)
+	// The handler logs, and the agent's own log records come back through
+	// this tracker: calling it under t.mu would deadlock.
+	if overflow != nil {
+		if h := pemOverflowHandler.Load(); h != nil {
+			(*h)(overflow.probe, overflow.source, overflow.records, overflow.bytes)
+		}
+	}
+	return masked, body
+}
+
+func (t *pemTracker) step(rec LogRecord, enabled, opens bool, mask func(string) string) (bool, string, *pemOverflow) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	if !enabled {
 		t.state = nil
-		return false, ""
+		return false, "", nil
 	}
 
 	key := sourceKey(rec)
-	_, active := t.state[key]
+	block, active := t.state[key]
 
-	if active {
-		if pemEndRe.MatchString(rec.Body) {
-			masked := pemEndMaskRe.ReplaceAllString(rec.Body, "***${1}")
-			delete(t.state, key)
-			recordRedaction(rec.ProducerProbeName, "private_key")
-			return true, masked
+	if !active {
+		if opens {
+			t.open(key)
 		}
+		return false, "", nil
+	}
 
-		trimmed := strings.TrimSpace(rec.Body)
-		if isPEMBodyLine(trimmed) {
-			remaining := t.state[key] - 1
-			if remaining == 0 {
-				delete(t.state, key)
-			} else {
-				t.state[key] = remaining
-			}
-			recordRedaction(rec.ProducerProbeName, "private_key")
-			return true, "***"
-		}
+	recordRedaction(rec.ProducerProbeName, "private_key")
 
+	if loc := pemEndRe.FindStringIndex(rec.Body); loc != nil {
 		delete(t.state, key)
-	}
-
-	if opens {
-		if t.state == nil {
-			t.state = make(map[string]int)
+		tail := rec.Body[loc[1]:]
+		if hasUnclosedPEMBegin(tail) {
+			t.open(key)
 		}
-		t.state[key] = pemMaxBodyRecords
+		if mask != nil {
+			tail = mask(tail)
+		}
+		return true, "***" + rec.Body[loc[0]:loc[1]] + tail, nil
 	}
 
-	return false, ""
+	block.remaining--
+	block.masked++
+	block.bytes += len(rec.Body)
+	if block.remaining > 0 && block.bytes < pemMaxBodyBytes {
+		return true, "***", nil
+	}
+
+	delete(t.state, key)
+	return true, "***", &pemOverflow{
+		probe:   rec.ProducerProbeName,
+		source:  sourceDescription(rec),
+		records: block.masked,
+		bytes:   block.bytes,
+	}
 }
 
-func isPEMBodyLine(trimmed string) bool {
-	return trimmed == "" ||
-		pemBase64LineRe.MatchString(trimmed) ||
-		strings.HasPrefix(trimmed, "Proc-Type:") ||
-		strings.HasPrefix(trimmed, "DEK-Info:")
+// ResumePEMBlock opens a private key block for the source a producer
+// resumes reading in the middle of a key, so the lines it reads next are
+// masked as the rest of that key. Records published with the same probe
+// and attributes belong to that source.
+func ResumePEMBlock(probe string, attrs map[string]string) {
+	if logRedactionDisabled(probe) || !hasRedactRule(loadRedactionRuleset(), "private_key") {
+		return
+	}
+	rec := LogRecord{ProducerProbeName: probe, Attributes: enrichLogAttributes(attrs, probe)}
+	key := sourceKey(rec)
+	pemState.mu.Lock()
+	defer pemState.mu.Unlock()
+	if _, active := pemState.state[key]; !active {
+		pemState.open(key)
+	}
+}
+
+func (t *pemTracker) open(key string) {
+	if t.state == nil {
+		t.state = make(map[string]*pemBlock)
+	}
+	t.state[key] = &pemBlock{remaining: pemMaxBodyRecords}
 }
 
 func hasRedactRule(rs *redactionRuleset, name string) bool {

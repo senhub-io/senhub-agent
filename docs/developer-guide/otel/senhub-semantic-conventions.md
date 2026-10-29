@@ -1256,6 +1256,7 @@ The tailed lines ride the logs signal only (requires `storage[otlp].signals.logs
 | Metric | Type | Unit | Attributes | Notes |
 |---|---|---|---|---|
 | `senhub.filetail.records_emitted` | counter | `{record}` | — | cumulative records published to the log rail (Prometheus `senhub_filetail_records_emitted_total`) |
+| `senhub.filetail.file_records_emitted` | counter | `{record}` | `log.file.path` | records published from that file since the probe started; a file whose size grows while this stays flat sends nothing |
 | `senhub.filetail.read_offset` | gauge | `By` | `log.file.path` | byte offset the tail has read up to (Prometheus `senhub_filetail_read_offset_bytes`) |
 | `senhub.filetail.file_size` | gauge | `By` | `log.file.path` | file size from `os.Stat` at collection time; omitted when the stat fails (Prometheus `senhub_filetail_file_size_bytes`) |
 

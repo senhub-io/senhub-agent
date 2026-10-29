@@ -1,6 +1,9 @@
 package app
 
-import "testing"
+import (
+	"runtime"
+	"testing"
+)
 
 func TestReportMultilineProblemsFlagsTheFilebeatSpelling(t *testing.T) {
 	block := func(negate bool) map[string]interface{} {
@@ -18,5 +21,19 @@ func TestReportMultilineProblemsFlagsTheFilebeatSpelling(t *testing.T) {
 	}
 	if got := reportMultilineProblems("cpu", map[string]interface{}{}); got != 0 {
 		t.Fatalf("no multiline block: %d warnings, want 0", got)
+	}
+}
+
+func TestReportFiletailProtectedHomeNamesTheFix(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("ProtectHome is a systemd setting")
+	}
+	under := map[string]interface{}{"paths": []interface{}{"/var/log/app.log", "/home/app/logs/*.log"}}
+	if got := reportFiletailProtectedHome("app-logs", under); got != 1 {
+		t.Fatalf("one path under /home: %d warnings, want 1", got)
+	}
+	clear := map[string]interface{}{"paths": []interface{}{"/var/log/app.log"}}
+	if got := reportFiletailProtectedHome("app-logs", clear); got != 0 {
+		t.Fatalf("no path under /home: %d warnings, want 0", got)
 	}
 }

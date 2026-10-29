@@ -165,7 +165,7 @@ func TestFileTail_PersistedFingerprintBelongsToTheFileTheOffsetWasReadFrom(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts := &tailState{t: tl}
+	ts := &tailState{t: tl, done: make(chan struct{})}
 	p.tailing[file] = ts
 	p.wg.Add(1)
 	go p.consume(file, ts, 0, oldFP, make(chan reopenEvent))

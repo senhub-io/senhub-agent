@@ -2,6 +2,7 @@ package snmppoll
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,6 +32,12 @@ import (
 type polledRegistry struct {
 	mu    sync.Mutex
 	byMAC map[string]registryEntry
+	// byID holds which target last claimed each resolved device id, so two
+	// targets that are visibly different devices yet resolve to one id are
+	// reported instead of being merged silently; warnedPairs keeps that
+	// report to one per pair.
+	byID        map[string]idClaim
+	warnedPairs map[string]bool
 	// downPorts holds the interfaces a recent sweep read as not up, keyed
 	// by device id and interface name, so a link a neighbour still lists
 	// can be checked against the far end's own view of its port.
@@ -53,6 +60,17 @@ type registryEntry struct {
 	seen time.Time
 }
 
+type idClaim struct {
+	target     string
+	sysName    string
+	chassisMAC string
+	seen       time.Time
+}
+
+// maxWarnedPairs bounds the warned-pair memory; past it the set is cleared
+// and a still-colliding pair warns once more.
+const maxWarnedPairs = 1024
+
 // polledRegistryTTL bounds how long a polled device's facets stay trusted
 // without a refresh — 3× the default topology cadence, the same liveness ratio
 // the entity report interval uses.
@@ -64,7 +82,13 @@ const polledRegistryTTL = 3 * defaultTopologyInterval
 var sharedPolledRegistry = newPolledRegistry()
 
 func newPolledRegistry() *polledRegistry {
-	return &polledRegistry{byMAC: map[string]registryEntry{}, downPorts: map[string]time.Time{}, started: time.Now()}
+	return &polledRegistry{
+		byMAC:       map[string]registryEntry{},
+		byID:        map[string]idClaim{},
+		warnedPairs: map[string]bool{},
+		downPorts:   map[string]time.Time{},
+		started:     time.Now(),
+	}
 }
 
 // warming reports whether the registry may still be missing devices that
@@ -77,6 +101,11 @@ func newPolledRegistry() *polledRegistry {
 // hold back for.
 func (r *polledRegistry) warming(now time.Time) bool {
 	return now.Sub(r.started) < r.warmup()
+}
+
+// warmupRemaining is how long the warm-up window still has to run.
+func (r *polledRegistry) warmupRemaining(now time.Time) time.Duration {
+	return min(max(r.warmup()-now.Sub(r.started), 0), r.warmup())
 }
 
 func (r *polledRegistry) warmup() time.Duration {
@@ -132,6 +161,51 @@ func (r *polledRegistry) evictLocked(now time.Time) {
 			delete(r.byMAC, k)
 		}
 	}
+	for k, c := range r.byID {
+		if now.Sub(c.seen) > polledRegistryTTL {
+			delete(r.byID, k)
+		}
+	}
+}
+
+// claimID records that target resolved to id. It reports a collision when a
+// different target holds a fresh claim on the same id and the two show
+// different sysNames or chassis MACs: two devices, not one device reached
+// by two addresses. The first claimer keeps the id; firstWarn is true once
+// per pair.
+func (r *polledRegistry) claimID(id, target string, self deviceIdentity, now time.Time) (other idClaim, collided, firstWarn bool) {
+	if id == "" || target == "" {
+		return idClaim{}, false, false
+	}
+	name := strings.TrimSpace(self.SysName)
+	mac := macHex(self.ChassisMAC)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if prev, ok := r.byID[id]; ok && prev.target != target && now.Sub(prev.seen) <= polledRegistryTTL {
+		differentName := prev.sysName != "" && name != "" && prev.sysName != name
+		differentMAC := prev.chassisMAC != "" && mac != "" && prev.chassisMAC != mac
+		if differentName || differentMAC {
+			key := pairKey(id, prev.target, target)
+			if !r.warnedPairs[key] {
+				if len(r.warnedPairs) >= maxWarnedPairs {
+					r.warnedPairs = map[string]bool{}
+				}
+				r.warnedPairs[key] = true
+				firstWarn = true
+			}
+			return prev, true, firstWarn
+		}
+	}
+	r.byID[id] = idClaim{target: target, sysName: name, chassisMAC: mac, seen: now}
+	r.evictLocked(now)
+	return idClaim{}, false, false
+}
+
+func pairKey(id, a, b string) string {
+	if a > b {
+		a, b = b, a
+	}
+	return id + "\x00" + a + "\x00" + b
 }
 
 func portKey(deviceID, ifName string) string { return deviceID + "\x00" + ifName }

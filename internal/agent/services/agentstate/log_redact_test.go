@@ -591,7 +591,7 @@ func TestRedactPresetMasksKeysAndTokens(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rec := redactLogRecord(LogRecord{Body: tc.in, ProducerProbeName: "app-logs"})
+			rec := redactLogRecord(LogRecord{Body: tc.in, ProducerProbeName: "app-logs", Attributes: map[string]string{"log.file.path": tc.name}})
 			if rec.Body != tc.want {
 				t.Fatalf("Body = %q, want %q", rec.Body, tc.want)
 			}

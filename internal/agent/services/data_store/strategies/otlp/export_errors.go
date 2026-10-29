@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strconv"
 
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -53,7 +54,7 @@ func classifyExportError(err error) error {
 	}
 
 	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
-		return classifyGRPCCode(st.Code(), err)
+		return classifyGRPCStatus(st, err)
 	}
 
 	if code, ok := httpStatusFromError(err); ok && exporterrors.IsPermanentHTTPStatus(code) {
@@ -63,6 +64,27 @@ func classifyExportError(err error) error {
 	return exporterrors.Transport("export failed", err)
 }
 
+// classifyGRPCStatus adds the one distinction a bare code cannot carry:
+// RESOURCE_EXHAUSTED is retryable only when the server attached a
+// throttle hint (google.rpc.RetryInfo). Without one it is a size or
+// quota refusal of these exact bytes: the same batch gets the same
+// answer, so queueing it only builds a poisoned head-of-line batch.
+func classifyGRPCStatus(st *status.Status, cause error) error {
+	if st.Code() == codes.ResourceExhausted && !hasRetryInfo(st) {
+		return exporterrors.Validation("receiver refused the batch size", cause)
+	}
+	return classifyGRPCCode(st.Code(), cause)
+}
+
+func hasRetryInfo(st *status.Status) bool {
+	for _, d := range st.Details() {
+		if _, ok := d.(*errdetails.RetryInfo); ok {
+			return true
+		}
+	}
+	return false
+}
+
 // classifyGRPCCode splits the gRPC status codes the OTLP spec calls
 // retryable from the ones that describe a request the server will refuse
 // again.
@@ -70,7 +92,7 @@ func classifyExportError(err error) error {
 // The retryable set is the one the OTLP specification names:
 // CANCELLED, DEADLINE_EXCEEDED, ABORTED, OUT_OF_RANGE, UNAVAILABLE,
 // DATA_LOSS, RESOURCE_EXHAUSTED (the last only with a throttle hint,
-// which we cannot see here — treated as retryable, the safe side).
+// which classifyGRPCStatus checks before reaching this switch).
 func classifyGRPCCode(code codes.Code, cause error) error {
 	switch code {
 	case codes.Canceled,

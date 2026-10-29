@@ -43,10 +43,14 @@ type arpBuild struct {
 func collectARP(client snmpClient) ([]arpEntry, error) {
 	primary, pErr := client.WalkRaw(ipNetToPhysicalEntry)
 	legacy, lErr := client.WalkRaw(ipNetToMediaEntry)
+	rows := parseARPTables(primary, legacy)
 	if pErr != nil && lErr != nil {
 		return nil, fmt.Errorf("ARP walks: primary %w; legacy %w", pErr, lErr)
 	}
-	return parseARPTables(primary, legacy), nil
+	if pErr != nil && len(rows) == 0 {
+		return nil, fmt.Errorf("ARP walks: primary %w; legacy table empty", pErr)
+	}
+	return rows, nil
 }
 
 func parseARPTables(primary, legacy []snmpRawBind) []arpEntry {
@@ -94,6 +98,9 @@ func parseIPNetToPhysicalTable(binds []snmpRawBind) []arpEntry {
 	for _, k := range order {
 		r := rows[k]
 		if r.typ == arpTypeInvalid || r.typ < 0 || r.mac == "" {
+			continue
+		}
+		if r.typ == arpTypeLocal {
 			continue
 		}
 		out = append(out, arpEntry{

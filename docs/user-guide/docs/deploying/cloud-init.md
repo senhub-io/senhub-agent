@@ -47,7 +47,7 @@ write_files:
       #!/bin/sh
       set -eu
 
-      SENHUB_VERSION="${SENHUB_VERSION:-0.6.4}"  # exact package version: the pin; latest on https://packages.senhub.io/releases/stable/latest.json
+      SENHUB_VERSION="${SENHUB_VERSION:-0.6.5}"  # exact package version: the pin; latest on https://packages.senhub.io/releases/stable/latest.json
       SENHUB_EDITION="${SENHUB_EDITION:-senhub-agent-oss}"  # or senhub-agent
       SENHUB_CHANNEL="${SENHUB_CHANNEL:-stable}"     # or beta
       FINGERPRINT="B9987A2D4623796E19D3B185CA56F750354530AF"
@@ -134,7 +134,7 @@ ever runs.
 
 ## Pinning
 
-`SENHUB_VERSION` is the pin, in the package's spelling. The script installs the version you set (`0.6.4` in the example) exactly and holds
+`SENHUB_VERSION` is the pin, in the package's spelling. The script installs the version you set (`0.6.5` in the example) exactly and holds
 the package (`apt-mark hold`), so `apt upgrade` and unattended upgrades do
 not move it. On RHEL, add the versionlock plugin to get the same effect:
 

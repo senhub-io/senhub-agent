@@ -18,6 +18,7 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/lifecycle"
 	"senhub-agent.go/internal/agent/probes"
+	"senhub-agent.go/internal/agent/probes/filetail"
 	"senhub-agent.go/internal/agent/probes/logparse"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/configuration"
@@ -883,6 +884,10 @@ func validateProbeParams(name, probeType string, params map[string]interface{}) 
 	errors += e
 	warnings += w
 	warnings += reportMultilineProblems(name, params)
+	warnings += reportProcessPerPIDProblems(name, probeType, params)
+	if probeType == "filetail" {
+		warnings += reportFiletailProtectedHome(name, params)
+	}
 
 	// Citrix has two accepted formats: nested director block (0.1.87+) or flat director_url/base_url.
 	// Validate manually instead of using a flat required-list.
@@ -1212,6 +1217,49 @@ func reportMultilineProblems(name string, params map[string]interface{}) (warnin
 		return 0
 	}
 	if w := logparse.MultilineWarning(ml); w != "" {
+		fmt.Printf("         [WARN] Probe %q: %s\n", name, w)
+		return 1
+	}
+	return 0
+}
+
+// reportFiletailProtectedHome warns on a filetail path the packaged systemd
+// unit hides with ProtectHome: such a path stays empty with no other symptom.
+func reportFiletailProtectedHome(name string, params map[string]interface{}) (warnings int) {
+	if runtime.GOOS != "linux" {
+		return 0
+	}
+	paths, _ := types.StringSliceParam(params, "paths")
+	for _, p := range paths {
+		dir, hidden := filetail.HiddenByProtectHome(p)
+		if !hidden {
+			continue
+		}
+		fmt.Printf("         [WARN] Probe %q: %s is under %s, which the systemd unit hides with ProtectHome; if the agent runs as a service, %s\n", name, p, dir, filetail.ProtectHomeFix)
+		warnings++
+	}
+	return warnings
+}
+
+// processPerPIDWarning is the cardinality warning for the process probe
+// when top_n is combined with per-process series; empty otherwise.
+func processPerPIDWarning(probeType string, params map[string]interface{}) string {
+	if probeType != "process" {
+		return ""
+	}
+	detail, _ := params["detail"].(map[string]interface{})
+	if perPID, _ := detail["per_pid"].(bool); !perPID {
+		return ""
+	}
+	filter, _ := params["filter"].(map[string]interface{})
+	if n, ok := types.IntParam(filter, "top_n"); !ok || n <= 0 {
+		return "detail.per_pid only applies with filter.top_n and has no effect without it"
+	}
+	return "detail.per_pid with filter.top_n tags every series with the process id and creation time: each process entering the top creates new series that are never reused, so the series count grows without bound; leave per_pid off for the stable per-name roll-up"
+}
+
+func reportProcessPerPIDProblems(name, probeType string, params map[string]interface{}) (warnings int) {
+	if w := processPerPIDWarning(probeType, params); w != "" {
 		fmt.Printf("         [WARN] Probe %q: %s\n", name, w)
 		return 1
 	}

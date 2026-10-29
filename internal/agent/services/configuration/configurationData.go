@@ -77,6 +77,9 @@ type ProbeConfig struct {
 	// of seconds. Kept raw so a bad value is reported with its key rather
 	// than lost in decoding; see the probes package for the parsing.
 	CollectTimeout interface{} `json:"collect_timeout,omitempty" yaml:"collect_timeout,omitempty"`
+	// LogRedact turns the masking of secrets in this probe's log records
+	// off when set to false. A pointer so that absent stays "masked".
+	LogRedact *bool `json:"log_redact,omitempty" yaml:"log_redact,omitempty"`
 }
 
 // LogCapableStrategies is the set of outputs that can consume a log

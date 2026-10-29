@@ -152,9 +152,9 @@ func TestBuildObservation_NoIdentity(t *testing.T) {
 }
 
 func TestBuildObservation_SkipsSelfLoop(t *testing.T) {
-	self := deviceIdentity{ChassisMAC: []byte{0x01, 0x02}}
+	self := deviceIdentity{ChassisMAC: []byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55}}
 	topo := lldpTopology{Neighbors: []lldpNeighbor{
-		{ChassisIdSubtype: subtypeMacAddress, ChassisId: []byte{0x01, 0x02}},
+		{ChassisIdSubtype: subtypeMacAddress, ChassisId: []byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55}},
 	}}
 	obs := buildObservation(self, topo, nil, nil, nil, resolveDeviceID)
 	if len(obs.Entities) != 1 || len(obs.Relations) != 0 {

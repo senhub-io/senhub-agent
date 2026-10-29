@@ -60,6 +60,21 @@ func (c *sweepClient) BulkWalk(base string) ([]snmpVarBind, error) {
 	return binds, err
 }
 
+// GetRaw forwards a scalar GET under the same budget as a walk, when the
+// wrapped client can GET.
+func (c *sweepClient) GetRaw(oids []string) ([]snmpRawBind, error) {
+	rg, ok := c.snmpClient.(rawGetter)
+	if !ok {
+		return nil, errors.New("client cannot GET raw scalars")
+	}
+	if err := c.walkAllowed(); err != nil {
+		return nil, err
+	}
+	binds, err := rg.GetRaw(oids)
+	c.record(err)
+	return binds, err
+}
+
 func (c *sweepClient) WalkRaw(base string) ([]snmpRawBind, error) {
 	if err := c.walkAllowed(); err != nil {
 		return nil, err
