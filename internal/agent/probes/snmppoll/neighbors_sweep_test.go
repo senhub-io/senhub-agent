@@ -102,3 +102,27 @@ func TestCollectFDB_PartialFailureIsAFailure(t *testing.T) {
 		t.Errorf("q-bridge read with legacy failing: rows=%v err=%v, want 1 row", rows, err)
 	}
 }
+
+// TestNeighbors_DiscoveredDeviceKeepsRowsOnFailedWalk checks the discovery
+// path keeps a discovered device's rows across a failed walk too.
+func TestNeighbors_DiscoveredDeviceKeepsRowsOnFailedWalk(t *testing.T) {
+	s := newEntitySource(&config{Target: "192.0.2.30"}, testLogger(t))
+	fdb, _ := s.discoveredL2Rows("name:sw2", &fakeClient{walkRawResult: switchWalks(fdbRowOwn, fdbRowForeign)})
+	if len(fdb) != 2 {
+		t.Fatalf("first read rows = %v, want 2", fdb)
+	}
+	failing := &failingWalkClient{
+		fakeClient: &fakeClient{walkRawResult: switchWalks()},
+		fail:       map[string]bool{dot1qTpFdbEntry: true, dot1dTpFdbEntry: true, ipNetToPhysicalEntry: true, ipNetToMediaEntry: true},
+	}
+	if fdb, _ = s.discoveredL2Rows("name:sw2", failing); len(fdb) != 2 {
+		t.Fatalf("after a failed walk rows = %v, want the 2 previous", fdb)
+	}
+	if fdb, _ = s.discoveredL2Rows("name:sw2", &fakeClient{walkRawResult: switchWalks(fdbRowOwn)}); len(fdb) != 1 {
+		t.Fatalf("after a successful read rows = %v, want 1", fdb)
+	}
+	s.forgetDiscoveredL2("name:sw2")
+	if fdb, _ = s.discoveredL2Rows("name:sw2", failing); len(fdb) != 0 {
+		t.Fatalf("a forgotten device kept rows %v", fdb)
+	}
+}

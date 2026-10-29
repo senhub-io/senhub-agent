@@ -155,6 +155,11 @@ type snmpEntitySource struct {
 	// neighborCapWarned is, per device, the number of neighbours the
 	// max_neighbors bound cut at the last announcement.
 	neighborCapWarned map[string]int
+	// discL2 holds, per discovered device, the last FDB and ARP rows read
+	// successfully, reused when a walk fails. Discovery workers run
+	// concurrently, hence discL2Mu.
+	discL2Mu sync.Mutex
+	discL2   map[string]l2Rows
 	// deviceID + ifNames are the resolved identity of the polled device and its
 	// ifIndex→ifName map, cached from the last sweep so the METRIC collector can
 	// tag SNMP metrics with network.device.id / network.interface.name — the same
@@ -1363,6 +1368,47 @@ func (s *snmpEntitySource) appendResolvesNeighbors(obs entity.Observation, res s
 		}
 	}
 	return obs
+}
+
+type l2Rows struct {
+	fdb []fdbEntry
+	arp []arpEntry
+}
+
+// discoveredL2Rows reads a discovered device's FDB and ARP tables, keeping
+// the last successful read of a table whose walk fails, as the sweep of the
+// polled target does.
+func (s *snmpEntitySource) discoveredL2Rows(deviceID string, client snmpClient) ([]fdbEntry, []arpEntry) {
+	s.discL2Mu.Lock()
+	prev := s.discL2[deviceID]
+	s.discL2Mu.Unlock()
+	next := prev
+	if fdbs, err := collectFDB(client); err == nil {
+		next.fdb = fdbs
+	} else {
+		s.moduleLogger.Debug().Err(err).Str("device", deviceID).Int("kept_rows", len(prev.fdb)).
+			Msg("bridge FDB walk failed; keeping the previous rows")
+	}
+	if arps, err := collectARP(client); err == nil {
+		next.arp = arps
+	} else {
+		s.moduleLogger.Debug().Err(err).Str("device", deviceID).Int("kept_rows", len(prev.arp)).
+			Msg("ARP walk failed; keeping the previous rows")
+	}
+	s.discL2Mu.Lock()
+	if s.discL2 == nil {
+		s.discL2 = map[string]l2Rows{}
+	}
+	s.discL2[deviceID] = next
+	s.discL2Mu.Unlock()
+	return next.fdb, next.arp
+}
+
+// forgetDiscoveredL2 drops the rows kept for a discovered device that left.
+func (s *snmpEntitySource) forgetDiscoveredL2(deviceID string) {
+	s.discL2Mu.Lock()
+	delete(s.discL2, deviceID)
+	s.discL2Mu.Unlock()
 }
 
 // neighborCapChanged records how many neighbours of a device the bound cut
