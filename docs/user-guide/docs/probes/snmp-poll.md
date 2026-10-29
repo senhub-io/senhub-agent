@@ -328,9 +328,12 @@ does not publish is kept: only the IPv4 address table is read, so IPv6 host
 routes are kept. `include_system_routes: true` publishes them all. A route the
 running agent published and then leaves out (for instance when
 `include_system_routes` is switched off) leaves the topology with the reason
-`excluded_by_config`; routes published before a restart or an upgrade leave
-when their liveness interval expires. `senhub.routes.filtered` gives the
-number left out at any time.
+`excluded_by_config`. At the first complete sweep of each device, the agent
+also retires with that reason the routes an agent without the filter would
+have published from the same read and that it no longer publishes, so the
+routes an earlier version left in the topology go at the upgrade. A route still
+published is never retired. `senhub.routes.filtered` gives the number left out
+at any time.
 
 The filter runs first, then at most `max_routes` routes are published per
 device (500 by default). Connected and default routes are always kept, outside
