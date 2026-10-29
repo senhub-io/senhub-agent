@@ -136,3 +136,26 @@ func TestEnvACAJobs_NotWithoutDiscovery(t *testing.T) {
 		t.Error("a single named application added a jobs probe")
 	}
 }
+
+// A secret is stored as a reference to its variable and resolved later: the
+// jobs probe must reference the variable that really holds it.
+func TestEnvACAJobs_SecretReferencesTheRealVariable(t *testing.T) {
+	data, err := applyEnv(t, LocalConfigurationData{},
+		"SENHUB_PROBE_ACA_TYPE=azure_container_apps",
+		"SENHUB_PROBE_ACA_CLIENT_SECRET=s3cret",
+		"SENHUB_PROBE_ACA_DISCOVERY__INTERVAL=300")
+	if err != nil {
+		t.Fatal(err)
+	}
+	apps, _ := probeNamed(data, "aca")
+	jobs, ok := probeNamed(data, "jobs")
+	if !ok {
+		t.Fatal("no jobs probe")
+	}
+	if jobs.Params["client_secret"] != apps.Params["client_secret"] {
+		t.Errorf("jobs client_secret = %v, applications %v: the jobs probe must resolve the same variable", jobs.Params["client_secret"], apps.Params["client_secret"])
+	}
+	if got := jobs.Params["client_secret"]; got != "${env:SENHUB_PROBE_ACA_CLIENT_SECRET}" && got != "s3cret" {
+		t.Errorf("jobs client_secret = %v", got)
+	}
+}
