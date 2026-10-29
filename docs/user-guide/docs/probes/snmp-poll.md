@@ -371,6 +371,13 @@ switch with 4,000 forwarding-table and 4,000 ARP entries, the sweep time did
 not change (about 2 s), and the agent used 1.29 s of CPU over 270 s instead
 of 0.65 s without `neighbors`.
 
+At the bound, the neighbours kept depend on facts that change: whether a
+MAC resolves to an interface of another polled device, or of this host. An
+outage of another polled device longer than three sweeps can therefore swap
+out as many kept neighbours as it had resolved interfaces, and swap them back
+at its first successful sweep after it returns: measured on a test switch,
+one neighbour, two deletions and two creations per outage.
+
 Without `neighbors`, the tables are read only with
 `entities.neighbors.resolves_to`, and a neighbour is published only for a MAC
 of this host's own interfaces, linked to the switch port it is plugged into.
