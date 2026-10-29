@@ -55,7 +55,7 @@ one series per interface (`if_index` tag).
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:9664d8eb2593e60f0aeb5513bbf7bd05c48c6e42ddebfed01ab4ae5db95cecf7 -->
+<!-- sha256:7b1c00e87d44d02a5f7a81d108dbaab416d68739b4ae589b629b6b29d9eae904 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -71,6 +71,7 @@ one series per interface (`if_index` tag).
 | `v3.priv_passphrase` | No | - | Required with priv_protocol. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `retries` | No | `2` | Retries per request |
 | `max_routes` | No | `500` | Maximum number of route entities emitted per device |
+| `include_system_routes` | No | `false` | Also publish the routes left out by default: reject, blackhole, multicast, loopback, link-local, local routes to the device's published addresses and to subnet broadcast addresses |
 | `neighbors` | No | `false` | Publish every MAC a device learned (bridge forwarding and ARP tables) as a network.neighbor entity, linked to its port and, when known, to the interface that owns it |
 | `max_neighbors` | No | `1000` | Maximum number of network.neighbor entities emitted per device when neighbors is on |
 | `timeout` | No | `5s` | Per-request timeout |
@@ -317,11 +318,29 @@ A route without a next hop (`local`, `reject`, `blackhole`) carries `0.0.0.0`
 (`::` in IPv6) as next hop, the encoding the MIB itself uses. A connected
 route is what lets a path reach a destination on the device's own networks.
 
-At most `max_routes` routes are published per device (500 by default).
-Connected, default, reject and blackhole routes are always kept. The device
-entity carries `senhub.routes.limit` and `senhub.routes.omitted`, the number
-of routes it listed and that were not published, so a table cut by the bound
-is never mistaken for a complete one. A device carrying a full Internet table
+System routes are left out by default: reject and blackhole routes,
+destinations in multicast (`224.0.0.0/4`, `ff00::/8`), loopback (`127.0.0.0/8`,
+`::1`) and link-local (`169.254.0.0/16`, `fe80::/10`) ranges, `0.0.0.0/32` and
+`255.255.255.255/32`, a local host route (`/32`, `/128`) to an address the same
+sweep publishes as a `network.address`, and a local route to the broadcast
+address of a connected IPv4 prefix. A local host route to an address the sweep
+does not publish is kept: only the IPv4 address table is read, so IPv6 host
+routes are kept. `include_system_routes: true` publishes them all. A route the
+running agent published and then leaves out (for instance when
+`include_system_routes` is switched off) leaves the topology with the reason
+`excluded_by_config`. At the first complete sweep of each device, the agent
+also retires with that reason the routes an agent without the filter would
+have published from the same read and that it no longer publishes, so the
+routes an earlier version left in the topology go at the upgrade. A route still
+published is never retired. `senhub.routes.filtered` gives the number left out
+at any time.
+
+The filter runs first, then at most `max_routes` routes are published per
+device (500 by default). Connected and default routes are always kept, outside
+the bound. The device entity carries `senhub.routes.filtered` (routes the
+filter left out), `senhub.routes.limit` and `senhub.routes.omitted` (routes the
+bound left out), so a table cut by the bound is never mistaken for a complete
+one. A device carrying a full Internet table
 is not meant to be inventoried route by route.
 
 #### Learned neighbours

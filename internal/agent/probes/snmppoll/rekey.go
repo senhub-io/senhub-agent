@@ -57,6 +57,7 @@ func sameLogicalDevice(a, b deviceIdentity) bool {
 type rekeyBatch struct {
 	entities []entity.Entity
 	left     int
+	reason   string
 }
 
 // armRekey compares a published sweep with the previously published one
@@ -105,7 +106,7 @@ func (s *snmpEntitySource) armRekey(res sweepResult, degraded bool, now time.Tim
 		return
 	}
 	s.rekeyMu.Lock()
-	s.rekeyBatches = append(s.rekeyBatches, rekeyBatch{entities: dedupeEntities(retired), left: entity.RekeyAnnounceCycles})
+	s.rekeyBatches = append(s.rekeyBatches, rekeyBatch{entities: dedupeEntities(retired), left: entity.RekeyAnnounceCycles, reason: entity.ReasonRekeyed})
 	s.rekeyMu.Unlock()
 }
 
@@ -129,20 +130,20 @@ func ownedBy(in []entity.Entity, deviceID string) []entity.Entity {
 // publisher reads it without the lock.
 func (s *snmpEntitySource) announceRekey() {
 	s.rekeyMu.Lock()
-	batches := make([][]entity.Entity, 0, len(s.rekeyBatches))
+	batches := make([]rekeyBatch, 0, len(s.rekeyBatches))
 	kept := s.rekeyBatches[:0:0]
 	for _, b := range s.rekeyBatches {
-		batches = append(batches, b.entities)
+		batches = append(batches, b)
 		if b.left--; b.left > 0 {
 			kept = append(kept, b)
 		}
 	}
 	s.rekeyBatches = kept
 	s.rekeyMu.Unlock()
-	for _, entities := range batches {
-		for i := range entities {
-			e := entities[i]
-			s.publish(entity.Event{Kind: entity.EntityDelete, Entity: &e, DeleteReason: entity.ReasonRekeyed})
+	for _, b := range batches {
+		for i := range b.entities {
+			e := b.entities[i]
+			s.publish(entity.Event{Kind: entity.EntityDelete, Entity: &e, DeleteReason: b.reason})
 		}
 	}
 }
@@ -158,4 +159,41 @@ func dedupeEntities(in []entity.Entity) []entity.Entity {
 		}
 	}
 	return out
+}
+
+// retirePreviousVersionRoutes retires, once per device and process, the
+// routes an agent without the system-route filter would have published from
+// the same complete read and this one does not: the routes an earlier version
+// left in the consumer's graph. Only routes keyed on deviceID and absent from
+// the current observation are retired, so a route still published never is.
+// A delete for a route the consumer never held is a no-op there, so a fresh
+// install costs nothing.
+func (s *snmpEntitySource) retirePreviousVersionRoutes(deviceID string, previous, current entity.Observation) {
+	if deviceID == "" {
+		return
+	}
+	s.rekeyMu.Lock()
+	if s.previousRoutesRetired == nil {
+		s.previousRoutesRetired = map[string]bool{}
+	}
+	done := s.previousRoutesRetired[deviceID]
+	s.previousRoutesRetired[deviceID] = true
+	s.rekeyMu.Unlock()
+	if done {
+		return
+	}
+	var routes []entity.Entity
+	for _, e := range ownedBy(droppedEntities(previous, current), deviceID) {
+		if e.Type == entityTypeNetworkRoute {
+			routes = append(routes, e)
+		}
+	}
+	if len(routes) == 0 {
+		return
+	}
+	s.moduleLogger.Info().Str("target", s.cfg.Target).Str("device_id", deviceID).Int("routes", len(routes)).
+		Msg("retiring the system routes an earlier version published as excluded_by_config")
+	s.rekeyMu.Lock()
+	s.rekeyBatches = append(s.rekeyBatches, rekeyBatch{entities: dedupeEntities(routes), left: entity.RekeyAnnounceCycles, reason: entity.ReasonExcludedByConfig})
+	s.rekeyMu.Unlock()
 }
