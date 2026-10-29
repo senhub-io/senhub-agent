@@ -362,8 +362,14 @@ first, then those with an IP address, then the others by MAC address. The
 device entity carries `senhub.neighbors.limit` and
 `senhub.neighbors.omitted`, so a cut table is never mistaken for a complete
 one, and the agent logs `neighbor table bound: some neighbors omitted` at
-Info once per cut. VLAN membership (`dot1qVlanStaticTable`) is not published
-yet.
+Info once per cut. A neighbour the bound leaves out after it was published
+is not retired explicitly: it leaves the topology when its liveness interval
+expires. VLAN membership (`dot1qVlanStaticTable`) is not published yet.
+
+Publishing neighbours costs CPU in proportion to their number. On a test
+switch with 4,000 forwarding-table and 4,000 ARP entries, the sweep time did
+not change (about 2 s), and the agent used 1.29 s of CPU over 270 s instead
+of 0.65 s without `neighbors`.
 
 Without `neighbors`, the tables are read only with
 `entities.neighbors.resolves_to`, and a neighbour is published only for a MAC
