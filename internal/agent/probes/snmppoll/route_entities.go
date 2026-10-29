@@ -3,6 +3,7 @@ package snmppoll
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"sort"
 	"strings"
 
@@ -15,6 +16,7 @@ const (
 	attrRouteType         = "route.type"
 	attrRoutesOmitted     = "senhub.routes.omitted"
 	attrRoutesLimit       = "senhub.routes.limit"
+	attrRoutesFiltered    = "senhub.routes.filtered"
 )
 
 func routeTypeName(v int) string {
@@ -66,6 +68,99 @@ func eligibleRoute(r routeRow, selfMgmt string) (routeRow, bool) {
 	}
 }
 
+// systemRoutePrefixes are destination ranges that are not topology:
+// multicast, loopback and link-local.
+var systemRoutePrefixes = []netip.Prefix{
+	netip.MustParsePrefix("224.0.0.0/4"),
+	netip.MustParsePrefix("ff00::/8"),
+	netip.MustParsePrefix("127.0.0.0/8"),
+	netip.MustParsePrefix("::1/128"),
+	netip.MustParsePrefix("169.254.0.0/16"),
+	netip.MustParsePrefix("fe80::/10"),
+}
+
+// routeFilterContext is what the system-route filter needs from the rest of
+// the sweep. A local host route is excluded only when its address is
+// published as a network.address by the same observation: many devices list
+// host routes for addresses the observation does not carry (an interface
+// left out, an IPv6 address), and those routes are kept.
+type routeFilterContext struct {
+	ownAddrs   map[string]bool
+	broadcasts map[string]bool
+}
+
+// newRouteFilterContext collects the addresses the observation publishes and
+// the broadcast address of every connected IPv4 prefix the device reports,
+// from its route table and from its address masks.
+func newRouteFilterContext(routes []routeRow, addrs []ipAddr, ifaces []ifaceRow) routeFilterContext {
+	fc := routeFilterContext{ownAddrs: publishedAddresses(addrs, ifaces), broadcasts: map[string]bool{}}
+	for _, r := range routes {
+		if r.Type != routeTypeLocal {
+			continue
+		}
+		if p, err := netip.ParsePrefix(r.Destination); err == nil {
+			addIPv4Broadcast(fc.broadcasts, p)
+		}
+	}
+	for _, a := range addrs {
+		if a.Prefix < 0 {
+			continue
+		}
+		if ip, err := netip.ParseAddr(a.IP); err == nil {
+			if p, err := ip.Prefix(a.Prefix); err == nil {
+				addIPv4Broadcast(fc.broadcasts, p)
+			}
+		}
+	}
+	return fc
+}
+
+func addIPv4Broadcast(set map[string]bool, p netip.Prefix) {
+	if !p.Addr().Is4() || p.Bits() < 1 || p.Bits() > 30 {
+		return
+	}
+	b := p.Masked().Addr().As4()
+	host := uint32(1)<<(32-p.Bits()) - 1
+	v := uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3])
+	v |= host
+	set[netip.AddrFrom4([4]byte{byte(v >> 24), byte(v >> 16), byte(v >> 8), byte(v)}).String()] = true
+}
+
+// systemRoute reports whether a route normalized by eligibleRoute is left out
+// of the topology by default: reject and blackhole routes, multicast,
+// loopback and link-local destinations, 0.0.0.0/32 and 255.255.255.255/32,
+// a local host route to an address this observation publishes, and a local
+// route to the broadcast address of a connected prefix (nothing is
+// forwarded there). Default routes are kept.
+func systemRoute(r routeRow, fc routeFilterContext) bool {
+	if r.Type == routeTypeReject || r.Type == routeTypeBlackhole {
+		return true
+	}
+	p, err := netip.ParsePrefix(r.Destination)
+	if err != nil {
+		return false
+	}
+	p = p.Masked()
+	if p.Addr().Is4() && p.Bits() == 32 {
+		if s := p.Addr().String(); s == "0.0.0.0" || s == "255.255.255.255" {
+			return true
+		}
+	}
+	for _, sys := range systemRoutePrefixes {
+		if sys.Contains(p.Addr()) && p.Bits() >= sys.Bits() {
+			return true
+		}
+	}
+	if r.Type == routeTypeLocal && p.Bits() == p.Addr().BitLen() {
+		addr := p.Addr().String()
+		return fc.ownAddrs[addr] || fc.broadcasts[addr]
+	}
+	return false
+}
+
+// isRouteAlwaysKept protects connected and default routes from the bound.
+// Reject, blackhole and host routes reach it only with include_system_routes,
+// which restores the behaviour that kept them all.
 func isRouteAlwaysKept(r routeRow) bool {
 	if r.Type == routeTypeLocal || r.Type == routeTypeReject || r.Type == routeTypeBlackhole {
 		return true
@@ -73,14 +168,24 @@ func isRouteAlwaysKept(r routeRow) bool {
 	return r.Destination == "0.0.0.0/0" || r.Destination == "::/0"
 }
 
-// selectRoutes applies the per-device route bound. Connected, default,
-// reject and blackhole routes are always kept; the rest are sorted by
-// (destination, next hop) and kept until maxRoutes. It returns the kept
-// routes and how many of the remaining routes were left out.
+// routeSelection is the outcome of selectRoutes.
+type routeSelection struct {
+	kept    []routeRow
+	omitted int
+	// filtered holds the routes the system-route filter left out, normalized
+	// and deduplicated as kept ones are.
+	filtered []routeRow
+}
+
+// selectRoutes applies the system-route filter, then the per-device route
+// bound: the filter runs first so the bound's slots go to routes a topology
+// uses. Connected and default routes are always kept; the rest are sorted by
+// (destination, next hop) and kept until maxRoutes. omitted counts the
+// routes the bound left out, filtered the ones the filter did.
 // The bound is not a performance knob: a device carrying a full Internet
 // table must not be inventoried route by route, and the counter on its
 // network.device says so instead of pretending the table is complete.
-func selectRoutes(routes []routeRow, selfMgmt string, maxRoutes int) ([]routeRow, int) {
+func selectRoutes(routes []routeRow, selfMgmt string, maxRoutes int, includeSystem bool, fc routeFilterContext) routeSelection {
 	if maxRoutes <= 0 {
 		maxRoutes = defaultMaxRoutes
 	}
@@ -88,6 +193,7 @@ func selectRoutes(routes []routeRow, selfMgmt string, maxRoutes int) ([]routeRow
 	seen := map[string]bool{}
 	protected := make([]routeRow, 0, len(routes))
 	rest := make([]routeRow, 0, len(routes))
+	var filtered []routeRow
 
 	for _, r := range routes {
 		nr, ok := eligibleRoute(r, selfMgmt)
@@ -99,6 +205,10 @@ func selectRoutes(routes []routeRow, selfMgmt string, maxRoutes int) ([]routeRow
 			continue
 		}
 		seen[key] = true
+		if !includeSystem && systemRoute(nr, fc) {
+			filtered = append(filtered, nr)
+			continue
+		}
 		if isRouteAlwaysKept(nr) {
 			protected = append(protected, nr)
 		} else {
@@ -127,7 +237,7 @@ func selectRoutes(routes []routeRow, selfMgmt string, maxRoutes int) ([]routeRow
 	} else {
 		omitted = len(rest)
 	}
-	return kept, omitted
+	return routeSelection{kept: kept, omitted: omitted, filtered: filtered}
 }
 
 // appendRouteEntities emits the device's routes as network.route entities it
@@ -228,7 +338,7 @@ func appendRouteEntities(obs *entity.Observation, selfID string, self deviceIden
 	}
 }
 
-func applyRouteCounters(obs *entity.Observation, deviceID string, omitted, limit int) {
+func applyRouteCounters(obs *entity.Observation, deviceID string, omitted, filtered, limit int) {
 	if deviceID == "" {
 		return
 	}
@@ -239,6 +349,7 @@ func applyRouteCounters(obs *entity.Observation, deviceID string, omitted, limit
 			}
 			obs.Entities[i].Attributes[attrRoutesOmitted] = int64(omitted)
 			obs.Entities[i].Attributes[attrRoutesLimit] = int64(limit)
+			obs.Entities[i].Attributes[attrRoutesFiltered] = int64(filtered)
 			return
 		}
 	}

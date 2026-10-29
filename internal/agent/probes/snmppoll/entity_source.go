@@ -2,6 +2,7 @@ package snmppoll
 
 import (
 	"fmt"
+	"net/netip"
 	"sort"
 	"strconv"
 	"strings"
@@ -188,6 +189,11 @@ type snmpEntitySource struct {
 	// macIndex is the shared interface-MAC index used for resolves_to and
 	// device-side network.neighbor emission. Defaults to the process-wide index.
 	macIndex *macindex.Index
+
+	// routeFilter retires the polled device's routes the system-route filter
+	// leaves out; discRouteFilter does it for devices reached by discovery.
+	routeFilter     *routeFilterRetirer
+	discRouteFilter *routeFilterRetirer
 }
 
 func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
@@ -213,6 +219,8 @@ func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
 		hostID:            dbcommon.HostID,
 		hostInterfaceMACs: hostiface.OwnInterfaceMACs,
 		macIndex:          macindex.Default,
+		routeFilter:       newRouteFilterRetirer(entity.PublishEvent),
+		discRouteFilter:   newRouteFilterRetirer(entity.PublishEvent),
 	}
 }
 
@@ -233,10 +241,12 @@ type sweepResult struct {
 	topo          lldpTopology
 	routes        []routeRow
 	routesOmitted int
-	ifaces        []ifaceRow
-	addrs         []ipAddr
-	deviceID      string
-	ifNames       map[string]string
+	// routesFiltered holds the routes the system-route filter left out.
+	routesFiltered []routeRow
+	ifaces         []ifaceRow
+	addrs          []ipAddr
+	deviceID       string
+	ifNames        map[string]string
 	// selectedIfaces is the ifIndex set that keeps its metric series; nil
 	// when no interface selection is configured.
 	selectedIfaces map[string]bool
@@ -266,6 +276,8 @@ type sweepResult struct {
 // omitted one is a retracted one). Not publishing keeps the consumer's
 // previous state alive until the neighbour is known.
 func (s *snmpEntitySource) Observe() (entity.Observation, bool) {
+	s.routeFilter.announce()
+	s.discRouteFilter.announce()
 	single, singleOK := s.observeSingle()
 	disc, discRan := s.discoveryView()
 
@@ -420,7 +432,7 @@ func (s *snmpEntitySource) build(res sweepResult, now time.Time) (entity.Observa
 	if maxRoutes <= 0 {
 		maxRoutes = defaultMaxRoutes
 	}
-	applyRouteCounters(&obs, res.deviceID, res.routesOmitted, maxRoutes)
+	applyRouteCounters(&obs, res.deviceID, res.routesOmitted, len(res.routesFiltered), maxRoutes)
 	applyLag(&obs, res.lag, res.ifaces, res.deviceID)
 	applyGovernance(obs, s.cfg, res.self, res.deviceID)
 	s.appendLocalRunsOn(&obs, res.deviceID)
@@ -572,6 +584,14 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 	s.lastSweep = now
 	s.swept = true
 	s.mu.Unlock()
+
+	if !res.partial {
+		if n := s.routeFilter.arm(res.deviceID, res.routesFiltered, res.routes, true); n > 0 {
+			s.moduleLogger.Info().Str("target", s.cfg.Target).Str("device_id", res.deviceID).
+				Int("filtered", len(res.routesFiltered)).Int("retiring", n).
+				Msg("system routes left out of the topology; retiring the published ones as excluded_by_config")
+		}
+	}
 }
 
 // sweep performs the SNMP reads. Best-effort: a failed LLDP walk still yields
@@ -631,7 +651,8 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	if maxRoutes <= 0 {
 		maxRoutes = defaultMaxRoutes
 	}
-	routes, routesOmitted := selectRoutes(routes, self.MgmtIP, maxRoutes)
+	sel := selectRoutes(routes, self.MgmtIP, maxRoutes, s.cfg.IncludeSystemRoutes, newRouteFilterContext(routes, addrs, ifaces))
+	routes, routesOmitted := sel.kept, sel.omitted
 	if routesOmitted > 0 {
 		s.moduleLogger.Info().
 			Str("target", s.cfg.Target).
@@ -677,7 +698,7 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	// with a neighbourless ghost, retracting its links as if they had been
 	// seen to go.
 	answered := deviceAnswered(self, topo, routes, ifaces, addrs)
-	return sweepResult{self: self, topo: topo, routes: routes, routesOmitted: routesOmitted, ifaces: ifaces, addrs: addrs, deviceID: deviceID, ifNames: ifNames, selectedIfaces: selected, selectionStale: partial || len(skippedWalks) > 0 || !selectionComplete, fdb: fdbs, arp: arps, lag: lag, partial: partial}, deviceID != "" && answered
+	return sweepResult{self: self, topo: topo, routes: routes, routesOmitted: routesOmitted, routesFiltered: sel.filtered, ifaces: ifaces, addrs: addrs, deviceID: deviceID, ifNames: ifNames, selectedIfaces: selected, selectionStale: partial || len(skippedWalks) > 0 || !selectionComplete, fdb: fdbs, arp: arps, lag: lag, partial: partial}, deviceID != "" && answered
 }
 
 // deviceAnswered reports whether any read reached the device, as opposed to
@@ -1079,8 +1100,7 @@ func buildObservation(self deviceIdentity, topo lldpTopology, routes []routeRow,
 	addrSeen := map[string]bool{}
 	for _, a := range addrs {
 		ifName := ifIndexName[a.IfIndex]
-		if ifName == "" || addrSeen[a.IP] ||
-			!entity.AddressEdgeAllowed(a.IP) || entity.IsContainerBridgeIface(ifName) {
+		if addrSeen[a.IP] || !addressPublishable(a.IP, ifName) {
 			continue
 		}
 		addrSeen[a.IP] = true
@@ -1368,6 +1388,31 @@ func droppedEntities(before, after entity.Observation) []entity.Entity {
 	for _, e := range before.Entities {
 		if !kept[entityIdentity(e)] {
 			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// addressPublishable is the rule buildObservation applies before it emits an
+// interface address as a network.address bound to its interface.
+func addressPublishable(ip, ifName string) bool {
+	return ifName != "" && entity.AddressEdgeAllowed(ip) && !entity.IsContainerBridgeIface(ifName)
+}
+
+// publishedAddresses is the set of addresses buildObservation emits as
+// network.address for these rows, keyed on the canonical address text.
+func publishedAddresses(addrs []ipAddr, ifaces []ifaceRow) map[string]bool {
+	ifIndexName := make(map[string]string, len(ifaces))
+	for _, ifc := range ifaces {
+		ifIndexName[ifc.Index] = ifc.Name
+	}
+	out := map[string]bool{}
+	for _, a := range addrs {
+		if !addressPublishable(a.IP, ifIndexName[a.IfIndex]) {
+			continue
+		}
+		if ip, err := netip.ParseAddr(a.IP); err == nil {
+			out[ip.Unmap().String()] = true
 		}
 	}
 	return out

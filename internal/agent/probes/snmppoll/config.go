@@ -86,6 +86,10 @@ type config struct {
 	TopologyInterval time.Duration
 	// MaxRoutes bounds the number of network.route entities emitted per device.
 	MaxRoutes int
+	// IncludeSystemRoutes keeps the routes the default filter leaves out
+	// (reject, blackhole, multicast, loopback, link-local, local host and
+	// broadcast routes).
+	IncludeSystemRoutes bool
 
 	// Interfaces narrows the per-interface metric series (nil: every
 	// interface). Topology entities are never narrowed.
@@ -200,6 +204,14 @@ func parseConfig(raw map[string]interface{}) (*config, error) {
 			errs = append(errs, "max_routes must be at least 1")
 		} else {
 			cfg.MaxRoutes = v
+		}
+	}
+
+	if _, present := raw["include_system_routes"]; present {
+		if b, ok := types.BoolParam(raw, "include_system_routes"); ok {
+			cfg.IncludeSystemRoutes = b
+		} else {
+			errs = append(errs, "include_system_routes must be true or false")
 		}
 	}
 

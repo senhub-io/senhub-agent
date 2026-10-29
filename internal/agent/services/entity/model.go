@@ -68,6 +68,11 @@ const (
 	// identity for it. A third family next to the resource's lifecycle and
 	// the end of observation: nothing happened in the world.
 	ReasonRekeyed = "rekeyed"
+	// ReasonExcludedByConfig: the resource did not change; the producer's
+	// configuration excludes it. The producer still observes it and chooses
+	// not to report it (a filter whose default leaves it out), so the
+	// resource may well still exist.
+	ReasonExcludedByConfig = "excluded_by_config"
 	// ReasonAgedOut: a cache the source reads forgot the entry (an ARP or
 	// NDP neighbour aged out, a bridge forgot a MAC). Nobody saw the thing
 	// leave; it simply went quiet long enough to be dropped. Not "evicted":

@@ -498,12 +498,16 @@ func (p *snmppollProbe) pollDiscoveredDevice(ctx context.Context, d discoveredDe
 	if maxRoutes <= 0 {
 		maxRoutes = defaultMaxRoutes
 	}
-	routes, routesOmitted := selectRoutes(routes, self.MgmtIP, maxRoutes)
+	sel := selectRoutes(routes, self.MgmtIP, maxRoutes, p.cfg.IncludeSystemRoutes, newRouteFilterContext(routes, addrs, ifaces))
+	routes, routesOmitted := sel.kept, sel.omitted
 	obs := buildObservation(self, topo, routes, ifaces, addrs, resolveNeighbor)
 	if p.entitySource != nil {
 		dropLinksToDownPorts(&obs, p.entitySource.registry, time.Now())
 	}
-	applyRouteCounters(&obs, deviceID, routesOmitted, maxRoutes)
+	applyRouteCounters(&obs, deviceID, routesOmitted, len(sel.filtered), maxRoutes)
+	if !partial && p.entitySource != nil {
+		p.entitySource.discRouteFilter.arm(deviceID, sel.filtered, routes, false)
+	}
 	applyLag(&obs, collectLagData(client, ifaces, p.moduleLogger), ifaces, deviceID)
 	applyDiscoveredGovernance(&obs, p.cfg.Discovery.GovernanceRules, self, deviceID)
 	// The gateway and the access switch are usually discovered, not the
