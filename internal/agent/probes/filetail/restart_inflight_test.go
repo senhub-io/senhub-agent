@@ -145,3 +145,88 @@ drain:
 		}
 	}
 }
+
+// A restart that gives up waiting for the replaced reader resumes before
+// the record that reader still holds, not after the lines it has read: the
+// record is then read again instead of being skipped.
+func TestFileTail_RestartAfterTimeoutResumesBeforeAHeldRecord(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "core.log")
+	lines := []string{
+		"2026-10-29 09:20:00 ERROR record A",
+		"   at Core.Run()",
+		"2026-10-29 09:20:01 ERROR record B",
+		"   at Core.Retry()",
+	}
+	ends := make([]int64, len(lines))
+	var content strings.Builder
+	for i, l := range lines {
+		content.WriteString(l + "\n")
+		ends[i] = int64(content.Len())
+	}
+	writeFile(t, file, content.String())
+
+	saved := consumeExitTimeout
+	consumeExitTimeout = 200 * time.Millisecond
+	defer func() { consumeExitTimeout = saved }()
+
+	bookmarkPath := filepath.Join(dir, "bookmark.json")
+	probe, err := NewFileTailProbe(map[string]interface{}{
+		"paths":         []interface{}{file},
+		"bookmark_path": bookmarkPath,
+		"multiline": map[string]interface{}{
+			"pattern":       `^\d{4}-\d{2}-\d{2} `,
+			"flush_timeout": "0",
+		},
+	}, logger.NewLogger(&cliArgs.ParsedArgs{Env: "test"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := probe.(*FileTailProbe)
+	bm, err := newBookmark(bookmarkPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.bookmarks = bm
+
+	ft := &tail.Tail{Filename: file, Lines: make(chan *tail.Line)}
+	release := make(chan struct{})
+	defer func() {
+		close(release)
+		stopFileTail(t, p)
+	}()
+	fi, err := statIdentity(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := &tailState{t: ft, opened: fi, done: make(chan struct{})}
+	p.mu.Lock()
+	p.tailing[file] = ts
+	p.wg.Add(1)
+	p.mu.Unlock()
+	go p.consume(file, ts, 0, "", make(chan reopenEvent))
+	go func() {
+		<-release
+		close(ft.Lines)
+		ft.Done()
+	}()
+	for i := range lines {
+		ft.Lines <- &tail.Line{Text: lines[i], SeekInfo: tail.SeekInfo{Offset: ends[i]}, Time: time.Now()}
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for ts.offset.Load() != ends[3] || ts.committed.Load() != ends[1] {
+		if time.Now().After(deadline) {
+			t.Fatalf("offset %d committed %d, want %d and %d", ts.offset.Load(), ts.committed.Load(), ends[3], ends[1])
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	p.restartStalledTail(file, ts, "test", true)
+	e, ok := bm.Get(file)
+	if !ok {
+		t.Fatal("no bookmark after the restart")
+	}
+	if e.Offset != ends[1] && e.Offset != 0 {
+		t.Fatalf("restart bookmarked offset %d, past the held record that starts at %d", e.Offset, ends[1])
+	}
+}

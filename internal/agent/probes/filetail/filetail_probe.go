@@ -575,6 +575,7 @@ func (p *FileTailProbe) startTail(file string) error {
 	}
 	ts := &tailState{t: t, opened: opened, handle: handle, headFP: fp, done: make(chan struct{})}
 	ts.offset.Store(offset)
+	ts.committed.Store(offset)
 	p.tailing[file] = ts
 	p.wg.Add(1)
 	p.mu.Unlock()
@@ -639,6 +640,11 @@ func (p *FileTailProbe) isStopped() bool {
 type tailState struct {
 	t      *tail.Tail
 	offset atomic.Int64
+	// committed is the offset after the last line whose record has been
+	// published. It trails offset while a multiline record is held: the
+	// bookmark points before the held lines, so a crash or a restart reads
+	// them again rather than losing them.
+	committed atomic.Int64
 
 	mu            sync.Mutex
 	opened        os.FileInfo
@@ -903,7 +909,7 @@ func (p *FileTailProbe) restartStalledTail(file string, ts *tailState, reason st
 	}
 	entry := bookmarkEntry{}
 	if resume {
-		entry = bookmarkEntry{Offset: ts.offset.Load(), Fingerprint: fingerprint(file, DefaultFingerprintLength)}
+		entry = bookmarkEntry{Offset: ts.committed.Load(), Fingerprint: fingerprint(file, DefaultFingerprintLength)}
 	}
 	if err := p.bookmarks.Set(file, entry); err != nil {
 		p.warn().Err(err).Str("file", file).Msg("persisting bookmark failed")
@@ -977,11 +983,6 @@ func (p *FileTailProbe) consume(file string, ts *tailState, startOffset int64, f
 
 	lastFlush := time.Now()
 	lastOffset := startOffset
-	// committed is the offset after the last line whose record has been
-	// published. It trails lastOffset while a multiline record is held: the
-	// bookmark points before the held lines, so a crash replays them rather
-	// than losing them.
-	committed := startOffset
 
 	persist := func() {
 		// Once superseded, the tail that replaced this one owns the bookmark.
@@ -997,7 +998,7 @@ func (p *FileTailProbe) consume(file string, ts *tailState, startOffset int64, f
 				ts.setHead(fp)
 			}
 		}
-		if err := p.bookmarks.Set(file, bookmarkEntry{Offset: committed, Fingerprint: fp}); err != nil {
+		if err := p.bookmarks.Set(file, bookmarkEntry{Offset: ts.committed.Load(), Fingerprint: fp}); err != nil {
 			p.warn().Err(err).Str("file", file).Msg("persisting bookmark failed")
 		}
 	}
@@ -1118,7 +1119,7 @@ read:
 				p.publish(p.config.Parser, logical, time.Now(), probeName, file)
 			}
 			lastOffset = 0
-			committed = 0
+			ts.committed.Store(0)
 			if h, err := tail.OpenFile(file); err == nil { //nolint:staticcheck // no replacement in nxadm/tail v1.4.11; os.Open lacks the Windows delete-sharing that rotation relies on
 				closeQuietly(ts.handle)
 				ts.handle = h
@@ -1139,7 +1140,7 @@ read:
 			for _, logical := range asm.Flush() {
 				p.publish(p.config.Parser, logical, time.Now(), probeName, file)
 			}
-			committed = lastOffset
+			ts.committed.Store(lastOffset)
 			dirty = true
 			continue
 		case <-ticker.C:
@@ -1172,7 +1173,7 @@ read:
 				p.publish(p.config.Parser, logical, time.Now(), probeName, file)
 			}
 			lastOffset = 0
-			committed = 0
+			ts.committed.Store(0)
 			fp = ts.restartedAtStart(file)
 			persist()
 			lastFlush = time.Now()
@@ -1193,10 +1194,10 @@ read:
 		emitted := feed(line.Text, readTime)
 		switch {
 		case !asm.Pending():
-			committed = lastOffset
+			ts.committed.Store(lastOffset)
 		case emitted > 0:
 			// This line opened the record now held.
-			committed = before
+			ts.committed.Store(before)
 		}
 
 		if time.Since(lastFlush) >= bookmarkFlushInterval {
@@ -1208,10 +1209,12 @@ read:
 
 	// Channel closed (tail stopped): flush any pending multiline record
 	// and persist the final offset.
-	for _, logical := range asm.Flush() {
-		p.publish(p.config.Parser, logical, time.Now(), probeName, file)
+	if held := asm.Flush(); len(held) > 0 {
+		for _, logical := range held {
+			p.publish(p.config.Parser, logical, time.Now(), probeName, file)
+		}
+		ts.committed.Store(lastOffset)
 	}
-	committed = lastOffset
 	cause := t.Wait()
 	if ts.superseded.Load() {
 		return
