@@ -837,15 +837,17 @@ func withImplicitACAJobs(groups []envProbe, data *LocalConfigurationData, log *l
 		return groups
 	}
 	src := apps[0]
+	// Copied settings keep their real variable name: a secret parameter is
+	// stored as ${env:<variable>} and resolved from the environment later.
 	jobs := envProbe{name: implicitJobsName}
 	jobs.settings = append(jobs.settings, envSetting{variable: "SENHUB_PROBE_JOBS_TYPE (implicit)", segments: []string{"type"}, value: acaJobsType})
 	interval := "300"
 	for _, st := range src.settings {
 		switch {
 		case len(st.segments) == 1 && acaJobsCopied[st.segments[0]]:
-			jobs.settings = append(jobs.settings, envSetting{variable: st.variable + " (for jobs)", segments: st.segments, value: st.value})
+			jobs.settings = append(jobs.settings, envSetting{variable: st.variable, segments: st.segments, value: st.value})
 		case len(st.segments) == 2 && st.segments[0] == "discovery" && st.segments[1] == "resource_groups":
-			jobs.settings = append(jobs.settings, envSetting{variable: st.variable + " (for jobs)", segments: st.segments, value: st.value})
+			jobs.settings = append(jobs.settings, envSetting{variable: st.variable, segments: st.segments, value: st.value})
 		case len(st.segments) == 2 && st.segments[0] == "discovery" && st.segments[1] == "interval":
 			interval = st.value
 		}
