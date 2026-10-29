@@ -2,6 +2,7 @@ package otlp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/exporterrors"
 )
@@ -117,7 +119,7 @@ func TestSplittingLogExporter_SplitsBetweenEntitiesUnderBudget(t *testing.T) {
 	}
 
 	sink := &captureLogExporter{}
-	emitTestEntities(t, newSplittingLogExporter(sink, budget), 200, 12)
+	emitTestEntities(t, newSplittingLogExporter(sink, budget, nil), 200, 12)
 
 	if len(sink.exports) < 2 {
 		t.Fatalf("expected several exports, got %d", len(sink.exports))
@@ -152,7 +154,7 @@ func TestSplittingLogExporter_SplitsBetweenEntitiesUnderBudget(t *testing.T) {
 
 func TestSplittingLogExporter_OversizedRecordGoesAlone(t *testing.T) {
 	sink := &captureLogExporter{}
-	emitTestEntities(t, newSplittingLogExporter(sink, 64), 3, 2)
+	emitTestEntities(t, newSplittingLogExporter(sink, 64, nil), 3, 2)
 	if len(sink.exports) != 3 {
 		t.Fatalf("got %d exports, want one per oversized record (3)", len(sink.exports))
 	}
@@ -160,22 +162,44 @@ func TestSplittingLogExporter_OversizedRecordGoesAlone(t *testing.T) {
 
 func TestSplittingLogExporter_SmallBatchPassesThrough(t *testing.T) {
 	sink := &captureLogExporter{}
-	emitTestEntities(t, newSplittingLogExporter(sink, 0), 5, 2)
+	emitTestEntities(t, newSplittingLogExporter(sink, 0, nil), 5, 2)
 	if len(sink.exports) != 1 || len(sink.exports[0]) != 5 {
 		t.Fatalf("small batch was split: %d exports", len(sink.exports))
 	}
 }
 
-func TestSplittingLogExporter_MixedErrorClassifiesPermanent(t *testing.T) {
+func TestSplittingLogExporter_MixedErrorKeepsOnlyUndelivered(t *testing.T) {
 	sink := &scriptedLogExporter{errs: []error{
 		status.Error(codes.Unavailable, "down"),
 		status.Error(codes.ResourceExhausted, "message larger than max"),
 	}}
-	var got error
+	tooLargeBefore := agentstate.GetOTLPDroppedByReason()["record_too_large"]
 	rec := &captureLogExporter{}
 	emitTestEntities(t, rec, 2, 2)
-	got = newSplittingLogExporter(sink, 64).Export(context.Background(), rec.exports[0])
-	if got == nil || exporterrors.IsRetryable(classifyExportError(got)) {
-		t.Fatalf("mixed chunk errors must classify permanent, got %v", got)
+	records := rec.exports[0]
+	// Split into two chunks of 1 record each using a tiny budget
+	exporter := newSplittingLogExporter(sink, 64, nil)
+	err := exporter.Export(context.Background(), records)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var se *splitExportError
+	if !errors.As(err, &se) {
+		t.Fatalf("expected *splitExportError, got %T", err)
+	}
+	if len(se.undelivered) != 1 {
+		t.Fatalf("undelivered = %d, want 1", len(se.undelivered))
+	}
+	if se.rejected != 0 {
+		t.Fatalf("rejected = %d, want 0", se.rejected)
+	}
+	if se.dropped != 1 {
+		t.Fatalf("dropped = %d, want 1", se.dropped)
+	}
+	if got := agentstate.GetOTLPDroppedByReason()["record_too_large"] - tooLargeBefore; got != 1 {
+		t.Fatalf("record_too_large dropped = %d, want 1", got)
+	}
+	if !exporterrors.IsRetryable(classifyExportError(se.err)) {
+		t.Fatalf("expected retryable joined error, got %v", se.err)
 	}
 }

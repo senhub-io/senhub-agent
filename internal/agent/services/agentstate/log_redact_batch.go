@@ -52,7 +52,8 @@ func maskBatchBody(rs *redactionRuleset, body string, attrs []*commonpb.KeyValue
 			}
 		}
 	}
-	if masked, out := batchPemState.process(rec, pemEnabled, pemEnabled && hasUnclosedPEMBegin(body)); masked {
+	maskTail := func(s string) string { return maskString(rs, s, probe) }
+	if masked, out := batchPemState.process(rec, pemEnabled, pemEnabled && hasUnclosedPEMBegin(body), maskTail); masked {
 		return out
 	}
 	return maskString(rs, body, probe)

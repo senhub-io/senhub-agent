@@ -122,7 +122,8 @@ otlp:
       batch_timeout: 5s           # flush even if batch_size not reached
       buffer_size: 10000          # bounded queue; drop-oldest beyond
       max_export_bytes: 3145728   # estimated size cap of one export (default 3 MiB);
-                                  # larger batches are split between records
+                                  # larger batches are split between records,
+                                  # halved again if the receiver refuses the size
     traces:
       enabled: true               # default false — relays spans ingested by an
                                   # otlp_receiver probe (signals: [traces])
@@ -645,6 +646,48 @@ In a container the state directory must be on a persistent volume (a
 mounted volume, or an Azure Files share on Container Apps); without it the
 queue disappears with the container and only survives an outage, not a
 restart.
+
+### Exports larger than the collector accepts
+
+The agent cuts each logs export (event logs and entity events) into parts
+whose estimated size stays under `signals.logs.max_export_bytes`, 3 MiB by
+default. The estimate is of the uncompressed message, which is what a gRPC
+receiver measures: its `max_recv_msg_size_mib` applies after decompression,
+so gzip does not help with this limit. Parts are cut between records; an
+entity event always keeps its complete relationships.
+
+When the collector still refuses a part for its size (gRPC
+`RESOURCE_EXHAUSTED` without a retry hint, HTTP 413, or the HTTP 400
+"request body too large" the OpenTelemetry Collector answers over its
+`max_request_body_size`), the agent halves
+the part and sends each half, down to a single record, then sends the
+following batches under a lower limit: half of the refused size, never
+below 64 KiB. It logs this once:
+
+```
+OTLP logs export refused for size by the receiver; working export size limit lowered
+```
+
+with the configured limit (`configured_bytes`), the new one
+(`working_bytes`) and the refused size (`refused_estimated_bytes`). The
+lowered limit holds until the agent restarts. To avoid the first refusal
+and the extra exports it costs, set `max_export_bytes` below the
+collector's limit, for example `786432` (768 KiB) for a collector with
+`max_recv_msg_size_mib: 1`.
+
+A single record larger than the collector accepts cannot be cut. It is
+dropped, counted in `senhub_agent_otlp_dropped_total{reason="record_too_large"}`,
+and the first one is logged with its estimated size:
+
+```
+OTLP logs record larger than the receiver accepts; dropped
+```
+
+Records refused for another reason (for example `INVALID_ARGUMENT`) are
+counted with `reason="receiver_rejected"`. Neither kind is written to the
+disk queue: the same bytes would be refused again. When a part fails because
+the collector is unreachable, only the records of that part go to the disk
+queue; the parts already delivered are not sent again.
 
 ## Severity mapping
 

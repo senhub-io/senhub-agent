@@ -1,9 +1,9 @@
 package filetail
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 )
@@ -12,9 +12,6 @@ import (
 // glob over dated directories otherwise keeps one counter per directory
 // ever seen.
 func TestFileTail_EmittedCounterLeavesWithItsFile(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the polling watcher waits for a removed file to reappear and never ends the tail")
-	}
 	root := t.TempDir()
 	first := filepath.Join(root, "2026-10-28", "app.log")
 	second := filepath.Join(root, "2026-10-29", "app.log")
@@ -38,6 +35,16 @@ func TestFileTail_EmittedCounterLeavesWithItsFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, second, "")
+	// Whether the tail library ends a tail whose directory was removed, and
+	// when, depends on its watcher and the host's load. What is under test is
+	// what the probe does once a tail ends, so the tail is ended here.
+	p.mu.Lock()
+	ts := p.tailing[first]
+	p.mu.Unlock()
+	if ts == nil {
+		t.Fatal("no tail registered for the file being read")
+	}
+	ts.t.Kill(errors.New("file removed"))
 	deadline := time.Now().Add(15 * time.Second)
 	for {
 		p.mu.Lock()

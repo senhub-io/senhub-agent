@@ -64,6 +64,7 @@ and governance must be in `agent.yaml` (governance as a top-level
 | Outbound dependencies (opt-in) | | `depends_on` towards the peer endpoint |
 | System services | `host.service` from the `systemd` and `winservices` probes | `runs_on` the host |
 | Neighbours (opt-in) | `network.neighbor`, identified by this host and the MAC address | `neighbor_of` the interface it was seen on; `resolves_to` the interface that owns the MAC (opt-in) |
+| Neighbours learned by an SNMP device (opt-in, `snmp_poll` `neighbors`) | `network.neighbor`, identified by the polled device and the MAC address (see [SNMP Poll](probes/snmp-poll.md#learned-neighbours)) | `neighbor_of` the device port it was learned on; `resolves_to` the interface that owns the MAC, when known |
 | Ethernet aggregates (opt-in) | | `aggregated_into` from a member port to its aggregate |
 | Kubernetes | `k8s.node`, see [Kubernetes](probes/kubernetes.md#nodes-on-the-map) | `same_as` the host of the node |
 
@@ -127,7 +128,7 @@ anything about the resource.
 | `terminated` | The source read successfully and no longer lists it | It ended |
 | `parent_removed` | It lost the relation that anchored it | Follows its parent |
 | `unmonitored` | The agent stopped observing: the probe was removed or stopped, or the source failed for too long | Nothing. It may still be running |
-| `rekeyed` | The resource is the same, the agent now identifies it differently, as when `systemd` units moved from `service.instance` to `host.service` | Nothing happened |
+| `rekeyed` | The resource is the same, the agent now identifies it differently, as when `systemd` units moved from `service.instance` to `host.service`, or when an SNMP device's id changes while it stays the same device (a stack whose chassis MAC follows a new master) | Nothing happened |
 | `aged_out` | A cache the source reads forgot the entry, such as an ARP entry | Nothing was seen leaving |
 
 The consumer adds its own account of who decided the deletion. The two

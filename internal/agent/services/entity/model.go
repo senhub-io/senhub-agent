@@ -135,6 +135,8 @@ const (
 	ScopeSNMPLLDP  = "senhub-agent/snmp-lldp"  // reserved: LLDP neighbours are no longer built as devices
 	ScopeSNMPRoute = "senhub-agent/snmp-route" // device routing table (network.route)
 	ScopeSNMPIFMIB = "senhub-agent/snmp-ifmib" // device + IF-MIB ports/addresses
+	ScopeSNMPFDB   = "senhub-agent/snmp-fdb"   // MACs a device learned in its bridge forwarding table (network.neighbor)
+	ScopeSNMPARP   = "senhub-agent/snmp-arp"   // MACs known to a device only from its ARP table (network.neighbor)
 	ScopeHostRoute = "senhub-agent/host-route" // host kernel routing table
 	ScopeHostARP   = "senhub-agent/host-arp"   // host ARP/NDP neighbour inventory
 	ScopeHostSvc   = "senhub-agent/host-svc"   // host listening-service inventory

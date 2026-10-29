@@ -128,18 +128,22 @@ Toise does NOT normalize or merge ids — the producer canonicalizes and
 emits exact ids per source; convergence happens because two observers of the
 same device derive byte-identical ids.
 
-- **`network.device.id` — single key, subtype-prefixed, frozen precedence:**
-  `serial:<PEN>:<entPhysicalSerialNum>` > `engine:<snmpEngineID>` >
-  `mac:<LLDP chassis-id, only when subtype is MAC>` > `name:<sysName>` >
-  `mgmt:<ip>`. Identity does **not** anchor on LLDP (often disabled); it
-  anchors on the SNMP-readable serial/engine id. Two identity-semantics
+- **`network.device.id` — single key, subtype-prefixed precedence:**
+  `serial:<PEN>:<entPhysicalSerialNum>` > `mac:<LLDP lldpLocChassisId, only
+  when its subtype is MAC and it is a unicast 6-byte address>` >
+  `engine:<snmpEngineID>` > `name:<sysName>` > `mgmt:<ip>`. A chassis-id
+  that is not a usable MAC is never an id (two neighbours announcing the
+  zero MAC would merge). The chassis MAC is factory-assigned; the engine id is
+  configurable and has been found copied between distinct switches, so it
+  ranks after the chassis MAC and is used when LLDP is off or its chassis-id
+  is not a MAC. Two identity-semantics
   rules on the serial rung (Toise Q1/Q2): a serial is vendor-scoped, so it is
   namespaced by the vendor **IANA PEN** read from `sysObjectID`
-  (`serial:<PEN>:<serial>`); without a PEN it falls through to `engine`
-  (globally unique by RFC 3411). The serial is taken only when there is
+  (`serial:<PEN>:<serial>`); without a PEN it falls through to the chassis
+  MAC. The serial is taken only when there is
   **exactly one** `entPhysicalClass=chassis` row — a **stack** (N chassis)
-  leaves it empty and uses the stack-wide `engineID` (one logical device per
-  SNMP management entity, failover-stable; a master-member serial would flap),
+  leaves it empty and uses the stack chassis MAC, else the stack-wide
+  `engineID` (a master-member serial would flap),
   and this also avoids latching onto a swappable module/PSU serial. Everything
   not chosen as the id goes in **descriptive attributes** (dotted lowercase,
   frozen casing — `sys.name`, `sys.descr` (sysDescr.0) (not the polled
@@ -149,6 +153,57 @@ same device derive byte-identical ids.
   ENTITY-MIB `entPhysicalMfgName`/`ModelName`/`FirmwareRev` of the **single**
   chassis row), never as a second identity key. These make the device readable
   in a backend instead of just its cryptic id; neighbours carry `sys.name`.
+  The raw identity parts ride as attributes too, whichever rung the id took,
+  so the effect of a precedence rule is measured from the graph:
+  `hw.serial_number` (the single chassis serial), `senhub.lldp.chassis_mac`
+  (only a usable unicast MAC of subtype 4), `senhub.snmp.engine_id` (lowercase
+  hex) and `senhub.chassis.serial_numbers`. The last one has a **frozen form**,
+  because two agents building it differently would rewrite it every report:
+  a list (array of strings, like `network.interface.addresses`) of the serial
+  of every `entPhysicalClass=chassis` row (one per stack member), each
+  trimmed, case kept, sorted by byte value ascending, duplicates dropped, and
+  **omitted** (never sent empty) when no chassis serial is read. It is derived from the chassis `hw.component`
+  entities planned by ent#798, which will be authoritative once they exist.
+- **Re-identification is announced (`entity.delete.reason = rekeyed`).** The
+  word is the agent's existing `entity.ReasonRekeyed` and is frozen: no other
+  spelling. When a successful sweep of a target resolves an id different from
+  the previous sweep of the same target, and the two read the same logical
+  device (same `sys.name` or a chassis serial in common, never the engine id alone;
+  a hardware replacement under the same name counts as the same device),
+  every entity the previous id owned (the device, its interfaces, routes,
+  neighbours, LAGs and anything else keyed on that `network.device.id`) is
+  deleted explicitly with the reason `rekeyed`, on three consecutive
+  observation cycles. The same applies once per process to the id the
+  precedence before 0.6.5 (`engine:` above `mac:`) gives, so an upgrade
+  retires the old ids instead of letting them expire. Edges that cascade
+  carry no reason. The previous sweep is held in memory only: an id that
+  changes while the agent is stopped retires by liveness expiry.
+- **An incomplete identity never replaces an established id.** When one of
+  the walks the id is built from fails (ENTITY-MIB class or serial,
+  sysObjectID, snmpEngineID, sysName) and the id it gives differs from the
+  one already established for the target, the sweep is held like a failed
+  one: the previous snapshot stays, the sweep is retried with the usual
+  back-off, and the agent logs "topology sweep read an incomplete identity;
+  keeping previous snapshot". A first sweep publishes whatever it resolves
+  (a device whose ENTITY-MIB an ACL refuses still appears), and a walk that
+  answers with no row (no ENTITY-MIB) is a complete read, except for a
+  device that had chassis serials: the SNMP library reports an error-status
+  (genErr, noAccess) as an empty table, and chassis serials do not vanish
+  from a running device, so their sudden absence is an incomplete read (a
+  stack that loses members still lists the others: that read is complete,
+  and the rekeyed retirement handles the id change). Once that first
+  device reads in full, the id its first sweep published is retired as
+  `rekeyed` (same rules as above). A target held this way for three
+  topology intervals goes silent like any failing target, so a lasting
+  error does not freeze the map: the device and its subtree leave it with
+  the reason `unmonitored`, and the hold ends: the next sweep resolves the
+  device again from what it answers, as a first sweep would (logged once
+  with "identity read still incomplete after the silence threshold"). When
+  the device reads in full again, it returns under its full id and the
+  lower one is retired as `rekeyed`. Known limit: when that first sweep also failed to read `sysName`
+  and the device has no chassis serial in common to compare, nothing tells
+  that the later id is the same device, so the first id expires by liveness
+  with no reason.
   Canonicalization (producer side): `mac` = uppercase hex `-`-separated
   (`BC-24-11-1B-04-82`, the OpenTelemetry form, `entity.CanonicalMAC`);
   `engine`/`PEN` = lowercase hex / decimal; `serial`/`name` = trimmed (case
