@@ -210,6 +210,9 @@ type snmpEntitySource struct {
 	// identityCollisions counts sweeps whose device id another target of
 	// this agent already holds for a visibly different device.
 	identityCollisions atomic.Uint64
+	// holdReleaseLogged keeps the end-of-hold warning to one per outage; a
+	// successful sweep clears it.
+	holdReleaseLogged atomic.Bool
 	// engineMACMismatch is 1 when the last sweep read an engine id that
 	// embeds a MAC other than the chassis MAC; engineMACWarned holds the
 	// last pair logged, so a steady mismatch logs once.
@@ -611,6 +614,7 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 
 	s.mu.Lock()
 	s.failingSince = time.Time{}
+	s.holdReleaseLogged.Store(false)
 	s.silentMarked = false
 	s.sweepFailures = 0
 	s.retryAt = time.Time{}
@@ -679,8 +683,10 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	holdExpired := !s.failingSince.IsZero() && now.Sub(s.failingSince) >= silentAfterSweeps*s.interval
 	s.mu.Unlock()
 	if holdExpired && established != "" {
-		s.moduleLogger.Warn().Str("target", s.cfg.Target).Str("device_id", established).
-			Msg("identity read still incomplete after the silence threshold; resolving the device again from what it answers")
+		if s.holdReleaseLogged.CompareAndSwap(false, true) {
+			s.moduleLogger.Warn().Str("target", s.cfg.Target).Str("device_id", established).
+				Msg("identity read still incomplete after the silence threshold; resolving the device again from what it answers")
+		}
 		established = ""
 		hadChassisSerials = false
 	}

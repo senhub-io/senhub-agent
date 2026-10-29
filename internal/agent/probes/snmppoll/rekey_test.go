@@ -1,6 +1,7 @@
 package snmppoll
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"sort"
@@ -9,8 +10,10 @@ import (
 	"time"
 
 	"github.com/gosnmp/gosnmp"
+	"github.com/rs/zerolog"
 
 	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 func TestChassisSerials_FrozenForm(t *testing.T) {
@@ -483,5 +486,47 @@ func TestRekey_FailingIdentityWalkHoldEndsAndRecovers(t *testing.T) {
 	}
 	if obs, ok := s.Observe(); !ok || len(devicesIn(obs)) != 1 || devicesIn(obs)[0] != "serial:25506:CN14HD90F4" {
 		t.Fatalf("after recovery: ok=%v %v", ok, devicesIn(obs))
+	}
+}
+
+func TestRekey_VanishedSerialsReturnRetiresTheInterimIDAsRekeyed(t *testing.T) {
+	s, rec, c := newRekeyTestSourceWithClock(t)
+	full := singleChassisClient()
+	genErr := singleChassisClient()
+	delete(genErr.walkRawResult, oidEntPhysicalClass)
+	delete(genErr.walkRawResult, oidEntPhysicalSerialNum)
+
+	sweepFor(s, c, full, 1, time.Minute)
+	sweepFor(s, c, genErr, 20, 10*time.Minute)
+	interim := s.DeviceID()
+	if interim == "serial:25506:CN14HD90F4" {
+		t.Fatalf("hold did not end")
+	}
+	rec.events = nil
+	sweepFor(s, c, full, 3, 10*time.Minute)
+	got := false
+	for _, ev := range rec.events {
+		if ev.DeleteReason == entity.ReasonRekeyed && ev.Entity.ID[idKeyNetworkDevice] == interim {
+			got = true
+		}
+	}
+	if !got {
+		t.Errorf("interim id %s not retired as rekeyed on return; events: %d", interim, len(rec.events))
+	}
+}
+
+// A hold that ends while the reads keep failing logs its end once per
+// outage, not at every retry past the threshold.
+func TestRekey_HoldReleaseLoggedOncePerOutage(t *testing.T) {
+	var buf bytes.Buffer
+	zl := zerolog.New(&buf)
+	s, _, c := newRekeyTestSourceWithClock(t)
+	s.moduleLogger = logger.NewModuleLogger(&zl, "test")
+	full := singleChassisClient()
+	failing := failingWalks{singleChassisClient(), map[string]bool{oidEntPhysicalClass: true, oidEntPhysicalSerialNum: true, oidSysNameBase: true, lldpLocBase: true}}
+	sweepFor(s, c, full, 1, time.Minute)
+	sweepFor(s, c, failing, 30, 10*time.Minute)
+	if n := strings.Count(buf.String(), "still incomplete after the silence threshold"); n != 1 {
+		t.Errorf("end of hold logged %d times during one outage, want once", n)
 	}
 }
