@@ -396,7 +396,7 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 	// state directory, whenever raw logs are emitted; entity events are a
 	// re-emitted state stream and are not queued.
 	if s.exporters.log != nil {
-		s.exporters.log = newSplittingLogExporter(s.exporters.log, s.cfg.Logs.MaxExportBytes)
+		s.exporters.log = newSplittingLogExporter(s.exporters.log, s.cfg.Logs.MaxExportBytes, s.logger)
 	}
 	var logExp *persistentLogExporter
 	if queuePath := s.cfg.Persistence.logsQueuePath(); queuePath != "" && s.cfg.Logs.Enabled && s.exporters.log != nil {
