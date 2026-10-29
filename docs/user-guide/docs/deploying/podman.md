@@ -89,7 +89,7 @@ reads them at every start, so a change to them needs only a restart. See
 The `Image=` line is the pin:
 
 ```ini
-Image=ghcr.io/senhub-io/senhub-agent:0.6.4
+Image=ghcr.io/senhub-io/senhub-agent:0.6.5
 ```
 
 Only exact version tags are published, there is no `latest`. The shipped
@@ -99,8 +99,8 @@ it never moves to a new version. To pin what is run to a build you have
 reviewed, use the digest and delete the `AutoUpdate=` line:
 
 ```bash
-sudo podman pull ghcr.io/senhub-io/senhub-agent:0.6.4
-sudo podman image inspect ghcr.io/senhub-io/senhub-agent:0.6.4 --format '{{.Digest}}'
+sudo podman pull ghcr.io/senhub-io/senhub-agent:0.6.5
+sudo podman image inspect ghcr.io/senhub-io/senhub-agent:0.6.5 --format '{{.Digest}}'
 ```
 
 ```ini

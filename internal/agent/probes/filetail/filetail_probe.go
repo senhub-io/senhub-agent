@@ -180,13 +180,17 @@ func (p *FileTailProbe) Collect() ([]data_store.DataPoint, error) {
 
 func (p *FileTailProbe) tailPositionPoints(now time.Time) []data_store.DataPoint {
 	type position struct {
-		path   string
-		offset int64
+		path    string
+		offset  int64
+		emitted uint64
 	}
+	// The counter is read under the lock that guards its eviction: read
+	// after it, a counter dropped in between would be created again for a
+	// path no longer followed.
 	p.mu.Lock()
 	positions := make([]position, 0, len(p.tailing))
 	for path, ts := range p.tailing {
-		positions = append(positions, position{path: path, offset: ts.offset.Load()})
+		positions = append(positions, position{path: path, offset: ts.offset.Load(), emitted: p.fileEmittedCounter(path).Load()})
 	}
 	p.mu.Unlock()
 	sort.Slice(positions, func(i, j int) bool { return positions[i].path < positions[j].path })
@@ -195,7 +199,7 @@ func (p *FileTailProbe) tailPositionPoints(now time.Time) []data_store.DataPoint
 	for _, pos := range positions {
 		pathTags := []tags.Tag{{Key: "log.file.path", Value: pos.path}}
 		points = append(points, data_store.DataPoint{
-			Name: "senhub.filetail.file_records_emitted", Value: float64(p.fileEmittedCounter(pos.path).Load()), Timestamp: now, Tags: pathTags,
+			Name: "senhub.filetail.file_records_emitted", Value: float64(pos.emitted), Timestamp: now, Tags: pathTags,
 		})
 		points = append(points, data_store.DataPoint{
 			Name: "senhub.filetail.read_offset", Value: float64(pos.offset), Timestamp: now, Tags: pathTags,
@@ -1186,6 +1190,7 @@ func (p *FileTailProbe) forgetDeadTail(file string, ts *tailState, cause error) 
 		return
 	}
 	delete(p.tailing, file)
+	p.fileEmitted.Delete(file)
 	p.warn().Err(cause).Str("file", file).Msg("tail ended; retrying on next rescan")
 }
 

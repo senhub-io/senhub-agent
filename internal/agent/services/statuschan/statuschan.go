@@ -102,8 +102,11 @@ func (s *Service) Shutdown(ctx context.Context) error {
 	// the test package on the Windows runner; the agent's own shutdown
 	// would hang the same way. Close runs aside, bounded by ctx and, for a
 	// caller that gave no deadline, by shutdownCap.
-	ctx, cancel := context.WithTimeout(ctx, s.shutdownCap)
-	defer cancel()
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.shutdownCap)
+		defer cancel()
+	}
 	closed := make(chan struct{})
 	go func() {
 		_ = ln.Close()
