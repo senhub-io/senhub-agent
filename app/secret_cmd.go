@@ -32,7 +32,7 @@ func secretUsage() {
   set <name>        store/replace a secret (hidden prompt, or stdin, or --from-file <path>)
   get <name>        print a secret value to stdout (deliberate reveal)
   list              list secret names (never values)
-  rm <name>         delete a secret (prompts to confirm; --yes to skip)
+  rm <name>         delete a secret (prompts to confirm; --yes or -y to skip)
   migrate           move inline plaintext secrets from the config into the store
                     (--wire-unit: then wire the Linux systemd-creds drop-in)
   wire-unit         (Linux/systemd-creds) regenerate the unit credential drop-in
@@ -121,18 +121,11 @@ func runSecretCommand() {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(cliexit.Failure)
 		}
-		if !secretHasFlag(args, "--yes") {
-			fmt.Printf("Remove secret %q? [y/N] ", name)
-			if !readYesConfirmation() {
-				fmt.Println("Cancelled.")
-				return
-			}
+		yes := secretHasFlag(args, "--yes") || secretHasFlag(args, "-y")
+		confirm := func() (bool, bool) { return confirmFrom(os.Stdin, os.Stderr) }
+		if code := runSecretRm(p, name, yes, confirm, os.Stdout, os.Stderr); code != cliexit.OK {
+			os.Exit(code)
 		}
-		if err := p.Delete(name); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(cliexit.Failure)
-		}
-		fmt.Printf("removed secret %q\n", name)
 
 	case "migrate":
 		cfgPath, err := secretConfigFile(args)
@@ -199,6 +192,30 @@ func secretArgName(args []string) (string, error) {
 		return "", fmt.Errorf("missing <name>")
 	}
 	return name, nil
+}
+
+// runSecretRm deletes name after a confirmation, unless yes is set. A
+// refused or impossible confirmation exits non-zero so that a script
+// running `secret rm` does not carry on as if the secret were gone.
+func runSecretRm(p secret.Provider, name string, yes bool, confirm func() (ok, interactive bool), out, errOut io.Writer) int {
+	if !yes {
+		fmt.Fprintf(out, "Remove secret %q? [y/N] ", name)
+		ok, interactive := confirm()
+		if !interactive {
+			fmt.Fprintf(errOut, "Error: secret %q was not removed: no interactive terminal to confirm; pass --yes (or -y) to remove it without a prompt.\n", name)
+			return cliexit.Failure
+		}
+		if !ok {
+			fmt.Fprintf(errOut, "Cancelled: secret %q was not removed.\n", name)
+			return cliexit.Failure
+		}
+	}
+	if err := p.Delete(name); err != nil {
+		fmt.Fprintf(errOut, "Error: %v\n", err)
+		return cliexit.Failure
+	}
+	fmt.Fprintf(out, "removed secret %q\n", name)
+	return cliexit.OK
 }
 
 // secretHasFlag reports whether the given boolean flag is present anywhere in

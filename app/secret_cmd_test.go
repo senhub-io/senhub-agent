@@ -1,9 +1,14 @@
 package app
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"senhub-agent.go/internal/agent/services/configuration/secret"
+	"senhub-agent.go/internal/cliexit"
 )
 
 // secretHasFlag decides whether `secret rm` skips its confirmation
@@ -89,5 +94,57 @@ func TestReadSecretValue_FromFile(t *testing.T) {
 func TestReadSecretValue_FromFileMissingPath(t *testing.T) {
 	if _, err := readSecretValue([]string{"set", "db.password", "--from-file"}); err == nil {
 		t.Error("--from-file with no path should error")
+	}
+}
+
+type fakeSecretProvider struct {
+	secret.Provider
+	deleted []string
+}
+
+func (f *fakeSecretProvider) Delete(name string) error {
+	f.deleted = append(f.deleted, name)
+	return nil
+}
+
+func TestRunSecretRm(t *testing.T) {
+	never := func() (bool, bool) {
+		t.Fatal("confirm must not be called")
+		return false, false
+	}
+	cases := []struct {
+		name        string
+		yes         bool
+		confirm     func() (bool, bool)
+		wantCode    int
+		wantDeleted bool
+		wantErr     string
+	}{
+		{"yes removes without prompt", true, never, cliexit.OK, true, ""},
+		{"interactive y removes", false, func() (bool, bool) { return true, true }, cliexit.OK, true, ""},
+		{"interactive n cancels non-zero", false, func() (bool, bool) { return false, true }, cliexit.Failure, false, "Cancelled"},
+		{"non-interactive without yes fails", false, func() (bool, bool) { return false, false }, cliexit.Failure, false, "pass --yes"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &fakeSecretProvider{}
+			var out, errOut bytes.Buffer
+			code := runSecretRm(p, "tok", tc.yes, tc.confirm, &out, &errOut)
+			if code != tc.wantCode {
+				t.Errorf("exit code = %d, want %d", code, tc.wantCode)
+			}
+			if got := len(p.deleted) == 1; got != tc.wantDeleted {
+				t.Errorf("deleted = %v, want %v", p.deleted, tc.wantDeleted)
+			}
+			if !strings.Contains(errOut.String(), tc.wantErr) {
+				t.Errorf("stderr = %q, want it to contain %q", errOut.String(), tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestSecretHasShortYesFlag(t *testing.T) {
+	if !secretHasFlag([]string{"rm", "-y", "grafana"}, "-y") {
+		t.Error("-y not detected")
 	}
 }
