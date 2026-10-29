@@ -660,7 +660,18 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	s.mu.Lock()
 	established := s.deviceID
 	hadChassisSerials := len(s.cache.self.ChassisSerials) > 0
+	// A hold that outlasts the silence threshold ends: the target has gone
+	// silent, its entities have left as unmonitored, and the next sweep
+	// starts over as a first sweep. Without an end, a device that lost its
+	// ENTITY-MIB for good would be held, and absent, until the agent restarts.
+	holdExpired := !s.failingSince.IsZero() && now.Sub(s.failingSince) >= silentAfterSweeps*s.interval
 	s.mu.Unlock()
+	if holdExpired && established != "" {
+		s.moduleLogger.Warn().Str("target", s.cfg.Target).Str("device_id", established).
+			Msg("identity read still incomplete after the silence threshold; resolving the device again from what it answers")
+		established = ""
+		hadChassisSerials = false
+	}
 	// A device that answered an error-status on ENTITY-MIB reads, through
 	// the SNMP library, as an empty table rather than a failed walk. Chassis
 	// serials do not vanish from a running device: their sudden absence is

@@ -189,13 +189,18 @@ same device derive byte-identical ids.
   answers with no row (no ENTITY-MIB) is a complete read, except for a
   device that had chassis serials: the SNMP library reports an error-status
   (genErr, noAccess) as an empty table, and chassis serials do not vanish
-  from a running device, so their sudden absence is an incomplete read. Once that first
+  from a running device, so their sudden absence is an incomplete read (a
+  stack that loses members still lists the others: that read is complete,
+  and the rekeyed retirement handles the id change). Once that first
   device reads in full, the id its first sweep published is retired as
   `rekeyed` (same rules as above). A target held this way for three
-  topology intervals goes silent like any failing target, so a permanent
-  ENTITY-MIB error does not freeze the map: the device and its subtree leave
-  it with the reason `unmonitored`, and come back when the device reads in
-  full. Known limit: when that first sweep also failed to read `sysName`
+  topology intervals goes silent like any failing target, so a lasting
+  error does not freeze the map: the device and its subtree leave it with
+  the reason `unmonitored`, and the hold ends: the next sweep resolves the
+  device again from what it answers, as a first sweep would (logged once
+  with "identity read still incomplete after the silence threshold"). When
+  the device reads in full again, it returns under its full id and the
+  lower one is retired as `rekeyed`. Known limit: when that first sweep also failed to read `sysName`
   and the device has no chassis serial in common to compare, nothing tells
   that the later id is the same device, so the first id expires by liveness
   with no reason.
