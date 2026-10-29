@@ -122,8 +122,8 @@ func runSecretCommand() {
 			os.Exit(cliexit.Failure)
 		}
 		yes := secretHasFlag(args, "--yes") || secretHasFlag(args, "-y")
-		confirm := func() (bool, bool) { return confirmFrom(os.Stdin, os.Stderr) }
-		if code := runSecretRm(p, name, yes, confirm, os.Stdout, os.Stderr); code != cliexit.OK {
+		interactive := term.IsTerminal(int(os.Stdin.Fd()))
+		if code := runSecretRm(p, name, yes, os.Stdin, interactive, os.Stdout, os.Stderr); code != cliexit.OK {
 			os.Exit(code)
 		}
 
@@ -194,18 +194,22 @@ func secretArgName(args []string) (string, error) {
 	return name, nil
 }
 
-// runSecretRm deletes name after a confirmation, unless yes is set. A
-// refused or impossible confirmation exits non-zero so that a script
-// running `secret rm` does not carry on as if the secret were gone.
-func runSecretRm(p secret.Provider, name string, yes bool, confirm func() (ok, interactive bool), out, errOut io.Writer) int {
+// runSecretRm deletes name after a confirmation, unless yes is set. The
+// answer is read from in even when it is not a terminal, so that
+// `'y' | agent secret rm <name>` keeps working in scripts. A refused or
+// missing answer exits non-zero so that a script running `secret rm` does
+// not carry on as if the secret were gone.
+func runSecretRm(p secret.Provider, name string, yes bool, in io.Reader, interactive bool, out, errOut io.Writer) int {
 	if !yes {
 		fmt.Fprintf(out, "Remove secret %q? [y/N] ", name)
-		ok, interactive := confirm()
-		if !interactive {
-			fmt.Fprintf(errOut, "Error: secret %q was not removed: no interactive terminal to confirm; pass --yes (or -y) to remove it without a prompt.\n", name)
+		var answer string
+		_, _ = fmt.Fscanln(in, &answer)
+		switch {
+		case answerIsYes(answer):
+		case strings.TrimSpace(answer) == "" && !interactive:
+			fmt.Fprintf(errOut, "\nError: secret %q was not removed: no interactive terminal to confirm; pass --yes (or -y) to remove it without a prompt.\n", name)
 			return cliexit.Failure
-		}
-		if !ok {
+		default:
 			fmt.Fprintf(errOut, "Cancelled: secret %q was not removed.\n", name)
 			return cliexit.Failure
 		}

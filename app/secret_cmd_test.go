@@ -108,28 +108,29 @@ func (f *fakeSecretProvider) Delete(name string) error {
 }
 
 func TestRunSecretRm(t *testing.T) {
-	never := func() (bool, bool) {
-		t.Fatal("confirm must not be called")
-		return false, false
-	}
 	cases := []struct {
 		name        string
 		yes         bool
-		confirm     func() (bool, bool)
+		input       string
+		interactive bool
 		wantCode    int
 		wantDeleted bool
 		wantErr     string
 	}{
-		{"yes removes without prompt", true, never, cliexit.OK, true, ""},
-		{"interactive y removes", false, func() (bool, bool) { return true, true }, cliexit.OK, true, ""},
-		{"interactive n cancels non-zero", false, func() (bool, bool) { return false, true }, cliexit.Failure, false, "Cancelled"},
-		{"non-interactive without yes fails", false, func() (bool, bool) { return false, false }, cliexit.Failure, false, "pass --yes"},
+		{"yes removes without reading", true, "", false, cliexit.OK, true, ""},
+		{"piped y removes", false, "y\n", false, cliexit.OK, true, ""},
+		{"piped Y without newline removes", false, "Y", false, cliexit.OK, true, ""},
+		{"piped n cancels non-zero", false, "n\n", false, cliexit.Failure, false, "Cancelled"},
+		{"piped garbage cancels non-zero", false, "maybe\n", false, cliexit.Failure, false, "Cancelled"},
+		{"empty stdin fails with the --yes hint", false, "", false, cliexit.Failure, false, "pass --yes (or -y)"},
+		{"terminal y removes", false, "y\n", true, cliexit.OK, true, ""},
+		{"terminal empty answer cancels", false, "\n", true, cliexit.Failure, false, "Cancelled"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			p := &fakeSecretProvider{}
 			var out, errOut bytes.Buffer
-			code := runSecretRm(p, "tok", tc.yes, tc.confirm, &out, &errOut)
+			code := runSecretRm(p, "tok", tc.yes, strings.NewReader(tc.input), tc.interactive, &out, &errOut)
 			if code != tc.wantCode {
 				t.Errorf("exit code = %d, want %d", code, tc.wantCode)
 			}

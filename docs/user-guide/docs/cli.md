@@ -362,7 +362,7 @@ A secret value is never passed on the command line — it would leak through the
 | `secret set <name>` | Store or replace a secret (hidden prompt, stdin, or `--from-file <path>`) |
 | `secret get <name>` | Print a secret value to stdout (a deliberate reveal) |
 | `secret list` | List secret names (never values) |
-| `secret rm <name>` | Delete a secret (prompts to confirm; `--yes` or `-y` to skip). Without a terminal to answer the prompt, or when the answer is not `y`, nothing is removed and the command prints a message on stderr and exits non-zero |
+| `secret rm <name>` | Delete a secret (prompts to confirm; `--yes` or `-y` to skip). A piped `y` is accepted (`echo y | senhub-agent secret rm <name>`). When the answer is not `y`, or there is no input at all, nothing is removed and the command prints a message on stderr and exits non-zero |
 | `secret status` | Show the active backend and store location (`--json` for a JSON object) |
 | `secret migrate` | Move inline plaintext secrets from the config into the store (`--wire-unit` also wires the systemd-creds drop-in) |
 | `secret wire-unit` | Regenerate the systemd unit credential drop-in (Linux/systemd-creds only) |
