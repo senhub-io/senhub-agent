@@ -977,6 +977,11 @@ func (p *FileTailProbe) consume(file string, ts *tailState, startOffset int64, f
 
 	lastFlush := time.Now()
 	lastOffset := startOffset
+	// committed is the offset after the last line whose record has been
+	// published. It trails lastOffset while a multiline record is held: the
+	// bookmark points before the held lines, so a crash replays them rather
+	// than losing them.
+	committed := startOffset
 
 	persist := func() {
 		// Once superseded, the tail that replaced this one owns the bookmark.
@@ -992,7 +997,7 @@ func (p *FileTailProbe) consume(file string, ts *tailState, startOffset int64, f
 				ts.setHead(fp)
 			}
 		}
-		if err := p.bookmarks.Set(file, bookmarkEntry{Offset: lastOffset, Fingerprint: fp}); err != nil {
+		if err := p.bookmarks.Set(file, bookmarkEntry{Offset: committed, Fingerprint: fp}); err != nil {
 			p.warn().Err(err).Str("file", file).Msg("persisting bookmark failed")
 		}
 	}
@@ -1027,11 +1032,13 @@ func (p *FileTailProbe) consume(file string, ts *tailState, startOffset int64, f
 		}
 	}()
 
-	feed := func(text string, readTime time.Time) {
-		for _, logical := range asm.Append(strings.TrimSuffix(text, "\r")) {
+	feed := func(text string, readTime time.Time) int {
+		records := asm.Append(strings.TrimSuffix(text, "\r"))
+		for _, logical := range records {
 			p.publish(p.config.Parser, logical, readTime, probeName, file)
 		}
 		armIdle()
+		return len(records)
 	}
 
 	// pollRetired reads what writers still holding a rotated file appended
@@ -1111,6 +1118,7 @@ read:
 				p.publish(p.config.Parser, logical, time.Now(), probeName, file)
 			}
 			lastOffset = 0
+			committed = 0
 			if h, err := tail.OpenFile(file); err == nil { //nolint:staticcheck // no replacement in nxadm/tail v1.4.11; os.Open lacks the Windows delete-sharing that rotation relies on
 				closeQuietly(ts.handle)
 				ts.handle = h
@@ -1131,6 +1139,8 @@ read:
 			for _, logical := range asm.Flush() {
 				p.publish(p.config.Parser, logical, time.Now(), probeName, file)
 			}
+			committed = lastOffset
+			dirty = true
 			continue
 		case <-ticker.C:
 			if dirty {
@@ -1162,10 +1172,12 @@ read:
 				p.publish(p.config.Parser, logical, time.Now(), probeName, file)
 			}
 			lastOffset = 0
+			committed = 0
 			fp = ts.restartedAtStart(file)
 			persist()
 			lastFlush = time.Now()
 		}
+		before := lastOffset
 		lastOffset = line.SeekInfo.Offset
 		ts.offset.Store(lastOffset)
 		dirty = true
@@ -1178,7 +1190,14 @@ read:
 		// nxadm/tail splits on "\n" and keeps a trailing "\r" on Windows
 		// CRLF files; strip it so bodies/attributes are clean and parsers
 		// behave identically across platforms.
-		feed(line.Text, readTime)
+		emitted := feed(line.Text, readTime)
+		switch {
+		case !asm.Pending():
+			committed = lastOffset
+		case emitted > 0:
+			// This line opened the record now held.
+			committed = before
+		}
 
 		if time.Since(lastFlush) >= bookmarkFlushInterval {
 			persist()
@@ -1192,6 +1211,7 @@ read:
 	for _, logical := range asm.Flush() {
 		p.publish(p.config.Parser, logical, time.Now(), probeName, file)
 	}
+	committed = lastOffset
 	cause := t.Wait()
 	if ts.superseded.Load() {
 		return
