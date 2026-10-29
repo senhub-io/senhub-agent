@@ -499,9 +499,15 @@ func (p *snmppollProbe) pollDiscoveredDevice(ctx context.Context, d discoveredDe
 	if maxRoutes <= 0 {
 		maxRoutes = defaultMaxRoutes
 	}
-	sel := selectRoutes(routes, self.MgmtIP, maxRoutes, p.cfg.IncludeSystemRoutes, newRouteFilterContext(routes, addrs, ifaces))
+	fc := newRouteFilterContext(routes, addrs, ifaces)
+	sel := selectRoutes(routes, self.MgmtIP, maxRoutes, p.cfg.IncludeSystemRoutes, fc)
+	previousVersionRoutes := selectRoutes(routes, self.MgmtIP, maxRoutes, true, fc).kept
 	routes, routesOmitted := sel.kept, sel.omitted
 	obs := buildObservation(self, topo, routes, ifaces, addrs, resolveNeighbor)
+	if !partial && p.entitySource != nil {
+		previous := buildObservation(self, topo, previousVersionRoutes, ifaces, addrs, resolveNeighbor)
+		p.entitySource.retirePreviousVersionRoutes(deviceID, previous, obs)
+	}
 	if p.entitySource != nil {
 		dropLinksToDownPorts(&obs, p.entitySource.registry, time.Now())
 	}

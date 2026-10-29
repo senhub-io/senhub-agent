@@ -2,6 +2,7 @@ package snmppoll
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -270,5 +271,93 @@ func TestParseConfigIncludeSystemRoutes(t *testing.T) {
 		if cfg.IncludeSystemRoutes != c.want {
 			t.Errorf("include_system_routes=%v: got %v", c.raw, cfg.IncludeSystemRoutes)
 		}
+	}
+}
+
+func newRouteRetireSource(t *testing.T) (*snmpEntitySource, *recordedDeletes) {
+	t.Helper()
+	rec := &recordedDeletes{}
+	s := newEntitySource(&config{Target: "192.0.2.10", TopologyInterval: 10 * time.Minute}, testLogger(t))
+	s.registry = newPolledRegistry()
+	s.registry.warmupOverride = time.Nanosecond
+	s.publish = rec.publish
+	return s, rec
+}
+
+func retiredRouteDests(rec *recordedDeletes) map[string]int {
+	got := map[string]int{}
+	for _, ev := range rec.events {
+		if ev.Kind == entity.EntityDelete && ev.Entity != nil && ev.Entity.Type == entityTypeNetworkRoute {
+			got[fmt.Sprint(ev.Entity.ID[idKeyRouteDestination])+" "+ev.DeleteReason]++
+		}
+	}
+	return got
+}
+
+// The first complete read retires, as excluded_by_config and for three
+// cycles, the routes an agent without the filter would have published; a
+// route still published is never retired.
+func TestRetirePreviousVersionRoutes_FirstCompleteSweep(t *testing.T) {
+	s, rec := newRouteRetireSource(t)
+	t0 := time.Now()
+	s.maybeSweep(routeSweepClient(), t0)
+	for i := 0; i < entity.RekeyAnnounceCycles+1; i++ {
+		s.Observe()
+	}
+	got := retiredRouteDests(rec)
+	want := map[string]int{
+		"10.1.1.1/32 " + entity.ReasonExcludedByConfig:   entity.RekeyAnnounceCycles,
+		"10.1.1.255/32 " + entity.ReasonExcludedByConfig: entity.RekeyAnnounceCycles,
+	}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("retired routes = %v, want %v", got, want)
+	}
+
+	rec.events = nil
+	s.maybeSweep(routeSweepClient(), t0.Add(11*time.Minute))
+	for i := 0; i < entity.RekeyAnnounceCycles+1; i++ {
+		s.Observe()
+	}
+	if got := retiredRouteDests(rec); len(got) != 0 {
+		t.Errorf("a later sweep retired again: %v", got)
+	}
+}
+
+// A route the filter keeps is never retired, even though an agent without
+// the filter would have published it too.
+func TestRetirePreviousVersionRoutes_KeptRouteNeverRetired(t *testing.T) {
+	s, rec := newRouteRetireSource(t)
+	s.maybeSweep(routeSweepClient(), time.Now())
+	for i := 0; i < entity.RekeyAnnounceCycles; i++ {
+		s.Observe()
+	}
+	for k := range retiredRouteDests(rec) {
+		for _, kept := range []string{"10.1.1.0/24 ", "10.20.0.0/16 ", "10.1.1.2/32 "} {
+			if strings.HasPrefix(k, kept) {
+				t.Errorf("retired a route still published: %s", k)
+			}
+		}
+	}
+}
+
+// An incomplete first read retires nothing: the current set would be too
+// small and the subtraction would retire routes still published.
+func TestRetirePreviousVersionRoutes_IncompleteFirstSweepRetiresNothing(t *testing.T) {
+	s, rec := newRouteRetireSource(t)
+	t0 := time.Now()
+	partial := failingWalks{routeSweepClient(), map[string]bool{ipAdEntIfIndex: true}}
+	s.maybeSweep(partial, t0)
+	for i := 0; i < entity.RekeyAnnounceCycles; i++ {
+		s.Observe()
+	}
+	if got := retiredRouteDests(rec); len(got) != 0 {
+		t.Fatalf("an incomplete read retired %v", got)
+	}
+	s.maybeSweep(routeSweepClient(), t0.Add(11*time.Minute))
+	for i := 0; i < entity.RekeyAnnounceCycles; i++ {
+		s.Observe()
+	}
+	if got := retiredRouteDests(rec); len(got) != 2 {
+		t.Errorf("the first complete read retired %v, want the two system routes", got)
 	}
 }

@@ -229,7 +229,10 @@ type snmpEntitySource struct {
 	rekeyHaveBase bool
 	rekeyBatches  []rekeyBatch
 	legacyRetired map[string]bool
-	publish       func(entity.Event)
+	// previousRoutesRetired records the devices whose pre-filter routes
+	// this process has retired (retirePreviousVersionRoutes).
+	previousRoutesRetired map[string]bool
+	publish               func(entity.Event)
 }
 
 func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
@@ -281,10 +284,13 @@ type sweepResult struct {
 	routesOmitted int
 	// routesFiltered holds the routes the system-route filter left out.
 	routesFiltered []routeRow
-	ifaces         []ifaceRow
-	addrs          []ipAddr
-	deviceID       string
-	ifNames        map[string]string
+	// previousVersionRoutes is what an agent without the filter would have
+	// published from the same read: every route up to the bound.
+	previousVersionRoutes []routeRow
+	ifaces                []ifaceRow
+	addrs                 []ipAddr
+	deviceID              string
+	ifNames               map[string]string
 	// selectedIfaces is the ifIndex set that keeps its metric series; nil
 	// when no interface selection is configured.
 	selectedIfaces map[string]bool
@@ -632,6 +638,11 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 	if !res.partial {
 		s.recordExcludedRoutes(res.deviceID, res.routesFiltered)
 	}
+	if !res.partial && !bounded.cut {
+		recon := res
+		recon.routes = res.previousVersionRoutes
+		s.retirePreviousVersionRoutes(res.deviceID, s.buildQuiet(recon, now), s.buildQuiet(res, now))
+	}
 	s.armRekey(res, degraded, now)
 }
 
@@ -723,7 +734,9 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	if maxRoutes <= 0 {
 		maxRoutes = defaultMaxRoutes
 	}
-	sel := selectRoutes(routes, self.MgmtIP, maxRoutes, s.cfg.IncludeSystemRoutes, newRouteFilterContext(routes, addrs, ifaces))
+	fc := newRouteFilterContext(routes, addrs, ifaces)
+	sel := selectRoutes(routes, self.MgmtIP, maxRoutes, s.cfg.IncludeSystemRoutes, fc)
+	previousVersionRoutes := selectRoutes(routes, self.MgmtIP, maxRoutes, true, fc).kept
 	routes, routesOmitted := sel.kept, sel.omitted
 	if routesOmitted > 0 {
 		s.moduleLogger.Info().
@@ -778,7 +791,7 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	// with a neighbourless ghost, retracting its links as if they had been
 	// seen to go.
 	answered := deviceAnswered(self, topo, routes, ifaces, addrs)
-	return sweepResult{self: self, topo: topo, routes: routes, routesOmitted: routesOmitted, routesFiltered: sel.filtered, ifaces: ifaces, addrs: addrs, deviceID: deviceID, ifNames: ifNames, selectedIfaces: selected, selectionStale: partial || len(skippedWalks) > 0 || !selectionComplete, fdb: fdbs, arp: arps, lag: lag, partial: partial}, deviceID != "" && answered
+	return sweepResult{self: self, topo: topo, routes: routes, routesOmitted: routesOmitted, routesFiltered: sel.filtered, previousVersionRoutes: previousVersionRoutes, ifaces: ifaces, addrs: addrs, deviceID: deviceID, ifNames: ifNames, selectedIfaces: selected, selectionStale: partial || len(skippedWalks) > 0 || !selectionComplete, fdb: fdbs, arp: arps, lag: lag, partial: partial}, deviceID != "" && answered
 }
 
 // deviceAnswered reports whether any read reached the device, as opposed to
