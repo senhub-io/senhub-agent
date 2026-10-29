@@ -235,6 +235,8 @@ func TestBuildEntityRecord_ReturnsScope(t *testing.T) {
 		{"snmp-ifmib", entity.ScopeSNMPIFMIB},
 		{"snmp-lldp", entity.ScopeSNMPLLDP},
 		{"snmp-route", entity.ScopeSNMPRoute},
+		{"snmp-fdb", entity.ScopeSNMPFDB},
+		{"snmp-arp", entity.ScopeSNMPARP},
 		{"host-route", entity.ScopeHostRoute},
 		{"host-svc", entity.ScopeHostSvc},
 		{"foundation/empty", ""},
