@@ -159,10 +159,10 @@ same device derive byte-identical ids.
   (only a usable unicast MAC of subtype 4), `senhub.snmp.engine_id` (lowercase
   hex) and `senhub.chassis.serial_numbers`. The last one has a **frozen form**,
   because two agents building it differently would rewrite it every report:
-  the serial of every `entPhysicalClass=chassis` row (one per stack member),
-  trimmed, case kept, sorted by byte value ascending, duplicates dropped,
-  joined by `,` with no space, and **omitted** (never sent empty) when no
-  chassis serial is read. It is derived from the chassis `hw.component`
+  a list (array of strings, like `network.interface.addresses`) of the serial
+  of every `entPhysicalClass=chassis` row (one per stack member), each
+  trimmed, case kept, sorted by byte value ascending, duplicates dropped, and
+  **omitted** (never sent empty) when no chassis serial is read. It is derived from the chassis `hw.component`
   entities planned by ent#798, which will be authoritative once they exist.
 - **Re-identification is announced (`entity.delete.reason = rekeyed`).** The
   word is the agent's existing `entity.ReasonRekeyed` and is frozen: no other

@@ -1,6 +1,8 @@
 package snmppoll
 
 import (
+	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"testing"
@@ -30,8 +32,8 @@ func TestChassisSerials_FrozenForm(t *testing.T) {
 	if di.Serial != "" {
 		t.Errorf("a stack must not take a member serial as its id, got %q", di.Serial)
 	}
-	if got := selfAttrs(di)[attrChassisSerials]; got != "A1,B2,b2" {
-		t.Errorf("%s = %q, want \"A1,B2,b2\" (trimmed, case kept, byte order, no space)", attrChassisSerials, got)
+	if got, _ := selfAttrs(di)[attrChassisSerials].([]string); strings.Join(got, "|") != "A1|B2|b2" {
+		t.Errorf("%s = %#v, want []string{\"A1\", \"B2\", \"b2\"} (trimmed, case kept, byte order, deduplicated)", attrChassisSerials, selfAttrs(di)[attrChassisSerials])
 	}
 	if _, ok := selfAttrs(deviceIdentity{SysName: "x"})[attrChassisSerials]; ok {
 		t.Errorf("%s must be omitted when no chassis serial is read", attrChassisSerials)
@@ -207,5 +209,93 @@ func TestRekey_SameEngineIDOtherDeviceIsNotARekey(t *testing.T) {
 		if ev.Entity.ID[idKeyNetworkDevice] == first {
 			t.Errorf("retired %v as rekeyed although another device answers the target", ev.Entity.ID)
 		}
+	}
+}
+
+// failingWalks fails the walks of the listed base OIDs, the way a device
+// that times out on one table does.
+type failingWalks struct {
+	*fakeClient
+	fail map[string]bool
+}
+
+func (f failingWalks) WalkRaw(base string) ([]snmpRawBind, error) {
+	if f.fail[base] {
+		return nil, errors.New("request timeout")
+	}
+	return f.fakeClient.WalkRaw(base)
+}
+
+// A timeout on ENTITY-MIB drops a single-chassis switch from serial: to its
+// chassis MAC for one sweep. That is a degraded read, not a new identity:
+// nothing is retired, neither on the way down nor on the way back.
+func TestRekey_DegradedSweepIsNeverCompared(t *testing.T) {
+	s, rec := newRekeyTestSource(t)
+	full := &fakeClient{walkRawResult: map[string][]snmpRawBind{
+		oidEntPhysicalClass:     {{OID: oidEntPhysicalClass + ".1", Value: entPhysicalClassChassis}},
+		oidEntPhysicalSerialNum: {{OID: oidEntPhysicalSerialNum + ".1", Value: []byte("CN14HD90F4")}},
+		oidSysObjectIDBase:      {{OID: oidSysObjectID, Value: "1.3.6.1.4.1.25506.1.1"}},
+		oidSysNameBase:          {{OID: oidSysName, Value: []byte("access-sw")}},
+		lldpLocBase: {
+			{OID: lldpLocChassisIdSubtype, Type: gosnmp.Integer, Value: subtypeMacAddress},
+			{OID: lldpLocChassisId, Type: gosnmp.OctetString, Value: []byte{0x70, 0x10, 0x6f, 0x0a, 0x0a, 0x0a}},
+		},
+		ifName: {{OID: ifName + ".1", Value: []byte("GE1/0/1")}},
+	}}
+	degraded := failingWalks{full, map[string]bool{oidEntPhysicalSerialNum: true}}
+	t0 := time.Now()
+
+	s.maybeSweep(full, t0)
+	s.Observe()
+	if s.DeviceID() != "serial:25506:CN14HD90F4" {
+		t.Fatalf("first id = %q", s.DeviceID())
+	}
+	s.maybeSweep(degraded, t0.Add(2*time.Minute))
+	s.Observe()
+	if s.DeviceID() != "mac:70-10-6F-0A-0A-0A" {
+		t.Fatalf("degraded id = %q, the fixture no longer reproduces the drop", s.DeviceID())
+	}
+	s.maybeSweep(full, t0.Add(4*time.Minute))
+	for i := 0; i < entity.RekeyAnnounceCycles; i++ {
+		s.Observe()
+	}
+	for _, ev := range rec.events {
+		t.Errorf("degraded read retired %v as rekeyed", ev.Entity.ID)
+	}
+}
+
+// Only entities keyed on the previous id are retired: a neighbour learned
+// over LLDP is emitted under the new id as well.
+func TestRekey_RetiresOnlyWhatThePreviousIDOwned(t *testing.T) {
+	in := []entity.Entity{
+		{Type: entity.TypeNetworkDevice, ID: map[string]any{idKeyNetworkDevice: "mac:A"}},
+		{Type: "network.interface", ID: map[string]any{idKeyNetworkDevice: "mac:A", idKeyInterfaceName: "GE1"}},
+		{Type: entity.TypeNetworkDevice, ID: map[string]any{idKeyNetworkDevice: "mac:NEIGHBOUR"}},
+		{Type: "network.address", ID: map[string]any{"network.address": "192.0.2.7"}},
+	}
+	got := ownedBy(in, "mac:A")
+	if len(got) != 2 {
+		t.Fatalf("ownedBy kept %v, want the device and its interface only", got)
+	}
+}
+
+// Two re-identifications inside one announcement window each keep their
+// own three cycles.
+func TestRekey_EachBatchAnnouncedThreeTimes(t *testing.T) {
+	s, rec := newRekeyTestSource(t)
+	a := entity.Entity{Type: entity.TypeNetworkDevice, ID: map[string]any{idKeyNetworkDevice: "mac:A"}}
+	b := entity.Entity{Type: entity.TypeNetworkDevice, ID: map[string]any{idKeyNetworkDevice: "mac:B"}}
+	s.rekeyBatches = []rekeyBatch{{entities: []entity.Entity{a}, left: entity.RekeyAnnounceCycles}}
+	s.announceRekey()
+	s.rekeyBatches = append(s.rekeyBatches, rekeyBatch{entities: []entity.Entity{b}, left: entity.RekeyAnnounceCycles})
+	for i := 0; i < 2*entity.RekeyAnnounceCycles; i++ {
+		s.announceRekey()
+	}
+	count := map[string]int{}
+	for _, ev := range rec.events {
+		count[fmt.Sprint(ev.Entity.ID[idKeyNetworkDevice])]++
+	}
+	if count["mac:A"] != entity.RekeyAnnounceCycles || count["mac:B"] != entity.RekeyAnnounceCycles {
+		t.Errorf("announcements per id = %v, want %d each", count, entity.RekeyAnnounceCycles)
 	}
 }

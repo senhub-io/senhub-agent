@@ -208,8 +208,9 @@ type snmpEntitySource struct {
 	// entities to delete with the reason rekeyed, the cycles left to
 	// announce them, and the legacy ids already announced by this process.
 	rekeyMu       sync.Mutex
-	rekeyRetired  []entity.Entity
-	rekeyLeft     int
+	rekeyBase     sweepResult
+	rekeyHaveBase bool
+	rekeyBatches  []rekeyBatch
 	legacyRetired map[string]bool
 	publish       func(entity.Event)
 }
@@ -550,6 +551,7 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 
 	bounded := newSweepClient(client, sweepBudget(s.cfg), time.Now)
 	res, ok := s.sweep(bounded, now)
+	degraded := res.partial || bounded.cut || !res.self.identityComplete
 	if bounded.cut {
 		s.moduleLogger.Warn().Str("target", s.cfg.Target).Dur("budget", sweepBudget(s.cfg)).
 			Msg("topology sweep reached its budget; remaining walks skipped")
@@ -598,7 +600,7 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 	s.lastSweep = now
 	s.swept = true
 	s.mu.Unlock()
-	s.armRekey(prev, hadPrev, res, now)
+	s.armRekey(res, degraded, now)
 }
 
 // sweep performs the SNMP reads. Best-effort: a failed LLDP walk still yields
@@ -807,9 +809,13 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 	// to the stack-scoped snmpEngineID rather than a failover-unstable member
 	// serial. Picking the chassis row (not "first serial") also avoids latching
 	// onto a module/PSU serial that can change on a part swap.
-	di.Serial, di.ChassisSerials = chassisSerial(client)
+	var serialsRead bool
+	di.Serial, di.ChassisSerials, serialsRead = chassisSerial(client)
+	di.identityComplete = serialsRead
 	// Vendor PEN namespaces the serial (serial is vendor-scoped, not global).
-	if binds, err := client.WalkRaw(oidSysObjectIDBase); err == nil {
+	if binds, err := client.WalkRaw(oidSysObjectIDBase); err != nil {
+		di.identityComplete = false
+	} else {
 		for _, b := range binds {
 			if b.OID == oidSysObjectID {
 				di.VendorPEN = vendorPEN(asString(b.Value))
@@ -817,7 +823,9 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 		}
 	}
 
-	if binds, err := client.WalkRaw(oidSnmpEngineIDBase); err == nil {
+	if binds, err := client.WalkRaw(oidSnmpEngineIDBase); err != nil {
+		di.identityComplete = false
+	} else {
 		for _, b := range binds {
 			if b.OID == oidSnmpEngineID {
 				di.EngineID = snmpcore.AsBytes(b.Value)
@@ -833,7 +841,9 @@ func readSelfIdentity(client snmpClient, mgmtIP string, loc lldpLocal) deviceIde
 			}
 		}
 	}
-	if binds, err := client.WalkRaw(oidSysNameBase); err == nil {
+	if binds, err := client.WalkRaw(oidSysNameBase); err != nil {
+		di.identityComplete = false
+	} else {
 		for _, b := range binds {
 			if b.OID == oidSysName {
 				di.SysName = snmpcore.OctetText(snmpcore.AsBytes(b.Value))
@@ -905,9 +915,13 @@ func singleChassisIndex(client snmpClient) string {
 // identified further down the ladder instead), and the serials of every
 // chassis row in sortedUnique form. It correlates entPhysicalClass and
 // entPhysicalSerialNum by entPhysical index.
-func chassisSerial(client snmpClient) (single string, all []string) {
+func chassisSerial(client snmpClient) (single string, all []string, ok bool) {
+	ok = true
 	class := map[string]int{}
-	if binds, err := client.WalkRaw(oidEntPhysicalClass); err == nil {
+	binds, err := client.WalkRaw(oidEntPhysicalClass)
+	if err != nil {
+		ok = false
+	} else {
 		for _, b := range binds {
 			if idx, ok := strings.CutPrefix(b.OID, oidEntPhysicalClass+"."); ok {
 				if v, ok := snmpcore.AsInt(b.Value); ok {
@@ -917,7 +931,10 @@ func chassisSerial(client snmpClient) (single string, all []string) {
 		}
 	}
 	serial := map[string]string{}
-	if binds, err := client.WalkRaw(oidEntPhysicalSerialNum); err == nil {
+	binds, err = client.WalkRaw(oidEntPhysicalSerialNum)
+	if err != nil {
+		ok = false
+	} else {
 		for _, b := range binds {
 			if idx, ok := strings.CutPrefix(b.OID, oidEntPhysicalSerialNum+"."); ok {
 				if sn := strings.TrimSpace(snmpcore.OctetText(snmpcore.AsBytes(b.Value))); sn != "" {
@@ -937,13 +954,13 @@ func chassisSerial(client snmpClient) (single string, all []string) {
 	}
 	all = sortedUnique(chassis)
 	if len(chassis) == 1 {
-		return chassis[0], all
+		return chassis[0], all, ok
 	}
-	return "", all // 0 → no usable serial; >1 → stack, use engineID
+	return "", all, ok // 0 → no usable serial; >1 → stack, use engineID
 }
 
 // sortedUnique sorts byte-wise and drops duplicates, the frozen form of
-// senhub.chassis.serial_numbers: two agents must build the same string.
+// senhub.chassis.serial_numbers: two agents must send the same list.
 func sortedUnique(in []string) []string {
 	if len(in) == 0 {
 		return nil
@@ -1348,7 +1365,9 @@ func selfAttrs(self deviceIdentity) map[string]any {
 	// The raw identity parts, whichever rung the id took, so the rung a
 	// device would move to is readable from the graph.
 	add(attrHwSerial, strings.TrimSpace(self.Serial))
-	add(attrChassisSerials, strings.Join(self.ChassisSerials, ","))
+	if len(self.ChassisSerials) > 0 {
+		attrs[attrChassisSerials] = append([]string(nil), self.ChassisSerials...)
+	}
 	if usableChassisMAC(self.ChassisMAC) {
 		add(attrChassisMAC, macHex(self.ChassisMAC))
 	}
