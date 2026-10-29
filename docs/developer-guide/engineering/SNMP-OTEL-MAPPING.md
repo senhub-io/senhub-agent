@@ -188,9 +188,14 @@ same device derive byte-identical ids.
   (a device whose ENTITY-MIB an ACL refuses still appears), and a walk that
   answers with no row (no ENTITY-MIB) is a complete read. Once that first
   device reads in full, the id its first sweep published is retired as
-  `rekeyed` (same rules as above). A held target that stays incomplete for
-  three topology intervals goes silent like any failing target: its
-  entities are retired with the reason `unmonitored` until it reads again.
+  `rekeyed` (same rules as above). A target held this way for three
+  topology intervals goes silent like any failing target, so a permanent
+  ENTITY-MIB error does not freeze the map: the device and its subtree leave
+  it with the reason `unmonitored`, and come back when the device reads in
+  full. Known limit: when that first sweep also failed to read `sysName`
+  and the device has no chassis serial in common to compare, nothing tells
+  that the later id is the same device, so the first id expires by liveness
+  with no reason.
   Canonicalization (producer side): `mac` = uppercase hex `-`-separated
   (`BC-24-11-1B-04-82`, the OpenTelemetry form, `entity.CanonicalMAC`);
   `engine`/`PEN` = lowercase hex / decimal; `serial`/`name` = trimmed (case
