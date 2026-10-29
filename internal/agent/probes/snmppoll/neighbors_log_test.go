@@ -19,6 +19,7 @@ func TestNeighbors_BoundIsLoggedOncePerCut(t *testing.T) {
 	zl := zerolog.New(&buf)
 	s := resolveTestSource(t, false)
 	s.moduleLogger = logger.NewModuleLogger(&zl, "test")
+	s.cfg.Neighbors = true
 	s.cfg.MaxNeighbors = 1
 
 	res := switchSweep()

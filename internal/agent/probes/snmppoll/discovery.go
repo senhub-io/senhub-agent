@@ -509,15 +509,11 @@ func (p *snmppollProbe) pollDiscoveredDevice(ctx context.Context, d discoveredDe
 	applyDiscoveredGovernance(&obs, p.cfg.Discovery.GovernanceRules, self, deviceID)
 	// The gateway and the access switch are usually discovered, not the
 	// polled target: the MAC resolution must cover them too.
-	if es := p.entitySource; es != nil {
-		if es.macIndex != nil && es.macIndex.Enabled() {
-			es.registerInterfaceMacs(deviceID, ifaces)
-		}
-		if es.maxNeighbors() > 0 {
-			res := sweepResult{deviceID: deviceID, ifNames: ifaceNameMap(ifaces), ifaces: ifaces}
-			res.fdb, res.arp = es.discoveredL2Rows(deviceID, client)
-			obs = es.appendResolvesNeighbors(obs, res)
-		}
+	if es := p.entitySource; es != nil && es.l2Wanted() {
+		es.registerInterfaceMacs(deviceID, ifaces)
+		res := sweepResult{deviceID: deviceID, ifNames: ifaceNameMap(ifaces), ifaces: ifaces}
+		res.fdb, res.arp = es.discoveredL2Rows(deviceID, client)
+		obs = es.appendResolvesNeighbors(obs, res)
 	}
 	return discoveredTopologyResult{obs: obs, partial: partial}
 }

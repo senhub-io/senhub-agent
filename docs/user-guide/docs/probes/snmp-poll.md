@@ -55,7 +55,7 @@ one series per interface (`if_index` tag).
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:84cfe1e8ef25d5b3ccd7fcf32382209fcf3e97e819f98beab245faedf329d00d -->
+<!-- sha256:9664d8eb2593e60f0aeb5513bbf7bd05c48c6e42ddebfed01ab4ae5db95cecf7 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -71,7 +71,8 @@ one series per interface (`if_index` tag).
 | `v3.priv_passphrase` | No | - | Required with priv_protocol. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `retries` | No | `2` | Retries per request |
 | `max_routes` | No | `500` | Maximum number of route entities emitted per device |
-| `max_neighbors` | No | `1000` | Maximum number of network.neighbor entities (learned MACs) emitted per device; 0 disables the FDB/ARP walk |
+| `neighbors` | No | `false` | Publish every MAC a device learned (bridge forwarding and ARP tables) as a network.neighbor entity, linked to its port and, when known, to the interface that owns it |
+| `max_neighbors` | No | `1000` | Maximum number of network.neighbor entities emitted per device when neighbors is on |
 | `timeout` | No | `5s` | Per-request timeout |
 | `interval` | No | `60s` | Metric polling cadence |
 | `topology_interval` | No | `1m` | Entity and topology sweep cadence |
@@ -325,37 +326,48 @@ is not meant to be inventoried route by route.
 
 #### Learned neighbours
 
-The bridge forwarding table (`dot1qTpFdbTable`, or `dot1dTpFdbTable` on
-older bridges) and the ARP table (`ipNetToPhysicalTable`, or
-`ipNetToMediaTable`) of the polled device and of every discovered device
-are published as `network.neighbor` entities, one per MAC address the
-device learned. A neighbour is identified by the device that saw it and
-the MAC address (`AA-BB-CC-DD-EE-FF`): two switches that learned the same
-machine hold two neighbours, joined later by the receiving graph rather
-than merged. Each neighbour carries:
+With `neighbors: true`, the bridge forwarding table (`dot1qTpFdbTable`, or
+`dot1dTpFdbTable` on older bridges) and the ARP table
+(`ipNetToPhysicalTable`, or `ipNetToMediaTable`) of the polled device and of
+every discovered device are published as `network.neighbor` entities, one
+per MAC address the device learned. It is off by default: a core switch can
+learn thousands of addresses. A neighbour is identified by the device that
+saw it and the MAC address (`AA-BB-CC-DD-EE-FF`): two switches that learned
+the same machine hold two neighbours, joined later by the receiving graph
+rather than merged.
 
 | Attribute | Meaning |
 |---|---|
 | `network.neighbor.addresses` | The IP addresses the ARP table maps to this MAC; absent for a MAC seen only in the forwarding table. Link-local addresses are left out |
-| `network.neighbor.observed.interface` | One port the MAC was learned on, the forwarding-table port first |
 
-It is linked with `neighbor_of` to every port of the device it was learned
-on: the bridge port for a forwarding entry, the interface of the ARP entry
-(often a VLAN interface). With `entities.neighbors.resolves_to`, it is also
-linked with `resolves_to` to the interface that owns the MAC, when this
-agent knows it: one of this host's own interfaces, or an interface of
-another device this agent polls. A MAC owned by the observing device itself,
-multicast and broadcast addresses, entries the device marks as its own and
-entries it has not learned are not published. A neighbour leaves, as
-`aged_out`, when a successful read of the tables no longer lists it; a read
-that fails keeps the neighbours of the previous one.
+A neighbour is linked with `neighbor_of` to every port of the device it was
+learned on: the bridge port for a forwarding entry, the interface of the ARP
+entry (often a VLAN interface). It is also linked with `resolves_to` to the
+interface that owns the MAC when this agent knows it, one of this host's own
+interfaces or an interface of another device this agent polls, without
+setting `entities.neighbors.resolves_to`. The relation carries a `basis` of
+`fdb` or `arp`. A neighbour found in the forwarding table rides the
+`senhub-agent/snmp-fdb` instrumentation scope, one known only from the ARP
+table `senhub-agent/snmp-arp`.
+
+A MAC owned by the observing device itself, multicast and broadcast
+addresses, entries the device marks as its own and entries it has not learned
+are not published. A neighbour leaves, as `aged_out`, when a successful read
+of the tables no longer lists it; a read that fails keeps the neighbours of
+the previous one.
 
 At most `max_neighbors` neighbours are published per device (1000 by
 default). Above the bound, the neighbours resolved to an interface are kept
-first, then those with an IP address, then the others by MAC address, and
-the agent logs `neighbor table bound: some neighbors omitted` at Info with
-the numbers kept and omitted. `max_neighbors: 0` stops reading the two
-tables. VLAN membership (`dot1qVlanStaticTable`) is not published yet.
+first, then those with an IP address, then the others by MAC address. The
+device entity carries `senhub.neighbors.limit` and
+`senhub.neighbors.omitted`, so a cut table is never mistaken for a complete
+one, and the agent logs `neighbor table bound: some neighbors omitted` at
+Info once per cut. VLAN membership (`dot1qVlanStaticTable`) is not published
+yet.
+
+Without `neighbors`, the tables are read only with
+`entities.neighbors.resolves_to`, and a neighbour is published only for a MAC
+of this host's own interfaces, linked to the switch port it is plugged into.
 
 #### Link aggregation
 

@@ -62,7 +62,7 @@ func observedNeighborMACs(t *testing.T, s *snmpEntitySource) []string {
 // not retire the device's neighbours; only a successful read that no longer
 // lists a MAC removes it.
 func TestNeighbors_FailedFDBWalkKeepsPreviousRows(t *testing.T) {
-	s := newEntitySource(&config{Target: "192.0.2.30", TopologyInterval: 10 * time.Minute}, testLogger(t))
+	s := newEntitySource(&config{Target: "192.0.2.30", TopologyInterval: 10 * time.Minute, Neighbors: true}, testLogger(t))
 	s.registry = newPolledRegistry()
 	t0 := time.Now()
 

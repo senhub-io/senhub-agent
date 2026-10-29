@@ -89,10 +89,10 @@ type config struct {
 	TopologyInterval time.Duration
 	// MaxRoutes bounds the number of network.route entities emitted per device.
 	MaxRoutes int
+	// Neighbors publishes every MAC a device learned as a network.neighbor.
+	Neighbors bool
 	// MaxNeighbors bounds the number of network.neighbor entities emitted per device.
 	MaxNeighbors int
-	// NeighborsDisabled disables the FDB/ARP neighbor walk entirely.
-	NeighborsDisabled bool
 
 	// Interfaces narrows the per-interface metric series (nil: every
 	// interface). Topology entities are never narrowed.
@@ -211,11 +211,12 @@ func parseConfig(raw map[string]interface{}) (*config, error) {
 		}
 	}
 
+	if v, ok := types.BoolParam(raw, "neighbors"); ok {
+		cfg.Neighbors = v
+	}
 	if v, ok := types.IntParam(raw, "max_neighbors"); ok {
-		if v < 0 {
-			errs = append(errs, "max_neighbors must be zero or greater")
-		} else if v == 0 {
-			cfg.NeighborsDisabled = true
+		if v < 1 {
+			errs = append(errs, "max_neighbors must be at least 1")
 		} else {
 			cfg.MaxNeighbors = v
 		}

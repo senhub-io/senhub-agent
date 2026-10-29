@@ -49,25 +49,26 @@ const (
 	// oper_state is a Toise state-key (closed set, underscore spelling): a change
 	// fires entity.state_changed. The old dotted "oper.state" was silently
 	// demoted to an ordinary attribute — see Toise #87 / the SNMP lot fix.
-	attrOperState                 = "oper_state"
-	attrSpeed                     = "speed"
-	attrMac                       = "mac"
-	attrMtu                       = "mtu"
-	attrIfType                    = "interface.type"
-	attrDuplex                    = "duplex"
-	relConnectedTo                = "connected_to"
-	relHasRoute                   = "has_route"
-	relHasInterface               = "has_interface"
-	relBoundTo                    = "bound_to"
-	relNextHopVia                 = "next_hop_via"
-	relMonitors                   = "monitors"
-	relRunsOn                     = "runs_on"
-	relNeighborOf                 = "neighbor_of"
-	relResolvesTo                 = "resolves_to"
-	attrBasis                     = "basis"
-	attrConfidence                = "confidence"
-	attrNeighborAddresses         = "network.neighbor.addresses"
-	attrNeighborObservedInterface = "network.neighbor.observed.interface"
+	attrOperState         = "oper_state"
+	attrSpeed             = "speed"
+	attrMac               = "mac"
+	attrMtu               = "mtu"
+	attrIfType            = "interface.type"
+	attrDuplex            = "duplex"
+	relConnectedTo        = "connected_to"
+	relHasRoute           = "has_route"
+	relHasInterface       = "has_interface"
+	relBoundTo            = "bound_to"
+	relNextHopVia         = "next_hop_via"
+	relMonitors           = "monitors"
+	relRunsOn             = "runs_on"
+	relNeighborOf         = "neighbor_of"
+	relResolvesTo         = "resolves_to"
+	attrBasis             = "basis"
+	attrConfidence        = "confidence"
+	attrNeighborAddresses = "network.neighbor.addresses"
+	attrNeighborsOmitted  = "senhub.neighbors.omitted"
+	attrNeighborsLimit    = "senhub.neighbors.limit"
 
 	resolveConfidenceARPNDP = 0.9
 	resolveConfidenceFDB    = 0.7
@@ -654,7 +655,7 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 
 	var fdbs []fdbEntry
 	var arps []arpEntry
-	if s.maxNeighbors() > 0 {
+	if s.l2Wanted() {
 		// A failed walk keeps the previous sweep's rows: a large FDB lost over
 		// UDP is not a table that forgot every MAC, and dropping the rows
 		// would retire and recreate every neighbour of the device.
@@ -686,7 +687,7 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 		s.registry.recordPolled(self, deviceID, now)
 		s.registry.recordPortStates(deviceID, ifaces, s.interval, now)
 	}
-	if idx := s.macIndex; idx != nil && idx.Enabled() && deviceID != "" {
+	if s.l2Wanted() && deviceID != "" {
 		s.registerInterfaceMacs(deviceID, ifaces)
 	}
 	lag := collectLagData(client, ifaces, s.moduleLogger)
@@ -1162,9 +1163,15 @@ func interfaceMACOwners(ifaces []ifaceRow) map[string]string {
 	return out
 }
 
+// appendResolvesNeighbors adds the device's link-layer neighbours: every
+// learned MAC when the neighbours parameter is on, otherwise only this host's
+// own NICs, and only when resolves_to is enabled.
 func (s *snmpEntitySource) appendResolvesNeighbors(obs entity.Observation, res sweepResult) entity.Observation {
-	if res.deviceID == "" || s.maxNeighbors() == 0 {
+	if res.deviceID == "" {
 		return obs
+	}
+	if !s.cfg.Neighbors {
+		return s.appendHostNICNeighbors(obs, res)
 	}
 
 	ownMACs := make(map[string]bool)
@@ -1176,7 +1183,6 @@ func (s *snmpEntitySource) appendResolvesNeighbors(obs entity.Observation, res s
 
 	type rowGroup struct {
 		ports     map[string]bool
-		fdbPorts  map[string]bool
 		addresses map[string]bool
 		bases     map[string]bool
 	}
@@ -1201,16 +1207,12 @@ func (s *snmpEntitySource) appendResolvesNeighbors(obs entity.Observation, res s
 		if g == nil {
 			g = &rowGroup{
 				ports:     map[string]bool{},
-				fdbPorts:  map[string]bool{},
 				addresses: map[string]bool{},
 				bases:     map[string]bool{},
 			}
 			groups[canon] = g
 		}
 		g.ports[port] = true
-		if basis == "fdb" {
-			g.fdbPorts[port] = true
-		}
 		if basis == "arp" {
 			g.addresses[ip] = true
 		}
@@ -1224,39 +1226,38 @@ func (s *snmpEntitySource) appendResolvesNeighbors(obs entity.Observation, res s
 		addRow(e.MAC, e.IfIndex, "arp", e.IP)
 	}
 	if len(groups) == 0 {
+		applyNeighborCounters(&obs, res.deviceID, 0, s.maxNeighbors())
 		return obs
 	}
 
 	resolutions := map[string]map[string]any{}
 	skipMAC := map[string]bool{}
 
-	if s.macIndex != nil && s.macIndex.Enabled() {
-		hostMACs, err := s.hostInterfaceMACs()
-		if err != nil {
-			s.moduleLogger.Debug().
-				Err(err).
-				Str("target", s.cfg.Target).
-				Msg("host interface MAC scan failed; neighbors emitted without host resolution")
-			hostMACs = map[string]string{}
+	hostMACs, err := s.hostInterfaceMACs()
+	if err != nil {
+		s.moduleLogger.Debug().
+			Err(err).
+			Str("target", s.cfg.Target).
+			Msg("host interface MAC scan failed; neighbors emitted without host resolution")
+		hostMACs = map[string]string{}
+	}
+	hostID := s.hostID()
+	for mac := range groups {
+		if hostID != "" && hostMACs[mac] != "" {
+			resolutions[mac] = map[string]any{
+				idKeyHost:          hostID,
+				idKeyInterfaceName: hostMACs[mac],
+			}
+			continue
 		}
-		hostID := s.hostID()
-		for mac := range groups {
-			if hostID != "" && hostMACs[mac] != "" {
-				resolutions[mac] = map[string]any{
-					idKeyHost:          hostID,
-					idKeyInterfaceName: hostMACs[mac],
-				}
+		if e, ok := s.macIndex.Lookup(mac); ok && e.DeviceID != "" && e.Name != "" {
+			if e.DeviceID == res.deviceID {
+				skipMAC[mac] = true
 				continue
 			}
-			if e, ok := s.macIndex.Lookup(mac); ok && e.DeviceID != "" && e.Name != "" {
-				if e.DeviceID == res.deviceID {
-					skipMAC[mac] = true
-					continue
-				}
-				resolutions[mac] = map[string]any{
-					idKeyNetworkDevice: e.DeviceID,
-					idKeyInterfaceName: e.Name,
-				}
+			resolutions[mac] = map[string]any{
+				idKeyNetworkDevice: e.DeviceID,
+				idKeyInterfaceName: e.Name,
 			}
 		}
 	}
@@ -1304,6 +1305,7 @@ func (s *snmpEntitySource) appendResolvesNeighbors(obs entity.Observation, res s
 	if omitted > 0 {
 		candidates = candidates[:n]
 	}
+	applyNeighborCounters(&obs, res.deviceID, omitted, n)
 
 	sort.Slice(candidates, func(i, j int) bool { return candidates[i].mac < candidates[j].mac })
 
@@ -1318,19 +1320,15 @@ func (s *snmpEntitySource) appendResolvesNeighbors(obs entity.Observation, res s
 		}
 
 		ports := sortedStrings(g.ports)
-		observed := ""
-		if len(g.fdbPorts) > 0 {
-			fdbPorts := sortedStrings(g.fdbPorts)
-			observed = fdbPorts[0]
-		} else {
-			observed = ports[0]
+		scope := entity.ScopeSNMPARP
+		if g.bases["fdb"] {
+			scope = entity.ScopeSNMPFDB
 		}
-		attrs[attrNeighborObservedInterface] = observed
 
 		obs.Entities = append(obs.Entities, entity.Entity{
 			Type:       entityTypeNetworkNeighbor,
 			ID:         id,
-			Scope:      entity.ScopeSNMPIFMIB,
+			Scope:      scope,
 			Attributes: attrs,
 		})
 
@@ -1436,10 +1434,28 @@ func (s *snmpEntitySource) neighborCapChanged(deviceID string, omitted int) bool
 	return true
 }
 
-func (s *snmpEntitySource) maxNeighbors() int {
-	if s.cfg.NeighborsDisabled {
-		return 0
+// applyNeighborCounters publishes the max_neighbors cut on the device, so a
+// table cut by the bound is never read as a complete one.
+func applyNeighborCounters(obs *entity.Observation, deviceID string, omitted, limit int) {
+	for i := range obs.Entities {
+		if obs.Entities[i].Type == entityTypeNetworkDevice && obs.Entities[i].ID[idKeyNetworkDevice] == deviceID {
+			if obs.Entities[i].Attributes == nil {
+				obs.Entities[i].Attributes = map[string]any{}
+			}
+			obs.Entities[i].Attributes[attrNeighborsOmitted] = int64(omitted)
+			obs.Entities[i].Attributes[attrNeighborsLimit] = int64(limit)
+			return
+		}
 	}
+}
+
+// l2Wanted reports whether the FDB and ARP tables are read: for the
+// learned-neighbour inventory, or for the host-NIC resolution.
+func (s *snmpEntitySource) l2Wanted() bool {
+	return s.cfg.Neighbors || (s.macIndex != nil && s.macIndex.Enabled())
+}
+
+func (s *snmpEntitySource) maxNeighbors() int {
 	if s.cfg.MaxNeighbors <= 0 {
 		return defaultMaxNeighbors
 	}
@@ -1455,6 +1471,123 @@ func sortedStrings(set map[string]bool) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// appendHostNICNeighbors keeps, of the device's FDB and ARP rows, only the
+// MACs of this agent host's own NICs: the port the host is plugged into.
+// It is what runs when the learned-neighbour inventory is off.
+func (s *snmpEntitySource) appendHostNICNeighbors(obs entity.Observation, res sweepResult) entity.Observation {
+	if s.macIndex == nil || !s.macIndex.Enabled() || res.deviceID == "" {
+		return obs
+	}
+
+	hostMACs, err := s.hostInterfaceMACs()
+	if err != nil {
+		s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
+			Msg("host interface MAC scan failed; skipping network.neighbor emission")
+		return obs
+	}
+	if len(hostMACs) == 0 {
+		return obs
+	}
+
+	hostID := s.hostID()
+	if hostID == "" {
+		return obs
+	}
+
+	ifName := func(ifIndex int) string {
+		if res.ifNames == nil {
+			return ""
+		}
+		return res.ifNames[strconv.Itoa(ifIndex)]
+	}
+
+	type heard struct {
+		ifName     string
+		hostIface  string
+		basis      string
+		confidence float64
+	}
+	groups := map[string][]heard{}
+	add := func(mac string, ifIndex int, basis string, confidence float64) {
+		canon, ok := entity.CanonicalMACString(mac)
+		if !ok {
+			return
+		}
+		hostIface, ok := hostMACs[canon]
+		if !ok || hostIface == "" {
+			return
+		}
+		port := ifName(ifIndex)
+		if port == "" {
+			return
+		}
+		groups[canon] = append(groups[canon], heard{
+			ifName:     port,
+			hostIface:  hostIface,
+			basis:      basis,
+			confidence: confidence,
+		})
+	}
+
+	for _, e := range res.fdb {
+		add(e.MAC, e.IfIndex, "fdb", resolveConfidenceFDB)
+	}
+	for _, e := range res.arp {
+		add(e.MAC, e.IfIndex, "arp", resolveConfidenceARPNDP)
+	}
+	if len(groups) == 0 {
+		return obs
+	}
+
+	macs := make([]string, 0, len(groups))
+	for mac := range groups {
+		macs = append(macs, mac)
+	}
+	sort.Strings(macs)
+
+	for _, mac := range macs {
+		entries := groups[mac]
+		id := map[string]any{idKeyNetworkDevice: res.deviceID, idKeyNeighborMAC: mac}
+		obs.Entities = append(obs.Entities, entity.Entity{
+			Type:  entityTypeNetworkNeighbor,
+			ID:    id,
+			Scope: entity.ScopeSNMPIFMIB,
+		})
+
+		seenNeighborOf := map[string]bool{}
+		seenResolves := map[string]bool{}
+		for _, e := range entries {
+			if !seenNeighborOf[e.ifName] {
+				seenNeighborOf[e.ifName] = true
+				obs.Relations = append(obs.Relations, entity.Relation{
+					Type:     relNeighborOf,
+					FromType: entityTypeNetworkNeighbor,
+					FromID:   id,
+					ToType:   entityTypeNetworkInterface,
+					ToID:     interfacePortKey(res.deviceID, e.ifName),
+				})
+			}
+
+			key := e.basis + "\x00" + e.hostIface
+			if !seenResolves[key] {
+				seenResolves[key] = true
+				obs.Relations = append(obs.Relations, entity.Relation{
+					Type:     relResolvesTo,
+					FromType: entityTypeNetworkNeighbor,
+					FromID:   id,
+					ToType:   entityTypeNetworkInterface,
+					ToID:     map[string]any{idKeyHost: hostID, idKeyInterfaceName: e.hostIface},
+					Attributes: map[string]any{
+						attrBasis:      e.basis,
+						attrConfidence: e.confidence,
+					},
+				})
+			}
+		}
+	}
+	return obs
 }
 
 func deviceEntity(id string, attrs map[string]any, scope string) entity.Entity {
