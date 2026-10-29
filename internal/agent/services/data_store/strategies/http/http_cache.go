@@ -185,6 +185,9 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// agent may watch several. The job name is what tells their series
 	// apart; the resource group is what tells two jobs of the same name
 	// in two groups apart; the reason splits its read failures by cause.
+	// One rows count per instance; the azure.log_query.<channel> series it
+	// publishes are named by the query and carry their own attributes.
+	"azure_log_query": {},
 	"azure_container_app_jobs": {
 		"metric_type",
 		"azure_job",
@@ -411,10 +414,27 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// the same vmid but different types cannot coexist, so it does not add
 	// discriminating power and is intentionally omitted.
 	"proxmox": {
-		"proxmox.node",    // Proxmox cluster node name
-		"proxmox.vmid",    // VM/LXC numeric ID (unique per cluster)
-		"proxmox.vm.name", // VM/LXC display name (redundant with vmid but declared in multi_instance_labels)
-		"proxmox.storage", // Storage pool name
+		"proxmox.node",      // Proxmox cluster node name
+		"proxmox.vmid",      // VM/LXC numeric ID (unique per cluster)
+		"proxmox.vm.name",   // VM/LXC display name (redundant with vmid but declared in multi_instance_labels)
+		"proxmox.storage",   // Storage pool name
+		"proxmox.task.type", // Failed task type (vzdump, qmstart, ...)
+		// Disks and ZFS pools follow the hw.* convention: hw.id is the disk
+		// serial or the pool name, and each hw.state / *.state value is its
+		// own series. hw.name (device path) is contextual but a declared label.
+		"hw.id",
+		"hw.name",
+		"hw.state",
+		"hw.physical_disk.state",
+		"hw.logical_disk.state",
+		"proxmox.vm.backup.state",
+		"proxmox.storage.state",
+		"proxmox.task.state",
+		"proxmox.ha.resource",
+		"proxmox.ha.resource.state",
+		"proxmox.ha.quorum.state",
+		"proxmox.replication.job",
+		"proxmox.replication.job.state",
 	},
 
 	// Kubernetes — one series per resource instance; the discriminant

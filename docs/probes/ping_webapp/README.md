@@ -634,7 +634,7 @@ For issues or questions:
    - [Complete Metrics Reference](./METRICS.md)
    - [Load WebApp Probe](../load_webapp/README.md) - HTTP/HTTPS monitoring
    - [Troubleshooting Guide](../../troubleshooting/)
-   - [Agent Configuration Guide](../../../configuration/)
+   - [Agent Configuration Guide](../../user-guide/docs/configuration.md)
 
 5. **Report issues:**
    - Include platform (OS, version)

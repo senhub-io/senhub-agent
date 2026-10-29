@@ -30,6 +30,9 @@ type LocalConfigurationData struct {
 	Probes        []ProbeConfig     `yaml:"probes"`
 	AutoUpdate    *AutoUpdateConfig `yaml:"auto_update,omitempty"`
 	Cache         *CacheConfig      `yaml:"cache,omitempty"`
+	// Logs holds the settings of the agent's log rail. Absent, the
+	// default masking preset applies.
+	Logs *LogsConfig `yaml:"logs,omitempty"`
 	// Entities configures the entity rail's PRODUCER. It sits here
 	// rather than under an output because what this host is does not
 	// depend on where the description is shipped: the detector feeds a
@@ -290,6 +293,23 @@ func (lc *LocalConfiguration) GetCacheConfig() *CacheConfig {
 			Msg("Cache configuration loaded from YAML")
 	}
 	return cfg
+}
+
+// GetLogsConfig returns the log rail settings, or nil when the
+// configuration does not carry a logs block.
+func (lc *LocalConfiguration) GetLogsConfig() *LogsConfig {
+	d := lc.snapshot()
+	if d == nil {
+		return nil
+	}
+	return d.Logs
+}
+
+// ApplyLogRedaction installs the configured masking rules on the log
+// rail and returns the problems of the rules it had to skip. It is
+// called at start and on every configuration change.
+func (lc *LocalConfiguration) ApplyLogRedaction() []error {
+	return ApplyLogsConfig(lc.GetLogsConfig())
 }
 
 // GetEntitiesConfig returns the global entity-detection block, or nil

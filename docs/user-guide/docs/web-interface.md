@@ -59,6 +59,16 @@ pollers are unaffected either way. If the key is added while the agent runs, the
 
 **Rotating or removing the key.** After a configuration reload, the new key is served at once, with no restart: the old key now answers 401. If you remove `admin_key` and reload, the administration routes are no longer served and answer 404, exactly as on an agent that never had a key. Readers holding the agent key are unaffected in both cases.
 
+**Where the key goes after you open the console.** Opening `/web/{admin-key}/` once sets a cookie named `senhub_console` (`HttpOnly`, `SameSite=Strict`, `Secure` when the console is served over HTTPS) and redirects you to the same page at `/web/_/...`. From then on the address bar, the browser history and any `Referer` header carry `_` instead of the key, and the console calls the agent without the key in the URL. The cookie holds a value derived from the key, not the key itself, and a rotated key invalidates it. Close the browser or clear its cookies and you open the link from `console --print` again. Console pages are sent with `Referrer-Policy: no-referrer`.
+
+A script can do the same with a header instead of a cookie:
+
+```bash
+curl -H "Authorization: Bearer $ADMIN_KEY" http://agent-server:8080/api/_/config/probes
+```
+
+The older form with the key in the path (`/api/{admin-key}/...`) still works, so existing scripts are unaffected; it is the form to avoid, because the key then appears in logs along the way. A state-changing request that is authenticated only by the cookie is refused with 403 unless the browser says it comes from the console's own origin (`Sec-Fetch-Site` or `Origin`); requests that use the header need no such check. The agent key in PRTG, Nagios and Prometheus URLs is not affected by any of this.
+
 The header of every page shows the host name, the agent's state, its version and its uptime, so you can see that the agent runs without leaving the page you are on. The menu has five entries: Overview, Probes, Outputs, Settings and Docs. Docs opens this documentation on [agent.senhub.io](https://agent.senhub.io/docs); the API reference embedded in the agent remains available at `/web/{admin-key}/docs`.
 
 ## Overview
@@ -73,6 +83,7 @@ The Overview is the landing page.
 - **Agent** merges the former status, health and resources cards: version, host, instance ID, uptime, port, configuration path, memory, CPU, goroutines and cache size. Memory is the resident set the operating system charges to the agent, CPU its share of the whole machine over the last interval; both are asked of the operating system at each refresh. A warning appears when the configuration watch is off, because edits made by hand then need a restart.
 - **Licence** shows the tier, the expiry date, how many probe types are available and how many need a licence, and the agent key with a copy button. The Settings page gathers the identifiers and the licence in full.
 - **Recent events** shows the last transitions: a probe that started failing or recovered, an output that could not start, a save made from the console, a configuration reloaded from disk. The agent keeps the last fifty in memory; they do not survive a restart.
+- **Series exported** appears with a build that meters series. It gives the series exported within the last hour, which is what a time-series backend sizes and bills on: the total per output, the ten probes holding the most, and the series created since the agent started. When the tracker has reached its memory bound the counts are a floor, and a warning says so. A build without metering shows one line and the number of series in the cache.
 
 The page refreshes every thirty seconds.
 
@@ -89,6 +100,10 @@ Each row shows the probe's name, its type, its state (running, target down, fail
 Probes declared in files written by hand carry a `file` pill: they are listed but left to the file. Only the fragments the console wrote, one file per instance under `probes.d` with a header comment, are edited from the page.
 
 On a fresh install the page shows four starters instead of an empty table: **This host** creates the CPU, memory, disk and network probes in one click; **A database**, **A network device** and **A web endpoint** open the editor on the matching type.
+
+### The probe page
+
+Click a probe name, or anywhere on its row on the Overview or the Probes list, to open `probes?view={name}`. The page gathers what is needed to run one probe: its state with the full reason when it fails, its target is down, or it is locked or unsupported; the last collection, interval and number of series; the current series with their values and units (filtered by name when there are more than twenty); its configuration, read-only, with secrets shown as stored; and its recent events. Edit, Sensor URL, Enable or Disable and Delete are in the page header. A probe declared in a file or set by environment variables says where to change it instead of offering Edit. The page refreshes every thirty seconds.
 
 ### The editor
 
@@ -251,6 +266,10 @@ http://agent-server:8080/api/{key}/prtg/metrics/{probe}?tags=vserver_name:vs_web
 
 This returns only the metrics for the virtual server named `vs_web`. The Sensor URLs tab builds this filter from the tags the probe reports.
 
+#### Right after the agent restarts
+
+Until a probe has completed its first collection, its sensor URL answers with no channel. PRTG shows that one reading as "The returned JSON does not match the expected structure (No channel found). (code: PE231)", and the sensor is back to normal at the next reading. The first collection follows the start within the probe's own collection time; no action is needed.
+
 #### Installing PRTG value lookups
 
 SenHub Agent provides custom PRTG lookup files that translate numeric status values into meaningful text (for instance "Up" instead of "1"):
@@ -269,7 +288,30 @@ SenHub Agent provides custom PRTG lookup files that translate numeric status val
 
 3. In the PRTG web interface, go to **Administration > Administrative Tools** and click **Load Lookups and File Lists**.
 
-After loading the lookups, PRTG sensors display human-readable status values instead of raw numbers. The ZIP file contains lookup files in the PRTG `.ovl` format:
+After loading the lookups, PRTG sensors display human-readable status values instead of raw numbers.
+
+A channel that names a lookup the PRTG core does not have turns the whole sensor Warning (PE272). This is why the Check Result channel, which every database, application and active-check probe can report, and the unresolved-target channel of `http_check` and `tcp_dial` are off by default. Service channels (`systemd`, `winservices`) never use a lookup: they show 1 when the service runs, 0 when it does not, with an error limit below 1 so a stopped service turns the sensor Error. Up to 0.6.3 the "Service X Running" channel of `winservices` was a plain number, and PRTG cannot add a lookup to a channel it created that way. Install the lookups first, then turn it on in the `http` output. With the multi-file layout (the default since 0.1.93, and what the MSI and the packages install), add it in `strategies.d/00-http.yaml`, at the same level as `port`:
+
+```yaml
+http:
+  port: 8080
+  prtg:
+    check_result_channel: true
+```
+
+With a single `agent.yaml` (legacy layout), it goes under the output's `params`:
+
+```yaml
+storage:
+  - name: http
+    params:
+      prtg:
+        check_result_channel: true
+```
+
+Before 0.6.5 the agent ignores the key, so it can be added ahead of an automatic update. Only `config check` on 0.6.4 or earlier reports it, as a parameter the `http` output does not read.
+
+The Check Result channel then references the `senhub.probe.check.result` lookup, and the unresolved-target channel `senhub.probe.check.target.unresolved`. PRTG applies a channel's lookup and limits only when it creates the channel: a service channel created by 0.6.4 keeps the `host.service.running` lookup it was created with and has no error limit. Re-add the sensor to get the limit. The ZIP file contains lookup files in the PRTG `.ovl` format:
 
 ```
 senhub-prtg-lookups.zip
@@ -327,6 +369,7 @@ The routes marked **admin** answer the administration key alone and exist only w
 | `GET /api/{key}/debug/logs`, `POST` | admin | Read the agent's recent logs; change log levels |
 | `GET /api/{key}/debug/pprof/...` | admin | Go runtime profiler |
 | `GET /api/{key}/info/events` | agent or admin | The recent events shown on the Overview |
+| `GET /api/{key}/info/self-records` | agent or admin | The records a build adds to the agent's own metrics (`{"records": [...]}`); an empty list when the build adds none |
 
 An update sends only what it changes. A `PUT` on an output without `enabled` keeps it in its current state, so a parameter edit never re-enables what an operator disabled. A stored secret the body does not mention is kept, for probes and outputs alike; to drop one, send its key with the value `null`, inside a block or a list of blocks as well.
 

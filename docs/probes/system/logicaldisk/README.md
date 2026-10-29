@@ -595,8 +595,8 @@ For issues or questions:
 
 3. **Review documentation:**
    - [Complete Metrics Reference](./METRICS.md)
-   - [Troubleshooting Guide](../../troubleshooting/)
-   - [Agent Configuration Guide](../../../configuration/)
+   - [Troubleshooting Guide](../../../troubleshooting/TROUBLESHOOTING.md)
+   - [Agent Configuration Guide](../../../user-guide/docs/configuration.md)
 
 4. **Report issues:**
    - Include platform (OS, version)

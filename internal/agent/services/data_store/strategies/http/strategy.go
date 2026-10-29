@@ -101,6 +101,8 @@ type PRTGChannel struct {
 	LimitMode       int     `json:"limitmode,omitempty"`
 	LimitMaxWarning float64 `json:"limitmaxwarning,omitempty"`
 	LimitMaxError   float64 `json:"limitmaxerror,omitempty"`
+	LimitMinError   float64 `json:"limitminerror,omitempty"`
+	LimitErrorMsg   string  `json:"limiterrormsg,omitempty"`
 	ValueLookup     string  `json:"valuelookup,omitempty"`
 }
 
@@ -166,6 +168,7 @@ func NewHTTPSyncStrategy(
 	strategy.port = strategy.configManager.GetPort()
 	strategy.bindAddress = strategy.configManager.GetBindAddress()
 	strategy.cache.SetMaxSeries(strategy.configManager.GetMaxCacheSize())
+	strategy.formatConverter.checkResultChannel = strategy.configManager.IsPRTGCheckResultChannel
 
 	// Initialize debug manager
 	strategy.debugManager = NewDebugManager(strategy, moduleLogger)

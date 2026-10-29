@@ -81,7 +81,7 @@ The `agent` section defines the agent identity.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `key` | Yes | Agent key (UUID format), generated on the machine by `install`, `config init` or the MSI. It identifies the agent and is the key PRTG, Nagios and a Prometheus scrape read with. It must not be empty. It does not open the web console, which answers only the administration key (`admin_key` of the `http` output) |
+| `key` | Yes | Agent key (UUID format), generated on the machine by `install`, `config init` or the MSI. It identifies the agent and is the key PRTG, Nagios and a Prometheus scrape read with. It must not be empty, and it is never copied to another machine (see [License](#license)). It does not open the web console, which answers only the administration key (`admin_key` of the `http` output) |
 | `license` | No | License token for premium probes (see License section) |
 | `global_tags` | No | Key-value tags applied to every datapoint of every probe. A probe's own `custom_tags` win on a key present in both. Keep the set small — every key multiplies the series a backend stores |
 
@@ -297,6 +297,7 @@ storage:
 | `bind_address` | `127.0.0.1` | Network interface to bind to. Loopback by default — remote pollers (PRTG, Prometheus) require an explicit `"0.0.0.0"` or interface IP |
 | `endpoints` | none | Enabled endpoint types. There is no default: an endpoint answers only when it is listed. The installer writes `["prtg", "web", "nagios", "prometheus"]` |
 | `max_cache_size` | `50000` | Maximum number of distinct series the shared metric cache holds. Past it new series are refused and counted, rather than growing memory without bound — the cache is also fed by `otlp_receiver` and `prometheus_scrape`, whose series sets come from senders you do not control. `0` means unbounded |
+| `prtg.check_result_channel` | `false` | Adds the Check Result channel (`senhub.probe.check.result`) and the unresolved-target channel (`senhub.probe.check.target.unresolved`) to PRTG sensors. Service channels (`host.service.running`) never use a lookup, with or without it. Leave it off unless the SenHub lookup files are installed on the PRTG core: a channel naming a lookup the core does not have turns the whole sensor Warning (PE272). See [Installing PRTG value lookups](web-interface.md#installing-prtg-value-lookups) |
 
 ### Available Endpoint Types
 
@@ -376,6 +377,49 @@ cache:
 | `retention_minutes` | `5` | Number of minutes a value stays served by the pull outputs (PRTG, Nagios, Prometheus, Web UI) after its probe last produced it. A probe that runs less often keeps its last value until its next run is due, whatever this setting. |
 
 Monitoring systems (PRTG, Nagios, etc.) read metrics from the cache. Set the retention period longer than the longest polling interval of your monitoring system.
+
+## Logs Section
+
+The `logs` section controls the log rail. Its `redact` block masks secrets in every log record before any output receives it, whichever probe produced the record (`filetail`, journald, syslog, Windows Event Log, OTLP receiver, and so on).
+
+```yaml
+logs:
+  redact:
+    preset: true            # default; false turns the built-in rules off
+    rules:                  # optional, applied after the preset
+      - name: card          # required, lowercase letters, digits and underscore
+        pattern: '(\b\d{4})\d{8}(\d{4}\b)'   # RE2 regular expression
+        replacement: '$1********$2'           # $1, $2... refer to capture groups
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `redact.preset` | `true` | Applies the built-in rules described below. |
+| `redact.rules` | none | Your own rules, applied in order after the preset. Each needs a `name` (used as the `rule` label of the counter), a `pattern` (RE2 syntax) and a `replacement` (`$1`, `${name}` expansions). |
+
+The preset has these rules:
+
+- `credential_param` replaces the value of `password`, `passwd`, `pwd`, `passhash`, `apikey`, `api_key`, `token`, `access_token`, `refresh_token`, `id_token`, `client_secret` and `secret` (case-insensitive, whole key) with `***`. It reads query strings (`?passhash=123&x=1` becomes `?passhash=***&x=1`), form bodies, `key=value` logs, `key: value` lines and JSON (`"secret":"abc"` becomes `"secret":"***"`). The key, the separator and the quotes stay; the value ends at `&`, a space, a quote, `,` or `;`. `tokens=5` and `mytoken=1` are left alone.
+- `authorization_header` keeps the scheme of an `Authorization:` header (`Bearer`, `Basic`, `Digest`, `Negotiate`, `NTLM`) and masks the credential: `Authorization: Basic ***`. For `Digest`, the rest of the line is masked.
+- `url_userinfo` masks the password of a URL: `https://admin:hunter2@db.example.com/x` becomes `https://admin:***@db.example.com/x`. A URL with a user and no password is left alone.
+- `url_query_secret` masks the value of a query parameter named `key`, `access_key`, `auth_key`, `sig`, `signature`, `x-api-key` or `apikey`: `/map?key=AbC&lang=fr` becomes `/map?key=***&lang=fr`. The name must follow `?` or `&`, so `cache key=abc` and `monkey=1` are left alone.
+- `bearer_token` masks a credential of 16 characters or more written after `Bearer` outside an `Authorization` header: `Bearer ***`. The word in prose is left alone.
+- `prtg_license_key` masks a PRTG licence key, ten groups of six capital letters or digits joined by dashes, which PRTG writes in clear in `Core.log` and `CoreActivationLog.log` on every core start: `licensed for "<name>" (***)`.
+- `prtg_system_id` masks the PRTG system id written on the next line, the whole identifier after `SYSTEMID-` (groups of capitals and digits joined by dashes): `SystemID: SYSTEMID-***`.
+- `private_key` masks the body of a PEM private key block and keeps its armour lines: `-----BEGIN RSA PRIVATE KEY-----***-----END RSA PRIVATE KEY-----`. A block cut short is masked to the end of the record. A key whose lines arrive as separate records of the same source (a file read without folding multi-line entries) is masked too: after a record that opens a block without closing it, every record of that source that follows is replaced by `***`, whatever it holds (a log line written in the middle of the key included), up to the record holding the `-----END ... PRIVATE KEY-----` line, whose text before the marker is masked and whose text after it goes through the other rules. Records of other sources are not affected. A block that never closes is abandoned after 200 records or 64 KiB of masked text: the agent logs the warning `Private key block without END line: masking stopped at its bound` with the probe and the source, and the records that follow are no longer masked as key lines. When `filetail` starts reading a file in the middle of a key (an agent restart between its BEGIN and END lines), it looks at the 64 KiB before its start offset and, if they end inside a key, masks the lines that follow up to the END line (agent log: `Resuming inside a private key block`). A source is a probe and, when the record carries them, its file path, stream, unit or container. Public keys and certificates are left alone.
+- `jwt` masks a JSON Web Token: three base64url segments whose first two start with `eyJ`.
+- `aws_access_key_id` masks an AWS access key id, `AKIA` or `ASIA` followed by sixteen capitals or digits.
+- `aws_secret_access_key` masks the forty-character value written after `aws_secret_access_key` (`=` or `:`, quoted or not), which `credential_param` does not catch.
+
+To leave one probe unmasked (for instance a probe reading a file where `token=` is not a secret), set `log_redact: false` on the probe entry, beside `enabled` and `log_strategies`. Masking stays on for every other probe, and nothing is counted for the probe that opted out; the `logs.redact` rules still apply to the others. In the environment, `SENHUB_PROBE_<NAME>_LOG_REDACT=false`.
+
+The preset rule names are reserved: a custom rule cannot use them.
+
+The text of the record body and every string attribute (and every string inside structured fields) is masked; attribute names are not. With the preset on, an attribute whose name ends in one of those keys (`password`, `db.password`, `http.request.header.authorization`) has its whole value masked, an `Authorization` value keeping its scheme (`Bearer ***`). Logs received by the OTLP receiver are masked as well, on the copy sent to the OTLP output unchanged and on the flat copy. Masking happens once, before the record is handed to the outputs, so PRTG, OTLP and the other outputs all receive the masked text.
+
+Each masked occurrence is counted in `senhub.agent.logs.redacted` (Prometheus: `senhub_agent_logs_redacted_total`), with the labels `probe` and `rule` (one of the preset rules above, or the name of your rule). The counter is cumulative since the agent started and goes back to zero when it restarts; a series appears once its rule has masked something. The agent never logs the masked value or the original line.
+
+A rule whose name or pattern is invalid is reported by `config check` as an error naming the rule. At run time the agent skips that rule, logs one error, and keeps applying the others. Changes to the `logs` block are applied when the configuration is reloaded; no restart is needed.
 
 ## Configuration Examples
 
@@ -628,6 +672,15 @@ shell history; it is also accepted as the argument.
 Either way, **the license takes effect after restarting the agent** — a license
 change is not picked up while the agent is running.
 
+!!! warning "Never copy an agent key to another machine"
+    A licence bound to one agent key is valid on that agent only. To license
+    another agent, ask support for a licence for that agent or for your
+    organisation. Do not copy `key` from one `agent.yaml` to another: the
+    agent's identity in every output is derived from it (its
+    `service.instance.id`, the address PRTG and Nagios read), so two agents
+    sharing a key report as one. Their own metrics mix, and in a topology
+    graph each overwrites the other's entities, so one host appears detached.
+
 ### Verifying License Status
 
 You can check the license status at any time:
@@ -872,6 +925,7 @@ Five keys of a probe entry sit beside `params`. They are reached by their own na
 | `SENHUB_PROBE_<NAME>_TYPE` | `type`; required to declare a probe that no file defines |
 | `SENHUB_PROBE_<NAME>_ENABLED` | `enabled` (`true` or `false`) |
 | `SENHUB_PROBE_<NAME>_LOG_STRATEGIES` | `log_strategies`, comma-separated (`otlp,event`) |
+| `SENHUB_PROBE_<NAME>_LOG_REDACT` | `log_redact`, `false` to leave the probe's log records unmasked |
 | `SENHUB_PROBE_<NAME>_CUSTOM_TAGS__<KEY>` | one entry of `custom_tags` |
 | `SENHUB_PROBE_<NAME>_GOVERNANCE__<KEY>` | `governance`, for example `GOVERNANCE__CRITICALITY` or `GOVERNANCE__LABELS__APPLICATION` |
 

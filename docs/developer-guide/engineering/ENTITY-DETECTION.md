@@ -188,6 +188,8 @@ filter still matches. Frozen scope names (aligned with Toise):
 | `senhub-agent/snmp-ifmib` | polled device identity + IF-MIB ports/addresses |
 | `senhub-agent/snmp-lldp`  | reserved: LLDP neighbours are no longer built as devices; `connected_to` rides its local interface |
 | `senhub-agent/snmp-route` | device routing table (`network.route`) |
+| `senhub-agent/snmp-fdb`   | MACs a polled device learned in its bridge forwarding table (`network.neighbor`) |
+| `senhub-agent/snmp-arp`   | MACs a polled device knows only from its ARP table (`network.neighbor`) |
 | `senhub-agent/host-route` | host kernel routing table |
 | `senhub-agent/host-iface` | host interface/address inventory |
 | `senhub-agent/host-svc`   | host listening-service inventory |

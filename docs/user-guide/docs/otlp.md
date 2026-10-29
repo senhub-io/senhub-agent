@@ -121,6 +121,9 @@ otlp:
       batch_size: 1000            # max records per gRPC export
       batch_timeout: 5s           # flush even if batch_size not reached
       buffer_size: 10000          # bounded queue; drop-oldest beyond
+      max_export_bytes: 3145728   # estimated size cap of one export (default 3 MiB);
+                                  # larger batches are split between records,
+                                  # halved again if the receiver refuses the size
     traces:
       enabled: true               # default false — relays spans ingested by an
                                   # otlp_receiver probe (signals: [traces])
@@ -331,6 +334,13 @@ their relationships) ride the OTLP **log** signal, so this signal has no
 endpoint or batch knobs of its own — it reuses the log transport. What the
 agent reports, what is off by default and how a consumer reads a deletion
 are on the [Topology](topology.md) page.
+
+Because they are log records, a collector that forwards every log record
+to a log store stores the entity events too, where they have no message
+and inflate the volume. Split them on their event name in the collector,
+as shown in [OpenTelemetry Collector](#opentelemetry-collector-recommended):
+`entity.state` and `entity.delete` go to the topology backend, every other
+record to the log store.
 
 When `entities.enabled` is off, the output logs one warning at start,
 `entity emission is off on this OTLP output`, so an empty topology can be
@@ -637,6 +647,48 @@ mounted volume, or an Azure Files share on Container Apps); without it the
 queue disappears with the container and only survives an outage, not a
 restart.
 
+### Exports larger than the collector accepts
+
+The agent cuts each logs export (event logs and entity events) into parts
+whose estimated size stays under `signals.logs.max_export_bytes`, 3 MiB by
+default. The estimate is of the uncompressed message, which is what a gRPC
+receiver measures: its `max_recv_msg_size_mib` applies after decompression,
+so gzip does not help with this limit. Parts are cut between records; an
+entity event always keeps its complete relationships.
+
+When the collector still refuses a part for its size (gRPC
+`RESOURCE_EXHAUSTED` without a retry hint, HTTP 413, or the HTTP 400
+"request body too large" the OpenTelemetry Collector answers over its
+`max_request_body_size`), the agent halves
+the part and sends each half, down to a single record, then sends the
+following batches under a lower limit: half of the refused size, never
+below 64 KiB. It logs this once:
+
+```
+OTLP logs export refused for size by the receiver; working export size limit lowered
+```
+
+with the configured limit (`configured_bytes`), the new one
+(`working_bytes`) and the refused size (`refused_estimated_bytes`). The
+lowered limit holds until the agent restarts. To avoid the first refusal
+and the extra exports it costs, set `max_export_bytes` below the
+collector's limit, for example `786432` (768 KiB) for a collector with
+`max_recv_msg_size_mib: 1`.
+
+A single record larger than the collector accepts cannot be cut. It is
+dropped, counted in `senhub_agent_otlp_dropped_total{reason="record_too_large"}`,
+and the first one is logged with its estimated size:
+
+```
+OTLP logs record larger than the receiver accepts; dropped
+```
+
+Records refused for another reason (for example `INVALID_ARGUMENT`) are
+counted with `reason="receiver_rejected"`. Neither kind is written to the
+disk queue: the same bytes would be refused again. When a part fails because
+the collector is unreachable, only the records of that part go to the disk
+queue; the parts already delivered are not sent again.
+
 ## Severity mapping
 
 | Source value | OTel SeverityNumber | OTel SeverityText |
@@ -668,8 +720,9 @@ to work in agents where the operator has not enabled OTLP.
 
 ### OpenTelemetry Collector (recommended)
 
-A minimal collector that accepts OTLP/gRPC and forwards to
-VictoriaMetrics + VictoriaLogs:
+A minimal collector that accepts OTLP/gRPC and forwards metrics to
+VictoriaMetrics, log records to VictoriaLogs and entity events to a
+topology backend:
 
 ```yaml
 receivers:
@@ -677,6 +730,22 @@ receivers:
     protocols:
       grpc:
         endpoint: "0.0.0.0:4317"
+
+processors:
+  # Entity events are log records whose event name is entity.state or
+  # entity.delete (the OpenTelemetry entity-events convention). Split on
+  # the event name, not on the instrumentation scope: the scope carries
+  # the discovery method and varies.
+  filter/entities_only:
+    error_mode: ignore
+    logs:
+      log_record:
+        - 'event_name != "entity.state" and event_name != "entity.delete"'
+  filter/entities_excluded:
+    error_mode: ignore
+    logs:
+      log_record:
+        - 'event_name == "entity.state" or event_name == "entity.delete"'
 
 exporters:
   prometheusremotewrite:
@@ -687,6 +756,9 @@ exporters:
   otlphttp/logs:
     logs_endpoint: "http://victorialogs.internal:9428/insert/opentelemetry/v1/logs"
 
+  otlphttp/topology:
+    logs_endpoint: "http://topology.internal:4318/v1/logs"
+
 service:
   pipelines:
     metrics:
@@ -694,8 +766,19 @@ service:
       exporters: [prometheusremotewrite]
     logs:
       receivers: [otlp]
+      processors: [filter/entities_excluded]
       exporters: [otlphttp/logs]
+    logs/entities:
+      receivers: [otlp]
+      processors: [filter/entities_only]
+      exporters: [otlphttp/topology]
 ```
+
+The `filter` processor drops what its condition matches, so each pipeline
+keeps the other half. The `event_name` path needs a recent
+`opentelemetry-collector-contrib`; this configuration runs on 0.158.0.
+Without the split, every entity event is also stored in VictoriaLogs,
+with no message (`missing _msg field`).
 
 `resource_to_telemetry_conversion: enabled: true` ensures the OTel
 resource attributes (service.name, service.instance.id, etc.) become

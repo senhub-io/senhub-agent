@@ -10,6 +10,7 @@ package configuration
 // wrapper over the same engine.
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -27,11 +28,13 @@ import (
 // AlreadyMultiFile is true when no migration was needed (idempotent
 // no-op). BackupPath is set when the migration touched disk — it
 // points at the timestamped copy of the source file. StrategyCount
-// counts the files written under strategies.d/.
+// counts the files written under strategies.d/, ProbeCount those
+// written under probes.d/.
 type MigrateResult struct {
 	AlreadyMultiFile bool
 	BackupPath       string
 	StrategyCount    int
+	ProbeCount       int
 	WroteProbes      bool
 }
 
@@ -47,7 +50,7 @@ type MigrateResult struct {
 //     equality check).
 //  4. Backup the source to <configPath>.pre-multi-file.<ts>.
 //  5. Rewrite configPath as agent.yaml (globals only).
-//  6. Write probes.d/00-host.yaml (the full probes list).
+//  6. Write one probes.d/NN-<name>.yaml per probe, in source order.
 //  7. Write one strategies.d/NN-<name>.yaml per strategy, in order.
 //  8. Verify the new layout loads to the same merged data as the
 //     snapshot; on mismatch, restore the backup and return an error.
@@ -96,10 +99,8 @@ func MigrateToMultiFile(configPath string, log *logger.ModuleLogger) (result Mig
 		if migrateErr == nil {
 			return
 		}
-		for _, m := range movedAside {
-			if _, err := os.Stat(m[0]); os.IsNotExist(err) {
-				_ = os.Rename(m[1], m[0])
-			}
+		if err := restoreMovedAside(movedAside); err != nil {
+			migrateErr = errors.Join(migrateErr, fmt.Errorf("rollback incomplete: %w", err))
 		}
 	}()
 	for _, p := range defaults {
@@ -171,22 +172,15 @@ func MigrateToMultiFile(configPath string, log *logger.ModuleLogger) (result Mig
 		return result, fmt.Errorf("mkdir %s: %w", strategiesDir, err)
 	}
 
-	// probes.d/00-host.yaml — the whole probes list as a YAML array.
+	// probes.d/NN-<name>.yaml — one file per probe.
 	if probesRaw != nil {
-		probesYAML, err := yaml.Marshal(probesRaw)
+		count, err := splitProbes(probesRaw, probesDir, timestamp)
 		if err != nil {
 			abandonSplit(configPath, backupPath, log)
-			return result, fmt.Errorf("marshal probes: %w", err)
+			return result, err
 		}
-		probesPath := filepath.Join(probesDir, "00-host.yaml")
-		body := append([]byte("# Probes migrated from monolithic config on "+timestamp+".\n"+
-			"# Add new probes by creating additional files in this directory\n"+
-			"# (e.g. 10-mydb.yaml). Files load alphabetically.\n\n"), probesYAML...)
-		if err := atomicWriteFile(probesPath, body, 0600); err != nil {
-			abandonSplit(configPath, backupPath, log)
-			return result, fmt.Errorf("write %s: %w", probesPath, err)
-		}
-		result.WroteProbes = true
+		result.ProbeCount = count
+		result.WroteProbes = count > 0
 	}
 
 	// strategies.d/NN-<name>.yaml — one file per strategy.
@@ -227,6 +221,62 @@ func HasMonolithicMarkers(raw []byte) bool {
 		return true
 	}
 	return probe.Probes != nil || probe.Storage != nil
+}
+
+// splitProbes writes each entry of a yaml.v2 free-form `probes:` list as
+// its own one-element array fragment, probes.d/NN-<name>.yaml. NN is a
+// fixed-width counter starting at 10 (below it stay the 00-host, 05-services
+// and 06-swarm defaults) so the alphabetical load order is the source
+// order. Each block is marshalled as the whole-list marshal did, so params,
+// governance and ${secret:...} references are unchanged.
+func splitProbes(probesRaw interface{}, probesDir, timestamp string) (int, error) {
+	list, ok := probesRaw.([]interface{})
+	if !ok {
+		return 0, fmt.Errorf("source `probes:` block is not a list (%T)", probesRaw)
+	}
+	first, width := 10, 2
+	for first+len(list) > pow10(width) {
+		first, width = pow10(width), width+1
+	}
+	for i, entry := range list {
+		name := probeEntryName(entry)
+		body, err := yaml.Marshal([]interface{}{entry})
+		if err != nil {
+			return i, fmt.Errorf("marshal probe %d (%s): %w", i, name, err)
+		}
+		header := "# Probe " + safeFilenameComponent(name) + " migrated from monolithic config on " + timestamp + ".\n" +
+			"# Add new probes by creating additional files in this directory\n" +
+			"# (e.g. 60-mydb.yaml). Files load alphabetically.\n\n"
+		path := filepath.Join(probesDir, fmt.Sprintf("%0*d-%s.yaml", width, first+i, safeFilenameComponent(name)))
+		if err := atomicWriteFile(path, append([]byte(header), body...), 0600); err != nil {
+			return i, fmt.Errorf("write %s: %w", path, err)
+		}
+	}
+	return len(list), nil
+}
+
+func pow10(n int) int {
+	v := 1
+	for ; n > 0; n-- {
+		v *= 10
+	}
+	return v
+}
+
+// probeEntryName reads the name of a free-form probe block, "probe" when
+// it has none.
+func probeEntryName(entry interface{}) string {
+	switch m := entry.(type) {
+	case map[interface{}]interface{}:
+		if n, ok := m["name"].(string); ok && n != "" {
+			return n
+		}
+	case map[string]interface{}:
+		if n, ok := m["name"].(string); ok && n != "" {
+			return n
+		}
+	}
+	return "probe"
 }
 
 // splitStrategies turns a yaml.v2 free-form `storage:` value into
@@ -551,4 +601,16 @@ func warnRestore(log *logger.ModuleLogger, msg string) {
 		return
 	}
 	fmt.Fprintf(os.Stderr, "config migrate: %s\n", msg)
+}
+
+func restoreMovedAside(movedAside [][2]string) error {
+	var errs []error
+	for _, m := range movedAside {
+		if _, err := os.Stat(m[0]); os.IsNotExist(err) {
+			if err := os.Rename(m[1], m[0]); err != nil {
+				errs = append(errs, fmt.Errorf("restoring %s from %s: %w", m[0], m[1], err))
+			}
+		}
+	}
+	return errors.Join(errs...)
 }

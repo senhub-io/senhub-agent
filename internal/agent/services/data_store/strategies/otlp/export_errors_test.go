@@ -4,9 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/protoadapt"
+	"google.golang.org/protobuf/types/known/durationpb"
 
 	"senhub-agent.go/internal/agent/services/exporterrors"
 )
@@ -19,7 +23,8 @@ func TestClassifyExportError_GRPC(t *testing.T) {
 	}{
 		{codes.Unavailable, true, "transport"},
 		{codes.DeadlineExceeded, true, "transport"},
-		{codes.ResourceExhausted, true, "transport"},
+		// Without RetryInfo it is a size refusal: see the dedicated tests.
+		{codes.ResourceExhausted, false, "validation"},
 		{codes.Aborted, true, "transport"},
 		{codes.Internal, true, "transport"},
 		// Auth is deliberately retryable, matching the cloud sink's 401/403
@@ -62,6 +67,7 @@ func TestClassifyExportError_HTTP(t *testing.T) {
 	}{
 		{"400 Bad Request", false},
 		{"404 Not Found", false},
+		{"413 Request Entity Too Large", false},
 		{"422 Unprocessable Entity", false},
 		// The SDK retries these itself; if one still surfaces, it stays
 		// on the retry path rather than being discarded.
@@ -107,5 +113,35 @@ func TestClassifyExportError_FailsSafe(t *testing.T) {
 
 	if got := classifyExportError(nil); got != nil {
 		t.Errorf("classifyExportError(nil) = %v, want nil", got)
+	}
+}
+
+func resourceExhaustedWith(t *testing.T, details ...protoadapt.MessageV1) error {
+	t.Helper()
+	st := status.New(codes.ResourceExhausted, "grpc: received message larger than max")
+	if len(details) > 0 {
+		var err error
+		if st, err = st.WithDetails(details...); err != nil {
+			t.Fatalf("attaching details: %v", err)
+		}
+	}
+	return st.Err()
+}
+
+func TestClassifyExportError_ResourceExhaustedWithoutHint(t *testing.T) {
+	got := classifyExportError(resourceExhaustedWith(t))
+	if exporterrors.IsRetryable(got) {
+		t.Fatalf("size refusal without RetryInfo classified retryable: %v", got)
+	}
+	if r := exporterrors.Reason(got); r != "validation" {
+		t.Errorf("Reason = %q, want validation", r)
+	}
+}
+
+func TestClassifyExportError_ResourceExhaustedWithRetryInfo(t *testing.T) {
+	got := classifyExportError(resourceExhaustedWith(t,
+		&errdetails.RetryInfo{RetryDelay: durationpb.New(time.Second)}))
+	if !exporterrors.IsRetryable(got) {
+		t.Fatalf("throttle with RetryInfo classified permanent: %v", got)
 	}
 }

@@ -18,6 +18,7 @@ import (
 	"senhub-agent.go/internal/cliexit"
 
 	agentCliArgs "senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/auto_update"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -99,6 +100,22 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		localConfiguration,
 		logger,
 	)
+
+	logRedactionWarnings := func() {
+		for _, err := range localConfiguration.ApplyLogRedaction() {
+			logger.Error().Err(err).Msg("Log masking rule skipped; the other rules still apply")
+		}
+	}
+	logRedactionWarnings()
+	agentstate.SetPEMOverflowHandler(func(probe, source string, records, bytes int) {
+		logger.Warn().
+			Str("probe", probe).
+			Str("source", source).
+			Int("masked_records", records).
+			Int("masked_bytes", bytes).
+			Msg("Private key block without END line: masking stopped at its bound, the following records of this source are no longer masked as key lines")
+	})
+	localConfiguration.OnConfigChanged(func(string) { logRedactionWarnings() })
 
 	sensors := sensor.NewSensor(
 		store.GetCallback(),

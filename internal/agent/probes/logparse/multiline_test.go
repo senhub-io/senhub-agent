@@ -3,6 +3,7 @@ package logparse
 import (
 	"reflect"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -54,13 +55,20 @@ func TestMultiline_AfterFoldsStacktrace(t *testing.T) {
 	}
 }
 
-func TestMultiline_OrphanContinuationEmittedAlone(t *testing.T) {
+func TestMultiline_OrphanContinuationsFoldTogether(t *testing.T) {
 	a := NewAssembler(mlConfig(t, `^START`, "after", false), 0)
-	// File opens mid-message: first line is a continuation with nothing
-	// started — must not be swallowed.
-	got := a.Append("  trailing fragment")
-	if !reflect.DeepEqual(got, []string{"  trailing fragment"}) {
-		t.Errorf("orphan got %v", got)
+	// File opens mid-message, or the start of the message was already
+	// sent by an idle flush: the continuations are kept, and fold together
+	// until the next start.
+	var got []string
+	for _, l := range []string{"  trailing fragment", "  second fragment", "START next"} {
+		got = append(got, a.Append(l)...)
+	}
+	if want := []string{"  trailing fragment\n  second fragment"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if got := a.Flush(); !reflect.DeepEqual(got, []string{"START next"}) {
+		t.Errorf("flush got %q", got)
 	}
 }
 
@@ -106,5 +114,91 @@ func TestTruncate(t *testing.T) {
 	}
 	if Truncate("hello", 3) != "hel" {
 		t.Errorf("got %q", Truncate("hello", 3))
+	}
+}
+
+// A PRTG-style log read with the Filebeat spelling of "a timestamp starts
+// a record" (negate: true). Under this assembler that spelling means the
+// reverse: the first line without a timestamp opens a record, and every
+// timestamped line after it is folded into that record until the next
+// line without one; the timestamped lines ahead of it fold together.
+func TestMultiline_FilebeatNegateHoldsTimestampedLines(t *testing.T) {
+	lines := []string{
+		"2026-10-20 09:29:58.123456 INFO  TId 1234 Core> sensor scan done\r",
+		"2026-10-20 09:30:01.000001 ERROR TId 1234 Core> request failed:\r",
+		"   at Paessler.Core.Request()",
+		"2026-10-20 09:30:02.000002 INFO  TId 1235 Core> next message",
+		"2026-10-20 09:30:03.000003 INFO  TId 1236 Core> another message",
+	}
+	feed := func(a *Assembler) []string {
+		var out []string
+		for _, l := range lines {
+			out = append(out, a.Append(strings.TrimSuffix(l, "\r"))...)
+		}
+		return out
+	}
+
+	filebeat := NewAssembler(mlConfig(t, `^\d{4}-\d{2}-\d{2} `, "after", true), 0)
+	got := feed(filebeat)
+	if len(got) != 1 || strings.Count(got[0], "\n") != 1 {
+		t.Fatalf("negate: true should send the 2 lines ahead of the continuation as one record before the flush, got %q", got)
+	}
+	held := filebeat.Flush()
+	if len(held) != 1 || strings.Count(held[0], "\n") != 2 || !strings.HasPrefix(held[0], "   at ") {
+		t.Fatalf("negate: true should hold the continuation with the two later timestamped lines, got %q", held)
+	}
+
+	header := NewAssembler(mlConfig(t, `^\d{4}-\d{2}-\d{2} `, "after", false), 0)
+	got = append(feed(header), header.Flush()...)
+	want := []string{
+		"2026-10-20 09:29:58.123456 INFO  TId 1234 Core> sensor scan done",
+		"2026-10-20 09:30:01.000001 ERROR TId 1234 Core> request failed:\n   at Paessler.Core.Request()",
+		"2026-10-20 09:30:02.000002 INFO  TId 1235 Core> next message",
+		"2026-10-20 09:30:03.000003 INFO  TId 1236 Core> another message",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("negate: false\n got %q\nwant %q", got, want)
+	}
+}
+
+// A record that reaches the cap is sent, and the lines after it are kept
+// as records of their own instead of being dropped until the next record
+// starts.
+func TestMultiline_FullRecordIsSentAndTheNextLineKept(t *testing.T) {
+	a := NewAssembler(mlConfig(t, `^X`, "after", false), 14)
+	var out []string
+	for _, l := range []string{"Xhead", " cont1", " cont2", " cont3"} {
+		out = append(out, a.Append(l)...)
+	}
+	out = append(out, a.Flush()...)
+	want := []string{"Xhead\n cont1", " cont2\n cont3"}
+	if !reflect.DeepEqual(out, want) {
+		t.Errorf("got %q want %q", out, want)
+	}
+}
+
+func TestMultilineWarning(t *testing.T) {
+	tests := []struct {
+		name    string
+		pattern string
+		match   string
+		negate  bool
+		want    bool
+	}{
+		{"Filebeat spelling of a leading timestamp", `^\d{4}-\d{2}-\d{2} `, "after", true, true},
+		{"leading timestamp written for this agent", `^\d{4}-\d{2}-\d{2} `, "after", false, false},
+		{"negated continuation pattern", `\s+at `, "after", true, false},
+		{"negated match before", `^\d{4}`, "before", true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := MultilineWarning(mlConfig(t, tt.pattern, tt.match, tt.negate))
+			if (got != "") != tt.want {
+				t.Fatalf("MultilineWarning = %q, want a warning %v", got, tt.want)
+			}
+			if tt.want && !strings.Contains(got, "negate: false") {
+				t.Fatalf("warning %q should give the line to write", got)
+			}
+		})
 	}
 }

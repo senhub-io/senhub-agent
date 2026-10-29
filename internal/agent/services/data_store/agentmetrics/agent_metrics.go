@@ -146,6 +146,24 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 		})
 	}
 
+	// Masked secrets — one record per (probe, rule), emitted only once a
+	// rule has masked something. `probe` is the producing probe instance
+	// and `rule` a preset rule or an operator-chosen rule name, both
+	// bounded by the configuration.
+	for _, c := range agentstate.LogRedactedCounts() {
+		records = append(records, otelmapper.OtelRecord{
+			Name: "senhub.agent.logs.redacted",
+			Unit: "{occurrence}",
+			Type: "counter",
+			Attributes: map[string]string{
+				"probe": c.Probe,
+				"rule":  c.Rule,
+			},
+			Value:       float64(c.Count),
+			Description: "Cumulative count of secret occurrences masked in log records before any output received them, by producing probe and masking rule.",
+		})
+	}
+
 	// HTTP requests by endpoint — one otelmapper.OtelRecord per (route template) pair.
 	// Endpoint label keeps cardinality bounded to the number of registered routes.
 	for endpoint, count := range snap.HTTPRequestsByEndpoint {

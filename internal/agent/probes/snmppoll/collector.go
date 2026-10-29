@@ -59,6 +59,9 @@ type collectOptions struct {
 	// being born without their topology join key and then changing label set
 	// once a later sweep names the interface.
 	SkipUnnamedInterfaces bool
+	// SelectedInterfaces restricts walked if_index rows to these ifIndex
+	// values. nil keeps every interface; an empty set keeps none.
+	SelectedInterfaces map[string]bool
 }
 
 // collect runs one poll cycle and returns the decoded datapoints (without
@@ -87,7 +90,12 @@ func collect(client snmpClient, cfg *config, instance, deviceID string, ifNames 
 	scalars, walks := buildPlan(cfg)
 	points := make([]data_store.DataPoint, 0, len(scalars)+len(walks)*8)
 	answered := false
+	// silent is set when a read times out before anything answered: the
+	// device is not answering, and each further read would wait for the
+	// same timeout and retries.
+	silent := false
 	skippedInterfaces := 0
+	unselectedInterfaces := 0
 
 	// Scalars: a single (chunked) Get of all <OID>.0 instances.
 	if len(scalars) > 0 {
@@ -100,6 +108,7 @@ func collect(client snmpClient, cfg *config, instance, deviceID string, ifNames 
 		}
 		binds, err := client.Get(oids)
 		if err != nil {
+			silent = isTimeout(err)
 			log.Warn().Err(err).Str("target", instance).Msg("SNMP scalar get failed, skipped")
 		} else {
 			answered = true
@@ -116,8 +125,13 @@ func collect(client snmpClient, cfg *config, instance, deviceID string, ifNames 
 
 	// Table columns: one BulkWalk per column, row index → attribute.
 	for _, m := range walks {
+		if silent {
+			log.Warn().Str("target", instance).Msg("SNMP device not answering; remaining walks of this cycle skipped")
+			break
+		}
 		binds, err := client.BulkWalk(m.OID)
 		if err != nil {
+			silent = !answered && isTimeout(err)
 			log.Warn().Err(err).Str("target", instance).Str("oid", m.OID).Str("metric", m.Metric).Msg("SNMP walk failed, skipped")
 			continue
 		}
@@ -134,6 +148,10 @@ func collect(client snmpClient, cfg *config, instance, deviceID string, ifNames 
 			var extra []tags.Tag
 			if m.IndexLabel != "" {
 				if m.IndexLabel == "if_index" {
+					if options.SelectedInterfaces != nil && !options.SelectedInterfaces[index] {
+						unselectedInterfaces++
+						continue
+					}
 					name := ifNames[index]
 					if name == "" && options.SkipUnnamedInterfaces {
 						skippedInterfaces++
@@ -156,6 +174,13 @@ func collect(client snmpClient, cfg *config, instance, deviceID string, ifNames 
 			Str("target", instance).
 			Int("skipped_interface_rows", skippedInterfaces).
 			Msg("skipping interface metrics whose interface is not named by the current topology snapshot")
+	}
+
+	if unselectedInterfaces > 0 && log != nil {
+		log.Debug().
+			Str("target", instance).
+			Int("unselected_interface_rows", unselectedInterfaces).
+			Msg("skipping interface metrics of interfaces outside the configured selection")
 	}
 
 	return points, answered

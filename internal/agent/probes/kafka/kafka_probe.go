@@ -31,6 +31,7 @@ import (
 	"github.com/IBM/sarama"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/subcollect"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -53,6 +54,8 @@ type kafkaProbe struct {
 	// seams for unit testing
 	newAdmin  adminFactory
 	newClient clientFactory
+
+	failures subcollect.Tracker
 }
 
 // baseTags returns the entity identity tags shared by every datapoint.
@@ -169,10 +172,11 @@ func (p *kafkaProbe) Collect() ([]data_store.DataPoint, error) {
 
 	admin, err := p.newAdmin(p.cfg.Brokers, sarCfg)
 	if err != nil {
-		p.moduleLogger.Warn().Err(err).Strs("brokers", p.cfg.Brokers).Msg("kafka: cannot connect (admin)")
+		p.failures.Failed(p.moduleLogger, subcollect.Warn, "connect_admin", err, "kafka: cannot connect (admin)")
 		p.entitySrc.notifyFailure()
 		return p.failurePoints(0, now, err), nil
 	}
+	p.failures.Succeeded(p.moduleLogger, "connect_admin", "kafka: admin connection recovered")
 	defer func() {
 		if cerr := admin.Close(); cerr != nil {
 			p.moduleLogger.Warn().Err(cerr).Msg("kafka: error closing admin client")
@@ -181,10 +185,11 @@ func (p *kafkaProbe) Collect() ([]data_store.DataPoint, error) {
 
 	client, err := p.newClient(p.cfg.Brokers, sarCfg)
 	if err != nil {
-		p.moduleLogger.Warn().Err(err).Strs("brokers", p.cfg.Brokers).Msg("kafka: cannot connect (client)")
+		p.failures.Failed(p.moduleLogger, subcollect.Warn, "connect_client", err, "kafka: cannot connect (client)")
 		p.entitySrc.notifyFailure()
 		return p.failurePoints(0, now, err), nil
 	}
+	p.failures.Succeeded(p.moduleLogger, "connect_client", "kafka: client connection recovered")
 	defer func() {
 		if cerr := client.Close(); cerr != nil {
 			p.moduleLogger.Warn().Err(cerr).Msg("kafka: error closing client")
@@ -213,8 +218,9 @@ func (p *kafkaProbe) Collect() ([]data_store.DataPoint, error) {
 	// Topic + partition metrics
 	topicMeta, err := admin.ListTopics()
 	if err != nil {
-		p.moduleLogger.Warn().Err(err).Msg("kafka: ListTopics failed")
+		p.failures.Failed(p.moduleLogger, subcollect.Warn, "list_topics", err, "kafka: ListTopics failed")
 	} else {
+		p.failures.Succeeded(p.moduleLogger, "list_topics", "kafka: ListTopics recovered")
 		topicPoints, topicPartitions := p.collectTopicMetrics(client, topicMeta, now)
 		points = append(points, topicPoints...)
 
@@ -262,10 +268,9 @@ func (p *kafkaProbe) collectTopicMetrics(
 
 			newestOffset, err := client.GetOffset(topic, partition, sarama.OffsetNewest)
 			if err != nil {
-				p.moduleLogger.Warn().Err(err).
-					Str("topic", topic).Int32("partition", partition).
-					Msg("kafka: GetOffset(newest) failed")
+				p.failures.Failed(p.moduleLogger, subcollect.Warn, "offset_newest/"+topic+"/"+partStr, err, "kafka: GetOffset(newest) failed")
 			} else {
+				p.failures.Succeeded(p.moduleLogger, "offset_newest/"+topic+"/"+partStr, "kafka: GetOffset(newest) recovered")
 				points = append(points, p.dp("kafka.partition.current_offset", float64(newestOffset), now,
 					tags.Tag{Key: "metric_type", Value: "partition"},
 					tags.Tag{Key: "topic", Value: topic},
@@ -275,10 +280,9 @@ func (p *kafkaProbe) collectTopicMetrics(
 
 			oldestOffset, err := client.GetOffset(topic, partition, sarama.OffsetOldest)
 			if err != nil {
-				p.moduleLogger.Warn().Err(err).
-					Str("topic", topic).Int32("partition", partition).
-					Msg("kafka: GetOffset(oldest) failed")
+				p.failures.Failed(p.moduleLogger, subcollect.Warn, "offset_oldest/"+topic+"/"+partStr, err, "kafka: GetOffset(oldest) failed")
 			} else {
+				p.failures.Succeeded(p.moduleLogger, "offset_oldest/"+topic+"/"+partStr, "kafka: GetOffset(oldest) recovered")
 				points = append(points, p.dp("kafka.partition.oldest_offset", float64(oldestOffset), now,
 					tags.Tag{Key: "metric_type", Value: "partition"},
 					tags.Tag{Key: "topic", Value: topic},
@@ -299,10 +303,9 @@ func (p *kafkaProbe) collectTopicMetrics(
 			// In-sync replicas (ISR) — under-replicated partitions have ISR < replicas.
 			isr, err := client.InSyncReplicas(topic, partition)
 			if err != nil {
-				p.moduleLogger.Warn().Err(err).
-					Str("topic", topic).Int32("partition", partition).
-					Msg("kafka: InSyncReplicas failed")
+				p.failures.Failed(p.moduleLogger, subcollect.Warn, "in_sync_replicas/"+topic+"/"+partStr, err, "kafka: InSyncReplicas failed")
 			} else {
+				p.failures.Succeeded(p.moduleLogger, "in_sync_replicas/"+topic+"/"+partStr, "kafka: InSyncReplicas recovered")
 				points = append(points,
 					p.dp("kafka.partition.replicas_in_sync", float64(len(isr)), now,
 						tags.Tag{Key: "metric_type", Value: "partition"},
@@ -329,9 +332,10 @@ func (p *kafkaProbe) collectGroupMetricsWithNames(
 
 	groups, err := admin.ListConsumerGroups()
 	if err != nil {
-		p.moduleLogger.Warn().Err(err).Msg("kafka: ListConsumerGroups failed")
+		p.failures.Failed(p.moduleLogger, subcollect.Warn, "list_consumer_groups", err, "kafka: ListConsumerGroups failed")
 		return points
 	}
+	p.failures.Succeeded(p.moduleLogger, "list_consumer_groups", "kafka: ListConsumerGroups recovered")
 
 	for group := range groups {
 		if !p.matchesGroup(group) {
@@ -341,8 +345,9 @@ func (p *kafkaProbe) collectGroupMetricsWithNames(
 		// Group membership
 		groupDesc, err := admin.DescribeConsumerGroups([]string{group})
 		if err != nil {
-			p.moduleLogger.Warn().Err(err).Str("group", group).Msg("kafka: DescribeConsumerGroups failed")
+			p.failures.Failed(p.moduleLogger, subcollect.Warn, "describe_group/"+group, err, "kafka: DescribeConsumerGroups failed")
 		} else if len(groupDesc) > 0 {
+			p.failures.Succeeded(p.moduleLogger, "describe_group/"+group, "kafka: DescribeConsumerGroups recovered")
 			members := len(groupDesc[0].Members)
 			points = append(points, p.dp("kafka.consumer_group.members", float64(members), now,
 				tags.Tag{Key: "metric_type", Value: "consumer_group"},
@@ -357,9 +362,10 @@ func (p *kafkaProbe) collectGroupMetricsWithNames(
 		// Group offsets per topic/partition
 		groupOffsets, err := admin.ListConsumerGroupOffsets(group, topicPartitions)
 		if err != nil {
-			p.moduleLogger.Warn().Err(err).Str("group", group).Msg("kafka: ListConsumerGroupOffsets failed")
+			p.failures.Failed(p.moduleLogger, subcollect.Warn, "group_offsets/"+group, err, "kafka: ListConsumerGroupOffsets failed")
 			continue
 		}
+		p.failures.Succeeded(p.moduleLogger, "group_offsets/"+group, "kafka: ListConsumerGroupOffsets recovered")
 
 		// lag_sum accumulator: topic → sum
 		lagSum := make(map[string]float64)
@@ -374,11 +380,10 @@ func (p *kafkaProbe) collectGroupMetricsWithNames(
 
 			for partition, block := range partOffsets {
 				if block.Err != sarama.ErrNoError {
-					p.moduleLogger.Warn().
-						Str("group", group).Str("topic", topic).Int32("partition", partition).
-						Msgf("kafka: group offset block error: %v", block.Err)
+					p.failures.Failed(p.moduleLogger, subcollect.Warn, "group_offset_block/"+group+"/"+topic+"/"+strconv.Itoa(int(partition)), block.Err, "kafka: group offset block error")
 					continue
 				}
+				p.failures.Succeeded(p.moduleLogger, "group_offset_block/"+group+"/"+topic+"/"+strconv.Itoa(int(partition)), "kafka: group offset block recovered")
 
 				partStr := strconv.Itoa(int(partition))
 				groupOffset := float64(block.Offset)
@@ -393,11 +398,10 @@ func (p *kafkaProbe) collectGroupMetricsWithNames(
 				// Compute lag = newest_offset - group_offset (min 0)
 				newestOffset, err := client.GetOffset(topic, partition, sarama.OffsetNewest)
 				if err != nil {
-					p.moduleLogger.Warn().Err(err).
-						Str("group", group).Str("topic", topic).Int32("partition", partition).
-						Msg("kafka: GetOffset(newest) for lag failed")
+					p.failures.Failed(p.moduleLogger, subcollect.Warn, "lag_offset/"+group+"/"+topic+"/"+partStr, err, "kafka: GetOffset(newest) for lag failed")
 					continue
 				}
+				p.failures.Succeeded(p.moduleLogger, "lag_offset/"+group+"/"+topic+"/"+partStr, "kafka: GetOffset(newest) for lag recovered")
 
 				lag := float64(newestOffset) - groupOffset
 				if lag < 0 {

@@ -115,6 +115,7 @@ nav:
   - Prometheus / VictoriaMetrics:
       - Overview: prometheus/index.md
       - Metrics reference: prometheus/metrics-reference.md
+  - Alert rules and dashboards: packs.md
   - CLI reference: cli.md
   - OTLP / OpenTelemetry: otlp.md
   - Topology: topology.md
@@ -159,6 +160,9 @@ nav:
       - Exchange Online: probes/exchange_online.md
       - Azure Container Apps: probes/azure_container_apps.md
       - Azure Container App Jobs: probes/azure_container_app_jobs.md
+      - Azure Monitor: probes/azure_monitor.md
+      - Azure Log Query: probes/azure_log_query.md
+      - Microsoft Entra ID: probes/entra_id.md
       - Syslog: probes/syslog.md
       - Event: probes/event.md
       - Ping WebApp: probes/ping-webapp.md
@@ -209,6 +213,7 @@ nav:
   - What's new:
       - Overview: whats-new/index.md
       - Next (unreleased): whats-new/next.md
+      - 0.6.5: whats-new/0.6.5.md
       - 0.6.4: whats-new/0.6.4.md
       - 0.6.3: whats-new/0.6.3.md
       - 0.6.2: whats-new/0.6.2.md
