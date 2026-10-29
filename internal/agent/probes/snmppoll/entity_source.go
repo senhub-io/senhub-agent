@@ -650,17 +650,25 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	var fdbs []fdbEntry
 	var arps []arpEntry
 	if s.maxNeighbors() > 0 {
+		// A failed walk keeps the previous sweep's rows: a large FDB lost over
+		// UDP is not a table that forgot every MAC, and dropping the rows
+		// would retire and recreate every neighbour of the device.
+		s.mu.Lock()
+		prevFDB, prevARP := s.cache.fdb, s.cache.arp
+		s.mu.Unlock()
 		fdbs, err = collectFDB(client)
 		if err != nil {
 			s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
-				Msg("bridge FDB walk failed; emitting device without neighbors")
-			fdbs = nil
+				Int("kept_rows", len(prevFDB)).
+				Msg("bridge FDB walk failed; keeping the previous rows")
+			fdbs = prevFDB
 		}
 		arps, err = collectARP(client)
 		if err != nil {
 			s.moduleLogger.Debug().Err(err).Str("target", s.cfg.Target).
-				Msg("ARP walk failed; emitting device without neighbors")
-			arps = nil
+				Int("kept_rows", len(prevARP)).
+				Msg("ARP walk failed; keeping the previous rows")
+			arps = prevARP
 		}
 	}
 

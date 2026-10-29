@@ -346,8 +346,9 @@ linked with `resolves_to` to the interface that owns the MAC, when this
 agent knows it: one of this host's own interfaces, or an interface of
 another device this agent polls. A MAC owned by the observing device itself,
 multicast and broadcast addresses, entries the device marks as its own and
-entries it has not learned are not published. A neighbour that stops being
-listed leaves as `aged_out`.
+entries it has not learned are not published. A neighbour leaves, as
+`aged_out`, when a successful read of the tables no longer lists it; a read
+that fails keeps the neighbours of the previous one.
 
 At most `max_neighbors` neighbours are published per device (1000 by
 default). Above the bound, the neighbours resolved to an interface are kept
