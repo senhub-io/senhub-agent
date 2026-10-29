@@ -222,6 +222,7 @@ func TestFileTail_TailThatReadsNothingOfAGrowingFileResumesAtItsOffset(t *testin
 		lastThree += len(l)
 	}
 	stuck.offset.Store(int64(len(content) - lastThree))
+	stuck.committed.Store(int64(len(content) - lastThree))
 
 	fresh := rescanUntilRestarted(t, p, file, stuck)
 	if fresh == stuck {
