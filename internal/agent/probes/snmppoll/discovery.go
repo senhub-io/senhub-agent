@@ -507,7 +507,7 @@ func (p *snmppollProbe) pollDiscoveredDevice(ctx context.Context, d discoveredDe
 	}
 	applyRouteCounters(&obs, deviceID, routesOmitted, len(sel.filtered), maxRoutes)
 	if !partial && p.entitySource != nil {
-		p.entitySource.discRouteFilter.arm(deviceID, sel.filtered, routes, false)
+		p.entitySource.recordExcludedRoutes(deviceID, sel.filtered)
 	}
 	applyLag(&obs, collectLagData(client, ifaces, p.moduleLogger), ifaces, deviceID)
 	applyDiscoveredGovernance(&obs, p.cfg.Discovery.GovernanceRules, self, deviceID)

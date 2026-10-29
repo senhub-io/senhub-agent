@@ -69,9 +69,13 @@ const (
 	// the end of observation: nothing happened in the world.
 	ReasonRekeyed = "rekeyed"
 	// ReasonExcludedByConfig: the resource did not change; the producer's
-	// configuration excludes it. The producer still observes it and chooses
-	// not to report it (a filter whose default leaves it out), so the
-	// resource may well still exist.
+	// configuration stops REPORTING something it still observes (a filter
+	// whose default leaves it out). Unlike ReasonUnmonitored, where the
+	// configuration removes the OBSERVER. A transition marker: it is given
+	// only for what this process published before excluding it; after a
+	// restart with the exclusion in place the earlier entities expire, and
+	// the producer's own counters (e.g. senhub.routes.filtered) say what is
+	// left out.
 	ReasonExcludedByConfig = "excluded_by_config"
 	// ReasonAgedOut: a cache the source reads forgot the entry (an ARP or
 	// NDP neighbour aged out, a bridge forgot a MAC). Nobody saw the thing

@@ -130,96 +130,6 @@ func TestRouteCountersFiltered(t *testing.T) {
 	}
 }
 
-type capturedDeletes struct{ events []entity.Event }
-
-func (c *capturedDeletes) publish(ev entity.Event) { c.events = append(c.events, ev) }
-
-func (c *capturedDeletes) countByDest() map[string]int {
-	out := map[string]int{}
-	for _, ev := range c.events {
-		out[fmt.Sprint(ev.Entity.ID[idKeyRouteDestination])]++
-	}
-	return out
-}
-
-func TestRouteFilterRetirer_ThreeCyclesOnce(t *testing.T) {
-	var c capturedDeletes
-	r := newRouteFilterRetirer(c.publish)
-	rows := []routeRow{
-		{Destination: "10.1.1.1/32", NextHop: "0.0.0.0", Type: routeTypeLocal},
-		{Destination: "10.9.0.0/16", NextHop: "0.0.0.0", Type: routeTypeReject},
-	}
-	if n := r.arm("dev1", rows, nil, true); n != 2 {
-		t.Fatalf("arm = %d, want 2", n)
-	}
-	for i := 0; i < 5; i++ {
-		r.announce()
-	}
-	if len(c.events) != 2*entity.RekeyAnnounceCycles {
-		t.Fatalf("published %d deletes, want %d", len(c.events), 2*entity.RekeyAnnounceCycles)
-	}
-	for _, ev := range c.events {
-		if ev.Kind != entity.EntityDelete || ev.DeleteReason != entity.ReasonExcludedByConfig ||
-			ev.Entity.Type != entityTypeNetworkRoute || ev.Entity.ID[idKeyNetworkDevice] != "dev1" {
-			t.Errorf("unexpected event %+v (entity %+v)", ev, *ev.Entity)
-		}
-	}
-	for dest, n := range c.countByDest() {
-		if n != entity.RekeyAnnounceCycles {
-			t.Errorf("%s published %d times, want %d", dest, n, entity.RekeyAnnounceCycles)
-		}
-	}
-	if n := r.arm("dev1", rows, nil, true); n != 0 {
-		t.Errorf("re-arm = %d, want 0", n)
-	}
-	r.announce()
-	if len(c.events) != 2*entity.RekeyAnnounceCycles {
-		t.Errorf("re-arming the same routes published again")
-	}
-}
-
-func TestRouteFilterRetirer_KeptRouteIsRetiredAgain(t *testing.T) {
-	r := newRouteFilterRetirer(func(entity.Event) {})
-	rows := []routeRow{{Destination: "10.1.1.1/32", NextHop: "0.0.0.0", Type: routeTypeLocal}}
-	r.arm("dev1", rows, nil, true)
-	r.arm("dev1", nil, rows, true)
-	if n := r.arm("dev1", rows, nil, true); n != 1 {
-		t.Errorf("a route published again then filtered again: arm = %d, want 1", n)
-	}
-}
-
-func TestRouteFilterRetirer_DeviceChange(t *testing.T) {
-	rows := []routeRow{{Destination: "10.1.1.1/32", NextHop: "0.0.0.0", Type: routeTypeLocal}}
-	polled := newRouteFilterRetirer(func(entity.Event) {})
-	polled.arm("dev1", rows, nil, true)
-	if n := polled.arm("dev2", rows, nil, true); n != 1 {
-		t.Errorf("new device id: arm = %d, want 1", n)
-	}
-	if n := polled.arm("dev1", rows, nil, true); n != 1 {
-		t.Errorf("polled retirer forgets the previous id: arm = %d, want 1", n)
-	}
-
-	disc := newRouteFilterRetirer(func(entity.Event) {})
-	disc.arm("dev1", rows, nil, false)
-	if n := disc.arm("dev2", rows, nil, false); n != 1 {
-		t.Errorf("second discovered device: arm = %d, want 1", n)
-	}
-	if n := disc.arm("dev1", rows, nil, false); n != 0 {
-		t.Errorf("discovery retirer remembers every device: arm = %d, want 0", n)
-	}
-}
-
-func TestRouteFilterRetirer_Bounded(t *testing.T) {
-	r := newRouteFilterRetirer(func(entity.Event) {})
-	rows := make([]routeRow, 0, maxRouteFilterAnnounced+10)
-	for i := 0; i < maxRouteFilterAnnounced+10; i++ {
-		rows = append(rows, routeRow{Destination: fmt.Sprintf("10.%d.%d.%d/32", i>>16&255, i>>8&255, i&255), NextHop: "0.0.0.0", Type: routeTypeLocal})
-	}
-	if n := r.arm("dev1", rows, nil, true); n != maxRouteFilterAnnounced {
-		t.Errorf("arm = %d, want %d", n, maxRouteFilterAnnounced)
-	}
-}
-
 func routeSweepClient() *fakeClient {
 	route := func(dest, mask, nextHop string, typ int) []snmpRawBind {
 		rk := dest + "." + mask + ".0." + nextHop
@@ -262,19 +172,18 @@ func observedRoutesAndDevice(t *testing.T, obs entity.Observation) (map[string]b
 	return dests, dev
 }
 
-func TestMaybeSweep_RetiresFilteredRoutes(t *testing.T) {
-	var c capturedDeletes
-	s := newEntitySource(&config{Target: "192.0.2.10", TopologyInterval: 10 * time.Minute}, testLogger(t))
-	s.routeFilter = newRouteFilterRetirer(c.publish)
-	t0 := time.Now()
-	s.maybeSweep(routeSweepClient(), t0)
+func routeEntityFor(deviceID, dest string) entity.Entity {
+	return entity.Entity{Type: entityTypeNetworkRoute, ID: map[string]any{
+		idKeyNetworkDevice: deviceID, idKeyRouteDestination: dest, attrNextHopIP: "0.0.0.0",
+	}}
+}
 
-	var obs entity.Observation
-	for i := 0; i < 4; i++ {
-		var ok bool
-		if obs, ok = s.Observe(); !ok {
-			t.Fatal("observation not ok after a successful sweep")
-		}
+func TestMaybeSweep_FiltersSystemRoutes(t *testing.T) {
+	s := newEntitySource(&config{Target: "192.0.2.10", TopologyInterval: 10 * time.Minute}, testLogger(t))
+	s.maybeSweep(routeSweepClient(), time.Now())
+	obs, ok := s.Observe()
+	if !ok {
+		t.Fatal("observation not ok after a successful sweep")
 	}
 	dests, dev := observedRoutesAndDevice(t, obs)
 	for _, d := range []string{"10.1.1.0/24", "10.20.0.0/16", "10.1.1.2/32"} {
@@ -290,30 +199,38 @@ func TestMaybeSweep_RetiresFilteredRoutes(t *testing.T) {
 	if got := dev.Attributes[attrRoutesFiltered]; got != int64(2) {
 		t.Errorf("senhub.routes.filtered = %v, want 2", got)
 	}
-	got := c.countByDest()
-	if len(got) != 2 || got["10.1.1.1/32"] != entity.RekeyAnnounceCycles || got["10.1.1.255/32"] != entity.RekeyAnnounceCycles {
-		t.Errorf("deletes by destination = %v, want 10.1.1.1/32 and 10.1.1.255/32 %d times each", got, entity.RekeyAnnounceCycles)
-	}
-	for _, ev := range c.events {
-		if ev.DeleteReason != entity.ReasonExcludedByConfig {
-			t.Errorf("delete reason = %q, want %q", ev.DeleteReason, entity.ReasonExcludedByConfig)
-		}
+}
+
+// A route this process published and the filter then leaves out reads, to
+// the tracker, as excluded by the configuration, not as having ended.
+func TestDepartureReason_FilteredRouteIsExcludedByConfig(t *testing.T) {
+	cfg := &config{Target: "192.0.2.10", TopologyInterval: 10 * time.Minute, IncludeSystemRoutes: true}
+	s := newEntitySource(cfg, testLogger(t))
+	t0 := time.Now()
+	s.maybeSweep(routeSweepClient(), t0)
+	host := routeEntityFor("name:r1", "10.1.1.1/32")
+	learned := entity.Entity{Type: entityTypeNetworkRoute, ID: map[string]any{
+		idKeyNetworkDevice: "name:r1", idKeyRouteDestination: "10.20.0.0/16", attrNextHopIP: "10.0.0.254",
+	}}
+	if got := s.DepartureReason(host); got != "" {
+		t.Fatalf("published route: DepartureReason = %q, want none", got)
 	}
 
-	before := len(c.events)
+	cfg.IncludeSystemRoutes = false
 	s.maybeSweep(routeSweepClient(), t0.Add(11*time.Minute))
-	for i := 0; i < 4; i++ {
-		s.Observe()
+	if got := s.DepartureReason(host); got != entity.ReasonExcludedByConfig {
+		t.Errorf("filtered route: DepartureReason = %q, want %q", got, entity.ReasonExcludedByConfig)
 	}
-	if len(c.events) != before {
-		t.Errorf("a second sweep published %d more deletes, want none", len(c.events)-before)
+	if got := s.DepartureReason(learned); got != "" {
+		t.Errorf("kept route: DepartureReason = %q, want none (terminated if it goes)", got)
+	}
+	if got := s.DepartureReason(routeEntityFor("name:other", "10.1.1.1/32")); got != "" {
+		t.Errorf("route of another device: DepartureReason = %q, want none", got)
 	}
 }
 
 func TestMaybeSweep_IncludeSystemRoutes(t *testing.T) {
-	var c capturedDeletes
 	s := newEntitySource(&config{Target: "192.0.2.10", TopologyInterval: 10 * time.Minute, IncludeSystemRoutes: true}, testLogger(t))
-	s.routeFilter = newRouteFilterRetirer(c.publish)
 	s.maybeSweep(routeSweepClient(), time.Now())
 	obs, ok := s.Observe()
 	if !ok {
@@ -327,9 +244,6 @@ func TestMaybeSweep_IncludeSystemRoutes(t *testing.T) {
 	}
 	if got := dev.Attributes[attrRoutesFiltered]; got != int64(0) {
 		t.Errorf("senhub.routes.filtered = %v, want 0", got)
-	}
-	if len(c.events) != 0 {
-		t.Errorf("deletes published with include_system_routes: %d", len(c.events))
 	}
 }
 

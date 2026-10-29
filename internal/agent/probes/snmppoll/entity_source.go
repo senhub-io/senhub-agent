@@ -207,10 +207,11 @@ type snmpEntitySource struct {
 	// device-side network.neighbor emission. Defaults to the process-wide index.
 	macIndex *macindex.Index
 
-	// routeFilter retires the polled device's routes the system-route filter
-	// leaves out; discRouteFilter does it for devices reached by discovery.
-	routeFilter     *routeFilterRetirer
-	discRouteFilter *routeFilterRetirer
+	// excludedRoutes holds, per device id, the identities of the routes the
+	// system-route filter left out of the last complete read of that device,
+	// so DepartureReason can tell the tracker why they are no longer listed.
+	excludedMu     sync.Mutex
+	excludedRoutes map[string]map[string]bool
 	// identityCollisions counts sweeps whose device id another target of
 	// this agent already holds for a visibly different device.
 	identityCollisions atomic.Uint64
@@ -254,8 +255,6 @@ func newEntitySource(cfg *config, log *logger.ModuleLogger) *snmpEntitySource {
 		hostID:            dbcommon.HostID,
 		hostInterfaceMACs: hostiface.OwnInterfaceMACs,
 		macIndex:          macindex.Default,
-		routeFilter:       newRouteFilterRetirer(entity.PublishEvent),
-		discRouteFilter:   newRouteFilterRetirer(entity.PublishEvent),
 		publish:           entity.PublishEvent,
 	}
 }
@@ -315,8 +314,6 @@ type sweepResult struct {
 // omitted one is a retracted one). Not publishing keeps the consumer's
 // previous state alive until the neighbour is known.
 func (s *snmpEntitySource) Observe() (entity.Observation, bool) {
-	s.routeFilter.announce()
-	s.discRouteFilter.announce()
 	single, singleOK := s.observeSingle()
 	disc, discRan := s.discoveryView()
 
@@ -633,11 +630,7 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 	s.mu.Unlock()
 
 	if !res.partial {
-		if n := s.routeFilter.arm(res.deviceID, res.routesFiltered, res.routes, true); n > 0 {
-			s.moduleLogger.Info().Str("target", s.cfg.Target).Str("device_id", res.deviceID).
-				Int("filtered", len(res.routesFiltered)).Int("retiring", n).
-				Msg("system routes left out of the topology; retiring the published ones as excluded_by_config")
-		}
+		s.recordExcludedRoutes(res.deviceID, res.routesFiltered)
 	}
 	s.armRekey(res, degraded, now)
 }
@@ -1889,10 +1882,44 @@ func entityIdentity(e entity.Entity) string {
 // neighbour that stops being listed aged out, not seen to leave. Devices,
 // interfaces and routes keep the default.
 func (s *snmpEntitySource) DepartureReason(e entity.Entity) string {
-	if e.Type == entityTypeNetworkNeighbor {
+	switch e.Type {
+	case entityTypeNetworkNeighbor:
 		return entity.ReasonAgedOut
+	case entityTypeNetworkRoute:
+		if s.routeExcluded(e) {
+			return entity.ReasonExcludedByConfig
+		}
 	}
 	return ""
+}
+
+// recordExcludedRoutes replaces the set of routes the filter left out of the
+// last complete read of deviceID.
+func (s *snmpEntitySource) recordExcludedRoutes(deviceID string, filtered []routeRow) {
+	if deviceID == "" {
+		return
+	}
+	set := make(map[string]bool, len(filtered))
+	for _, nr := range filtered {
+		set[entityIdentity(routeFilterEntity(deviceID, nr))] = true
+	}
+	s.excludedMu.Lock()
+	defer s.excludedMu.Unlock()
+	if s.excludedRoutes == nil {
+		s.excludedRoutes = map[string]map[string]bool{}
+	}
+	if len(set) == 0 {
+		delete(s.excludedRoutes, deviceID)
+		return
+	}
+	s.excludedRoutes[deviceID] = set
+}
+
+func (s *snmpEntitySource) routeExcluded(e entity.Entity) bool {
+	deviceID, _ := e.ID[idKeyNetworkDevice].(string)
+	s.excludedMu.Lock()
+	defer s.excludedMu.Unlock()
+	return s.excludedRoutes[deviceID][entityIdentity(e)]
 }
 
 var (
