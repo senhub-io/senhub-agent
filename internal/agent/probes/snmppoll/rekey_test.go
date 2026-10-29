@@ -347,3 +347,25 @@ func TestRekey_EachBatchAnnouncedThreeTimes(t *testing.T) {
 		t.Errorf("announcements per id = %v, want %d each", count, entity.RekeyAnnounceCycles)
 	}
 }
+
+// A device first read with ENTITY-MIB failing is published under its
+// chassis MAC; once ENTITY-MIB answers it moves to serial: and the mac: id
+// it was published under is retired as rekeyed.
+func TestRekey_FirstIncompleteIDRetiredWhenTheIdentityReadsInFull(t *testing.T) {
+	s, rec := newRekeyTestSource(t)
+	full := singleChassisClient()
+	degraded := failingWalks{full, map[string]bool{oidEntPhysicalClass: true, oidEntPhysicalSerialNum: true}}
+	t0 := time.Now()
+	s.maybeSweep(degraded, t0)
+	s.Observe()
+	first := s.DeviceID()
+	rec.events = nil
+	s.maybeSweep(full, t0.Add(2*time.Minute))
+	s.Observe()
+	if s.DeviceID() != "serial:25506:CN14HD90F4" {
+		t.Fatalf("id once ENTITY-MIB answers = %q", s.DeviceID())
+	}
+	if got := rec.retiredOwnedBy(t, first); len(got) == 0 {
+		t.Errorf("the %s id published by the first sweep was not retired as rekeyed", first)
+	}
+}

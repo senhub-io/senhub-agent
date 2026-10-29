@@ -59,18 +59,24 @@ type rekeyBatch struct {
 	left     int
 }
 
-// armRekey compares a successful sweep with the last complete one and with
-// the legacy precedence, and queues the entities a previous id owned. A
-// degraded sweep (a walk failed, the budget cut it, an identity walk did
-// not answer) is never compared: a lower rung read through a timeout would
-// retire a device that did not change.
+// armRekey compares a published sweep with the previously published one
+// and with the legacy precedence, and queues the entities a previous id
+// owned. A degraded sweep (a walk failed, the budget cut it, an identity
+// walk did not answer) is recorded but never compared: a lower rung read
+// through a timeout would retire a device that did not change. A complete
+// sweep after a degraded first one does compare, so the id that first
+// sweep published is retired once the device reads in full.
 func (s *snmpEntitySource) armRekey(res sweepResult, degraded bool, now time.Time) {
-	if res.deviceID == "" || degraded {
+	if res.deviceID == "" {
 		return
 	}
 	s.rekeyMu.Lock()
 	prev, hadPrev := s.rekeyBase, s.rekeyHaveBase
 	s.rekeyBase, s.rekeyHaveBase = res, true
+	if degraded {
+		s.rekeyMu.Unlock()
+		return
+	}
 	announced := s.legacyRetired[legacyDeviceID(res.self)]
 	s.rekeyMu.Unlock()
 

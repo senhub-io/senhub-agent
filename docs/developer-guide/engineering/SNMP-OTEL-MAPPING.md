@@ -186,7 +186,11 @@ same device derive byte-identical ids.
   back-off, and the agent logs "topology sweep read an incomplete identity;
   keeping previous snapshot". A first sweep publishes whatever it resolves
   (a device whose ENTITY-MIB an ACL refuses still appears), and a walk that
-  answers with no row (no ENTITY-MIB) is a complete read.
+  answers with no row (no ENTITY-MIB) is a complete read. Once that first
+  device reads in full, the id its first sweep published is retired as
+  `rekeyed` (same rules as above). A held target that stays incomplete for
+  three topology intervals goes silent like any failing target: its
+  entities are retired with the reason `unmonitored` until it reads again.
   Canonicalization (producer side): `mac` = uppercase hex `-`-separated
   (`BC-24-11-1B-04-82`, the OpenTelemetry form, `entity.CanonicalMAC`);
   `engine`/`PEN` = lowercase hex / decimal; `serial`/`name` = trimmed (case
