@@ -185,8 +185,10 @@ mistake.
   most one second later.
 - **Very fast rotation on Windows.** A rotation is noticed within about two seconds. A file renamed away again before that, by a writer that rotates more than once every couple of seconds, can have its whole content missed. Rotations of an ordinary application log, by the hour, the day or a size of several megabytes, are far slower than that.
 - **At-least-once delivery.** Bookmarks are flushed every 2 seconds;
-  after a crash, up to 2 seconds of records may be re-read. Plan
-  deduplication downstream if exact-once matters.
+  after a crash, up to 2 seconds of records may be re-read. A multiline
+  record still being assembled is not part of the saved position: after
+  a crash it is read again, not lost. Plan deduplication downstream if
+  exact-once matters.
 - **Event-driven.** No polling cycle: records ship as lines are
   written.
 - **Start position.** Default is tail-from-now. Set
