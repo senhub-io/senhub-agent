@@ -1404,11 +1404,15 @@ func (s *snmpEntitySource) discoveredL2Rows(deviceID string, client snmpClient) 
 	return next.fdb, next.arp
 }
 
-// forgetDiscoveredL2 drops the rows kept for a discovered device that left.
+// forgetDiscoveredL2 drops what is kept for a discovered device that left:
+// its rows and its announced neighbour cut.
 func (s *snmpEntitySource) forgetDiscoveredL2(deviceID string) {
 	s.discL2Mu.Lock()
 	delete(s.discL2, deviceID)
 	s.discL2Mu.Unlock()
+	s.mu.Lock()
+	delete(s.neighborCapWarned, deviceID)
+	s.mu.Unlock()
 }
 
 // neighborCapChanged records how many neighbours of a device the bound cut

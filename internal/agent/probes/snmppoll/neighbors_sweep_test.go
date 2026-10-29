@@ -121,7 +121,11 @@ func TestNeighbors_DiscoveredDeviceKeepsRowsOnFailedWalk(t *testing.T) {
 	if fdb, _ = s.discoveredL2Rows("name:sw2", &fakeClient{walkRawResult: switchWalks(fdbRowOwn)}); len(fdb) != 1 {
 		t.Fatalf("after a successful read rows = %v, want 1", fdb)
 	}
+	s.neighborCapChanged("name:sw2", 3)
 	s.forgetDiscoveredL2("name:sw2")
+	if !s.neighborCapChanged("name:sw2", 3) {
+		t.Error("a forgotten device's cut must be announced again")
+	}
 	if fdb, _ = s.discoveredL2Rows("name:sw2", failing); len(fdb) != 0 {
 		t.Fatalf("a forgotten device kept rows %v", fdb)
 	}
