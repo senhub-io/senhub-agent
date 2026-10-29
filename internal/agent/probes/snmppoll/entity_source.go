@@ -255,7 +255,10 @@ func (s *snmpEntitySource) Cadence() time.Duration {
 
 // sweepResult is what one topology sweep read from the device.
 type sweepResult struct {
-	self          deviceIdentity
+	self deviceIdentity
+	// identityHeld marks a sweep refused because an incomplete identity
+	// resolved an id other than the established one.
+	identityHeld  bool
 	topo          lldpTopology
 	routes        []routeRow
 	routesOmitted int
@@ -573,6 +576,12 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 		s.retryAt = now.Add(delay - s.cfg.Interval/2)
 		known := s.deviceID
 		s.mu.Unlock()
+		if res.identityHeld {
+			s.moduleLogger.Warn().Str("target", s.cfg.Target).Str("device_id", known).
+				Str("incomplete_id", res.deviceID).Dur("retry_in", delay).
+				Msg("topology sweep read an incomplete identity; keeping previous snapshot")
+			return
+		}
 		s.moduleLogger.Warn().Str("target", s.cfg.Target).Bool("silent", bounded.silent).Dur("retry_in", delay).
 			Msg("topology sweep failed; keeping previous snapshot")
 		if s.registry != nil {
@@ -644,6 +653,16 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	self := readSelfIdentity(client, s.cfg.Target, topo.Local)
 
 	deviceID := resolveDeviceID(self)
+	// An identity walk that failed can resolve a lower rung: never let it
+	// replace an id already established. The sweep is held like a failed
+	// one; a first sweep still publishes, or a device whose ENTITY-MIB an
+	// ACL refuses would never appear.
+	s.mu.Lock()
+	established := s.deviceID
+	s.mu.Unlock()
+	if !self.identityComplete && established != "" && deviceID != established {
+		return sweepResult{self: self, deviceID: deviceID, identityHeld: true}, false
+	}
 	s.claimDeviceID(deviceID, self, now)
 	s.checkEngineIDMAC(self)
 	var ifNames map[string]string

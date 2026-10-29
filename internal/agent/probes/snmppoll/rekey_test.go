@@ -226,12 +226,8 @@ func (f failingWalks) WalkRaw(base string) ([]snmpRawBind, error) {
 	return f.fakeClient.WalkRaw(base)
 }
 
-// A timeout on ENTITY-MIB drops a single-chassis switch from serial: to its
-// chassis MAC for one sweep. That is a degraded read, not a new identity:
-// nothing is retired, neither on the way down nor on the way back.
-func TestRekey_DegradedSweepIsNeverCompared(t *testing.T) {
-	s, rec := newRekeyTestSource(t)
-	full := &fakeClient{walkRawResult: map[string][]snmpRawBind{
+func singleChassisClient() *fakeClient {
+	return &fakeClient{walkRawResult: map[string][]snmpRawBind{
 		oidEntPhysicalClass:     {{OID: oidEntPhysicalClass + ".1", Value: entPhysicalClassChassis}},
 		oidEntPhysicalSerialNum: {{OID: oidEntPhysicalSerialNum + ".1", Value: []byte("CN14HD90F4")}},
 		oidSysObjectIDBase:      {{OID: oidSysObjectID, Value: "1.3.6.1.4.1.25506.1.1"}},
@@ -242,25 +238,77 @@ func TestRekey_DegradedSweepIsNeverCompared(t *testing.T) {
 		},
 		ifName: {{OID: ifName + ".1", Value: []byte("GE1/0/1")}},
 	}}
-	degraded := failingWalks{full, map[string]bool{oidEntPhysicalSerialNum: true}}
+}
+
+func devicesIn(obs entity.Observation) []string {
+	var out []string
+	for _, e := range obs.Entities {
+		if e.Type == entity.TypeNetworkDevice {
+			out = append(out, fmt.Sprint(e.ID[idKeyNetworkDevice]))
+		}
+	}
+	return out
+}
+
+// A timeout on ENTITY-MIB would drop a single-chassis switch from serial:
+// to its chassis MAC. The established id is kept: the sweep is held like a
+// failed one, nothing is published under the lower rung, nothing retired.
+func TestRekey_IncompleteIdentityKeepsTheEstablishedID(t *testing.T) {
+	s, rec := newRekeyTestSource(t)
+	full := singleChassisClient()
+	degraded := failingWalks{full, map[string]bool{oidEntPhysicalClass: true, oidEntPhysicalSerialNum: true}}
 	t0 := time.Now()
 
 	s.maybeSweep(full, t0)
 	s.Observe()
-	if s.DeviceID() != "serial:25506:CN14HD90F4" {
+	const want = "serial:25506:CN14HD90F4"
+	if s.DeviceID() != want {
 		t.Fatalf("first id = %q", s.DeviceID())
 	}
 	s.maybeSweep(degraded, t0.Add(2*time.Minute))
-	s.Observe()
-	if s.DeviceID() != "mac:70-10-6F-0A-0A-0A" {
-		t.Fatalf("degraded id = %q, the fixture no longer reproduces the drop", s.DeviceID())
+	if s.DeviceID() != want {
+		t.Fatalf("id after an incomplete identity read = %q, want %q kept", s.DeviceID(), want)
 	}
-	s.maybeSweep(full, t0.Add(4*time.Minute))
+	obs, ok := s.Observe()
+	if !ok {
+		t.Fatal("the previous snapshot must still be observed")
+	}
+	if got := devicesIn(obs); len(got) != 1 || got[0] != want {
+		t.Fatalf("devices published after the incomplete read = %v, want only %s", got, want)
+	}
+	s.maybeSweep(full, t0.Add(10*time.Minute))
 	for i := 0; i < entity.RekeyAnnounceCycles; i++ {
 		s.Observe()
 	}
+	if s.DeviceID() != want {
+		t.Errorf("id after recovery = %q", s.DeviceID())
+	}
 	for _, ev := range rec.events {
-		t.Errorf("degraded read retired %v as rekeyed", ev.Entity.ID)
+		t.Errorf("incomplete read retired %v as rekeyed", ev.Entity.ID)
+	}
+}
+
+// The rule protects an established id: a first sweep with an incomplete
+// identity still publishes, or a device whose ENTITY-MIB an ACL refuses
+// would never appear.
+func TestRekey_FirstSweepWithIncompleteIdentityPublishes(t *testing.T) {
+	s, _ := newRekeyTestSource(t)
+	degraded := failingWalks{singleChassisClient(), map[string]bool{oidEntPhysicalClass: true, oidEntPhysicalSerialNum: true}}
+	s.maybeSweep(degraded, time.Now())
+	obs, ok := s.Observe()
+	if !ok || len(devicesIn(obs)) != 1 || s.DeviceID() != "mac:70-10-6F-0A-0A-0A" {
+		t.Fatalf("first incomplete sweep: ok=%v devices=%v id=%q, want the device published under its chassis MAC", ok, devicesIn(obs), s.DeviceID())
+	}
+}
+
+// A device without ENTITY-MIB (the walks answer, with no row) has a complete
+// identity: its id is not held.
+func TestRekey_NoEntityMIBIsACompleteIdentity(t *testing.T) {
+	c := singleChassisClient()
+	delete(c.walkRawResult, oidEntPhysicalClass)
+	delete(c.walkRawResult, oidEntPhysicalSerialNum)
+	if di := readSelfIdentity(c, "192.0.2.1", lldpLocal{}); !di.identityComplete {
+		t.Error("an empty ENTITY-MIB walk marked the identity incomplete")
 	}
 }
 

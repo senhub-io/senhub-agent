@@ -178,6 +178,15 @@ same device derive byte-identical ids.
   retires the old ids instead of letting them expire. Edges that cascade
   carry no reason. The previous sweep is held in memory only: an id that
   changes while the agent is stopped retires by liveness expiry.
+- **An incomplete identity never replaces an established id.** When one of
+  the walks the id is built from fails (ENTITY-MIB class or serial,
+  sysObjectID, snmpEngineID, sysName) and the id it gives differs from the
+  one already established for the target, the sweep is held like a failed
+  one: the previous snapshot stays, the sweep is retried with the usual
+  back-off, and the agent logs "topology sweep read an incomplete identity;
+  keeping previous snapshot". A first sweep publishes whatever it resolves
+  (a device whose ENTITY-MIB an ACL refuses still appears), and a walk that
+  answers with no row (no ENTITY-MIB) is a complete read.
   Canonicalization (producer side): `mac` = uppercase hex `-`-separated
   (`BC-24-11-1B-04-82`, the OpenTelemetry form, `entity.CanonicalMAC`);
   `engine`/`PEN` = lowercase hex / decimal; `serial`/`name` = trimmed (case
