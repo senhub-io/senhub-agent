@@ -32,3 +32,16 @@ func TestASweepRecordsItsDeviceForTheEffectiveCadence(t *testing.T) {
 		t.Fatalf("entry still trusted %v after the sweep, past freshFor of the effective cadence", after.Sub(t0))
 	}
 }
+
+// TestAFasterRecorderDoesNotShortenAnEntry: a device recorded by its own slow
+// sweep and by another instance's fast crawl keeps the longer freshness.
+func TestAFasterRecorderDoesNotShortenAnEntry(t *testing.T) {
+	r := newPolledRegistry()
+	mac := []byte{0x70, 0x10, 0x6f, 0x0c, 0x0c, 0x0c}
+	t0 := time.Now()
+	r.recordPolled(deviceIdentity{ChassisMAC: mac}, "serial:9:X", 15*time.Minute, t0)
+	r.recordPolled(deviceIdentity{ChassisMAC: mac}, "serial:9:X", time.Minute, t0.Add(time.Minute))
+	if _, ok := r.canonicalFor(deviceIdentity{ChassisMAC: mac}, t0.Add(10*time.Minute)); !ok {
+		t.Fatal("a 1 min recorder shortened the entry a 15 min sweep needs")
+	}
+}

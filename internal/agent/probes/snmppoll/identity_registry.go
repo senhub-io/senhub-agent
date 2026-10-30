@@ -134,7 +134,14 @@ func (r *polledRegistry) recordPolled(self deviceIdentity, canonicalID string, c
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.byMAC[key] = registryEntry{id: canonicalID, expires: now.Add(freshFor(cadence))}
+	expires := now.Add(freshFor(cadence))
+	// Two sources can record the same device at different cadences (its own
+	// sweep and another instance's discovery crawl): the faster one must not
+	// cut short the freshness the slower one needs between its sweeps.
+	if prev, ok := r.byMAC[key]; ok && prev.id == canonicalID && prev.expires.After(expires) {
+		expires = prev.expires
+	}
+	r.byMAC[key] = registryEntry{id: canonicalID, expires: expires}
 	r.evictLocked(now)
 }
 
