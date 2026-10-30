@@ -245,7 +245,7 @@ Per-node metrics for HA cluster monitoring.
 
 **Tags:**
 - `ha_node_id`: Node ID (0 or 1)
-- `ha_node_ip`: Node IP address (e.g., "10.0.208.7")
+- `ha_node_ip`: Node IP address (e.g., "192.0.2.11")
 - `is_local_node`: "true" for connected node, "false" for remote
 - `connected_to`: Hostname of connected NetScaler
 
@@ -454,7 +454,7 @@ Metrics with multiple instances include discriminant tags:
 ```
 SSL Certificate Days to Expiration (wildcard_prod_2025)
 VServer State (http_webservers_80)
-HA Sync Status (10.0.208.7)
+HA Sync Status (192.0.2.11)
 ```
 
 **With ShowTags=false** (filtered view):

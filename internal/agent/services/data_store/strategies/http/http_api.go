@@ -63,6 +63,8 @@ func (a *APIManager) HandlePRTGMetricsGET(w http.ResponseWriter, r *http.Request
 		Interface("filter", filter).
 		Msg("PRTG metrics GET request received")
 
+	a.strategy.waitForFirstData(r.Context(), w, probeNameLower)
+
 	// Get metrics from cache for the specified probe with filters
 	channels := a.strategy.metricsProcessor.GetPRTGMetricsForProbeWithFilter(probeNameLower, filter)
 
@@ -112,6 +114,8 @@ func (a *APIManager) HandlePRTGMetrics(w http.ResponseWriter, r *http.Request) {
 	if len(req.Config) > 0 {
 		a.logger.Debug().Str("probe", req.Probe).Msg("PRTG request carried a config block; it is ignored")
 	}
+
+	a.strategy.waitForFirstData(r.Context(), w, strings.ToLower(req.Probe))
 
 	// Get metrics from cache for the specified probe
 	channels := a.strategy.metricsProcessor.GetPRTGMetricsForProbeWithFilter(req.Probe, MetricFilter{ShowTags: true, NativeSpeed: NativeSpeedRequested(r)})
@@ -555,6 +559,7 @@ var endpointDescriptions = map[string]string{
 	"/api/{agentkey}/info/schema/{probe}":    "Schema of one probe",
 	"/api/{agentkey}/info/system":            "Version, host, resources and cache",
 	"/api/{agentkey}/info/endpoints":         "Which pull formats are enabled",
+	"/api/{agentkey}/info/self-records":      "Records added to the agent's own metrics by the build",
 	"/api/{agentkey}/admin/cache/clear":      "Clear the metric cache",
 	"/api/{agentkey}/debug/logs":             "View or set log levels",
 	"/api/{agentkey}/license/status":         "License status and tier",

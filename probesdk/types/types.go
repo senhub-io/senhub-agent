@@ -13,6 +13,7 @@ import (
 type (
 	Probe             = itypes.Probe
 	ProbeWithCallback = itypes.ProbeWithCallback
+	ContextCollector  = itypes.ContextCollector
 	BaseProbe         = itypes.BaseProbe
 )
 

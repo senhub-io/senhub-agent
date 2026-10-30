@@ -82,7 +82,7 @@ func collectBodies(t *testing.T, records <-chan agentstate.LogRecord, file strin
 // looks again: those lines are read once, ahead of the new file's.
 func TestFileTail_RotationDrainsLinesWrittenToTheOldFile(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("the rotated file is not drained on Windows: holding it would refuse the application's own rotation")
+		t.Skip("the Windows drain lasts one second; see drain_windows_test.go")
 	}
 	dir := t.TempDir()
 	file := filepath.Join(dir, "app.log")
@@ -128,7 +128,7 @@ func TestFileTail_RotationDrainsLinesWrittenToTheOldFile(t *testing.T) {
 // (logrotate signals it afterwards) still has its lines read, once.
 func TestFileTail_RotationReadsLateWritesToTheOldFile(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("the rotated file is not drained on Windows: holding it would refuse the application's own rotation")
+		t.Skip("the Windows drain lasts one second; see drain_windows_test.go")
 	}
 	dir := t.TempDir()
 	file := filepath.Join(dir, "app.log")

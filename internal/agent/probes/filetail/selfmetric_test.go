@@ -1,6 +1,7 @@
 package filetail
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -64,5 +65,32 @@ func TestFileTail_SelfMetricRoutesToOTLP(t *testing.T) {
 	}
 	if !has {
 		t.Errorf("GetTargetStrategies %v must include otlp", p.GetTargetStrategies())
+	}
+}
+
+func TestFileTail_FileRecordsEmittedIsCountedPerFile(t *testing.T) {
+	dir := t.TempDir()
+	busy := filepath.Join(dir, "busy.log")
+	quiet := filepath.Join(dir, "quiet.log")
+	writeFile(t, busy, "x\n")
+	writeFile(t, quiet, "x\n")
+
+	p := newTestFileTailProbe(t)
+	p.tailing = map[string]*tailState{busy: {}, quiet: {}}
+
+	pc := ParserConfig{Type: ParserRaw}
+	for i := 0; i < 4; i++ {
+		p.publish(pc, "a log line", time.Now(), p.GetName(), busy)
+	}
+
+	pts := collectPoints(t, p)
+	if got, ok := positionOf(t, pts, "senhub.filetail.file_records_emitted", busy); !ok || got != 4 {
+		t.Errorf("busy file: file_records_emitted = %v (reported %v), want 4", got, ok)
+	}
+	if got, ok := positionOf(t, pts, "senhub.filetail.file_records_emitted", quiet); !ok || got != 0 {
+		t.Errorf("quiet file: file_records_emitted = %v (reported %v), want 0 reported", got, ok)
+	}
+	if got := recordsEmitted(t, p); got != 4 {
+		t.Errorf("probe-wide records_emitted = %v, want 4", got)
 	}
 }

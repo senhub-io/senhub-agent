@@ -203,6 +203,11 @@ func (lc *LocalConfiguration) hasConfigurationChanged(old, new LocalConfiguratio
 		return true
 	}
 
+	if !reflect.DeepEqual(old.Logs, new.Logs) {
+		lc.logger.Debug().Msg("Logs configuration changed")
+		return true
+	}
+
 	if !reflect.DeepEqual(old.Governance, new.Governance) {
 		lc.logger.Debug().Msg("Governance configuration changed")
 		return true

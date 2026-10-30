@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/rs/zerolog"
 
@@ -12,6 +13,7 @@ import (
 	"senhub-agent.go/internal/agent/services/configuration"
 	httpstrategy "senhub-agent.go/internal/agent/services/data_store/strategies/http"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/types/datapoint"
 )
 
 // wireProbeHooks gives the HTTP strategy the two things the configurator
@@ -39,6 +41,13 @@ func quietProbeLogger() *agentLogger.Logger {
 	return (*agentLogger.Logger)(&discard)
 }
 
+// previewLogger reports on the preview itself, not on the probe it runs,
+// which stays quiet.
+func previewLogger() *agentLogger.ModuleLogger {
+	zlog := zerolog.New(os.Stderr).Level(zerolog.WarnLevel)
+	return agentLogger.NewModuleLogger((*agentLogger.Logger)(&zlog), "probe.preview")
+}
+
 // checkProbeConfig builds the probe and drops it, the same probe that
 // config check runs: no Start, so nothing opens a socket or a file.
 func checkProbeConfig(probeType string, params map[string]interface{}) ([]httpstrategy.ProbeIssue, error) {
@@ -59,13 +68,19 @@ func checkProbeConfig(probeType string, params map[string]interface{}) ([]httpst
 
 // collectProbeOnce builds, starts, collects once and stops a probe, so
 // the console can show what a configuration would produce before it is
-// saved. The context bounds the attempt; a probe that ignores it is cut
-// off by the caller's deadline on the HTTP side.
+// saved. The context bounds the attempt and ends with the request: a
+// probe that implements types.ContextCollector stops when it does, one
+// that does not is cut off by the caller's deadline on the HTTP side
+// and finishes on its own.
 func collectProbeOnce(ctx context.Context, probeType string, params map[string]interface{}) ([]httpstrategy.PreviewMetric, error) {
 	ctor, known := probes.LookupProbeConstructor(probeType)
 	if !known {
 		return nil, fmt.Errorf("probe type %q is not built into this agent", probeType)
 	}
+	return previewCollect(ctx, ctor, params)
+}
+
+func previewCollect(ctx context.Context, ctor probes.ProbeConstructor, params map[string]interface{}) ([]httpstrategy.PreviewMetric, error) {
 	probe, err := ctor(params, quietProbeLogger())
 	if err != nil {
 		return nil, err
@@ -76,7 +91,9 @@ func collectProbeOnce(ctx context.Context, probeType string, params map[string]i
 	}
 	defer func() {
 		close(quit)
-		_ = probe.OnShutdown(context.Background())
+		if err := probe.OnShutdown(context.Background()); err != nil {
+			previewLogger().Warn().Err(err).Msg("preview probe did not shut down cleanly")
+		}
 	}()
 
 	type outcome struct {
@@ -85,7 +102,13 @@ func collectProbeOnce(ctx context.Context, probeType string, params map[string]i
 	}
 	done := make(chan outcome, 1)
 	go func() {
-		points, err := probe.Collect()
+		var points []datapoint.DataPoint
+		var err error
+		if cc, ok := probe.(types.ContextCollector); ok {
+			points, err = cc.CollectContext(ctx)
+		} else {
+			points, err = probe.Collect()
+		}
 		if err != nil {
 			done <- outcome{err: err}
 			return

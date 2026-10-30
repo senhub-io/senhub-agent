@@ -117,6 +117,7 @@ var probeStartedAt = map[string]time.Time{}
 func RecordProbeCycle(probeID string, points int) {
 	probeStateMu.Lock()
 	probeCycles[probeID] = probeCycle{at: time.Now(), points: points}
+	closeFirstCycleSignalLocked(probeID)
 	probeStateMu.Unlock()
 }
 
@@ -150,6 +151,10 @@ func SetStartFailedProbes(failed map[string]string) {
 // probe's own state rather than infer it from the metrics it holds.
 var activeProbeByName = map[string]string{}
 
+// activeNamesChanged is closed, and replaced, each time the set of
+// running probe names is published. Guarded by probeStateMu.
+var activeNamesChanged = make(chan struct{})
+
 // SetActiveProbeNames publishes the name of each running probe.
 func SetActiveProbeNames(byName map[string]string) {
 	probeStateMu.Lock()
@@ -159,6 +164,17 @@ func SetActiveProbeNames(byName map[string]string) {
 		next[strings.ToLower(name)] = id
 	}
 	activeProbeByName = next
+	close(activeNamesChanged)
+	activeNamesChanged = make(chan struct{})
+}
+
+// ActiveProbeNamesChanged returns a channel closed the next time the
+// running probe names are published. Take it before reading the state,
+// so a publication between the read and the wait is not missed.
+func ActiveProbeNamesChanged() <-chan struct{} {
+	probeStateMu.RLock()
+	defer probeStateMu.RUnlock()
+	return activeNamesChanged
 }
 
 // ProbeRunStateByName reports the live state of a running probe by its
@@ -193,14 +209,26 @@ func SetActiveProbes(probeIDs []string) {
 			delete(probeStartedAt, id)
 		}
 	}
-	// Prune health entries for probes no longer active.
+	// Prune what is kept per probe for probes no longer active. Each map
+	// is walked on its own: a probe can have cycles or an error recorded
+	// without a health entry, and pruning those through the health map
+	// left them behind on every reload that changed a probe's ID.
 	for id := range probeHealth {
 		if _, alive := newSet[id]; !alive {
 			delete(probeHealth, id)
+		}
+	}
+	for id := range probeLastError {
+		if _, alive := newSet[id]; !alive {
 			delete(probeLastError, id)
+		}
+	}
+	for id := range probeCycles {
+		if _, alive := newSet[id]; !alive {
 			delete(probeCycles, id)
 		}
 	}
+	pruneProbeKindLocked(newSet)
 }
 
 // RecordProbeHealth publishes a probe's current health to the shared map.
@@ -264,6 +292,9 @@ type ProbeRunState struct {
 	// StartedAt is when the probe joined the running set; zero when it
 	// is not running.
 	StartedAt time.Time
+	// EventDriven is true for a probe whose data arrives through a
+	// callback or a listener rather than a first collection.
+	EventDriven bool
 }
 
 // GetProbeRunState reports the live state of a probe by its ID (from
@@ -277,7 +308,8 @@ func GetProbeRunState(probeID string) ProbeRunState {
 		}
 		return ProbeRunState{}
 	}
-	state := ProbeRunState{Running: true, LastCycle: probeCycles[probeID].at, LastPoints: probeCycles[probeID].points, StartedAt: probeStartedAt[probeID]}
+	_, eventDriven := probeEventDriven[probeID]
+	state := ProbeRunState{Running: true, EventDriven: eventDriven, LastCycle: probeCycles[probeID].at, LastPoints: probeCycles[probeID].points, StartedAt: probeStartedAt[probeID]}
 	switch probeHealth[probeID] {
 	case probeHealthOK:
 		state.Health = "ok"

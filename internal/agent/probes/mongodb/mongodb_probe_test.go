@@ -1,9 +1,13 @@
 package mongodb
 
 import (
+	"bytes"
+	"context"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	"go.mongodb.org/mongo-driver/bson"
 	mongodrv "go.mongodb.org/mongo-driver/mongo"
 
@@ -375,6 +379,40 @@ func TestCollect_EmitsUpZeroWhenUnreachable(t *testing.T) {
 	}
 
 	_ = mongodrv.ErrNoDocuments // import used via client type above
+}
+
+func TestUnreachableServerWarnsOncePerOutage(t *testing.T) {
+	p := newProbeForTest(t)
+	p.cfg.URI = "mongodb://127.0.0.1:1"
+	p.cfg.DirectConnection = true
+	p.cfg.Timeout = 200 * time.Millisecond
+	p.instance = "mongodb://127.0.0.1:1"
+	var buf bytes.Buffer
+	base := zerolog.New(&buf).Level(zerolog.DebugLevel)
+	p.moduleLogger = logger.NewModuleLogger(&base, "probe.test")
+
+	if err := p.OnStart(nil); err != nil {
+		t.Fatalf("OnStart: %v", err)
+	}
+	defer func() { _ = p.OnShutdown(context.Background()) }()
+
+	for i := 0; i < 10; i++ {
+		if _, err := p.Collect(); err != nil {
+			t.Fatalf("Collect must not return an error on an unreachable server, got: %v", err)
+		}
+	}
+	if got := strings.Count(buf.String(), `"level":"warn"`); got != 1 {
+		t.Errorf("%d warnings over 10 failed cycles, want 1\n%s", got, buf.String())
+	}
+
+	buf.Reset()
+	p.serverStatusFn = func() (bson.M, error) { return bson.M{"version": "7.0.0"}, nil }
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if got := strings.Count(buf.String(), `"level":"info"`); got != 1 {
+		t.Errorf("%d recovery lines, want 1\n%s", got, buf.String())
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

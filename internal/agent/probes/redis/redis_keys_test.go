@@ -2,6 +2,8 @@ package redis
 
 import (
 	"bufio"
+	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -10,6 +12,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/rs/zerolog"
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/probes/dbcommon"
@@ -162,7 +166,7 @@ func TestCollectKeysOnSuccess(t *testing.T) {
 	p := probeIntf.(*redisProbe)
 
 	client, serverErrCh := runFakeRedis(infoBody, cmdStatsBody)
-	p.dialFn = func(network, address string, timeout time.Duration) (net.Conn, error) {
+	p.dialFn = func(_ context.Context, network, address string, timeout time.Duration) (net.Conn, error) {
 		return client, nil
 	}
 
@@ -197,7 +201,7 @@ func TestCollectKeysOnConnectionFailure(t *testing.T) {
 	p := probeIntf.(*redisProbe)
 
 	dialErr := &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}
-	p.dialFn = func(network, address string, timeout time.Duration) (net.Conn, error) {
+	p.dialFn = func(_ context.Context, network, address string, timeout time.Duration) (net.Conn, error) {
 		return nil, dialErr
 	}
 
@@ -233,4 +237,43 @@ func TestCollectKeysOnConnectionFailure(t *testing.T) {
 		t.Errorf("check result = %v, want %v", checkPoint.Value, float64(dbcommon.CheckTargetDown))
 	}
 	assertMetricTypeStatus(t, *checkPoint)
+}
+
+func TestDownServerWarnsOncePerOutage(t *testing.T) {
+	probeIntf, err := NewRedisProbe(map[string]interface{}{
+		"host":    "127.0.0.1",
+		"port":    6379,
+		"timeout": 30,
+	}, logger.NewLogger(&cliArgs.ParsedArgs{Env: "test"}))
+	if err != nil {
+		t.Fatalf("NewRedisProbe: %v", err)
+	}
+	p := probeIntf.(*redisProbe)
+	var buf bytes.Buffer
+	base := zerolog.New(&buf).Level(zerolog.DebugLevel)
+	p.moduleLogger = logger.NewModuleLogger(&base, "probe.test")
+
+	dialErr := &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}
+	p.dialFn = func(context.Context, string, string, time.Duration) (net.Conn, error) { return nil, dialErr }
+	for i := 0; i < 10; i++ {
+		points, err := p.Collect()
+		if err != nil {
+			t.Fatalf("Collect should not return an error for a down server, got %v", err)
+		}
+		assertCheckResult(t, points, float64(dbcommon.ClassifyError(dialErr)))
+	}
+
+	client, serverErrCh := runFakeRedis("redis_version:7.2.0\r\nrole:master\r\n", "")
+	p.dialFn = func(context.Context, string, string, time.Duration) (net.Conn, error) { return client, nil }
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	<-serverErrCh
+
+	if got := strings.Count(buf.String(), `"level":"warn"`); got != 1 {
+		t.Errorf("%d warnings over 10 failed cycles, want 1\n%s", got, buf.String())
+	}
+	if got := strings.Count(buf.String(), `"level":"info"`); got != 1 {
+		t.Errorf("%d recovery lines, want 1\n%s", got, buf.String())
+	}
 }

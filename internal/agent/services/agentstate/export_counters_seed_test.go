@@ -3,6 +3,8 @@ package agentstate
 import "testing"
 
 func TestSeedExportSendFailedDeclaresZeroOncePerReason(t *testing.T) {
+	ResetExportSendFailedForTest()
+	t.Cleanup(ResetExportSendFailedForTest)
 	SeedExportSendFailed("seedtest")
 	IncrementExportSendFailed("seedtest", "transport")
 	SeedExportSendFailed("seedtest")

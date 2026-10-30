@@ -1,6 +1,7 @@
 package icmpcheck
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -113,7 +114,7 @@ func TestBuildEntityObservation(t *testing.T) {
 func TestCollectAddsEntityIdentityTagsAndCheckResult(t *testing.T) {
 	p := newTestProbe(t, map[string]interface{}{"targets": []interface{}{"192.0.2.10"}})
 	p.entitySrc.hostID = "host-1"
-	p.ping = func(target string) pingResult {
+	p.ping = func(_ context.Context, target string) pingResult {
 		return pingResult{
 			target:     target,
 			resolvedIP: "192.0.2.10",
@@ -190,7 +191,7 @@ func TestEntitySourceReadiness(t *testing.T) {
 		t.Fatal("entity source ready before first Collect")
 	}
 
-	p.ping = func(target string) pingResult {
+	p.ping = func(_ context.Context, target string) pingResult {
 		return pingResult{target: target, sent: 1, received: 1}
 	}
 	if _, err := p.Collect(); err != nil {

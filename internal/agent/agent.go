@@ -20,6 +20,7 @@ import (
 	"senhub-agent.go/internal/cliexit"
 
 	agentCliArgs "senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/auto_update"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -102,6 +103,22 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		localConfiguration,
 		logger,
 	)
+
+	logRedactionWarnings := func() {
+		for _, err := range localConfiguration.ApplyLogRedaction() {
+			logger.Error().Err(err).Msg("Log masking rule skipped; the other rules still apply")
+		}
+	}
+	logRedactionWarnings()
+	agentstate.SetPEMOverflowHandler(func(probe, source string, records, bytes int) {
+		logger.Warn().
+			Str("probe", probe).
+			Str("source", source).
+			Int("masked_records", records).
+			Int("masked_bytes", bytes).
+			Msg("Private key block without END line: masking stopped at its bound, the following records of this source are no longer masked as key lines")
+	})
+	localConfiguration.OnConfigChanged(func(string) { logRedactionWarnings() })
 
 	sensors := sensor.NewSensor(
 		store.GetCallback(),
@@ -207,12 +224,14 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 // services is the ordered service set. Start brings them up in this
 // order and Shutdown tears them down in reverse, so producers (probes)
 // stop before the consumer (data store) and the configuration provider
-// outlives everything that reads it.
+// outlives everything that reads it. The probes come last: a probe whose
+// start is slow must not keep the status channel, the entity detector,
+// or the updater from running, and those keep reporting while the
+// probes stop.
 func (a agent) services() []Service {
 	servicesToStart := []Service{
 		a.localConfiguration,
 		a.store,
-		a.sensors,
 	}
 	if a.statusChan != nil {
 		servicesToStart = append(servicesToStart, a.statusChan)
@@ -224,7 +243,8 @@ func (a agent) services() []Service {
 		a.logger.Info().Msg("Adding auto-updater to services")
 		servicesToStart = append(servicesToStart, a.updater)
 	}
-	return append(servicesToStart, a.extensions...)
+	servicesToStart = append(servicesToStart, a.extensions...)
+	return append(servicesToStart, a.sensors)
 }
 
 // StopBudget is the wall-clock the caller must allow for Shutdown: the

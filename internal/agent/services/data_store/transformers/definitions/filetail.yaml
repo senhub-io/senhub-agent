@@ -20,6 +20,20 @@ metrics:
       unit: "{record}"
       type: counter
 
+  - name: "senhub.filetail.file_records_emitted"
+    channel: "filetail_file_records_emitted_{log.file.path}"
+    display_name: "File Tail Records Emitted {log.file.path}"
+    unit: "#"
+    category: "status"
+    multi_instance_labels: ["log.file.path"]
+    description: "Cumulative count of log records published from one followed file; a file that stays flat while its size grows sends nothing"
+    otel:
+      name: senhub.filetail.file_records_emitted
+      unit: "{record}"
+      type: counter
+    tag_to_attribute:
+      log.file.path: log.file.path
+
   - name: "senhub.filetail.read_offset"
     channel: "filetail_read_offset_{log.file.path}"
     display_name: "File Tail Read Offset {log.file.path}"
