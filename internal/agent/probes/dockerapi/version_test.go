@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -81,10 +82,11 @@ func (failing) RoundTrip(*http.Request) (*http.Response, error) {
 // version: the next call asks again.
 func TestNegotiationEndsWithItsContextAndIsNotRemembered(t *testing.T) {
 	release := make(chan struct{})
-	asked := 0
+	// The handler runs on the server's goroutines, and the second request
+	// arrives while the first is still held.
+	var asked atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		asked++
-		if asked == 1 {
+		if asked.Add(1) == 1 {
 			select {
 			case <-r.Context().Done():
 			case <-release:
