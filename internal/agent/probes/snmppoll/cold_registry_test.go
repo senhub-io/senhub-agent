@@ -66,7 +66,7 @@ func TestAColdRegistryHoldsBackALinkUntilTheNeighbourIsPolled(t *testing.T) {
 	clock := t0
 	reg := &polledRegistry{byMAC: map[string]registryEntry{}, started: t0, warmupOverride: 2 * time.Minute}
 	core := coldSource(t, reg, &clock, coreSweep())
-	reg.recordPolled(core.cache.self, core.cache.deviceID, t0)
+	reg.recordPolled(core.cache.self, core.cache.deviceID, time.Minute, t0)
 
 	// The neighbour has not been polled yet: publishing now would retract
 	// the link, so the source holds its observation back.
@@ -77,7 +77,7 @@ func TestAColdRegistryHoldsBackALinkUntilTheNeighbourIsPolled(t *testing.T) {
 	// The neighbour's own sweep registers it; the core links to it at the
 	// next read, without a sweep of its own.
 	clock = t0.Add(20 * time.Second)
-	reg.recordPolled(deviceIdentity{EngineID: []byte{0xb2}, ChassisMAC: coldMACB}, "engine:b2", clock)
+	reg.recordPolled(deviceIdentity{EngineID: []byte{0xb2}, ChassisMAC: coldMACB}, "engine:b2", time.Minute, clock)
 	obs, ok := core.Observe()
 	if !ok {
 		t.Fatal("held back after the neighbour was polled")
@@ -122,7 +122,7 @@ func TestTheStartUpHoldIsLoggedOnceWithItsReason(t *testing.T) {
 	reg := &polledRegistry{byMAC: map[string]registryEntry{}, started: t0, warmupOverride: 2 * time.Minute}
 	core := coldSource(t, reg, &clock, coreSweep())
 	core.moduleLogger = logger.NewModuleLogger(&zl, "test")
-	reg.recordPolled(core.cache.self, core.cache.deviceID, t0)
+	reg.recordPolled(core.cache.self, core.cache.deviceID, time.Minute, t0)
 
 	for i := 0; i < 3; i++ {
 		clock = t0.Add(time.Duration(i*10) * time.Second)

@@ -27,8 +27,9 @@ import (
 // devices.
 //
 // Process-global because each target is an independent probe instance; entries
-// carry a freshness stamp so a stale mapping (a device renumbered or replaced)
-// is not trusted past polledRegistryTTL.
+// carry their own expiry, derived from the cadence of the device that recorded
+// them, so a stale mapping (a device renumbered or replaced) is not trusted
+// past that device's own sweep rhythm.
 type polledRegistry struct {
 	mu    sync.Mutex
 	byMAC map[string]registryEntry
@@ -56,25 +57,22 @@ type polledRegistry struct {
 }
 
 type registryEntry struct {
-	id   string
-	seen time.Time
+	id string
+	// expires is when the entry stops being trusted: recorded as
+	// now + freshFor(cadence) of the device that recorded it.
+	expires time.Time
 }
 
 type idClaim struct {
 	target     string
 	sysName    string
 	chassisMAC string
-	seen       time.Time
+	expires    time.Time
 }
 
 // maxWarnedPairs bounds the warned-pair memory; past it the set is cleared
 // and a still-colliding pair warns once more.
 const maxWarnedPairs = 1024
-
-// polledRegistryTTL bounds how long a polled device's facets stay trusted
-// without a refresh — 3× the default topology cadence, the same liveness ratio
-// the entity report interval uses.
-const polledRegistryTTL = 3 * defaultTopologyInterval
 
 // sharedPolledRegistry is the process-wide registry every snmp_poll entity
 // source records into and consults, so a neighbour polled by one probe instance
@@ -89,6 +87,13 @@ func newPolledRegistry() *polledRegistry {
 		downPorts:   map[string]time.Time{},
 		started:     time.Now(),
 	}
+}
+
+// effectiveSweepCadence is how often a device is actually swept: a sweep only
+// runs inside a metric collection, so the coarser of the probe interval and
+// the topology interval bounds it.
+func effectiveSweepCadence(probeInterval, topologyInterval time.Duration) time.Duration {
+	return max(probeInterval, topologyInterval)
 }
 
 // warming reports whether the registry may still be missing devices that
@@ -116,9 +121,10 @@ func (r *polledRegistry) warmup() time.Duration {
 }
 
 // recordPolled registers a directly-polled device's chassis MAC under its
-// canonical id. No-op when the device exposes no chassis MAC (nothing to
-// reconcile a neighbour against) or has no resolved id.
-func (r *polledRegistry) recordPolled(self deviceIdentity, canonicalID string, now time.Time) {
+// canonical id, fresh until now + freshFor(cadence), where cadence is that
+// device's effective sweep cadence. No-op when the device exposes no chassis
+// MAC (nothing to reconcile a neighbour against) or has no resolved id.
+func (r *polledRegistry) recordPolled(self deviceIdentity, canonicalID string, cadence time.Duration, now time.Time) {
 	if canonicalID == "" || len(self.ChassisMAC) == 0 {
 		return
 	}
@@ -128,7 +134,7 @@ func (r *polledRegistry) recordPolled(self deviceIdentity, canonicalID string, n
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.byMAC[key] = registryEntry{id: canonicalID, seen: now}
+	r.byMAC[key] = registryEntry{id: canonicalID, expires: now.Add(freshFor(cadence))}
 	r.evictLocked(now)
 }
 
@@ -147,22 +153,22 @@ func (r *polledRegistry) canonicalFor(n deviceIdentity, now time.Time) (string, 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	e, ok := r.byMAC[key]
-	if !ok || now.Sub(e.seen) > polledRegistryTTL {
+	if !ok || now.After(e.expires) {
 		return "", false
 	}
 	return e.id, true
 }
 
-// evictLocked drops entries older than the TTL. Called under the lock on each
+// evictLocked drops expired entries. Called under the lock on each
 // write so the map cannot grow without bound across device churn.
 func (r *polledRegistry) evictLocked(now time.Time) {
 	for k, e := range r.byMAC {
-		if now.Sub(e.seen) > polledRegistryTTL {
+		if now.After(e.expires) {
 			delete(r.byMAC, k)
 		}
 	}
 	for k, c := range r.byID {
-		if now.Sub(c.seen) > polledRegistryTTL {
+		if now.After(c.expires) {
 			delete(r.byID, k)
 		}
 	}
@@ -181,7 +187,7 @@ func (r *polledRegistry) claimID(id, target string, self deviceIdentity, now tim
 	mac := macHex(self.ChassisMAC)
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if prev, ok := r.byID[id]; ok && prev.target != target && now.Sub(prev.seen) <= polledRegistryTTL {
+	if prev, ok := r.byID[id]; ok && prev.target != target && !now.After(prev.expires) {
 		differentName := prev.sysName != "" && name != "" && prev.sysName != name
 		differentMAC := prev.chassisMAC != "" && mac != "" && prev.chassisMAC != mac
 		if differentName || differentMAC {
@@ -196,7 +202,9 @@ func (r *polledRegistry) claimID(id, target string, self deviceIdentity, now tim
 			return prev, true, firstWarn
 		}
 	}
-	r.byID[id] = idClaim{target: target, sysName: name, chassisMAC: mac, seen: now}
+	// claimID is called without a cadence; bound the claim by the default
+	// topology cadence.
+	r.byID[id] = idClaim{target: target, sysName: name, chassisMAC: mac, expires: now.Add(freshFor(defaultTopologyInterval))}
 	r.evictLocked(now)
 	return idClaim{}, false, false
 }
