@@ -102,7 +102,13 @@ func TestOverlayChangesTheLoadedConfigurationNotTheFiles(t *testing.T) {
 	if d.Entities == nil || !d.Entities.Enabled || d.Entities.DependsOn == nil || !d.Entities.DependsOn.Enabled {
 		t.Errorf("entities = %+v, want enabled with depends_on", d.Entities)
 	}
-	if len(seen) != 3 || seen[0].Interval != 300 || !seen[2].DisabledLocally || seen[0].DisabledLocally {
+	// Linux installs add their default fragments (services, swarm): look
+	// the probes of this test up by name rather than by position.
+	byName := map[string]extension.OverlayProbe{}
+	for _, p := range seen {
+		byName[p.Name] = p
+	}
+	if cpu, off := byName["cpu"], byName["off-locally"]; cpu.Interval != 300 || cpu.DisabledLocally || !off.DisabledLocally || byName["memory"].Name == "" {
 		t.Errorf("overlay saw %+v", seen)
 	}
 
