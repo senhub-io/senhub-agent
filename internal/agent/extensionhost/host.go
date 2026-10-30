@@ -4,6 +4,7 @@ package extensionhost
 
 import (
 	"context"
+	"os"
 	"slices"
 	"time"
 
@@ -167,7 +168,21 @@ func (h *host) ReloadConfig() error {
 	return h.deps.Config.Reload()
 }
 
-func (h *host) StateDir() string { return instanceid.OwnStateDir() }
+func (h *host) StateDir() string {
+	dir := instanceid.OwnStateDir()
+	if dir == "" {
+		return ""
+	}
+	// 0700 on Unix; Windows ignores the mode and inherits the data
+	// folder ACL, so the same call is right there too.
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		if h.log != nil {
+			h.log.Warn().Err(err).Str("path", dir).Msg("Extension state directory could not be created")
+		}
+		return ""
+	}
+	return dir
+}
 
 func (h *host) SetLogLevel(level string) error {
 	if level == "" {

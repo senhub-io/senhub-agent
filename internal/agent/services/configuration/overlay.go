@@ -3,20 +3,57 @@ package configuration
 import (
 	"maps"
 
+	"github.com/rs/zerolog/log"
+
 	"senhub-agent.go/internal/agent/services/extension"
+)
+
+// minOverlayInterval and maxOverlayInterval bound the interval an
+// overlay may set, matching the signed overlay whitelist.
+const (
+	minOverlayInterval = 10
+	maxOverlayInterval = 3600
 )
 
 // overlayTarget lets an extension overlay change a freshly loaded
 // configuration through the narrow extension.OverlayTarget surface.
+// Every mutation records how to undo it, so a panicking overlay leaves
+// the configuration exactly as it was.
 type overlayTarget struct {
-	cfg *LocalConfigurationData
+	cfg  *LocalConfigurationData
+	undo []func()
 }
 
-// applyOverlays runs the registered overlays on cfg. Probe parameters are
-// copied before the first change so a map shared with the previous
-// configuration is never written.
+// applyOverlays runs the registered overlays on cfg, one extension at a
+// time. A panicking overlay is recovered, logged at Error with the
+// extension name and rolled back, so it can neither crash the agent
+// during a reload nor leave half of its changes behind. Probe
+// parameters are copied before the first change so a map shared with
+// the previous configuration is never written.
 func applyOverlays(cfg *LocalConfigurationData) {
-	extension.ApplyOverlays(&overlayTarget{cfg: cfg})
+	for _, e := range extension.Registered() {
+		if e.Overlay == nil {
+			continue
+		}
+		t := &overlayTarget{cfg: cfg}
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.rollback()
+					log.Error().Str("extension", e.Name).Any("panic", r).Msg("Extension overlay panicked; its changes were discarded")
+				}
+			}()
+			e.Overlay(t)
+		}()
+	}
+}
+
+// rollback undoes every change this overlay made, last first.
+func (t *overlayTarget) rollback() {
+	for i := len(t.undo) - 1; i >= 0; i-- {
+		t.undo[i]()
+	}
+	t.undo = nil
 }
 
 func (t *overlayTarget) Probes() []extension.OverlayProbe {
@@ -38,16 +75,24 @@ func (t *overlayTarget) SetProbeEnabled(name string, enabled bool) bool {
 	if i < 0 {
 		return false
 	}
+	// The local file wins: a probe it disables stays disabled.
+	if enabled && t.cfg.Probes[i].Enabled != nil && !*t.cfg.Probes[i].Enabled {
+		return false
+	}
+	prev := t.cfg.Probes[i].Enabled
+	t.undo = append(t.undo, func() { t.cfg.Probes[i].Enabled = prev })
 	t.cfg.Probes[i].Enabled = &enabled
 	return true
 }
 
 func (t *overlayTarget) SetProbeInterval(name string, seconds int) bool {
 	i := t.probeIndex(name)
-	if i < 0 {
+	if i < 0 || seconds < minOverlayInterval || seconds > maxOverlayInterval {
 		return false
 	}
-	params := maps.Clone(t.cfg.Probes[i].Params)
+	prev := t.cfg.Probes[i].Params
+	t.undo = append(t.undo, func() { t.cfg.Probes[i].Params = prev })
+	params := maps.Clone(prev)
 	if params == nil {
 		params = ProbeConfigParams{}
 	}
@@ -70,6 +115,8 @@ func (t *overlayTarget) Entities() extension.EntitySwitches {
 }
 
 func (t *overlayTarget) SetEntities(s extension.EntitySwitches) {
+	prev := t.cfg.Entities
+	t.undo = append(t.undo, func() { t.cfg.Entities = prev })
 	var e EntitiesConfig
 	if t.cfg.Entities != nil {
 		e = *t.cfg.Entities

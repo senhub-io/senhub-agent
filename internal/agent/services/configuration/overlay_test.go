@@ -159,3 +159,80 @@ func TestOverlayDoesNotShareParamsWithThePreviousConfiguration(t *testing.T) {
 		t.Error("the overlay wrote into a params map another configuration may hold")
 	}
 }
+
+func TestPanickingOverlayIsDiscardedAndDoesNotCrashTheReload(t *testing.T) {
+	path := writeOverlayTree(t, t.TempDir())
+	registerOverlay(t, func(o extension.OverlayTarget) {
+		o.SetProbeInterval("cpu", 60)
+		o.SetProbeEnabled("memory", false)
+		panic("boom")
+	})
+
+	lc := overlayConfiguration(t, path)
+	if err := lc.loadConfiguration(); err != nil {
+		t.Fatal(err)
+	}
+	d := lc.snapshot()
+	if got, _ := wholeSeconds(probeByName(t, d, "cpu").Params["interval"]); got != 300 {
+		t.Errorf("cpu interval = %d, want the untouched 300 after the panic", got)
+	}
+	if !probeByName(t, d, "memory").IsEnabled() {
+		t.Error("memory must still be enabled: a panicking overlay's changes are discarded")
+	}
+}
+
+func TestOverlayCannotEnableALocallyDisabledProbe(t *testing.T) {
+	path := writeOverlayTree(t, t.TempDir())
+	var enableRefused, disableAllowed bool
+	registerOverlay(t, func(o extension.OverlayTarget) {
+		enableRefused = !o.SetProbeEnabled("off-locally", true)
+		disableAllowed = o.SetProbeEnabled("cpu", false)
+	})
+
+	lc := overlayConfiguration(t, path)
+	if err := lc.loadConfiguration(); err != nil {
+		t.Fatal(err)
+	}
+	if !enableRefused {
+		t.Error("enabling a probe the local file disables must be refused")
+	}
+	if !disableAllowed {
+		t.Error("disabling a locally enabled probe must stay allowed")
+	}
+	d := lc.snapshot()
+	if probeByName(t, d, "off-locally").IsEnabled() {
+		t.Error("off-locally must stay disabled: the local file wins")
+	}
+	if probeByName(t, d, "cpu").IsEnabled() {
+		t.Error("cpu must be disabled by the overlay")
+	}
+}
+
+func TestReloadRefusesWhileAReloadIsRunning(t *testing.T) {
+	path := writeOverlayTree(t, t.TempDir())
+	registerOverlay(t, func(o extension.OverlayTarget) {})
+
+	lc := overlayConfiguration(t, path)
+	if err := lc.loadConfiguration(); err != nil {
+		t.Fatal(err)
+	}
+	lc.reloadMu.Lock()
+	defer lc.reloadMu.Unlock()
+	if err := lc.Reload(); err == nil {
+		t.Error("a reload while another one holds the lock must be refused, not block")
+	}
+}
+
+func TestOverlayIntervalStaysWithinTheWhitelistBounds(t *testing.T) {
+	cfg := LocalConfigurationData{Probes: []ProbeConfig{{Name: "cpu", Params: ProbeConfigParams{"interval": 300}}}}
+	target := &overlayTarget{cfg: &cfg}
+	if target.SetProbeInterval("cpu", 9) || target.SetProbeInterval("cpu", 3601) {
+		t.Error("intervals outside 10..3600 must be refused")
+	}
+	if !target.SetProbeInterval("cpu", 10) || !target.SetProbeInterval("cpu", 3600) {
+		t.Error("the bounds 10 and 3600 must be accepted")
+	}
+	if got, _ := wholeSeconds(cfg.Probes[0].Params["interval"]); got != 3600 {
+		t.Errorf("cpu interval = %d, want 3600", got)
+	}
+}

@@ -46,7 +46,8 @@ type Extension struct {
 	// Overlay adjusts the configuration each time the running agent
 	// loads it, after the files are read and before the result is
 	// validated and published. The files are never rewritten. Nil
-	// changes nothing.
+	// changes nothing. A panicking overlay is recovered and its changes
+	// are discarded.
 	Overlay func(OverlayTarget)
 }
 
@@ -78,11 +79,13 @@ type Host interface {
 	PublishStatus(status map[string]any)
 	// ReloadConfig reads the configuration again, overlays included, and
 	// applies it as a change on disk would. On error the configuration
-	// in force is kept.
+	// in force is kept. It must not be called from an Overlay: a reload
+	// already running makes it return an error instead of blocking.
 	ReloadConfig() error
 	// StateDir is the directory where the agent keeps its own state,
-	// writable by the account the service runs under. The directory may
-	// not exist yet.
+	// writable by the account the service runs under. The host creates
+	// it, owner-only on Unix, before returning it; it returns "" when
+	// the directory cannot be created.
 	StateDir() string
 	// SetLogLevel sets the level of every module logger: debug, info,
 	// warn or error. An empty level puts back the levels the agent

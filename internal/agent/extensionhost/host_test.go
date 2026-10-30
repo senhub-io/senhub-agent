@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -317,5 +318,23 @@ func TestHostStateDirFollowsTheAgentStateDir(t *testing.T) {
 	t.Setenv("SENHUB_STATE_DIR", dir)
 	if got := (&host{}).StateDir(); got != dir {
 		t.Errorf("StateDir = %q, want %q", got, dir)
+	}
+}
+
+func TestHostStateDirCreatesTheDirectoryOwnerOnly(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "state", "own")
+	t.Setenv("SENHUB_STATE_DIR", dir)
+	h := &host{log: logger.NewModuleLogger(nopLogger(), "extension")}
+
+	if got := h.StateDir(); got != dir {
+		t.Fatalf("StateDir = %q, want %q", got, dir)
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o700 {
+		t.Errorf("state dir mode = %o, want 700", info.Mode().Perm())
 	}
 }
