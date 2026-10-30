@@ -642,6 +642,16 @@ func NewMetricCache(ttl time.Duration, logger *logger.ModuleLogger) *MetricCache
 	}
 }
 
+// HasProbeData reports whether the cache holds data for the probe. Unlike
+// FirstDataSignal it records nothing, so it is safe on names taken from a
+// request.
+func (c *MetricCache) HasProbeData(probeName string) bool {
+	key := strings.ToLower(probeName)
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return len(c.probeIndex[key]) > 0
+}
+
 // FirstDataSignal returns a channel that is closed once the cache holds
 // data for the probe: already closed if it does.
 func (c *MetricCache) FirstDataSignal(probeName string) <-chan struct{} {

@@ -41,6 +41,51 @@ func NewAPIManager(strategy *HTTPSyncStrategy, logger *logger.ModuleLogger) *API
 
 // PRTG API Endpoints
 
+// prtgErrorResult is PRTG's error answer: an error flag and a text,
+// and no result key.
+type prtgErrorResult struct {
+	Error int    `json:"error"`
+	Text  string `json:"text"`
+}
+
+type prtgErrorResponse struct {
+	PRTG prtgErrorResult `json:"prtg"`
+}
+
+// writePRTGResponse writes the PRTG answer for a probe's channels. An
+// empty channel list is never sent as a result: PRTG reads that as an
+// invalid structure and flags the sensor, so the answer becomes the
+// error form instead, with a text that says whether the probe has not
+// delivered data yet or no channel survived the request's filter.
+func (a *APIManager) writePRTGResponse(w http.ResponseWriter, probeName string, channels []PRTGChannel) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if len(channels) > 0 {
+		if err := json.NewEncoder(w).Encode(PRTGResponse{PRTG: PRTGResult{Result: channels}}); err != nil {
+			a.logger.Error().Err(err).Msg("Failed to encode response")
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	reason := "waiting_for_first_data"
+	text := fmt.Sprintf("waiting for the first collection of probe %s", probeName)
+	if a.strategy.cache != nil && a.strategy.cache.HasProbeData(probeName) {
+		reason = "filter_excluded_all_channels"
+		text = fmt.Sprintf("no channel of probe %s matches the request filter", probeName)
+	}
+
+	a.logger.Debug().
+		Str("probe", probeName).
+		Str("reason", reason).
+		Msg("PRTG answer carries no channel")
+
+	if err := json.NewEncoder(w).Encode(prtgErrorResponse{PRTG: prtgErrorResult{Error: 1, Text: text}}); err != nil {
+		a.logger.Error().Err(err).Msg("Failed to encode PRTG error response")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+}
+
 // HandlePRTGMetricsGET handles GET requests for PRTG metrics
 func (a *APIManager) HandlePRTGMetricsGET(w http.ResponseWriter, r *http.Request) {
 	_, authenticated := a.strategy.authManager.AuthenticateAndExtract(w, r)
@@ -68,20 +113,7 @@ func (a *APIManager) HandlePRTGMetricsGET(w http.ResponseWriter, r *http.Request
 	// Get metrics from cache for the specified probe with filters
 	channels := a.strategy.metricsProcessor.GetPRTGMetricsForProbeWithFilter(probeNameLower, filter)
 
-	// Build PRTG response
-	response := PRTGResponse{
-		PRTG: PRTGResult{
-			Result: channels,
-		},
-	}
-
-	// Send response
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		a.logger.Error().Err(err).Msg("Failed to encode response")
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
+	a.writePRTGResponse(w, probeNameLower, channels)
 
 	a.logger.Debug().
 		Str("probe", probeName).
@@ -120,20 +152,7 @@ func (a *APIManager) HandlePRTGMetrics(w http.ResponseWriter, r *http.Request) {
 	// Get metrics from cache for the specified probe
 	channels := a.strategy.metricsProcessor.GetPRTGMetricsForProbeWithFilter(req.Probe, MetricFilter{ShowTags: true, NativeSpeed: NativeSpeedRequested(r)})
 
-	// Build PRTG response
-	response := PRTGResponse{
-		PRTG: PRTGResult{
-			Result: channels,
-		},
-	}
-
-	// Send response
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		a.logger.Error().Err(err).Msg("Failed to encode response")
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
+	a.writePRTGResponse(w, req.Probe, channels)
 
 	a.logger.Debug().
 		Str("probe", req.Probe).
