@@ -782,9 +782,11 @@ func (s *snmpEntitySource) sweep(client snmpClient, now time.Time) (sweepResult,
 	// neighbours are resolved against the shared registry when the observation
 	// is read (build): a neighbour known by the same MAC reconciles to the
 	// canonical id another probe instance assigned it, instead of minting a
-	// mac: shadow (one node per device, not several).
+	// mac: shadow (one node per device, not several). The entry's freshness
+	// follows this device's effective sweep cadence, so a slow-swept device
+	// stays resolvable between two of its sweeps.
 	if s.registry != nil {
-		s.registry.recordPolled(self, deviceID, now)
+		s.registry.recordPolled(self, deviceID, effectiveSweepCadence(s.cfg.Interval, s.interval), now)
 		s.registry.recordPortStates(deviceID, ifaces, s.interval, now)
 	}
 	if s.l2Wanted() && deviceID != "" {
