@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -31,6 +32,8 @@ type fakeConfig struct {
 	key       string
 	path      string
 	data      configuration.ConfigurationData
+	reloads   int
+	reloadErr error
 }
 
 func (f *fakeConfig) ExtensionBlock(name string) (map[string]interface{}, bool) {
@@ -42,6 +45,10 @@ func (f *fakeConfig) GetAuthenticationKey() string    { return f.key }
 func (f *fakeConfig) GetConfigPath() string           { return f.path }
 func (f *fakeConfig) GetConfiguration() configuration.ConfigurationData {
 	return f.data
+}
+func (f *fakeConfig) Reload() error {
+	f.reloads++
+	return f.reloadErr
 }
 
 type recordingService struct {
@@ -270,5 +277,64 @@ func TestLicenseTier(t *testing.T) {
 		if got := LicenseTier(c.token, "agent-key", c.newV); got != c.want {
 			t.Errorf("%s: tier = %q, want %q", c.name, got, c.want)
 		}
+	}
+}
+
+func TestLicenseInForceCarriesIDAndExpiry(t *testing.T) {
+	exp := time.Date(2027, 6, 15, 15, 14, 0, 0, time.UTC)
+	newV := func() (license.Validator, error) {
+		return fakeValidator{lic: &license.License{Tier: license.TierEnterprise, ID: "lic-42", ExpiresAt: exp}}, nil
+	}
+	tier, lic := LicenseInForce("tok", "", newV)
+	if tier != "enterprise" || lic == nil || lic.ID != "lic-42" || !lic.ExpiresAt.Equal(exp) {
+		t.Errorf("tier %q, licence %+v", tier, lic)
+	}
+	if _, lic := LicenseInForce("", "", newV); lic != nil {
+		t.Error("no token must give no licence")
+	}
+}
+
+func TestHostReloadsTheConfigurationAndSetsTheLogLevel(t *testing.T) {
+	t.Cleanup(logger.ClearOverallLevel)
+	cfg := &fakeConfig{reloadErr: errors.New("invalid")}
+	h := &host{deps: Deps{Logger: nopLogger(), Config: cfg}, name: "x"}
+
+	if err := h.ReloadConfig(); err == nil || cfg.reloads != 1 {
+		t.Errorf("ReloadConfig = %v after %d reloads, want the configuration's error after 1", err, cfg.reloads)
+	}
+	if err := h.SetLogLevel("verbose"); err == nil {
+		t.Error("an unknown level must be refused")
+	}
+	if err := h.SetLogLevel("debug"); err != nil {
+		t.Error(err)
+	}
+	if err := h.SetLogLevel(""); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestHostStateDirFollowsTheAgentStateDir(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SENHUB_STATE_DIR", dir)
+	if got := (&host{}).StateDir(); got != dir {
+		t.Errorf("StateDir = %q, want %q", got, dir)
+	}
+}
+
+func TestHostStateDirCreatesTheDirectoryOwnerOnly(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "state", "own")
+	t.Setenv("SENHUB_STATE_DIR", dir)
+	h := &host{log: logger.NewModuleLogger(nopLogger(), "extension")}
+
+	if got := h.StateDir(); got != dir {
+		t.Fatalf("StateDir = %q, want %q", got, dir)
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o700 {
+		t.Errorf("state dir mode = %o, want 700", info.Mode().Perm())
 	}
 }

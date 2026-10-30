@@ -43,6 +43,12 @@ type Extension struct {
 	Check func(block map[string]any, present bool) []CheckLine
 	// Doctor adds one line to `doctor`. Nil adds none.
 	Doctor func(DoctorInput) DoctorLine
+	// Overlay adjusts the configuration each time the running agent
+	// loads it, after the files are read and before the result is
+	// validated and published. The files are never rewritten. Nil
+	// changes nothing. A panicking overlay is recovered and its changes
+	// are discarded.
+	Overlay func(OverlayTarget)
 }
 
 // Host is the agent as an extension sees it.
@@ -71,6 +77,20 @@ type Host interface {
 	// PublishStatus replaces what the status channel reports for this
 	// extension; doctor receives it as DoctorInput.Status.
 	PublishStatus(status map[string]any)
+	// ReloadConfig reads the configuration again, overlays included, and
+	// applies it as a change on disk would. On error the configuration
+	// in force is kept. It must not be called from an Overlay: a reload
+	// already running makes it return an error instead of blocking.
+	ReloadConfig() error
+	// StateDir is the directory where the agent keeps its own state,
+	// writable by the account the service runs under. The host creates
+	// it, owner-only on Unix, before returning it; it returns "" when
+	// the directory cannot be created.
+	StateDir() string
+	// SetLogLevel sets the level of every module logger: debug, info,
+	// warn or error. An empty level puts back the levels the agent
+	// started with.
+	SetLogLevel(level string) error
 }
 
 // Identity is what the agent is.
@@ -84,6 +104,11 @@ type Identity struct {
 	// LicenseTier is the tier of the licence in force: "free" without a
 	// valid one.
 	LicenseTier string
+	// LicenseID is the jti of the licence in force; empty without one.
+	LicenseID string
+	// LicenseExpiresAt is when the licence in force expires; zero
+	// without one.
+	LicenseExpiresAt time.Time
 }
 
 // Health is the agent's current health, from the state status and doctor

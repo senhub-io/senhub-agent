@@ -194,12 +194,18 @@ alias DoctorLine = senhub-agent.go/internal/agent/services/extension.DoctorLine
 const DoctorOK untyped string = "ok"
 const DoctorSkip untyped string = "skip"
 const DoctorWarn untyped string = "warn"
+alias EntitySwitches = senhub-agent.go/internal/agent/services/extension.EntitySwitches
+  field Aggregation bool
+  field DependsOn bool
+  field Enabled bool
+  field Neighbors bool
 alias Extension = senhub-agent.go/internal/agent/services/extension.Extension
   field Check func(block map[string]any, present bool) []senhub-agent.go/internal/agent/services/extension.CheckLine
   field ConfigBlock string
   field Doctor func(senhub-agent.go/internal/agent/services/extension.DoctorInput) senhub-agent.go/internal/agent/services/extension.DoctorLine
   field Name string
   field New func(senhub-agent.go/internal/agent/services/extension.Host) (senhub-agent.go/internal/agent/services/extension.Service, error)
+  field Overlay func(senhub-agent.go/internal/agent/services/extension.OverlayTarget)
   field StopBudget time.Duration
 alias Health = senhub-agent.go/internal/agent/services/extension.Health
   field Healthy bool
@@ -216,9 +222,14 @@ alias Host = senhub-agent.go/internal/agent/services/extension.Host
   imethod Logger() *senhub-agent.go/internal/agent/services/logger.Logger
   imethod OnConfigChange(fn func())
   imethod PublishStatus(status map[string]any)
+  imethod ReloadConfig() error
+  imethod SetLogLevel(level string) error
+  imethod StateDir() string
 alias Identity = senhub-agent.go/internal/agent/services/extension.Identity
   field Edition string
   field InstanceID string
+  field LicenseExpiresAt time.Time
+  field LicenseID string
   field LicenseTier string
   field Version string
 alias OutputHealth = senhub-agent.go/internal/agent/services/extension.OutputHealth
@@ -227,6 +238,17 @@ alias OutputHealth = senhub-agent.go/internal/agent/services/extension.OutputHea
   field FailureReason string
   field LastError string
   field Name string
+alias OverlayProbe = senhub-agent.go/internal/agent/services/extension.OverlayProbe
+  field DisabledLocally bool
+  field Interval int
+  field Name string
+  field Type string
+alias OverlayTarget = senhub-agent.go/internal/agent/services/extension.OverlayTarget
+  imethod Entities() senhub-agent.go/internal/agent/services/extension.EntitySwitches
+  imethod Probes() []senhub-agent.go/internal/agent/services/extension.OverlayProbe
+  imethod SetEntities(senhub-agent.go/internal/agent/services/extension.EntitySwitches)
+  imethod SetProbeEnabled(name string, enabled bool) bool
+  imethod SetProbeInterval(name string, seconds int) bool
 alias ProbeHealth = senhub-agent.go/internal/agent/services/extension.ProbeHealth
   field Enabled bool
   field Health string
@@ -610,9 +632,14 @@ type senhub-agent.go/internal/agent/services/extension.Host interface
   imethod Logger() *senhub-agent.go/internal/agent/services/logger.Logger
   imethod OnConfigChange(fn func())
   imethod PublishStatus(status map[string]any)
+  imethod ReloadConfig() error
+  imethod SetLogLevel(level string) error
+  imethod StateDir() string
 type senhub-agent.go/internal/agent/services/extension.Identity struct
   field Edition string
   field InstanceID string
+  field LicenseExpiresAt time.Time
+  field LicenseID string
   field LicenseTier string
   field Version string
 type senhub-agent.go/internal/agent/services/extension.OutputHealth struct
@@ -621,6 +648,12 @@ type senhub-agent.go/internal/agent/services/extension.OutputHealth struct
   field FailureReason string
   field LastError string
   field Name string
+type senhub-agent.go/internal/agent/services/extension.OverlayTarget interface
+  imethod Entities() senhub-agent.go/internal/agent/services/extension.EntitySwitches
+  imethod Probes() []senhub-agent.go/internal/agent/services/extension.OverlayProbe
+  imethod SetEntities(senhub-agent.go/internal/agent/services/extension.EntitySwitches)
+  imethod SetProbeEnabled(name string, enabled bool) bool
+  imethod SetProbeInterval(name string, seconds int) bool
 type senhub-agent.go/internal/agent/services/extension.ProbeHealth struct
   field Enabled bool
   field Health string

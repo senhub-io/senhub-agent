@@ -513,6 +513,10 @@ type levelState struct {
 	levels       map[string]zerolog.Level
 	selective    bool
 	debugModules map[string]bool
+	// overall, when set, is one level for every module logger. It wins
+	// over the module overrides and the selective filter, and clearing it
+	// puts both back as they were.
+	overall *zerolog.Level
 }
 
 var (
@@ -575,6 +579,7 @@ func mutateLevelState(fn func(*levelState)) {
 		levels:       make(map[string]zerolog.Level, len(cur.levels)),
 		selective:    cur.selective,
 		debugModules: make(map[string]bool, len(cur.debugModules)),
+		overall:      cur.overall,
 	}
 	for k, v := range cur.levels {
 		next.levels[k] = v
@@ -584,6 +589,32 @@ func mutateLevelState(fn func(*levelState)) {
 	}
 	fn(next)
 	levelStatePo.Store(next)
+}
+
+// SetOverallLevel sets one level for every module logger, debug, info,
+// warn or error, until ClearOverallLevel.
+func SetOverallLevel(levelStr string) error {
+	var level zerolog.Level
+	switch levelStr {
+	case "debug":
+		level = zerolog.DebugLevel
+	case "info":
+		level = zerolog.InfoLevel
+	case "warn":
+		level = zerolog.WarnLevel
+	case "error":
+		level = zerolog.ErrorLevel
+	default:
+		return fmt.Errorf("log level %q: want debug, info, warn or error", levelStr)
+	}
+	mutateLevelState(func(st *levelState) { st.overall = &level })
+	return nil
+}
+
+// ClearOverallLevel puts back the per-module levels in force before
+// SetOverallLevel.
+func ClearOverallLevel() {
+	mutateLevelState(func(st *levelState) { st.overall = nil })
 }
 
 // SetModuleLogLevel sets the log level for a specific module
@@ -687,6 +718,9 @@ func isModuleEnabled(st *levelState, module string) bool {
 // Debug logs a debug message if the module's current level allows it
 func (m *ModuleLogger) Debug() *zerolog.Event {
 	st := levelStatePo.Load()
+	if st.overall != nil {
+		return m.at(*st.overall, zerolog.DebugLevel)
+	}
 	// In selective debug mode, only allow debug logs for enabled modules (with prefix matching)
 	if st.selective {
 		if !isModuleEnabled(st, m.module) {
@@ -721,6 +755,17 @@ func (m *ModuleLogger) Debug() *zerolog.Event {
 	return m.Logger.Debug()
 }
 
+// at returns an event of the given level under an overall level: none
+// when the overall level is above it, otherwise one written whatever the
+// base logger's own level.
+func (m *ModuleLogger) at(overall, level zerolog.Level) *zerolog.Event {
+	if level < overall {
+		return m.disabled()
+	}
+	lifted := m.Logger.Level(level)
+	return lifted.WithLevel(level)
+}
+
 // disabled returns an event that will never be written.
 func (m *ModuleLogger) disabled() *zerolog.Event {
 	off := m.Logger.Level(zerolog.Disabled)
@@ -729,13 +774,21 @@ func (m *ModuleLogger) disabled() *zerolog.Event {
 
 // Info logs an info message (always enabled for all modules)
 func (m *ModuleLogger) Info() *zerolog.Event {
-	// Info level is never filtered - all modules can log info messages
+	// Info level is never filtered by module - all modules can log info
+	// messages; only an overall level above it silences them.
+	if st := levelStatePo.Load(); st.overall != nil {
+		return m.at(*st.overall, zerolog.InfoLevel)
+	}
 	return m.Logger.Info()
 }
 
 // Warn logs a warning message (always enabled for all modules)
 func (m *ModuleLogger) Warn() *zerolog.Event {
-	// Warn level is never filtered - all modules can log warnings
+	// Warn level is never filtered by module - all modules can log
+	// warnings; only an overall level above it silences them.
+	if st := levelStatePo.Load(); st.overall != nil {
+		return m.at(*st.overall, zerolog.WarnLevel)
+	}
 	return m.Logger.Warn()
 }
 
