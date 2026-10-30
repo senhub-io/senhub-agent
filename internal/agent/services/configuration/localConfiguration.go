@@ -44,6 +44,10 @@ type LocalConfigurationData struct {
 	// location and lifecycle of the host this agent runs on. It is kept
 	// raw: the governance package owns the shape and the closed sets.
 	Governance map[string]interface{} `yaml:"governance,omitempty"`
+	// Extensions holds the top-level blocks a registered extension
+	// claims, keyed by block name. Any other unknown top-level key is
+	// dropped by normalizeYAMLTypes, as it always was.
+	Extensions map[string]interface{} `yaml:",inline"`
 }
 
 // EntitiesConfig is the operator's control over entity detection.

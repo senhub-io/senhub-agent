@@ -218,6 +218,11 @@ func (lc *LocalConfiguration) hasConfigurationChanged(old, new LocalConfiguratio
 		return true
 	}
 
+	if !reflect.DeepEqual(old.Extensions, new.Extensions) {
+		lc.logger.Debug().Msg("Extension configuration changed")
+		return true
+	}
+
 	if !reflect.DeepEqual(old.Agent.GlobalTags, new.Agent.GlobalTags) {
 		lc.logger.Debug().Msg("Global tags changed")
 		return true

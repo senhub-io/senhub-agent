@@ -58,6 +58,27 @@ func TestFailingExports(t *testing.T) {
 	}
 }
 
+func TestProbeRunStateKeepsItsStartTimeAcrossSyncs(t *testing.T) {
+	SetActiveProbes([]string{"s1"})
+	t.Cleanup(func() { SetActiveProbes(nil) })
+	first := GetProbeRunState("s1").StartedAt
+	if first.IsZero() {
+		t.Fatal("a running probe has no start time")
+	}
+	SetActiveProbes([]string{"s1", "s2"})
+	if got := GetProbeRunState("s1").StartedAt; !got.Equal(first) {
+		t.Errorf("a resync moved the start time of a probe still running: %v -> %v", first, got)
+	}
+	SetActiveProbes([]string{"s2"})
+	if got := GetProbeRunState("s1").StartedAt; !got.IsZero() {
+		t.Errorf("a stopped probe keeps a start time: %v", got)
+	}
+	SetActiveProbes([]string{"s1", "s2"})
+	if got := GetProbeRunState("s1").StartedAt; got.Before(first) || got.IsZero() {
+		t.Errorf("a restarted probe should carry its new start time, got %v", got)
+	}
+}
+
 func TestProbeRunStateReportsEventDriven(t *testing.T) {
 	SetActiveProbes([]string{"ev", "per"})
 	MarkProbeEventDriven("ev")

@@ -11,7 +11,9 @@ import (
 	"os"
 	"time"
 
+	"senhub-agent.go/internal/agent/extensionhost"
 	"senhub-agent.go/internal/agent/lifecycle"
+	"senhub-agent.go/internal/agent/probes"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/entitydetect"
 	"senhub-agent.go/internal/agent/services/instanceid"
@@ -54,6 +56,7 @@ type agent struct {
 	sensors            sensor.Sensor
 	entityDetector     *entitydetect.Service
 	updater            auto_update.AutoUpdate
+	extensions         []Service
 	removeLeftovers    func()
 	// exitFn is called by handleStartError with cliexit.Failure. It defaults to
 	// os.Exit; tests inject a no-op to capture the call without aborting.
@@ -191,6 +194,17 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		logger.Info().Msg("Auto-update disabled")
 	}
 
+	extensions := extensionhost.Services(extensionhost.Deps{
+		Logger:    logger,
+		Config:    localConfiguration,
+		Version:   agentCliArgs.Version,
+		StartTime: time.Now(),
+		IsProbeRegistered: func(probeType string) bool {
+			_, ok := probes.LookupProbeConstructor(probeType)
+			return ok
+		},
+	})
+
 	return agent{
 		statusChan:         statuschan.New(logger, localConfiguration.GetConfigPath(), agentCliArgs.Version, agentCliArgs.CommitHash),
 		supervisor:         lifecycle.NewSupervisor(logger),
@@ -201,6 +215,7 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		store:              store,
 		sensors:            sensors,
 		updater:            updater,
+		extensions:         extensions,
 		removeLeftovers:    func() { auto_update.RemoveUpdateLeftovers(logger) },
 		exitFn:             os.Exit,
 	}
@@ -228,6 +243,7 @@ func (a agent) services() []Service {
 		a.logger.Info().Msg("Adding auto-updater to services")
 		servicesToStart = append(servicesToStart, a.updater)
 	}
+	servicesToStart = append(servicesToStart, a.extensions...)
 	return append(servicesToStart, a.sensors)
 }
 

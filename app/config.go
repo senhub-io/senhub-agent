@@ -678,6 +678,10 @@ func checkConfig(configPath string) checkOutcome {
 	errorCount += reportAgentGovernanceProblems(config.Governance)
 	errorCount += reportLogsProblems(config.Logs)
 
+	extErrors, extWarnings := reportExtensions(config)
+	errorCount += extErrors
+	warnings += extWarnings
+
 	errorCount, warnings = reportNagiosFile(configPath, errorCount, warnings)
 
 	// Binary writability. What is correct differs per platform: on Linux the
