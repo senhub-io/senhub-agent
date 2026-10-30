@@ -63,7 +63,7 @@ func init() {
 		"initial_interval", "insecure_skip_verify", "interval", "key",
 		"key_file", "logs", "logs_queue_max_age", "logs_queue_max_bytes", "match",
 		"max_active_series_per_probe", "max_concurrent_exports",
-		"max_elapsed_time", "max_interval", "max_store_size", "memory_limit",
+		"max_elapsed_time", "max_export_bytes", "max_interval", "max_store_size", "memory_limit",
 		"metrics", "org_id", "path", "persistence", "probe_name", "probe_type",
 		"protocol", "redact_attributes", "relay", "relay_enrichment",
 		"relay_tenant_overrides", "resource", "retry", "sample_ratio",
@@ -84,15 +84,24 @@ func init() {
 
 	data_store.RegisterKnownParams("http", []string{
 		"active_probe_count", "admin_key", "agentkey", "bind_address", "cert_file", "check",
+		"check_result_channel",
 		"component", "connectivity", "css", "dashboard", "docs", "enabled",
 		"endpoint", "endpoints", "exclude_tags", "expose_host_metrics",
 		"guide", "html", "include_probe_tags", "instance", "interval", "js",
 		"key_file", "le", "lookup_id", "max_cache_size", "metrics",
 		"min_tls_version", "nagios_checks_count", "nagios_version", "name",
 		"port", "probe", "probe_name", "probe_type", "probes", "prometheus", "protocol",
-		"schema", "server_configured", "settings", "tags", "target", "tls",
+		"prtg", "schema", "server_configured", "settings", "tags", "target", "tls",
 		"tls_min_version", "total_metrics", "unit", "url",
 	}, nil)
+
+	// The sub-blocks the http strategy reads key by key
+	// (ConfigurationManager.parseParams).
+	data_store.RegisterKnownBlockParams("http", "prtg", []string{"check_result_channel"})
+	data_store.RegisterKnownBlockParams("http", "prometheus", []string{"include_probe_tags", "expose_host_metrics"})
+	// cipher_suites is written by config init (configuration.TLSConfig)
+	// even though nothing reads it; a generated file must not warn.
+	data_store.RegisterKnownBlockParams("http", "tls", []string{"enabled", "min_tls_version", "cert_file", "key_file", "cipher_suites"})
 
 	data_store.RegisterKnownParams("prtg", []string{
 		"data_retention_period", "interval", "probe_name", "probe_type",

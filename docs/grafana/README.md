@@ -54,6 +54,17 @@ Grafana picks them up within ~10 s (default `updateIntervalSeconds`).
 | `citrix-sessions-logons.json`  | SenHub Citrix VDI — Sessions & Logons | `senhub-citrix-sessions-logons` |
 | `citrix-capacity-health.json`  | SenHub Citrix VDI — Capacity & Health | `senhub-citrix-capacity-health` |
 
+### Proxmox VE (1)
+
+| File | Dashboard | UID |
+|---|---|---|
+| `proxmox.json` | SenHub Proxmox VE — Overview | `senhub-proxmox` |
+
+Nodes, guests, storage, physical disks and ZFS pools, backups, failed
+tasks, HA resources and quorum, and replication jobs, from the
+`proxmox` probe. The HA and replication panels stay empty on a cluster
+without HA resources or replication jobs.
+
 ### Azure (2)
 
 | File | Dashboard | UID |

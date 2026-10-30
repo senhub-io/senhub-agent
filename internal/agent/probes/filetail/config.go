@@ -2,6 +2,9 @@ package filetail
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
 
 	"senhub-agent.go/internal/agent/probes/logparse"
 	"senhub-agent.go/internal/agent/probes/types"
@@ -80,6 +83,9 @@ func parseConfig(config map[string]interface{}) (FileTailProbeConfig, error) {
 		parsed.MaxBytesPerLine = n
 	}
 
+	if err := parseMultilineFlushTimeout(config, &parsed.Multiline); err != nil {
+		return parsed, fmt.Errorf("filetail: %w", err)
+	}
 	if err := logparse.ParseMultiline(config, &parsed.Multiline); err != nil {
 		return parsed, fmt.Errorf("filetail: %w", err)
 	}
@@ -88,4 +94,53 @@ func parseConfig(config map[string]interface{}) (FileTailProbeConfig, error) {
 	}
 
 	return parsed, nil
+}
+
+// parseMultilineFlushTimeout reads multiline.flush_timeout into ml: a
+// duration ("30s") or a number of seconds, 0 turning the timeout off, and
+// logparse.DefaultMultilineFlushTimeout when the key is absent.
+func parseMultilineFlushTimeout(config map[string]interface{}, ml *MultilineConfig) error {
+	ml.FlushTimeout = logparse.DefaultMultilineFlushTimeout
+	raw, ok := config["multiline"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	v, present := raw["flush_timeout"]
+	if !present {
+		return nil
+	}
+	d, err := parseFlushTimeout(v)
+	if err != nil {
+		return err
+	}
+	ml.FlushTimeout = d
+	return nil
+}
+
+func parseFlushTimeout(v interface{}) (time.Duration, error) {
+	var d time.Duration
+	switch t := v.(type) {
+	case string:
+		parsed, err := time.ParseDuration(strings.TrimSpace(t))
+		if err != nil {
+			secs, convErr := strconv.ParseFloat(strings.TrimSpace(t), 64)
+			if convErr != nil {
+				return 0, fmt.Errorf("multiline.flush_timeout must be a duration (\"30s\") or a number of seconds, got %q", t)
+			}
+			parsed = time.Duration(secs * float64(time.Second))
+		}
+		d = parsed
+	case int:
+		d = time.Duration(t) * time.Second
+	case int64:
+		d = time.Duration(t) * time.Second
+	case float64:
+		d = time.Duration(t * float64(time.Second))
+	default:
+		return 0, fmt.Errorf("multiline.flush_timeout must be a duration (\"30s\") or a number of seconds, got %v", v)
+	}
+	if d < 0 {
+		return 0, fmt.Errorf("multiline.flush_timeout must not be negative, got %s", d)
+	}
+	return d, nil
 }

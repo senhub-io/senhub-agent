@@ -18,6 +18,8 @@ import (
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/lifecycle"
 	"senhub-agent.go/internal/agent/probes"
+	"senhub-agent.go/internal/agent/probes/filetail"
+	"senhub-agent.go/internal/agent/probes/logparse"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -514,6 +516,16 @@ func checkConfig(configPath string) checkOutcome {
 		} else {
 			fmt.Printf("  [OK]   %d probe(s) configured\n", len(config.Probes))
 		}
+		// A key at the probe level that no field reads is dropped by the
+		// loader and the probe runs without it: a warning, as an unread
+		// key inside params is.
+		if unknown, uerr := configuration.FindUnknownProbeKeys(configPath); uerr == nil {
+			for _, u := range unknown {
+				fmt.Printf("  [WARN] Probe %q: key %q is not read at the probe level and has no effect (accepted: %s); parameters belong under params\n",
+					u.Probe, u.Key, strings.Join(configuration.KnownProbeKeys(), ", "))
+				warnings++
+			}
+		}
 		registeredProbes := probes.GetRegisteredProbeTypes()
 		duplicate := duplicateProbeIndexes(config.Probes)
 		for i, p := range config.Probes {
@@ -571,6 +583,7 @@ func checkConfig(configPath string) checkOutcome {
 			errorCount += e
 			warnings += w
 			errorCount += reportGovernanceProblems(p)
+			errorCount += reportCollectTimeoutProblems(p)
 		}
 		for _, o := range filetailOverlaps(config.Probes) {
 			fmt.Printf("  [WARN] %s is read by filetail probes %s: each line is sent once per probe and the probes share one rotation notice; declare the file in a single probe\n",
@@ -618,9 +631,14 @@ func checkConfig(configPath string) checkOutcome {
 					warnings++
 					continue
 				}
-				fmt.Printf("         [ERROR] Storage %q: param %q is not read by the %s strategy and has no effect\n",
+				fmt.Printf("         [WARN] Storage %q: param %q is not read by the %s strategy and has no effect\n",
 					s.Name, unread.Key, s.Name)
-				errorCount++
+				warnings++
+			}
+			for _, unread := range data_store.UnreadBlockParamsFor(s.Name, s.Params) {
+				fmt.Printf("         [WARN] Storage %q: param %q is not read by the %s strategy and has no effect\n",
+					s.Name, unread, s.Name)
+				warnings++
 			}
 
 			// And the validation the agent runs at construction: a
@@ -658,6 +676,7 @@ func checkConfig(configPath string) checkOutcome {
 	}
 
 	errorCount += reportAgentGovernanceProblems(config.Governance)
+	errorCount += reportLogsProblems(config.Logs)
 
 	extErrors, extWarnings := reportExtensions(config)
 	errorCount += extErrors
@@ -868,6 +887,11 @@ func validateProbeParams(name, probeType string, params map[string]interface{}) 
 	e, w := reportProbeParamProblems(name, probeType, params)
 	errors += e
 	warnings += w
+	warnings += reportMultilineProblems(name, params)
+	warnings += reportProcessPerPIDProblems(name, probeType, params)
+	if probeType == "filetail" {
+		warnings += reportFiletailProtectedHome(name, params)
+	}
 
 	// Citrix has two accepted formats: nested director block (0.1.87+) or flat director_url/base_url.
 	// Validate manually instead of using a flat required-list.
@@ -936,6 +960,27 @@ func reportGovernanceProblems(p configuration.ProbeConfig) (errors int) {
 	}
 	if _, err := p.ParseGovernance(); err != nil {
 		fmt.Printf("         [ERROR] Probe %q: governance: %v\n", p.Name, err)
+		errors++
+	}
+	return errors
+}
+
+// reportCollectTimeoutProblems checks the probe's collect_timeout: a value
+// that is not a duration or a number of seconds, or is negative, is an
+// error naming the key. Absent is silent.
+func reportCollectTimeoutProblems(p configuration.ProbeConfig) (errors int) {
+	if _, err := probes.CollectTimeoutOf(p); err != nil {
+		fmt.Printf("         [ERROR] %v\n", err)
+		errors++
+	}
+	return errors
+}
+
+// reportLogsProblems checks the `logs:` block: a masking rule whose
+// name or pattern cannot be used is an error naming the rule.
+func reportLogsProblems(c *configuration.LogsConfig) (errors int) {
+	for _, err := range configuration.ValidateLogsConfig(c) {
+		fmt.Printf("  [ERROR] Logs: %v\n", err)
 		errors++
 	}
 	return errors
@@ -1165,4 +1210,62 @@ func reportEntityEmission(entities *configuration.EntitiesConfig, storage []conf
 	fmt.Println("         logs export normally; a consumer of the topology sees this host")
 	fmt.Println("         as absent. Add `entities: {enabled: true}` to turn it on.")
 	return true
+}
+
+// reportMultilineProblems warns on a multiline block that parses but
+// probably folds lines the reverse of what its author meant, whatever probe
+// carries it.
+func reportMultilineProblems(name string, params map[string]interface{}) (warnings int) {
+	var ml logparse.MultilineConfig
+	if err := logparse.ParseMultiline(params, &ml); err != nil {
+		return 0
+	}
+	if w := logparse.MultilineWarning(ml); w != "" {
+		fmt.Printf("         [WARN] Probe %q: %s\n", name, w)
+		return 1
+	}
+	return 0
+}
+
+// reportFiletailProtectedHome warns on a filetail path the packaged systemd
+// unit hides with ProtectHome: such a path stays empty with no other symptom.
+func reportFiletailProtectedHome(name string, params map[string]interface{}) (warnings int) {
+	if runtime.GOOS != "linux" {
+		return 0
+	}
+	paths, _ := types.StringSliceParam(params, "paths")
+	for _, p := range paths {
+		dir, hidden := filetail.HiddenByProtectHome(p)
+		if !hidden {
+			continue
+		}
+		fmt.Printf("         [WARN] Probe %q: %s is under %s, which the systemd unit hides with ProtectHome; if the agent runs as a service, %s\n", name, p, dir, filetail.ProtectHomeFix)
+		warnings++
+	}
+	return warnings
+}
+
+// processPerPIDWarning is the cardinality warning for the process probe
+// when top_n is combined with per-process series; empty otherwise.
+func processPerPIDWarning(probeType string, params map[string]interface{}) string {
+	if probeType != "process" {
+		return ""
+	}
+	detail, _ := params["detail"].(map[string]interface{})
+	if perPID, _ := detail["per_pid"].(bool); !perPID {
+		return ""
+	}
+	filter, _ := params["filter"].(map[string]interface{})
+	if n, ok := types.IntParam(filter, "top_n"); !ok || n <= 0 {
+		return "detail.per_pid only applies with filter.top_n and has no effect without it"
+	}
+	return "detail.per_pid with filter.top_n tags every series with the process id and creation time: each process entering the top creates new series that are never reused, so the series count grows without bound; leave per_pid off for the stable per-name roll-up"
+}
+
+func reportProcessPerPIDProblems(name, probeType string, params map[string]interface{}) (warnings int) {
+	if w := processPerPIDWarning(probeType, params); w != "" {
+		fmt.Printf("         [WARN] Probe %q: %s\n", name, w)
+		return 1
+	}
+	return 0
 }

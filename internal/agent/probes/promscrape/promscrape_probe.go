@@ -33,6 +33,7 @@ import (
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
 
+	"senhub-agent.go/internal/agent/probes/subcollect"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -68,7 +69,7 @@ type scrapeResult struct {
 	err      error
 }
 
-type scrapeFunc func(target string) scrapeResult
+type scrapeFunc func(ctx context.Context, target string) scrapeResult
 
 type PromScrapeProbe struct {
 	*types.BaseProbe
@@ -77,6 +78,7 @@ type PromScrapeProbe struct {
 	scrape       scrapeFunc
 	client       *http.Client
 	metricRe     *regexp.Regexp
+	failures     subcollect.Tracker
 }
 
 type scrapeConfig struct {
@@ -221,9 +223,17 @@ func (p *PromScrapeProbe) OnShutdown(ctx context.Context) error {
 	return nil
 }
 
-// Collect scrapes every target (bounded parallelism). A failing target
-// is a measurement (up=0), never a collection error.
+// Collect scrapes every target without a cancellation signal; the
+// poller calls CollectContext.
 func (p *PromScrapeProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext scrapes every target (bounded parallelism). A failing
+// target is a measurement (up=0), never a collection error. A cycle
+// whose context ends is not: its targets did not fail, so it returns
+// ctx.Err() and no datapoint.
+func (p *PromScrapeProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 	results := make([]scrapeResult, len(p.config.Targets))
 
@@ -235,10 +245,13 @@ func (p *PromScrapeProbe) Collect() ([]data_store.DataPoint, error) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			results[i] = p.scrape(target)
+			results[i] = p.scrape(ctx, target)
 		}(i, target)
 	}
 	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("prometheus_scrape collection interrupted: %w", err)
+	}
 
 	var points []data_store.DataPoint
 	for _, res := range results {
@@ -258,10 +271,9 @@ func (p *PromScrapeProbe) buildDatapoints(res scrapeResult, ts time.Time) []data
 	up := float64(1)
 	if res.err != nil {
 		up = 0
-		p.moduleLogger.Warn().
-			Err(res.err).
-			Str("target", res.target).
-			Msg("prometheus_scrape target failed")
+		p.failures.Failed(p.moduleLogger, subcollect.Warn, res.target, res.err, "prometheus_scrape target failed")
+	} else {
+		p.failures.Succeeded(p.moduleLogger, res.target, "prometheus_scrape target recovered")
 	}
 
 	points := []data_store.DataPoint{
@@ -299,10 +311,10 @@ func (p *PromScrapeProbe) buildDatapoints(res scrapeResult, ts time.Time) []data
 }
 
 // scrapeOnce is the production scrapeFunc: one HTTP GET + text parse.
-func (p *PromScrapeProbe) scrapeOnce(target string) scrapeResult {
+func (p *PromScrapeProbe) scrapeOnce(ctx context.Context, target string) scrapeResult {
 	res := scrapeResult{target: target}
 
-	req, err := http.NewRequest(http.MethodGet, target, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		res.err = fmt.Errorf("building scrape request for %s: %w", target, err)
 		return res

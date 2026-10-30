@@ -16,11 +16,19 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/datadir"
 )
 
 // Configuration Management - Loading, creation, validation, and TLS generation
 
 func (lc *LocalConfiguration) loadOrCreateConfiguration() error {
+	// Runs before any file is written so the admin key and sealed secrets
+	// never land under the inherited %ProgramData% ACL; on an existing
+	// install it repairs the ACL left by earlier versions.
+	if err := datadir.Secure(filepath.Dir(lc.configPath), lc.logger); err != nil {
+		lc.logger.Warn().Err(err).Str("dir", filepath.Dir(lc.configPath)).Msg("Could not restrict data directory ACL")
+	}
+
 	if _, err := os.Stat(lc.configPath); os.IsNotExist(err) {
 		lc.logger.Info().Msgf("Configuration file not found, creating default: %s", lc.configPath)
 		return lc.createDefaultConfiguration()
@@ -221,9 +229,8 @@ func (lc *LocalConfiguration) generateAgentYAML(agentKey string) ([]byte, error)
 
 // generateHTTPStrategyFragment renders the default HTTP strategy
 // fragment (strategies.d/00-http.yaml). When --enable-https is set,
-// the strategy gets a TLS block + flips to the HTTPS port and binds
-// to 0.0.0.0; otherwise it stays on 127.0.0.1:8080 with PRTG / Web /
-// Nagios endpoints.
+// the strategy gets a TLS block + flips to the HTTPS port. The bind
+// address is unaffected: loopback unless the operator chose another.
 func (lc *LocalConfiguration) generateHTTPStrategyFragment(adminKey string) string {
 	port := lc.defaultHTTPPort()
 	bindAddress := "127.0.0.1"
@@ -234,7 +241,6 @@ func (lc *LocalConfiguration) generateHTTPStrategyFragment(adminKey string) stri
 
 	if lc.args != nil && lc.args.EnableHttps {
 		port = lc.args.HttpsPort
-		bindAddress = "0.0.0.0"
 
 		// A certificate the operator supplied wins over the self-signed
 		// pair. It used to be parsed and then read by nobody, so
@@ -307,7 +313,6 @@ func (lc *LocalConfiguration) createDefaultStorageConfig() []StorageConfig {
 	// Add TLS configuration if HTTPS is enabled
 	if lc.args.EnableHttps {
 		httpParams["port"] = lc.args.HttpsPort
-		httpParams["bind_address"] = "0.0.0.0" // Accept external connections with HTTPS
 
 		tlsConfig := TLSConfig{
 			Enabled:       true,

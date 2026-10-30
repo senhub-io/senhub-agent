@@ -117,15 +117,24 @@ func (p *VarnishProbe) buildTags(metricType string, extra ...tags.Tag) []tags.Ta
 	return out
 }
 
-// Collect runs varnishstat and emits datapoints. If varnishstat is not found
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
+func (p *VarnishProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext runs varnishstat and emits datapoints. If varnishstat is not found
 // or returns an error, senhub.varnish.up=0 is emitted and no error is
 // returned to the framework (a broken Varnish instance is a measurement, not
 // a collection fault).
-func (p *VarnishProbe) Collect() ([]data_store.DataPoint, error) {
+func (p *VarnishProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 
-	stats, err := p.runVarnishstat()
+	stats, err := p.runVarnishstat(ctx)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("varnish collection interrupted: %w", ctxErr)
+		}
 		p.moduleLogger.Warn().Err(err).Msg("varnishstat failed; reporting varnish down")
 		p.entitySrc.setReachable(false)
 		points := []data_store.DataPoint{
@@ -147,13 +156,13 @@ func (p *VarnishProbe) Collect() ([]data_store.DataPoint, error) {
 }
 
 // runVarnishstat executes varnishstat -j -1 and parses the JSON output.
-func (p *VarnishProbe) runVarnishstat() (map[string]varnishStat, error) {
+func (p *VarnishProbe) runVarnishstat(ctx context.Context) (map[string]varnishStat, error) {
 	args := []string{"-j", "-1"}
 	if p.cfg.InstanceName != "" {
 		args = append(args, "-n", p.cfg.InstanceName)
 	}
 
-	cmd := exec.Command(p.cfg.VarnishstatPath, args...) //nolint:gosec // path is operator-configured
+	cmd := exec.CommandContext(ctx, p.cfg.VarnishstatPath, args...) //nolint:gosec // path is operator-configured
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("running varnishstat: %w", err)

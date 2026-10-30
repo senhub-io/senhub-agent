@@ -48,8 +48,8 @@ func SetProbeTypeLookup(known func(probeType string) bool) { probeTypeLookup = k
 // variable whose first segment is one of them sets the entry, not a
 // parameter; PARAMS__<KEY> reaches a parameter that bears the same name.
 var probeLevelFields = map[string]bool{
-	"type": true, "enabled": true, "log_strategies": true,
-	"custom_tags": true, "governance": true,
+	"type": true, "enabled": true, "log_strategies": true, "log_redact": true,
+	"custom_tags": true, "governance": true, "collect_timeout": true,
 }
 
 type envSetting struct {
@@ -111,6 +111,7 @@ func applyEnvProbes(data *LocalConfigurationData, environ []string, log *logger.
 	if err != nil {
 		return err
 	}
+	groups = withImplicitACAJobs(groups, data, log)
 	for _, g := range groups {
 		if err := mergeEnvProbe(data, g, log); err != nil {
 			return err
@@ -313,7 +314,7 @@ func mergeEnvProbe(data *LocalConfigurationData, g envProbe, log *logger.ModuleL
 }
 
 // applyProbeLevel sets the fields of the probe entry that sit beside
-// params: enabled, log_strategies, custom_tags, governance.
+// params: enabled, log_strategies, log_redact, custom_tags, governance, collect_timeout.
 func applyProbeLevel(p *ProbeConfig, governance *map[string]interface{}, s envSetting, seen map[string]string) error {
 	key := strings.Join(s.segments, ".")
 	if prev, dup := seen[key]; dup {
@@ -331,6 +332,20 @@ func applyProbeLevel(p *ProbeConfig, governance *map[string]interface{}, s envSe
 			return fmt.Errorf("%s: %w", s.variable, err)
 		}
 		p.Enabled = &b
+	case "collect_timeout":
+		if len(s.segments) > 1 {
+			return fmt.Errorf("%s: collect_timeout is a single value", s.variable)
+		}
+		p.CollectTimeout = s.value
+	case "log_redact":
+		if len(s.segments) > 1 {
+			return fmt.Errorf("%s: log_redact is a single value", s.variable)
+		}
+		b, err := parseBool(s.value)
+		if err != nil {
+			return fmt.Errorf("%s: %w", s.variable, err)
+		}
+		p.LogRedact = &b
 	case "log_strategies":
 		if len(s.segments) > 1 {
 			return fmt.Errorf("%s: log_strategies is a single list", s.variable)
@@ -766,4 +781,104 @@ func cloneMap(m map[string]interface{}) map[string]interface{} {
 		}
 	}
 	return out
+}
+
+const (
+	acaAppsType = "azure_container_apps"
+	acaJobsType = "azure_container_app_jobs"
+	// implicitJobsName is the probe the environment rule adds for the jobs
+	// of a Container Apps discovery; SENHUB_PROBE_JOBS_TYPE=none turns it off.
+	implicitJobsName = "jobs"
+	disabledType     = "none"
+)
+
+// acaJobsCopied are the parameters of a Container Apps discovery the jobs
+// probe takes over: the identity and the perimeter, nothing that selects or
+// parses applications.
+var acaJobsCopied = map[string]bool{
+	"tenant_id": true, "client_id": true, "client_secret": true, "client_secret_file": true,
+	"subscription_id": true, "authority_host": true, "management_host": true,
+}
+
+// withImplicitACAJobs follows the jobs of a Container Apps discovery declared
+// from the environment, as a container image is configured: when one
+// SENHUB_PROBE_<NAME>_TYPE=azure_container_apps probe has a discovery block,
+// no variable names a probe JOBS and no probe of the configuration is named
+// jobs, a jobs probe with a discovery on the same identity and resource
+// groups is added. SENHUB_PROBE_JOBS_TYPE=none removes it; any other JOBS
+// variable is the operator's own probe and is left as it is. A file
+// configuration is never changed.
+func withImplicitACAJobs(groups []envProbe, data *LocalConfigurationData, log *logger.ModuleLogger) []envProbe {
+	for i, g := range groups {
+		if g.name == implicitJobsName {
+			if t, ok := envProbeType(g); ok && strings.EqualFold(t, disabledType) {
+				if log != nil {
+					log.Info().Msg("Container Apps jobs probe turned off by SENHUB_PROBE_JOBS_TYPE=none")
+				}
+				return append(groups[:i:i], groups[i+1:]...)
+			}
+			return groups
+		}
+	}
+	for _, p := range data.Probes {
+		if nameKey(p.Name) == implicitJobsName {
+			return groups
+		}
+	}
+	if probeTypeLookup != nil && !probeTypeLookup(acaJobsType) {
+		return groups
+	}
+	var apps []envProbe
+	for _, g := range groups {
+		if t, ok := envProbeType(g); ok && t == acaAppsType && hasDiscovery(g) {
+			apps = append(apps, g)
+		}
+	}
+	if len(apps) != 1 {
+		if len(apps) > 1 && log != nil {
+			log.Info().Int("discoveries", len(apps)).
+				Msg("Several Container Apps discoveries are declared from the environment: no jobs probe is added; declare SENHUB_PROBE_<NAME>_TYPE=azure_container_app_jobs for the ones wanted")
+		}
+		return groups
+	}
+	src := apps[0]
+	// Copied settings keep their real variable name: a secret parameter is
+	// stored as ${env:<variable>} and resolved from the environment later.
+	jobs := envProbe{name: implicitJobsName}
+	jobs.settings = append(jobs.settings, envSetting{variable: "SENHUB_PROBE_JOBS_TYPE (implicit)", segments: []string{"type"}, value: acaJobsType})
+	interval := "300"
+	for _, st := range src.settings {
+		switch {
+		case len(st.segments) == 1 && acaJobsCopied[st.segments[0]]:
+			jobs.settings = append(jobs.settings, envSetting{variable: st.variable, segments: st.segments, value: st.value})
+		case len(st.segments) == 2 && st.segments[0] == "discovery" && st.segments[1] == "resource_groups":
+			jobs.settings = append(jobs.settings, envSetting{variable: st.variable, segments: st.segments, value: st.value})
+		case len(st.segments) == 2 && st.segments[0] == "discovery" && st.segments[1] == "interval":
+			interval = st.value
+		}
+	}
+	jobs.settings = append(jobs.settings, envSetting{variable: "SENHUB_PROBE_JOBS_DISCOVERY__INTERVAL (implicit)", segments: []string{"discovery", "interval"}, value: interval})
+	if log != nil {
+		log.Info().Str("from", src.name).
+			Msg("Container Apps jobs followed by default with the discovery's identity and resource groups; SENHUB_PROBE_JOBS_TYPE=none turns it off")
+	}
+	return append(groups, jobs)
+}
+
+func envProbeType(g envProbe) (string, bool) {
+	for _, st := range g.settings {
+		if len(st.segments) == 1 && st.segments[0] == "type" {
+			return strings.TrimSpace(st.value), true
+		}
+	}
+	return "", false
+}
+
+func hasDiscovery(g envProbe) bool {
+	for _, st := range g.settings {
+		if st.segments[0] == "discovery" {
+			return true
+		}
+	}
+	return false
 }

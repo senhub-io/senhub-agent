@@ -193,5 +193,6 @@ series' tags.
 | `container.blockio.io_service_bytes_recursive.write` | `container.blockio.io_service_bytes_recursive.write` | Docker {container_name} Block I/O Write | B | Cumulative block I/O write bytes |
 | `senhub.docker.blkio.service_time.total` | `senhub.docker.blkio.service_time.total` | Docker {container_name} Block I/O Service Time | ns | Cumulative block I/O service time in nanoseconds (io_service_time_recursive Total; cgroupsv1 only) |
 | `senhub.docker.blkio.sectors.total` | `senhub.docker.blkio.sectors.total` | Docker {container_name} Block I/O Sectors | # | Cumulative block I/O sectors transferred (io_sectors_recursive Total; cgroupsv1 only) |
+| `senhub.probe.check.result` | `senhub.probe.check.result` | Check Result | # | Why the last check failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied |
 
 <!-- schema:metrics:end -->

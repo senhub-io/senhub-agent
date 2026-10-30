@@ -44,7 +44,7 @@ func routedOnError(t *testing.T, probe types.Probe) int {
 			return nil
 		},
 	}
-	if err := poller.collect(); err == nil {
+	if err := poller.collect(context.Background()); err == nil {
 		t.Fatal("collect must still report the probe error")
 	}
 	return routed

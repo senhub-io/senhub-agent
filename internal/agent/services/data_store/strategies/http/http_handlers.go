@@ -3,6 +3,7 @@ package http
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -35,6 +36,7 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	// even if a future tracing change introduces a regression.
 	router.Use(TraceRequests)
 	router.Use(NoStore)
+	router.Use(NoReferrer)
 
 	// Always expose health check endpoint
 	router.HandleFunc("/health", h.HandleHealth).Methods("GET")
@@ -50,6 +52,7 @@ func (h *HTTPHandlers) SetupRoutes() *mux.Router {
 	router.HandleFunc("/api/{agentkey}/info/schema/{probe}", h.HandleInfoSchema).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/info/otlp", h.HandleInfoOTLP).Methods("GET")
 	router.HandleFunc("/api/{agentkey}/info/events", h.HandleInfoEvents).Methods("GET")
+	router.HandleFunc("/api/{agentkey}/info/self-records", h.HandleInfoSelfRecords).Methods("GET")
 
 	// The metric cache and its statistics are what a poller already
 	// reads through its own format, so the key it holds opens them.
@@ -232,6 +235,10 @@ func (h *HTTPHandlers) HandleInfoEvents(w http.ResponseWriter, r *http.Request) 
 	h.strategy.handleInfoEvents(w, r)
 }
 
+func (h *HTTPHandlers) HandleInfoSelfRecords(w http.ResponseWriter, r *http.Request) {
+	h.strategy.handleInfoSelfRecords(w, r)
+}
+
 func (h *HTTPHandlers) HandleCatalogOutputs(w http.ResponseWriter, r *http.Request) {
 	h.strategy.handleCatalogOutputs(w, r)
 }
@@ -392,7 +399,13 @@ func (h *HTTPHandlers) HandleUniversalConfigTest(w http.ResponseWriter, r *http.
 // scattered across the managers that serve it.
 func (h *HTTPHandlers) adminOnly(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := h.strategy.authManager.AuthenticateAdmin(w, r); !ok {
+		key, ok := h.strategy.authManager.AuthenticateAdmin(w, r)
+		if !ok {
+			return
+		}
+		if key != SessionKeyPlaceholder && r.Method == http.MethodGet &&
+			strings.HasPrefix(r.URL.Path, "/web/") && !strings.HasPrefix(r.URL.Path, "/web/"+key+"/assets/") {
+			h.strategy.authManager.startConsoleSession(w, r, key)
 			return
 		}
 		next(w, r)

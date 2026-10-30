@@ -151,12 +151,21 @@ func (p *apacheProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
-// Collect fetches mod_status and emits metrics. A fetch failure produces
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
+func (p *apacheProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext fetches mod_status and emits metrics. A fetch failure produces
 // senhub.apache.up=0 but is never a collection-level error — the probe
 // continues scheduling on the next interval.
-func (p *apacheProbe) Collect() ([]data_store.DataPoint, error) {
+func (p *apacheProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
-	points := p.collect(now)
+	points, err := p.collect(ctx, now)
+	if err != nil {
+		return nil, err
+	}
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
@@ -182,7 +191,7 @@ func (e *modStatusHTTPError) Error() string {
 	return fmt.Sprintf("GET %s returned HTTP %d", e.endpoint, e.code)
 }
 
-func (p *apacheProbe) collect(now time.Time) []data_store.DataPoint {
+func (p *apacheProbe) collect(ctx context.Context, now time.Time) ([]data_store.DataPoint, error) {
 	commonTags := []tags.Tag{
 		{Key: "metric_type", Value: "status"},
 	}
@@ -190,9 +199,12 @@ func (p *apacheProbe) collect(now time.Time) []data_store.DataPoint {
 		commonTags = append(commonTags, tags.Tag{Key: "service.instance.id", Value: id})
 	}
 
-	fields, err := p.fetchStatus()
+	fields, err := p.fetchStatus(ctx)
 	checkValue := dbcommon.ClassifyError(err)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("apache collection interrupted: %w", ctxErr)
+		}
 		var httpErr *modStatusHTTPError
 		if errors.As(err, &httpErr) {
 			checkValue = dbcommon.ClassifyHTTPStatus(httpErr.code)
@@ -206,7 +218,7 @@ func (p *apacheProbe) collect(now time.Time) []data_store.DataPoint {
 		return []data_store.DataPoint{
 			{Name: "senhub.apache.up", Value: 0, Timestamp: now, Tags: commonTags},
 			{Name: dbcommon.CheckResultMetric, Value: float64(checkValue), Timestamp: now, Tags: commonTags},
-		}
+		}, nil
 	}
 
 	p.entitySrc.setReachable(true, "")
@@ -272,12 +284,12 @@ func (p *apacheProbe) collect(now time.Time) []data_store.DataPoint {
 		})
 	}
 
-	return points
+	return points, nil
 }
 
 // fetchStatus performs the HTTP GET and parses the mod_status ?auto text.
-func (p *apacheProbe) fetchStatus() (*modStatusFields, error) {
-	req, err := http.NewRequest(http.MethodGet, p.cfg.Endpoint, nil)
+func (p *apacheProbe) fetchStatus(ctx context.Context) (*modStatusFields, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.cfg.Endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("building request for %s: %w", p.cfg.Endpoint, err)
 	}

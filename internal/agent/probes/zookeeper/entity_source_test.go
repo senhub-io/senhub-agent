@@ -1,6 +1,7 @@
 package zookeeper
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"testing"
@@ -286,7 +287,7 @@ func TestProbe_ResolvesServerID_FromConf(t *testing.T) {
 	payloads <- mntrPayload
 	payloads <- confPayload
 
-	dialStub := func(network, address string, timeout time.Duration) (net.Conn, error) {
+	dialStub := func(_ context.Context, network, address string, timeout time.Duration) (net.Conn, error) {
 		payload, ok := <-payloads
 		if !ok {
 			return nil, fmt.Errorf("no more stubs")
@@ -333,7 +334,7 @@ func TestProbe_FallsBackWhenConfUnavailable(t *testing.T) {
 
 	// First call: mntr succeeds. Second call (conf): connection refused.
 	callCount := 0
-	dialStub := func(network, address string, timeout time.Duration) (net.Conn, error) {
+	dialStub := func(_ context.Context, network, address string, timeout time.Duration) (net.Conn, error) {
 		callCount++
 		if callCount == 1 {
 			server, client := net.Pipe()
@@ -379,7 +380,7 @@ func TestProbe_InstanceNameSkipsConfFetch(t *testing.T) {
 	const mntrPayload = "zk_version\t3.8.0\nzk_avg_latency\t1\n"
 
 	callCount := 0
-	dialStub := func(network, address string, timeout time.Duration) (net.Conn, error) {
+	dialStub := func(_ context.Context, network, address string, timeout time.Duration) (net.Conn, error) {
 		callCount++
 		server, client := net.Pipe()
 		go func() {

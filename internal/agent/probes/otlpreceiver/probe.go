@@ -38,6 +38,7 @@ import (
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/tags"
 	"senhub-agent.go/internal/agent/utils/netbind"
 )
 
@@ -162,11 +163,7 @@ func (p *OTLPReceiverProbe) OnStart(quitChannel chan struct{}) error {
 	agentstate.SeedOTLPReceiverIngested(p.config.Signals.names()...)
 	agentstate.SeedOTLPReceiverCoverage(p.config.Signals.names(), p.coverageOrigins())
 
-	if netbind.IsWildcard(p.config.Address) {
-		p.moduleLogger.Warn().
-			Str("address", p.config.Address).
-			Msg("OTLP receiver bound to ALL interfaces without authentication — restrict `address` or firewall the port")
-	}
+	p.warnIfUnprotectedWildcard()
 
 	switch p.config.Protocol {
 	case protocolGRPC:
@@ -176,6 +173,22 @@ func (p *OTLPReceiverProbe) OnStart(quitChannel chan struct{}) error {
 	default:
 		return fmt.Errorf("unsupported protocol %q", p.config.Protocol)
 	}
+}
+
+// warnIfUnprotectedWildcard warns when the receiver listens on every
+// interface with neither a bearer token nor a source allow-list: any
+// host that can reach the port may then push data. Either control on its
+// own is a restriction, so it silences the warning.
+func (p *OTLPReceiverProbe) warnIfUnprotectedWildcard() {
+	if !netbind.IsWildcard(p.config.Address) {
+		return
+	}
+	if p.config.BearerToken != "" || len(p.config.AllowedCIDRs) > 0 {
+		return
+	}
+	p.moduleLogger.Warn().
+		Str("address", p.config.Address).
+		Msg("OTLP receiver bound to ALL interfaces without authentication — set `bearer_token` or `allowed_cidrs`, restrict `address` or firewall the port")
 }
 
 // OnShutdown gracefully stops whichever server is running.
@@ -231,7 +244,7 @@ func (p *OTLPReceiverProbe) ingest(points []data_store.DataPoint, dropped int) e
 		return nil
 	}
 
-	enriched := p.EnrichDataPointsWithProbeName(points, p.GetName())
+	enriched := p.EnrichDataPointsWithProbeName(withoutProbeIdentity(points), p.GetName())
 	if err := callback(enriched); err != nil {
 		p.moduleLogger.Error().Err(err).Msg("Failed to forward ingested OTLP datapoints to data store")
 		return err
@@ -239,6 +252,26 @@ func (p *OTLPReceiverProbe) ingest(points []data_store.DataPoint, dropped int) e
 	agentstate.IncrementOTLPReceiverIngested(signalMetrics, len(points))
 	p.moduleLogger.Debug().Int("datapoints", len(points)).Msg("Ingested OTLP datapoints")
 	return nil
+}
+
+// withoutProbeIdentity drops the probe_name / probe_type tags a relayed
+// agent already carries, so the receiver's own identity is the only one
+// on the ingested point. Left in, the appended identity would sit beside
+// the source's and consumers reading the first match would see the
+// source's probe (skip test, retirement of same-named local probes).
+func withoutProbeIdentity(points []data_store.DataPoint) []data_store.DataPoint {
+	out := make([]data_store.DataPoint, len(points))
+	for i, dp := range points {
+		out[i] = dp
+		out[i].Tags = make([]tags.Tag, 0, len(dp.Tags))
+		for _, t := range dp.Tags {
+			if t.Key == "probe_name" || t.Key == "probe_type" {
+				continue
+			}
+			out[i].Tags = append(out[i].Tags, t)
+		}
+	}
+	return out
 }
 
 // publishMetricBatch forwards the raw ResourceMetrics to the verbatim
@@ -284,6 +317,7 @@ func (p *OTLPReceiverProbe) ingestLogs(resourceLogs []*logspb.ResourceLogs) {
 		return
 	}
 	fillSeverityNumbers(resourceLogs)
+	agentstate.RedactLogBatches(resourceLogs, p.GetName())
 	records := flattenResourceLogs(resourceLogs, p.GetName())
 	if len(records) == 0 {
 		return

@@ -248,12 +248,30 @@ func TestServiceSetIncludesUpdaterOnlyWhenEnabled(t *testing.T) {
 	if len(set) != 4 {
 		t.Fatalf("service set with an updater has %d entries, want 4", len(set))
 	}
-	if last := set[len(set)-1]; last.GetName() != "AutoUpdate" {
-		t.Errorf("last service is %q, want AutoUpdate — it must stop first", last.GetName())
+	if set[1].GetName() != "DataStore" || set[2].GetName() != "AutoUpdate" || set[3].GetName() != "Sensor" {
+		t.Errorf("order is %q, %q, %q, want DataStore, AutoUpdate, Sensor — probes push into the store, so the store outlives them on teardown",
+			set[1].GetName(), set[2].GetName(), set[3].GetName())
 	}
-	if set[1].GetName() != "DataStore" || set[2].GetName() != "Sensor" {
-		t.Errorf("order is %q then %q, want DataStore then Sensor — probes push into the store, so the store outlives them on teardown",
-			set[1].GetName(), set[2].GetName())
+}
+
+// TestProbesStartAfterEveryOtherService pins that the probe pool comes
+// last. Start brings the services up one after the other, so whatever
+// follows the sensor waits for every probe to start: a probe slow to
+// start then kept the updater from running at all.
+func TestProbesStartAfterEveryOtherService(t *testing.T) {
+	a := agent{
+		logger:  noopLogger(),
+		store:   stubStore{},
+		sensors: stubSensor{},
+		updater: stubUpdater{},
+	}
+
+	set := a.services()
+	if last := set[len(set)-1]; last.GetName() != "Sensor" {
+		t.Errorf("last service is %q, want Sensor", last.GetName())
+	}
+	if set[len(set)-2].GetName() != "AutoUpdate" {
+		t.Errorf("service before the sensor is %q, want AutoUpdate", set[len(set)-2].GetName())
 	}
 }
 

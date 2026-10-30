@@ -33,7 +33,7 @@ func NewCpuProbe(config map[string]interface{}, baseLogger *logger.Logger) (type
 				},
 				sync: newClockSync(),
 				onSyncError: func(err error) {
-					moduleLogger.Warn().Err(err).Msg("reading the host clock synchronisation state failed; clock sync points are left out of this cycle")
+					moduleLogger.Warn().Err(err).Msg("reading the host clock synchronisation state failed; clock sync points are left out until a read succeeds")
 				},
 			}, nil
 		},

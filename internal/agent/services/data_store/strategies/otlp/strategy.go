@@ -395,6 +395,9 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 	// replay at boot and on backend recovery. On by default, in the
 	// state directory, whenever raw logs are emitted; entity events are a
 	// re-emitted state stream and are not queued.
+	if s.exporters.log != nil {
+		s.exporters.log = newSplittingLogExporter(s.exporters.log, s.cfg.Logs.MaxExportBytes, s.logger)
+	}
 	var logExp *persistentLogExporter
 	if queuePath := s.cfg.Persistence.logsQueuePath(); queuePath != "" && s.cfg.Logs.Enabled && s.exporters.log != nil {
 		if err := prepareQueueDir(queuePath); err != nil {
@@ -408,6 +411,9 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 			s.exporters.log = logExp
 			s.logExporter = logExp
 		}
+	}
+	if logExp == nil && s.exporters.log != nil {
+		s.exporters.log = &reportingLogExporter{Exporter: s.exporters.log, reporter: s.psReporter}
 	}
 
 	// Entity events ride the log signal, so the pipeline (provider + both
@@ -555,6 +561,7 @@ func (s *OTLPSyncStrategy) pushPeriodic(parent context.Context) {
 	probesTotal, probesHealthy := agentstate.GetProbeCounts()
 	agentRecords := agentmetrics.BuildAgentRecords(agentmetrics.AgentMetricsSnapshot{
 		StartTime:     s.startTime,
+		Reader:        "otlp",
 		ProbesTotal:   probesTotal,
 		ProbesHealthy: probesHealthy,
 		BuildVersion:  cliArgs.Version,
@@ -736,11 +743,13 @@ const tagProbeType = "probe_type"
 // relay rather than this strategy's store.
 const relayedProbeType = "otlp_receiver"
 
-// dataPointTag returns the value of one tag, or "" when absent.
+// dataPointTag returns the effective value of one tag, or "" when absent.
+// The last occurrence wins, matching how the metric store flattens tags, so
+// the skip test and the probes set agree with the series actually stored.
 func dataPointTag(dp datapoint.DataPoint, key string) string {
-	for _, t := range dp.Tags {
-		if t.Key == key {
-			return t.Value
+	for i := len(dp.Tags) - 1; i >= 0; i-- {
+		if dp.Tags[i].Key == key {
+			return dp.Tags[i].Value
 		}
 	}
 	return ""

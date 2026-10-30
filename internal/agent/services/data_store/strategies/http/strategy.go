@@ -16,6 +16,7 @@ import (
 	"senhub-agent.go/internal/agent/types/datapoint"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // HTTPSyncStrategy implements an HTTP server that exposes metrics via REST endpoints
@@ -52,6 +53,11 @@ type HTTPSyncStrategy struct {
 	lookupRegistry      *LookupRegistry        // lookup definitions registry for status/health mappings
 	lookupsManager      *LookupsManager        // lookups API endpoints manager
 	router              *mux.Router            // what SetupRoutes built; the endpoint list walks it
+
+	// firstDataWindow and firstDataWait override the defaults; tests only.
+	firstDataWindow     time.Duration
+	firstDataWait       time.Duration
+	firstDataWaitLogged sync.Map // lower-cased probe name -> struct{}, one Debug line per probe
 }
 
 // SenHubMetric represents a metric in standardized SenHub raw format
@@ -101,6 +107,8 @@ type PRTGChannel struct {
 	LimitMode       int     `json:"limitmode,omitempty"`
 	LimitMaxWarning float64 `json:"limitmaxwarning,omitempty"`
 	LimitMaxError   float64 `json:"limitmaxerror,omitempty"`
+	LimitMinError   float64 `json:"limitminerror,omitempty"`
+	LimitErrorMsg   string  `json:"limiterrormsg,omitempty"`
 	ValueLookup     string  `json:"valuelookup,omitempty"`
 }
 
@@ -166,6 +174,7 @@ func NewHTTPSyncStrategy(
 	strategy.port = strategy.configManager.GetPort()
 	strategy.bindAddress = strategy.configManager.GetBindAddress()
 	strategy.cache.SetMaxSeries(strategy.configManager.GetMaxCacheSize())
+	strategy.formatConverter.checkResultChannel = strategy.configManager.IsPRTGCheckResultChannel
 
 	// Initialize debug manager
 	strategy.debugManager = NewDebugManager(strategy, moduleLogger)

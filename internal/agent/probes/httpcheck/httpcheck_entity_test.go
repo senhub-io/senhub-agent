@@ -1,6 +1,7 @@
 package httpcheck
 
 import (
+	"context"
 	"net"
 	"strings"
 	"syscall"
@@ -143,7 +144,7 @@ func TestHTTPCheckCollect_SeriesTagsAndCheckResult(t *testing.T) {
 	p.entitySrc.hostID = "host-1"
 	p.entitySrc.agentID = func() string { return "agent-1" }
 
-	p.check = func(target string) httpResult {
+	p.check = func(_ context.Context, target string) httpResult {
 		if strings.Contains(target, "192.0.2.10") {
 			return httpResult{target: target, err: &net.OpError{
 				Op:  "dial",

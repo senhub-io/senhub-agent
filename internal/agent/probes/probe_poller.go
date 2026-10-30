@@ -47,6 +47,16 @@ type ProbePoller struct {
 	// governance-only change on reload reaches the next emission without
 	// restarting the probe.
 	governanceAttrs atomic.Pointer[map[string]any]
+	// stopped is set by Shutdown. A collection still blocked when the
+	// stop budget ran out returns later; what it brings back belongs to
+	// a probe that no longer runs and is dropped.
+	stopped atomic.Bool
+	// observer reports how the scheduler started each collection.
+	observer *scheduleObserver
+	// callDeadline is the deadline of each collection's context and
+	// collectTimeout the probe's own collect_timeout (zero when unset).
+	callDeadline   time.Duration
+	collectTimeout time.Duration
 }
 
 // probeCadenceSource wraps a probe entity source so it also reports the
@@ -95,6 +105,11 @@ func NewProbePoller(
 	addDataPoint data_store.AddCallback,
 ) (*ProbePoller, error) {
 	probeId := GenerateProbeId(config)
+
+	collectTimeout, err := CollectTimeoutOf(config)
+	if err != nil {
+		return nil, err
+	}
 
 	// Create module-specific logger for probe poller using probe type
 	// Type is the technical identifier (e.g., "citrix", "cpu"), ensures consistent logging
@@ -182,17 +197,23 @@ func NewProbePoller(
 		moduleLogger: moduleLogger,
 	}
 
+	probePoller.collectTimeout = collectTimeout
+	probePoller.callDeadline = collectDeadline(collectTimeout, probe.GetInterval())
 	probePoller.ApplyGovernance(config)
+	probePoller.observer = newScheduleObserver(config.Name, probePoller.probeType())
 
 	// Two probes of one type share the module logger; the scheduler's retry
 	// and error lines must say which of them failed.
 	schedulerLogger := moduleLogger.With().Str("probe", probe.GetName()).Logger()
 	scheduler := periodic_scheduler.NewPeriodicScheduler(periodic_scheduler.PeriodicSchedulerConfig{
 		Interval:          probe.GetInterval(),
+		InitialDelay:      StartOffset(probeId, probe.GetInterval()),
 		MaxRetries:        3,
 		ExecuteOnStart:    true,
 		ExecuteOnShutdown: false,
-		Execute:           probePoller.collect,
+		CallTimeout:       probePoller.callDeadline,
+		Observer:          probePoller.observer,
+		ExecuteContext:    probePoller.collect,
 		OnStart:           probe.OnStart,
 		OnShutdown:        probe.OnShutdown,
 	}, &schedulerLogger)
@@ -201,6 +222,10 @@ func NewProbePoller(
 	if probeWithCallback, ok := probe.(types.ProbeWithCallback); ok {
 		moduleLogger.Debug().Msg("Setting callback for probe")
 		probeWithCallback.SetCallback(probePoller.getWrappedCallback())
+	}
+	_, callbackProbe := probe.(types.ProbeWithCallback)
+	if _, listenerProbe := probe.(types.ListenerProbe); callbackProbe || listenerProbe {
+		agentstate.MarkProbeEventDriven(probePoller.ProbeId)
 	}
 
 	moduleLogger.Debug().Msg("Probe poller created successfully")
@@ -251,6 +276,7 @@ func (p *ProbePoller) Start(ctx context.Context) error {
 		return nil
 	}
 
+	p.stopped.Store(false)
 	if err := p.scheduler.Start(ctx); err != nil {
 		return err
 	}
@@ -339,11 +365,14 @@ func (p *ProbePoller) GovernanceAttributes() map[string]any {
 // provider). When enabled, span duration captures Collect() latency and
 // attributes carry probe identity + emitted datapoints — useful for
 // detecting probes that have grown slow or stopped emitting.
-func (p *ProbePoller) collect() error {
+func (p *ProbePoller) collect(runCtx context.Context) error {
 	p.moduleLogger.Debug().Msg("Collecting data")
 
+	if runCtx == nil {
+		runCtx = context.Background()
+	}
 	tracer := otel.Tracer(probeTracerScope)
-	ctx, span := tracer.Start(context.Background(), "probe.collect")
+	ctx, span := tracer.Start(runCtx, "probe.collect")
 	span.SetAttributes(
 		attribute.String("probe.name", p.Probe.GetName()),
 		attribute.String("probe.type", p.probeType()),
@@ -351,8 +380,20 @@ func (p *ProbePoller) collect() error {
 	)
 	defer span.End()
 
-	data, err := p.Probe.Collect()
+	data, err := p.collectOnce(ctx)
+	if p.stopped.Load() {
+		p.moduleLogger.Debug().Msg("Collection ended after the probe stopped; result dropped")
+		return nil
+	}
+	if err != nil && runCtx.Err() != nil && errors.Is(err, context.Canceled) {
+		// The probe is being stopped: an interrupted cycle is not a
+		// failure of the target and must not count as one.
+		span.SetStatus(codes.Unset, "")
+		p.moduleLogger.Debug().Err(err).Msg("Collection cancelled by shutdown")
+		return nil
+	}
 	if err != nil {
+		err = p.nameCutDeadline(ctx, err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		agentstate.IncrementCollectErrors(p.probeType(), collectErrorReason(err))
@@ -377,6 +418,70 @@ func (p *ProbePoller) collect() error {
 
 	p.moduleLogger.Debug().Msg("Using default strategy router")
 	return p.addDataPointCtx(ctx, data, &defaultStrategyRouter{})
+}
+
+// minCollectDeadline is the shortest default deadline of one collection.
+// A collection legitimately longer than its interval (a slow IBM i
+// collector, a large SNMP sweep, a slow API) must not lose its data every
+// cycle, so a short interval does not shorten the deadline below this.
+const minCollectDeadline = 5 * time.Minute
+
+// collectDeadline is the deadline of one collection: the probe's
+// collect_timeout when it sets one (shorter or longer than the default),
+// else the longer of its interval and minCollectDeadline. Zero means no
+// deadline, for a probe without an interval and without a collect_timeout.
+func collectDeadline(override, interval time.Duration) time.Duration {
+	if override > 0 {
+		return override
+	}
+	if interval <= 0 {
+		return 0
+	}
+	return max(interval, minCollectDeadline)
+}
+
+// CollectTimeoutOf reads the collect_timeout of a probe entry: absent or
+// zero is no override. A value that is neither a duration ("90s") nor a
+// number of seconds, or that is negative, is an error naming the key.
+func CollectTimeoutOf(config configuration.ProbeConfig) (time.Duration, error) {
+	if config.CollectTimeout == nil {
+		return 0, nil
+	}
+	const key = "collect_timeout"
+	d, ok := types.DurationParam(map[string]interface{}{key: config.CollectTimeout}, key)
+	if !ok {
+		return 0, fmt.Errorf("probe %q: %s: want a duration (\"90s\") or a number of seconds, got %v", config.Name, key, config.CollectTimeout)
+	}
+	if d < 0 {
+		return 0, fmt.Errorf("probe %q: %s: must not be negative, got %v", config.Name, key, config.CollectTimeout)
+	}
+	return d, nil
+}
+
+// collectOnce runs one collection: CollectContext under the call context,
+// whose deadline the scheduler sets, when the probe can be cancelled,
+// Collect as it always was otherwise.
+func (p *ProbePoller) collectOnce(ctx context.Context) ([]datapoint.DataPoint, error) {
+	if cc, ok := p.Probe.(types.ContextCollector); ok {
+		return cc.CollectContext(ctx)
+	}
+	return p.Probe.Collect()
+}
+
+// nameCutDeadline says which setting cut a collection. A bare "context
+// deadline exceeded" does not tell the operator that a deadline exists, nor
+// which knob moves it. Only the call's own deadline qualifies: a timeout the
+// probe applied inside a call that is still alive keeps its own message.
+func (p *ProbePoller) nameCutDeadline(ctx context.Context, err error) error {
+	if p.callDeadline <= 0 || !errors.Is(err, context.DeadlineExceeded) || !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return err
+	}
+	const what = "collection cut at its deadline (collect_timeout, or the interval with a 5 min floor)"
+	p.moduleLogger.Warn().
+		Dur("deadline", p.callDeadline).
+		Dur("collect_timeout", p.collectTimeout).
+		Msg(what)
+	return fmt.Errorf("%s, deadline %s: %w", what, p.callDeadline, err)
 }
 
 // recordDelivery tells the status channel what the cycle delivered. A
@@ -586,6 +691,7 @@ func (p *ProbePoller) getWrappedCallback() func([]datapoint.DataPoint) error {
 // the consumer, reloads duplicate sources).
 func (p *ProbePoller) Shutdown(ctx context.Context) error {
 	p.moduleLogger.Debug().Msg("Shutting down probe")
+	p.stopped.Store(true)
 
 	if p.unregisterEntitySource != nil {
 		p.unregisterEntitySource()

@@ -30,7 +30,7 @@ podman run -d --name senhub-agent \
   ghcr.io/senhub-io/senhub-agent:0.6
 ```
 
-Use the full image name. A short name such as `senhub-agent:0.6.3`
+Use the full image name. A short name such as `senhub-agent:0.6.5`
 makes Podman search its configured registries, or ask which one to use.
 
 Three things behave differently from Docker.
@@ -308,7 +308,7 @@ Three ways to hold the image; the unit uses the first:
   it again and restarts the unit when a new 0.6.x is published, with the
   agent key and data kept on the state volume. Moving to 0.7 is an edit
   of the `Image=` line.
-- **An exact version with `AutoUpdate=registry`.** `:0.6.3` never moves
+- **An exact version with `AutoUpdate=registry`.** `:0.6.5` never moves
   to another version: auto-update only picks up a republished build of
   that same version. Moving on is an edit of the `Image=` line, then
   `systemctl daemon-reload` and `systemctl restart senhub-agent`.

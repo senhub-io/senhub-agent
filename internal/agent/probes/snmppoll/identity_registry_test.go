@@ -12,7 +12,7 @@ func TestPolledRegistry_ReconcilesByMAC(t *testing.T) {
 
 	mac := []byte{0xaa, 0xbb, 0xcc, 0x00, 0x11, 0x22}
 	// A device polled directly: strong canonical id, exposes its chassis MAC.
-	r.recordPolled(deviceIdentity{ChassisMAC: mac, EngineID: []byte{0xde, 0xad}}, "engine:dead", t0)
+	r.recordPolled(deviceIdentity{ChassisMAC: mac, EngineID: []byte{0xde, 0xad}}, "engine:dead", time.Minute, t0)
 
 	// The same device seen as a neighbour (LLDP chassis-id = that MAC) resolves
 	// to the canonical id, not a mac: shadow.
@@ -35,35 +35,62 @@ func TestPolledRegistry_NoMACNotRecorded(t *testing.T) {
 	t0 := time.Unix(1_700_000_000, 0)
 	r := newPolledRegistry()
 	// A device with no chassis MAC (e.g. resolved by mgmt: only) registers nothing.
-	r.recordPolled(deviceIdentity{MgmtIP: "10.0.0.1"}, "mgmt:10.0.0.1", t0)
+	r.recordPolled(deviceIdentity{MgmtIP: "10.0.0.1"}, "mgmt:10.0.0.1", time.Minute, t0)
 	if len(r.byMAC) != 0 {
 		t.Errorf("MAC-less device must not be recorded, got %v", r.byMAC)
 	}
 	// An empty canonical id is not recorded either.
-	r.recordPolled(deviceIdentity{ChassisMAC: []byte{0x01, 0x02}}, "", t0)
+	r.recordPolled(deviceIdentity{ChassisMAC: []byte{0x01, 0x02}}, "", time.Minute, t0)
 	if len(r.byMAC) != 0 {
 		t.Errorf("empty id must not be recorded, got %v", r.byMAC)
 	}
 }
 
-func TestPolledRegistry_TTLExpiry(t *testing.T) {
+// An entry's freshness follows the cadence of the device that recorded it: a
+// slow-swept device stays resolvable between two of its sweeps, and the default
+// 1 min cadence keeps the previous 3 min behaviour.
+func TestPolledRegistry_EntryFreshnessFollowsItsCadence(t *testing.T) {
 	t0 := time.Unix(1_700_000_000, 0)
-	r := newPolledRegistry()
 	mac := []byte{0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f}
-	r.recordPolled(deviceIdentity{ChassisMAC: mac}, "engine:x", t0)
 
-	// Within TTL → hit.
-	if _, ok := r.canonicalFor(deviceIdentity{ChassisMAC: mac}, t0.Add(polledRegistryTTL)); !ok {
-		t.Error("entry must still be fresh at exactly the TTL boundary")
+	// Recorded with a 15 min cadence: still resolved between two sweeps.
+	slow := newPolledRegistry()
+	slow.recordPolled(deviceIdentity{ChassisMAC: mac}, "engine:x", 15*time.Minute, t0)
+	if _, ok := slow.canonicalFor(deviceIdentity{ChassisMAC: mac}, t0.Add(15*time.Minute+time.Second)); !ok {
+		t.Error("entry recorded with a 15 min cadence must still resolve at t0+15min+1s")
 	}
-	// Past TTL → miss.
-	if _, ok := r.canonicalFor(deviceIdentity{ChassisMAC: mac}, t0.Add(polledRegistryTTL+time.Second)); ok {
-		t.Error("stale entry past TTL must not reconcile")
+	if _, ok := slow.canonicalFor(deviceIdentity{ChassisMAC: mac}, t0.Add(freshFor(15*time.Minute)+time.Second)); ok {
+		t.Error("entry recorded with a 15 min cadence must be gone past freshFor(15 min)")
+	}
+
+	// Recorded with the default 1 min cadence: unchanged behaviour.
+	fast := newPolledRegistry()
+	fast.recordPolled(deviceIdentity{ChassisMAC: mac}, "engine:x", time.Minute, t0)
+	if _, ok := fast.canonicalFor(deviceIdentity{ChassisMAC: mac}, t0.Add(3*time.Minute)); !ok {
+		t.Error("entry must still be fresh at exactly freshFor(1 min)")
+	}
+	if _, ok := fast.canonicalFor(deviceIdentity{ChassisMAC: mac}, t0.Add(3*time.Minute+time.Second)); ok {
+		t.Error("entry recorded with a 1 min cadence must be gone past 3 min")
 	}
 	// A later write evicts the stale entry.
-	r.recordPolled(deviceIdentity{ChassisMAC: []byte{0x01}}, "engine:y", t0.Add(2*polledRegistryTTL))
-	if _, present := r.byMAC[macHex(mac)]; present {
+	fast.recordPolled(deviceIdentity{ChassisMAC: []byte{0x01}}, "engine:y", time.Minute, t0.Add(4*time.Minute))
+	if _, present := fast.byMAC[macHex(mac)]; present {
 		t.Error("stale entry must be evicted on a later write")
+	}
+}
+
+// The effective sweep cadence is the coarser of the probe interval and the
+// topology interval, because a sweep only runs inside a metric collection.
+func TestEffectiveSweepCadenceIsTheCoarserInterval(t *testing.T) {
+	if got := effectiveSweepCadence(300*time.Second, 2*time.Minute); got != 300*time.Second {
+		t.Errorf("effectiveSweepCadence(300s, 2min) = %v, want 300s", got)
+	}
+	if got := effectiveSweepCadence(time.Minute, 15*time.Minute); got != 15*time.Minute {
+		t.Errorf("effectiveSweepCadence(1min, 15min) = %v, want 15min", got)
+	}
+	// Entries recorded at that cadence stay fresh for freshFor of it.
+	if got, want := freshFor(effectiveSweepCadence(300*time.Second, 2*time.Minute)), freshFor(300*time.Second); got != want {
+		t.Errorf("freshFor(effectiveSweepCadence(300s, 2min)) = %v, want %v", got, want)
 	}
 }
 

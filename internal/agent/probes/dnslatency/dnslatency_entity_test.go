@@ -1,6 +1,7 @@
 package dnslatency
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"testing"
@@ -162,7 +163,7 @@ func TestCollectRemoteIPTagsAndCheckResult(t *testing.T) {
 	p.entitySrc = newDNSEntitySource("host-1")
 	p.SetEntitySource(p.entitySrc)
 
-	p.lookup = func(name, resolver string) lookupResult {
+	p.lookup = func(_ context.Context, name, resolver string) lookupResult {
 		return lookupResult{
 			name:     name,
 			resolver: resolver,

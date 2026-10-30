@@ -55,7 +55,7 @@ one series per interface (`if_index` tag).
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:9901d7c60779d5bf53036864a394918c2f131825e011491d96f1633ae337ed18 -->
+<!-- sha256:7b1c00e87d44d02a5f7a81d108dbaab416d68739b4ae589b629b6b29d9eae904 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -71,10 +71,20 @@ one series per interface (`if_index` tag).
 | `v3.priv_passphrase` | No | - | Required with priv_protocol. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
 | `retries` | No | `2` | Retries per request |
 | `max_routes` | No | `500` | Maximum number of route entities emitted per device |
+| `include_system_routes` | No | `false` | Also publish the routes left out by default: reject, blackhole, multicast, loopback, link-local, local routes to the device's published addresses and to subnet broadcast addresses |
+| `neighbors` | No | `false` | Publish every MAC a device learned (bridge forwarding and ARP tables) as a network.neighbor entity, linked to its port and, when known, to the interface that owns it |
+| `max_neighbors` | No | `1000` | Maximum number of network.neighbor entities emitted per device when neighbors is on |
 | `timeout` | No | `5s` | Per-request timeout |
 | `interval` | No | `60s` | Metric polling cadence |
 | `topology_interval` | No | `1m` | Entity and topology sweep cadence |
 | `mibs` | In practice | - | Built-in MIB modules to poll; this or custom_mappings is required. One of `mib-2`, `if-mib` |
+| `interfaces` | No | - | Selects which interfaces get per-interface metric series (if-mib); topology entities always keep every interface |
+| `interfaces.include` | No | - | Regular expressions; an interface is kept when its ifName or ifDescr matches one. Default: all |
+| `interfaces.exclude` | No | - | Regular expressions; an interface whose ifName or ifDescr matches one is dropped |
+| `interfaces.types` | No | - | ifType allow-list, by name (ethernetCsmacd, ieee8023adLag, l2vlan...) or IANAifType number |
+| `interfaces.admin_up_only` | No | `false` | Keep only interfaces whose ifAdminStatus is up; re-read at each topology sweep |
+| `interfaces.oper_up_only` | No | `false` | Keep only interfaces whose ifOperStatus is up; re-read at each topology sweep |
+| `interfaces.max_interfaces` | No | - | Cap on the interfaces kept, lowest ifIndex first; a warning is logged when it cuts |
 | `mib_paths` | No | - | Local MIB files or folders used to name custom mappings |
 | `custom_mappings` | No | - | OID to metric mappings |
 | `custom_mappings[].oid` | Yes | - | OID, leading dot optional |
@@ -129,9 +139,17 @@ startup, not one at a time.
 
 `retries` matters on a congested link: UDP loses packets, and each
 attempt costs one `timeout` before the device counts as unanswered.
-`topology_interval` is a slower rail, independent of `interval`, so a
-dense topology sweep never delays the traffic counters. `mib_paths` is
-read locally; the probe never fetches a MIB over the network.
+`topology_interval` is a slower rail, independent of `interval`: the
+topology is swept at most once per `topology_interval`, inside a poll
+cycle. A sweep stops its walks once it has run for `interval` (30
+seconds at least) and still reads the device identity. It stops at its
+first read that times out when the device has answered nothing yet, so
+an unreachable device costs one `timeout` and its retries per attempt;
+a poll cycle stops its walks the same way.
+After a failed sweep the next attempt comes at the next cycle, then twice
+as late each time, up to five minutes, until the device answers.
+`mib_paths` is read locally; the probe never fetches a MIB over the
+network.
 
 ### SNMPv3 (USM)
 
@@ -152,6 +170,50 @@ The security level (noAuthNoPriv / authNoPriv / authPriv) is derived
 from which protocols are set — there is no separate field to
 contradict it. Unknown protocol names are startup errors, never a
 silent downgrade. The discovery crawl profile remains v2c-only.
+
+### Interface selection
+
+With `mibs: [if-mib]` the probe emits nine series per row of the interface
+table. A chassis switch with VLAN interfaces and unused ports can expose
+hundreds of rows. The `interfaces` block keeps the series of the interfaces
+you select and drops the others:
+
+```yaml
+params:
+  target: 192.0.2.10
+  mibs: [if-mib]
+  interfaces:
+    include: ['^(Gi|Te)', '^Po']
+    exclude: ['^Vlan']
+    types: [ethernetCsmacd, ieee8023adLag]
+    admin_up_only: true
+    max_interfaces: 48
+```
+
+An interface is kept when it passes every criterion that is set: it matches
+one `include` expression (or none is set), matches no `exclude` expression,
+has one of the listed `types`, and is up where `admin_up_only` or
+`oper_up_only` ask for it. Expressions are matched against `ifName` and
+`ifDescr`. `types` takes an IANAifType name (`ethernetCsmacd`,
+`ieee8023adLag`, `l2vlan`, `propVirtual`, `softwareLoopback`, `tunnel`...) or
+its number. `max_interfaces` keeps the interfaces with the lowest `ifIndex`
+and logs a warning with the number matched and kept when it cuts.
+
+- The selection is read again at each topology sweep (`topology_interval`),
+  not at each metric poll. An interface that comes up or goes down enters or
+  leaves the series at that cadence.
+- `oper_up_only` stops the series of an interface that goes down, so its
+  `oper_status` can no longer report the fault: use `admin_up_only` for the
+  ports you want to alert on.
+- A state the device does not answer for (`ifAdminStatus`, `ifDescr`) counts
+  as not matching. Before the first sweep nothing is selected, so no
+  interface series is emitted until the interfaces are known.
+- A sweep that could not read every interface column keeps the previous
+  selection, so a timed-out walk does not retract the series.
+- The selection narrows what is published, not what is read: the interface
+  table is still walked at each `interval`. It also applies to a
+  `custom_mappings` entry whose `index_label` is `if_index`.
+- Topology is not narrowed: every interface stays an entity, with its links.
 
 ### Custom mappings
 
@@ -256,12 +318,88 @@ A route without a next hop (`local`, `reject`, `blackhole`) carries `0.0.0.0`
 (`::` in IPv6) as next hop, the encoding the MIB itself uses. A connected
 route is what lets a path reach a destination on the device's own networks.
 
-At most `max_routes` routes are published per device (500 by default).
-Connected, default, reject and blackhole routes are always kept. The device
-entity carries `senhub.routes.limit` and `senhub.routes.omitted`, the number
-of routes it listed and that were not published, so a table cut by the bound
-is never mistaken for a complete one. A device carrying a full Internet table
+System routes are left out by default: reject and blackhole routes,
+destinations in multicast (`224.0.0.0/4`, `ff00::/8`), loopback (`127.0.0.0/8`,
+`::1`) and link-local (`169.254.0.0/16`, `fe80::/10`) ranges, `0.0.0.0/32` and
+`255.255.255.255/32`, a local host route (`/32`, `/128`) to an address the same
+sweep publishes as a `network.address`, and a local route to the broadcast
+address of a connected IPv4 prefix. A local host route to an address the sweep
+does not publish is kept: only the IPv4 address table is read, so IPv6 host
+routes are kept. `include_system_routes: true` publishes them all. A route the
+running agent published and then leaves out (for instance when
+`include_system_routes` is switched off) leaves the topology with the reason
+`excluded_by_config`. At the first complete sweep of each device, the agent
+also retires with that reason the routes an agent without the filter would
+have published from the same read and that it no longer publishes, so the
+routes an earlier version left in the topology go at the upgrade. A route still
+published is never retired. `senhub.routes.filtered` gives the number left out
+at any time.
+
+The filter runs first, then at most `max_routes` routes are published per
+device (500 by default). Connected and default routes are always kept, outside
+the bound. The device entity carries `senhub.routes.filtered` (routes the
+filter left out), `senhub.routes.limit` and `senhub.routes.omitted` (routes the
+bound left out), so a table cut by the bound is never mistaken for a complete
+one. A device carrying a full Internet table
 is not meant to be inventoried route by route.
+
+#### Learned neighbours
+
+With `neighbors: true`, the bridge forwarding table (`dot1qTpFdbTable`, or
+`dot1dTpFdbTable` on older bridges) and the ARP table
+(`ipNetToPhysicalTable`, or `ipNetToMediaTable`) of the polled device and of
+every discovered device are published as `network.neighbor` entities, one
+per MAC address the device learned. It is off by default: a core switch can
+learn thousands of addresses. A neighbour is identified by the device that
+saw it and the MAC address (`AA-BB-CC-DD-EE-FF`): two switches that learned
+the same machine hold two neighbours, joined later by the receiving graph
+rather than merged.
+
+| Attribute | Meaning |
+|---|---|
+| `network.neighbor.addresses` | The IP addresses the ARP table maps to this MAC; absent for a MAC seen only in the forwarding table. Link-local addresses are left out |
+
+A neighbour is linked with `neighbor_of` to every port of the device it was
+learned on: the bridge port for a forwarding entry, the interface of the ARP
+entry (often a VLAN interface). It is also linked with `resolves_to` to the
+interface that owns the MAC when this agent knows it, one of this host's own
+interfaces or an interface of another device this agent polls, without
+setting `entities.neighbors.resolves_to`. The relation carries a `basis` of
+`fdb` or `arp`. A neighbour found in the forwarding table rides the
+`senhub-agent/snmp-fdb` instrumentation scope, one known only from the ARP
+table `senhub-agent/snmp-arp`.
+
+A MAC owned by the observing device itself, multicast and broadcast
+addresses, entries the device marks as its own and entries it has not learned
+are not published. A neighbour leaves, as `aged_out`, when a successful read
+of the tables no longer lists it; a read that fails keeps the neighbours of
+the previous one.
+
+At most `max_neighbors` neighbours are published per device (1000 by
+default). Above the bound, the neighbours resolved to an interface are kept
+first, then those with an IP address, then the others by MAC address. The
+device entity carries `senhub.neighbors.limit` and
+`senhub.neighbors.omitted`, so a cut table is never mistaken for a complete
+one, and the agent logs `neighbor table bound: some neighbors omitted` at
+Info once per cut. A neighbour the bound leaves out after it was published
+is not retired explicitly: it leaves the topology when its liveness interval
+expires. VLAN membership (`dot1qVlanStaticTable`) is not published yet.
+
+Publishing neighbours costs CPU in proportion to their number. On a test
+switch with 4,000 forwarding-table and 4,000 ARP entries, the sweep time did
+not change (about 2 s), and the agent used 1.29 s of CPU over 270 s instead
+of 0.65 s without `neighbors`.
+
+At the bound, the neighbours kept depend on facts that change: whether a
+MAC resolves to an interface of another polled device, or of this host. An
+outage of another polled device longer than three sweeps can therefore swap
+out as many kept neighbours as it had resolved interfaces, and swap them back
+at its first successful sweep after it returns: measured on a test switch,
+one neighbour, two deletions and two creations per outage.
+
+Without `neighbors`, the tables are read only with
+`entities.neighbors.resolves_to`, and a neighbour is published only for a MAC
+of this host's own interfaces, linked to the switch port it is plugged into.
 
 #### Link aggregation
 
@@ -358,6 +496,8 @@ series' tags.
 | `senhub.snmp.discovery.runs` | `snmp_poll_discovery_runs` | SNMP {instance} Discovery Runs | # | Discovery crawls run since the agent started |
 | `senhub.snmp.discovery.duration` | `snmp_poll_discovery_last_duration_seconds` | SNMP {instance} Discovery Duration | s | Wall-clock time of the last discovery crawl |
 | `senhub.snmp.discovery.failures` | `snmp_poll_discovery_failures` | SNMP {instance} Discovery Failures {reason} | # | Devices the crawl could not use since the agent started, by reason: unreachable (no SNMP answer) or identity (no device id resolvable) |
+| `senhub.snmp.identity.collisions` | `snmp_poll_identity_collisions` | SNMP {instance} Identity Collisions | # | Sweeps since the agent started in which this target resolved to a device id another target of the same agent holds for a different device (other sysName or chassis MAC) |
+| `senhub.snmp.engine_id.mac_mismatch` | `snmp_poll_engine_id_mac_mismatch` | SNMP {instance} Engine ID MAC Mismatch | # | 1 when the last topology sweep read an snmpEngineID that embeds a MAC other than the LLDP chassis MAC (engine id set by configuration or kept across a stack master change), 0 otherwise or when either is unreadable |
 | `senhub.snmp.discovery.seeds` | `snmp_poll_discovery_seeds` | SNMP {instance} Discovery Seeds {source} | # | Seeds the last discovery crawl started from, by source: configured (discovery.seeds) or host (the host's default gateways) |
 | `snmp.sys.uptime` | `snmp.sys.uptime` | SNMP {instance} Uptime | centiseconds | sysUpTime — time since the network management portion of the system was last re-initialized (hundredths of a second) |
 | `snmp.interface.in_octets` | `snmp.interface.in_octets` | SNMP {instance} IF{if_index} In Octets | bytes | ifInOctets — total octets received on the interface |

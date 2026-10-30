@@ -35,6 +35,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -145,7 +146,13 @@ type mysqlProbe struct {
 	// uuidFetched guards the one-time @@server_uuid fetch; once pinned
 	// the entity source holds the id and this flag prevents re-querying.
 	uuidFetched bool
+	// uuidFailures counts consecutive failed @@server_uuid reads; past
+	// maxUUIDFailures the host:port fallback is pinned, as before, so a
+	// server that never answers it still reaches the graph.
+	uuidFailures int
 }
+
+const maxUUIDFailures = 3
 
 // NewMysqlProbe constructs the probe. Configuration errors surface here.
 func NewMysqlProbe(config map[string]interface{}, baseLogger *logger.Logger) (types.Probe, error) {
@@ -341,6 +348,14 @@ func (p *mysqlProbe) OnShutdown(_ context.Context) error {
 // senhub.db.up so that monitoring systems see a 0 when the engine is
 // unreachable, rather than a missing series.
 func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext is Collect under the poller's context. A cycle whose
+// context ends returns its error before it publishes or records
+// anything: the server did not go down, and an interrupted UUID, version
+// or role query must not be pinned as the answer.
+func (p *mysqlProbe) CollectContext(parent context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 	instance := fmt.Sprintf("%s:%d", p.cfg.Host, p.cfg.Port)
 	commonTags := p.commonTags(instance)
@@ -349,7 +364,7 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	up := float64(0)
 	var points []data_store.DataPoint
 
-	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
+	ctx, cancel := context.WithTimeout(parent, p.cfg.Timeout)
 	defer cancel()
 
 	// Ping the server. The connection is established here (not in OnStart)
@@ -362,6 +377,9 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 	}
 	if err := p.db.PingContext(ctx); err != nil {
+		if parent.Err() != nil {
+			return nil, fmt.Errorf("mysql collection interrupted: %w", parent.Err())
+		}
 		p.moduleLogger.Warn().Err(err).Str("instance", instance).Msg("mysql ping failed")
 		points = append(points, p.dp("senhub.db.up", 0, now, string(dbcommon.MetricTypeOverview), commonTags))
 		points = append(points, p.dp(dbcommon.CheckResultMetric, float64(dbcommon.ClassifyError(err)), now, "status", commonTags))
@@ -371,18 +389,46 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 
 	// Lazy one-time fetch of the server UUID for the db entity identity.
 	// Skipped when the operator has set instance_name (already pinned) or
-	// when the uuid has been fetched before. On failure, pinServerUUID("")
-	// falls through to the host:port degraded fallback.
+	// when the uuid has been fetched before. A server that has no
+	// @@server_uuid (MariaDB) pins the host:port degraded fallback; any
+	// other failure leaves the identity unpinned and is retried next cycle,
+	// so a transient error cannot fix a degraded identity for good; a read
+	// that keeps failing falls back like MariaDB after maxUUIDFailures.
 	if !p.uuidFetched && !p.entitySrc.isIDPinned() {
-		uuid := p.queryServerUUID(ctx)
-		p.entitySrc.pinServerUUID(uuid)
-		p.uuidFetched = true
-		commonTags = p.commonTags(instance)
+		uuid, err := p.queryServerUUID(ctx)
+		if err != nil && parent.Err() != nil {
+			return nil, fmt.Errorf("mysql collection interrupted: %w", parent.Err())
+		}
+		switch {
+		case err == nil:
+			p.uuidFailures = 0
+			p.entitySrc.pinServerUUID(uuid)
+			p.uuidFetched = true
+			commonTags = p.commonTags(instance)
+		case isUnknownSystemVariable(err):
+			p.moduleLogger.Debug().Err(err).Str("instance", instance).Msg("mysql: server has no @@server_uuid, using host:port identity")
+			p.entitySrc.pinServerUUID("")
+			p.uuidFetched = true
+			commonTags = p.commonTags(instance)
+		default:
+			p.uuidFailures++
+			if p.uuidFailures < maxUUIDFailures {
+				p.moduleLogger.Warn().Err(err).Str("instance", instance).Int("attempt", p.uuidFailures).Msg("mysql: @@server_uuid read failed, entity identity not pinned yet")
+				break
+			}
+			p.moduleLogger.Warn().Err(err).Str("instance", instance).Int("attempts", p.uuidFailures).Msg("mysql: @@server_uuid unreadable, using host:port identity")
+			p.entitySrc.pinServerUUID("")
+			p.uuidFetched = true
+			commonTags = p.commonTags(instance)
+		}
 	}
 
 	// SHOW GLOBAL STATUS
 	status, err := p.collectStatus(ctx)
 	if err != nil {
+		if parent.Err() != nil {
+			return nil, fmt.Errorf("mysql collection interrupted: %w", parent.Err())
+		}
 		p.moduleLogger.Warn().Err(err).Str("instance", instance).Msg("mysql SHOW GLOBAL STATUS failed")
 		points = append(points, p.dp("senhub.db.up", up, now, string(dbcommon.MetricTypeOverview), commonTags))
 		points = append(points, p.dp(dbcommon.CheckResultMetric, float64(dbcommon.ClassifyError(err)), now, "status", commonTags))
@@ -392,6 +438,9 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 	// SHOW GLOBAL VARIABLES
 	vars, err := p.collectVariables(ctx)
 	if err != nil {
+		if parent.Err() != nil {
+			return nil, fmt.Errorf("mysql collection interrupted: %w", parent.Err())
+		}
 		p.moduleLogger.Warn().Err(err).Str("instance", instance).Msg("mysql SHOW GLOBAL VARIABLES failed")
 	}
 
@@ -529,9 +578,13 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 
 	if totalSize, err := p.querySingleFloat(storageCtx, totalSizeQuery); err == nil {
 		points = append(points, p.dp("senhub.db.database.size", totalSize, now, string(dbcommon.MetricTypeStorage), allCommonTags))
+	} else {
+		p.moduleLogger.Warn().Err(err).Str("instance", instance).Str("query", "database_size").Msg("mysql storage query failed")
 	}
 	if tableCount, err := p.querySingleFloat(storageCtx, tableCountQuery); err == nil {
 		points = append(points, p.dp("senhub.db.mysql.table.count", tableCount, now, string(dbcommon.MetricTypeStorage), allCommonTags))
+	} else {
+		p.moduleLogger.Warn().Err(err).Str("instance", instance).Str("query", "table_count").Msg("mysql storage query failed")
 	}
 
 	// Per-database sizes (opt-in).
@@ -553,16 +606,23 @@ func (p *mysqlProbe) Collect() ([]data_store.DataPoint, error) {
 						}, allCommonTags...)
 						points = append(points, p.dp("senhub.db.mysql.table.size", ts.size, now, string(dbcommon.MetricTypePerTable), tbTags))
 					}
+				} else {
+					p.moduleLogger.Warn().Err(err).Str("instance", instance).Str("query", "per_table_sizes").Msg("mysql storage query failed")
 				}
 			}
+		} else {
+			p.moduleLogger.Warn().Err(err).Str("instance", instance).Str("query", "per_database_sizes").Msg("mysql storage query failed")
 		}
 	}
 
 	// ─── Replication ──────────────────────────────────────────────────────────
-	replCtx, replCancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
+	replCtx, replCancel := context.WithTimeout(parent, p.cfg.Timeout)
 	defer replCancel()
 
 	role, replicaRows, replicaStatus := p.collectReplication(replCtx)
+	if err := parent.Err(); err != nil {
+		return nil, fmt.Errorf("mysql collection interrupted: %w", err)
+	}
 	p.entitySrc.updateRole(role)
 
 	roleTags := append([]tags.Tag{{Key: "role", Value: role.String()}}, allCommonTags...)
@@ -808,11 +868,20 @@ func (p *mysqlProbe) topNTables(ts []tableSize) []tableSize {
 }
 
 // queryServerUUID fetches @@server_uuid, the MySQL-persisted stable server
-// identity. Returns "" on error (caller falls back to host:port).
-func (p *mysqlProbe) queryServerUUID(ctx context.Context) string {
-	var v string
-	_ = p.db.QueryRowContext(ctx, serverUUIDQuery).Scan(&v)
-	return v
+// identity. A NULL value reads as "" without error.
+func (p *mysqlProbe) queryServerUUID(ctx context.Context) (string, error) {
+	var v sql.NullString
+	if err := p.db.QueryRowContext(ctx, serverUUIDQuery).Scan(&v); err != nil {
+		return "", fmt.Errorf("querying @@server_uuid: %w", err)
+	}
+	return v.String, nil
+}
+
+// isUnknownSystemVariable reports ER_UNKNOWN_SYSTEM_VARIABLE (1193), which
+// is how a server without @@server_uuid answers.
+func isUnknownSystemVariable(err error) bool {
+	var me *gomysql.MySQLError
+	return errors.As(err, &me) && me.Number == 1193
 }
 
 // buildDSN returns the DSN for the go-sql-driver/mysql driver.
@@ -878,15 +947,27 @@ func (p *mysqlProbe) registerTLS() (string, error) {
 }
 
 // replicaThreadState reads the two replica threads and the reported lag
-// out of SHOW REPLICA STATUS.
+// out of SHOW REPLICA STATUS. MySQL 8.0.22+ and 8.4 name the columns
+// Replica_* / Seconds_Behind_Source (and 8.4 no longer has SHOW SLAVE
+// STATUS); MariaDB and older MySQL still name them Slave_* /
+// Seconds_Behind_Master.
 func replicaThreadState(status map[string]string) (ioOK, sqlOK, lag float64) {
-	if strings.EqualFold(status["Slave_IO_Running"], "yes") {
+	if strings.EqualFold(statusColumn(status, "Replica_IO_Running", "Slave_IO_Running"), "yes") {
 		ioOK = 1
 	}
-	if strings.EqualFold(status["Slave_SQL_Running"], "yes") {
+	if strings.EqualFold(statusColumn(status, "Replica_SQL_Running", "Slave_SQL_Running"), "yes") {
 		sqlOK = 1
 	}
-	return ioOK, sqlOK, asFloat(status["Seconds_Behind_Master"])
+	return ioOK, sqlOK, asFloat(statusColumn(status, "Seconds_Behind_Source", "Seconds_Behind_Master"))
+}
+
+func statusColumn(status map[string]string, names ...string) string {
+	for _, n := range names {
+		if v, ok := status[n]; ok {
+			return v
+		}
+	}
+	return ""
 }
 
 // replicaHealth is the composite behind senhub.db.replication.health.
@@ -915,7 +996,7 @@ func asFloat(s string) float64 {
 	if s == "" {
 		return 0
 	}
-	v, err := strconv.ParseFloat(s, 32)
+	v, err := strconv.ParseFloat(s, 64)
 	if err != nil {
 		return 0
 	}

@@ -24,6 +24,11 @@ type AgentMetricsSnapshot struct {
 	// StartTime is when the agent process started. Used to compute uptime.
 	StartTime time.Time
 
+	// Reader names the exposition path building these records
+	// ("prometheus", "otlp"). Each reader has its own collect-lag window:
+	// it sees the maximum since its own previous read.
+	Reader string
+
 	// CacheEntries is the total number of distinct time series in the
 	// shared MetricCache (from MetricCache.GetCacheInfo().TotalMetrics).
 	CacheEntries int
@@ -60,6 +65,9 @@ type AgentMetricsSnapshot struct {
 // errors via agentstate.IncrementCollectErrors, http requests via the
 // CountRequests middleware, probes.healthy via push-based
 // agentstate.RecordProbeHealth from ProbePoller.collect).
+//
+// Probe scheduling self-metrics are also emitted from agentstate; the lag
+// window is read and reset exactly once per exposition cycle.
 // attrSenderService names the service that sent the records an OTLP
 // receiver relayed, on the agent's own counters.
 const attrSenderService = "senhub.otlp_receiver.sender.service.name"
@@ -143,6 +151,81 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			},
 			Value:       float64(n),
 			Description: "Cumulative count of probe collection errors since agent start, by probe type and reason (collect, timeout, route).",
+		})
+	}
+
+	// Probe scheduling self-metrics. The lag window is read-and-reset here
+	// (as opposed to a getter) per reader, so each emission window captures
+	// the max between two BuildAgentRecords calls of the same reader; keys
+	// survive the reset so a probe that missed a window reports 0 instead
+	// of disappearing.
+	records = append(records, otelmapper.OtelRecord{
+		Name:        "senhub.agent.collect.in_flight",
+		Unit:        "{collection}",
+		Type:        "gauge",
+		Attributes:  map[string]string{},
+		Value:       float64(agentstate.CollectionsInFlight()),
+		Description: "Number of probe collections running at this instant.",
+	})
+
+	lagWindow := agentstate.TakeCollectLagWindow(snap.Reader)
+	for probe, seconds := range lagWindow {
+		records = append(records, otelmapper.OtelRecord{
+			Name: "senhub.agent.collect.lag",
+			Unit: "s",
+			Type: "gauge",
+			Attributes: map[string]string{
+				"probe_name": probe.Name,
+				"probe_type": probe.Type,
+			},
+			Value:       seconds,
+			Description: "Maximum, over the window since the previous read of agent metrics by the same reader (Prometheus scrape or OTLP push), of the actual start of a probe collection minus its planned start, by probe instance. 0 when no collection started in the window.",
+		})
+	}
+
+	for probe, n := range agentstate.GetCollectOverruns() {
+		records = append(records, otelmapper.OtelRecord{
+			Name: "senhub.agent.collect.overruns",
+			Unit: "{collection}",
+			Type: "counter",
+			Attributes: map[string]string{
+				"probe_name": probe.Name,
+				"probe_type": probe.Type,
+			},
+			Value:       float64(n),
+			Description: "Cumulative count of collections that ran past their interval, by probe instance, whether or not they reached their deadline. Such a collection is not cut at the interval and not run twice: the scheduler makes no further call of that probe until it returns.",
+		})
+	}
+
+	for probe, seconds := range agentstate.GetFirstCollectionDelays() {
+		records = append(records, otelmapper.OtelRecord{
+			Name: "senhub.agent.probe.first_collection.delay",
+			Unit: "s",
+			Type: "gauge",
+			Attributes: map[string]string{
+				"probe_name": probe.Name,
+				"probe_type": probe.Type,
+			},
+			Value:       seconds,
+			Description: "Time from the process start to the end of the first collection of the probe, by probe instance. Recorded once per process and per probe instance, then emitted unchanged.",
+		})
+	}
+
+	// Masked secrets — one record per (probe, rule), emitted only once a
+	// rule has masked something. `probe` is the producing probe instance
+	// and `rule` a preset rule or an operator-chosen rule name, both
+	// bounded by the configuration.
+	for _, c := range agentstate.LogRedactedCounts() {
+		records = append(records, otelmapper.OtelRecord{
+			Name: "senhub.agent.logs.redacted",
+			Unit: "{occurrence}",
+			Type: "counter",
+			Attributes: map[string]string{
+				"probe": c.Probe,
+				"rule":  c.Rule,
+			},
+			Value:       float64(c.Count),
+			Description: "Cumulative count of secret occurrences masked in log records before any output received them, by producing probe and masking rule.",
 		})
 	}
 

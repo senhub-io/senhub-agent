@@ -97,7 +97,8 @@ func checkResultPoint(now time.Time, err error) data_store.DataPoint {
 // cycle: this keeps the probe lightweight (no persistent goroutine) and
 // avoids stale connection issues after a systemd restart.
 func (p *SystemdProbe) Collect() ([]data_store.DataPoint, error) {
-	conn, err := dbus.NewSystemConnection()
+	ctx := context.Background()
+	conn, err := dbus.NewSystemConnectionContext(ctx)
 	if err != nil {
 		now := time.Now()
 		points := []data_store.DataPoint{checkResultPoint(now, err)}
@@ -105,7 +106,7 @@ func (p *SystemdProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 	defer conn.Close()
 
-	all, err := conn.ListUnits()
+	all, err := conn.ListUnitsContext(ctx)
 	if err != nil {
 		now := time.Now()
 		points := []data_store.DataPoint{checkResultPoint(now, err)}
@@ -119,10 +120,11 @@ func (p *SystemdProbe) Collect() ([]data_store.DataPoint, error) {
 			if !p.config.IncludeTypes[unitType] || isSessionUnit(u.Name) {
 				continue
 			}
-			prop, err := conn.GetUnitProperty(u.Name, "UnitFileState")
+			prop, err := conn.GetUnitPropertyContext(ctx, u.Name, "UnitFileState")
 			if err != nil {
 				// Unreadable UnitFileState means the unit cannot be
 				// selected by the default enabled-only policy.
+				p.moduleLogger.Debug().Err(err).Str("unit", u.Name).Msg("systemd: UnitFileState unreadable, unit left out of the default selection")
 				continue
 			}
 			if v, ok := prop.Value.Value().(string); ok {
@@ -140,8 +142,9 @@ func (p *SystemdProbe) Collect() ([]data_store.DataPoint, error) {
 		if _, ok := stateByName[u.Name]; ok {
 			continue
 		}
-		prop, err := conn.GetUnitProperty(u.Name, "UnitFileState")
+		prop, err := conn.GetUnitPropertyContext(ctx, u.Name, "UnitFileState")
 		if err != nil {
+			p.moduleLogger.Debug().Err(err).Str("unit", u.Name).Msg("systemd: UnitFileState unreadable, start mode left unset")
 			continue
 		}
 		if v, ok := prop.Value.Value().(string); ok {
@@ -174,12 +177,14 @@ func (p *SystemdProbe) Collect() ([]data_store.DataPoint, error) {
 	for _, u := range selected {
 		var nRestarts *float64
 		if p.config.Detail == systemdDetailFull && unitTypeSuffix(u.Name) == "service" {
-			prop, err := conn.GetUnitTypeProperty(u.Name, "Service", "NRestarts")
+			prop, err := conn.GetUnitTypePropertyContext(ctx, u.Name, "Service", "NRestarts")
 			if err == nil {
 				if v, ok := prop.Value.Value().(uint32); ok {
 					r := float64(v)
 					nRestarts = &r
 				}
+			} else {
+				p.moduleLogger.Debug().Err(err).Str("unit", u.Name).Msg("systemd: NRestarts unreadable, restart count left out")
 			}
 		}
 

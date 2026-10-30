@@ -19,6 +19,11 @@ import (
 	"senhub-agent.go/internal/agent/utils/netbind"
 )
 
+// serverWriteTimeout bounds how long a response may take to be written,
+// counted from the end of the request's headers. A handler that holds a
+// request longer must move its own deadline.
+const serverWriteTimeout = 10 * time.Second
+
 // ServerManager handles HTTP server lifecycle and routing configuration
 type ServerManager struct {
 	logger   *logger.ModuleLogger
@@ -146,7 +151,7 @@ func (s *ServerManager) createHTTPServer(router *mux.Router) *http.Server {
 		Addr:         address,
 		Handler:      router,
 		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		WriteTimeout: serverWriteTimeout,
 		IdleTimeout:  60 * time.Second,
 	}
 }

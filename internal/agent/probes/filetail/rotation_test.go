@@ -74,10 +74,12 @@ func TestFileTail_CreateModeRotationKeepsCollecting(t *testing.T) {
 		"bookmark_path": bookmarkPath,
 	})
 	defer stopFileTail(t, p)
-	time.Sleep(300 * time.Millisecond)
 
 	for round := 0; round < 2; round++ {
-		time.Sleep(300 * time.Millisecond)
+		// The tail must be watching the file it is about to lose, not just
+		// have had time to start: the first round's file is the one it
+		// opened, the second round's is the one it reopened.
+		awaitTailWatching(t, p, file)
 		before := p.emitted.Load()
 		if err := os.Rename(file, file+".1"); err != nil {
 			t.Fatal(err)
@@ -163,7 +165,7 @@ func TestFileTail_PersistedFingerprintBelongsToTheFileTheOffsetWasReadFrom(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts := &tailState{t: tl}
+	ts := &tailState{t: tl, done: make(chan struct{})}
 	p.tailing[file] = ts
 	p.wg.Add(1)
 	go p.consume(file, ts, 0, oldFP, make(chan reopenEvent))
