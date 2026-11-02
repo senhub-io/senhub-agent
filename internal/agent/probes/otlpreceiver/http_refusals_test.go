@@ -188,3 +188,22 @@ func (b *lockedBuffer) String() string {
 	defer b.mu.Unlock()
 	return b.buf.String()
 }
+
+func TestAuthRefusalsAreRateLimitedPerClient(t *testing.T) {
+	buf := &lockedBuffer{}
+	zlog := zerolog.New(buf)
+	now := time.Now()
+	s := newRefusalLogState(func() time.Time { return now })
+	s.log(&zlog, signalMetrics, 401, "unauthorized", "192.0.2.1")
+	s.log(&zlog, signalMetrics, 401, "unauthorized", "192.0.2.2")
+	s.log(&zlog, signalMetrics, 401, "unauthorized", "192.0.2.1")
+	out := buf.String()
+	if strings.Count(out, `"remote":"192.0.2.1"`) != 1 || strings.Count(out, `"remote":"192.0.2.2"`) != 1 {
+		t.Fatalf("want one line per client within the window:\n%s", out)
+	}
+	s.log(&zlog, signalMetrics, 415, "media_type", "192.0.2.1")
+	s.log(&zlog, signalMetrics, 415, "media_type", "192.0.2.2")
+	if strings.Count(buf.String(), `"reason":"media_type"`) != 1 {
+		t.Fatalf("non-auth refusals share one key per signal and reason:\n%s", buf.String())
+	}
+}

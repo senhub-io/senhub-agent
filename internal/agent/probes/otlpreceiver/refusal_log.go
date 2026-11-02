@@ -11,7 +11,16 @@ import (
 type refusalLogKey struct {
 	signal string
 	reason string
+	// remote is set for authentication refusals only, so one client's
+	// failures cannot hide another's behind the shared rate limit.
+	remote string
 }
+
+// maxRefusalLogKeys bounds the per-client keys: past it, authentication
+// refusals share one key per signal and reason again.
+const maxRefusalLogKeys = 1024
+
+func isAuthRefusal(reason string) bool { return reason == "unauthorized" || reason == "forbidden" }
 
 // refusalLogEntry is the rate-limit state of one (signal, reason) series:
 // when the last line was emitted and how many lines were suppressed since.
@@ -51,6 +60,12 @@ func (s *refusalLogState) log(log warner, signal string, status int, reason, rem
 	key := refusalLogKey{signal: signal, reason: reason}
 
 	s.mu.Lock()
+	if isAuthRefusal(reason) {
+		perClient := refusalLogKey{signal: signal, reason: reason, remote: remote}
+		if _, known := s.entries[perClient]; known || len(s.entries) < maxRefusalLogKeys {
+			key = perClient
+		}
+	}
 	entry := s.entries[key]
 	now := s.now()
 	if now.Sub(entry.lastLogged) < refusalLogWindow {
