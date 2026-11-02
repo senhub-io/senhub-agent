@@ -169,6 +169,14 @@ alias SeriesPoint = senhub-agent.go/internal/agent/services/exporthook.SeriesPoi
   field Name string
   field Probe string
 == senhub-agent.go/probesdk/extension (package extension) ==
+alias CatalogParam = senhub-agent.go/internal/agent/services/extension.CatalogParam
+  field Kind string
+  field Name string
+  field Required bool
+  field Secret bool
+alias CatalogProbe = senhub-agent.go/internal/agent/services/extension.CatalogProbe
+  field Params []senhub-agent.go/internal/agent/services/extension.CatalogParam
+  field Type string
 const CheckError untyped string = "error"
 alias CheckLine = senhub-agent.go/internal/agent/services/extension.CheckLine
   field Level string
@@ -221,8 +229,10 @@ alias Host = senhub-agent.go/internal/agent/services/extension.Host
   imethod Identity() senhub-agent.go/internal/agent/services/extension.Identity
   imethod Logger() *senhub-agent.go/internal/agent/services/logger.Logger
   imethod OnConfigChange(fn func())
+  imethod ProbeCatalog() []senhub-agent.go/internal/agent/services/extension.CatalogProbe
   imethod PublishStatus(status map[string]any)
   imethod ReloadConfig() error
+  imethod SetAutoUpdatePaused(paused bool)
   imethod SetLogLevel(level string) error
   imethod StateDir() string
 alias Identity = senhub-agent.go/internal/agent/services/extension.Identity
@@ -231,7 +241,15 @@ alias Identity = senhub-agent.go/internal/agent/services/extension.Identity
   field LicenseExpiresAt time.Time
   field LicenseID string
   field LicenseTier string
+  field ReleaseChannel string
+  field ReleaseRing string
   field Version string
+alias ManagedProbe = senhub-agent.go/internal/agent/services/extension.ManagedProbe
+  field Enabled bool
+  field Interval int
+  field Name string
+  field Params map[string]any
+  field Type string
 alias OutputHealth = senhub-agent.go/internal/agent/services/extension.OutputHealth
   field Failing bool
   field FailureDetail string
@@ -244,6 +262,7 @@ alias OverlayProbe = senhub-agent.go/internal/agent/services/extension.OverlayPr
   field Name string
   field Type string
 alias OverlayTarget = senhub-agent.go/internal/agent/services/extension.OverlayTarget
+  imethod AddProbe(p senhub-agent.go/internal/agent/services/extension.ManagedProbe) bool
   imethod Entities() senhub-agent.go/internal/agent/services/extension.EntitySwitches
   imethod Probes() []senhub-agent.go/internal/agent/services/extension.OverlayProbe
   imethod SetEntities(senhub-agent.go/internal/agent/services/extension.EntitySwitches)
@@ -631,8 +650,10 @@ type senhub-agent.go/internal/agent/services/extension.Host interface
   imethod Identity() senhub-agent.go/internal/agent/services/extension.Identity
   imethod Logger() *senhub-agent.go/internal/agent/services/logger.Logger
   imethod OnConfigChange(fn func())
+  imethod ProbeCatalog() []senhub-agent.go/internal/agent/services/extension.CatalogProbe
   imethod PublishStatus(status map[string]any)
   imethod ReloadConfig() error
+  imethod SetAutoUpdatePaused(paused bool)
   imethod SetLogLevel(level string) error
   imethod StateDir() string
 type senhub-agent.go/internal/agent/services/extension.Identity struct
@@ -641,6 +662,8 @@ type senhub-agent.go/internal/agent/services/extension.Identity struct
   field LicenseExpiresAt time.Time
   field LicenseID string
   field LicenseTier string
+  field ReleaseChannel string
+  field ReleaseRing string
   field Version string
 type senhub-agent.go/internal/agent/services/extension.OutputHealth struct
   field Failing bool
@@ -649,6 +672,7 @@ type senhub-agent.go/internal/agent/services/extension.OutputHealth struct
   field LastError string
   field Name string
 type senhub-agent.go/internal/agent/services/extension.OverlayTarget interface
+  imethod AddProbe(p senhub-agent.go/internal/agent/services/extension.ManagedProbe) bool
   imethod Entities() senhub-agent.go/internal/agent/services/extension.EntitySwitches
   imethod Probes() []senhub-agent.go/internal/agent/services/extension.OverlayProbe
   imethod SetEntities(senhub-agent.go/internal/agent/services/extension.EntitySwitches)

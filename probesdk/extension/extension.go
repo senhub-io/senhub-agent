@@ -40,6 +40,11 @@ type (
 	OverlayTarget  = iextension.OverlayTarget
 	OverlayProbe   = iextension.OverlayProbe
 	EntitySwitches = iextension.EntitySwitches
+	// ManagedProbe is a whole probe an overlay adds; CatalogProbe and
+	// CatalogParam describe the probe types the agent can run.
+	ManagedProbe = iextension.ManagedProbe
+	CatalogProbe = iextension.CatalogProbe
+	CatalogParam = iextension.CatalogParam
 )
 
 // Check line levels for `config check`.

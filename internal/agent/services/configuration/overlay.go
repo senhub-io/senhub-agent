@@ -101,6 +101,39 @@ func (t *overlayTarget) SetProbeInterval(name string, seconds int) bool {
 	return true
 }
 
+func (t *overlayTarget) AddProbe(p extension.ManagedProbe) bool {
+	if p.Name == "" || p.Type == "" {
+		return false
+	}
+	if p.Interval != 0 && (p.Interval < minOverlayInterval || p.Interval > maxOverlayInterval) {
+		return false
+	}
+	if t.probeIndex(p.Name) >= 0 {
+		return false
+	}
+	if _, ok := p.Params["interval"]; ok {
+		return false
+	}
+	params := make(ProbeConfigParams, len(p.Params)+1)
+	for k, v := range p.Params {
+		params[k] = v
+	}
+	if p.Interval != 0 {
+		params["interval"] = p.Interval
+	}
+	idx := len(t.cfg.Probes)
+	t.undo = append(t.undo, func() {
+		t.cfg.Probes = append(t.cfg.Probes[:idx], t.cfg.Probes[idx+1:]...)
+	})
+	t.cfg.Probes = append(t.cfg.Probes, ProbeConfig{
+		Name:    p.Name,
+		Type:    p.Type,
+		Enabled: &p.Enabled,
+		Params:  params,
+	})
+	return true
+}
+
 func (t *overlayTarget) Entities() extension.EntitySwitches {
 	e := t.cfg.Entities
 	if e == nil {

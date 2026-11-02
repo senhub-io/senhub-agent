@@ -91,6 +91,12 @@ type Host interface {
 	// warn or error. An empty level puts back the levels the agent
 	// started with.
 	SetLogLevel(level string) error
+	// SetAutoUpdatePaused suspends (true) or resumes (false) the agent's own
+	// periodic update check. It does not survive a restart: the caller
+	// re-applies it from its persisted state.
+	SetAutoUpdatePaused(paused bool)
+	// ProbeCatalog lists every registered probe type with its parameter specs.
+	ProbeCatalog() []CatalogProbe
 }
 
 // Identity is what the agent is.
@@ -109,6 +115,12 @@ type Identity struct {
 	// LicenseExpiresAt is when the licence in force expires; zero
 	// without one.
 	LicenseExpiresAt time.Time
+	// ReleaseChannel is "beta" when the local `auto_update.include_beta`
+	// is true, else "stable".
+	ReleaseChannel string
+	// ReleaseRing is the `<name>` of a `/ring/<name>` path segment of the
+	// configured auto-update registry URL, else "all".
+	ReleaseRing string
 }
 
 // Health is the agent's current health, from the state status and doctor

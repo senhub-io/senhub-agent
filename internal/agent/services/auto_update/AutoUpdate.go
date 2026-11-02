@@ -659,6 +659,10 @@ func (a *autoUpdate) fetchSignature(signatureURL string) ([]byte, error) {
 }
 
 func (a *autoUpdate) PeriodicalCheckForUpdate() error {
+	if Paused() {
+		a.logger.Debug().Msg("Update check skipped: paused by an extension")
+		return nil
+	}
 	expectedVersion := a.configSource.GetConfiguration().Agent.Version
 	registryUrl := a.configSource.GetConfiguration().Agent.RegistryUrl
 

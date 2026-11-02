@@ -4,12 +4,16 @@ package extensionhost
 
 import (
 	"context"
+	"net/url"
 	"os"
 	"slices"
+	"strings"
 	"time"
 
 	"senhub-agent.go/internal/agent/lifecycle"
+	"senhub-agent.go/internal/agent/probes"
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/auto_update"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/exporthook"
@@ -128,6 +132,8 @@ func (h *host) Identity() extension.Identity {
 		id.LicenseID = lic.ID
 		id.LicenseExpiresAt = lic.ExpiresAt
 	}
+	id.ReleaseChannel = releaseChannel(d.Agent.IncludeBeta)
+	id.ReleaseRing = releaseRing(d.Agent.RegistryUrl)
 	return id
 }
 
@@ -190,6 +196,57 @@ func (h *host) SetLogLevel(level string) error {
 		return nil
 	}
 	return logger.SetOverallLevel(level)
+}
+
+func (h *host) SetAutoUpdatePaused(paused bool) {
+	was := auto_update.Paused()
+	auto_update.SetPaused(paused)
+	if was != paused && h.log != nil {
+		h.log.Info().Bool("paused", paused).Msg("Auto-update pause state changed by an extension")
+	}
+}
+
+func (h *host) ProbeCatalog() []extension.CatalogProbe {
+	specs := probes.RegisteredProbeSpecs()
+	out := make([]extension.CatalogProbe, 0, len(specs))
+	for _, s := range specs {
+		cp := extension.CatalogProbe{Type: s.Type}
+		for _, p := range s.Params {
+			cp.Params = append(cp.Params, extension.CatalogParam{
+				Name:     p.Key,
+				Kind:     string(p.Kind),
+				Required: p.Required,
+				Secret:   p.Secret,
+			})
+		}
+		out = append(out, cp)
+	}
+	return out
+}
+
+// releaseChannel names the update channel the local configuration asks
+// for: "beta" when include_beta is set, "stable" otherwise.
+func releaseChannel(includeBeta bool) string {
+	if includeBeta {
+		return "beta"
+	}
+	return "stable"
+}
+
+// releaseRing reads the ring name out of a `/ring/<name>` path segment of
+// the registry URL; "all" when the URL has none or cannot be parsed.
+func releaseRing(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "all"
+	}
+	segs := strings.Split(strings.Trim(u.Path, "/"), "/")
+	for i, seg := range segs {
+		if seg == "ring" && i+1 < len(segs) && segs[i+1] != "" {
+			return segs[i+1]
+		}
+	}
+	return "all"
 }
 
 // CollectHealth reads the probe run state, the start failures, the output
