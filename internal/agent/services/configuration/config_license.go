@@ -55,11 +55,16 @@ func applyLicenseSidecar(cfg *LocalConfigurationData, configPath string) error {
 
 // WriteLicenseSidecar writes the JWT to the license sidecar next to configPath
 // with 0600 permissions and clears any inline agent.license so the sidecar is
-// the single source of truth. It backs `license activate`.
+// the single source of truth. Written by root on Linux, the sidecar then takes
+// the owner and group of agent.yaml, group-readable when agent.yaml is, so the
+// service user can read it. It backs `license activate`.
 func WriteLicenseSidecar(configPath, jwt string) error {
 	path := LicenseSidecarPath(configPath)
 	if err := atomicWriteFile(path, []byte(jwt+"\n"), 0o600); err != nil {
 		return fmt.Errorf("writing license sidecar %s: %w", path, err)
+	}
+	if err := alignLicenseOwner(path, configPath); err != nil {
+		return err
 	}
 	if err := SetLicenseField(configPath, ""); err != nil {
 		return fmt.Errorf("clearing inline license in %s: %w", configPath, err)

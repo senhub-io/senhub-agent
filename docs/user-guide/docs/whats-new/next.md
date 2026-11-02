@@ -30,6 +30,7 @@ Nothing released yet since 0.6.5. Changes land here as they are merged.
 
 ## Fixes
 
+- **Linux: `sudo senhub-agent license activate` leaves a licence the service can read.** Run as root, the command wrote `license.jwt` as `0600 root`, so the agent, which runs as `senhub`, could not read it and kept retrying. The file now takes the owner and group of `agent.yaml` and its mode, up to `0640`.
 - **Windows: an MSI update says its signature was verified.** The agent always checked the MSI's minisign signature before launching `msiexec`, but only the archive path logged it. The MSI path now logs `Update MSI signature verified` before the installer starts.
 - **exec: a command running when the agent stops is ended with all its children.** Stopping the agent (service stop, upgrade, restart) used to leave a running `exec` command and its children alive. They are now killed with the agent, on Windows too, where each command runs in a job object that also ends it if the agent dies. On Windows, a process the command leaves running after it exits is ended as well: run a daemon as a service, not from `exec`.
 - **Windows: `filetail` no longer loses the last lines written before a rotation.** At a rotation by rename and create, the lines the application wrote to the old file just before the rename (0 to 3 lines in a measured run) were never read. The probe now reads the end of the rotated file for up to one second, then releases it.
