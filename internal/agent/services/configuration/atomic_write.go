@@ -133,7 +133,7 @@ func rewriteFile(path string, edit func(data []byte) ([]byte, error)) (bool, err
 		if !bytes.Equal(fresh, data) {
 			continue
 		}
-		if err := atomicWriteFile(path, out, fileModeOr(path, 0o600)); err != nil {
+		if err := atomicWriteFileOwned(path, out, fileModeOr(path, 0o600), existingOwner(path)); err != nil {
 			return false, err
 		}
 		return true, nil
