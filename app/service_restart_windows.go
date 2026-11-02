@@ -29,12 +29,12 @@ func restartServiceAfterUpdate() (string, error) {
 			if err != nil {
 				return false
 			}
-			defer m.Disconnect()
+			defer m.Disconnect() //nolint:errcheck // best-effort release
 			s, err := m.OpenService(windowsServiceName)
 			if err != nil {
 				return false
 			}
-			defer s.Close()
+			defer s.Close() //nolint:errcheck // best-effort release
 			return true
 		},
 		isActive: func() bool {
@@ -42,12 +42,12 @@ func restartServiceAfterUpdate() (string, error) {
 			if err != nil {
 				return false
 			}
-			defer m.Disconnect()
+			defer m.Disconnect() //nolint:errcheck // best-effort release
 			s, err := m.OpenService(windowsServiceName)
 			if err != nil {
 				return false
 			}
-			defer s.Close()
+			defer s.Close() //nolint:errcheck // best-effort release
 			st, err := s.Query()
 			if err != nil {
 				return false
@@ -59,12 +59,12 @@ func restartServiceAfterUpdate() (string, error) {
 			if err != nil {
 				return ""
 			}
-			defer m.Disconnect()
+			defer m.Disconnect() //nolint:errcheck // best-effort release
 			s, err := m.OpenService(windowsServiceName)
 			if err != nil {
 				return ""
 			}
-			defer s.Close()
+			defer s.Close() //nolint:errcheck // best-effort release
 			st, err := s.Query()
 			if err != nil {
 				return ""
@@ -76,12 +76,12 @@ func restartServiceAfterUpdate() (string, error) {
 			if err != nil {
 				return fmt.Errorf("connecting to the service manager: %w", err)
 			}
-			defer m.Disconnect()
+			defer m.Disconnect() //nolint:errcheck // best-effort release
 			s, err := m.OpenService(windowsServiceName)
 			if err != nil {
 				return fmt.Errorf("opening service %s: %w", windowsServiceName, err)
 			}
-			defer s.Close()
+			defer s.Close() //nolint:errcheck // best-effort release
 			if _, err := s.Control(svc.Stop); err != nil {
 				return fmt.Errorf("sending stop to %s: %w", windowsServiceName, err)
 			}
@@ -110,7 +110,7 @@ func restartServiceAfterUpdate() (string, error) {
 			if err != nil {
 				return "", err
 			}
-			defer windows.CloseHandle(h)
+			defer windows.CloseHandle(h) //nolint:errcheck // best-effort release
 			buf := make([]uint16, 1024)
 			size := uint32(len(buf))
 			if err := windows.QueryFullProcessImageName(h, 0, &buf[0], &size); err != nil {
