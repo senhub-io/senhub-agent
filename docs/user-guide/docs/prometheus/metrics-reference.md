@@ -37,6 +37,7 @@ the OTLP receiver counters once that probe has received traffic.
 | `senhub_agent_otlp_receiver_received_total` | counter | Records relayed by the OTLP receiver, by signal, origin and sending service | `signal`, `origin`, `senhub_otlp_receiver_sender_service_name` |
 | `senhub_agent_otlp_receiver_received_without_host_id_total` | counter | Relayed records that still had no `host.id` afterwards; expected on `origin=remote`, a defect on `uds` | `signal`, `origin`, `senhub_otlp_receiver_sender_service_name` |
 | `senhub_agent_otlp_receiver_dropped_total` | counter | Items the OTLP receiver discarded, by signal and reason (`no_sink`, `unmapped`) | `signal`, `reason` |
+| `senhub_agent_otlp_receiver_refused_total` | counter | OTLP/HTTP requests the receiver refused, by signal and reason (`bad_body`, `too_large`, `media_type`, `encoding`, `rate_limited`, `method`, `unauthorized`, `forbidden`) | `signal`, `reason` |
 | `senhub_agent_http_requests_total` | counter | HTTP requests served per route template | `endpoint` |
 | `senhub_agent_build_info` | gauge (=1) | Agent build metadata | `version`, `commit` |
 

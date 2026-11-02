@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	gops "github.com/shirou/gopsutil/v3/process"
@@ -37,6 +38,11 @@ type processSnapshot struct {
 	memoryUnread  bool
 	threadsUnread bool
 }
+
+// kernelThreadNoticeOnce keeps the "kernel threads skipped" notice to one
+// line per agent process, whatever the number of process probes, instead
+// of one per collection cycle.
+var kernelThreadNoticeOnce sync.Once
 
 // getHostID returns the same host id the entity source uses, or "" when the
 // host identity is not available yet.
@@ -118,12 +124,24 @@ func collectWithBaseTags(ts time.Time, cfg config, log *logger.ModuleLogger, bas
 	}
 
 	snaps := make([]processSnapshot, 0, len(procs))
+	skippedKernelThreads := 0
 	for _, p := range procs {
+		// Kernel threads are dropped before any roll-up or top_n selection,
+		// so they count nowhere: one name per CPU, disk and interrupt line.
+		if !cfg.includeKernelThreads && isKernelThread(p.Pid, "/proc") {
+			skippedKernelThreads++
+			continue
+		}
 		snap, skip := snapshotProcess(p, cfg, log)
 		if skip {
 			continue
 		}
 		snaps = append(snaps, snap)
+	}
+	if skippedKernelThreads > 0 {
+		kernelThreadNoticeOnce.Do(func() {
+			log.Info().Int("skipped", skippedKernelThreads).Msg("Kernel threads not reported; set include_kernel_threads: true to report them")
+		})
 	}
 
 	if cfg.topByName() {
