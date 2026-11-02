@@ -3,8 +3,9 @@ package process
 import (
 	"fmt"
 	"regexp"
-	"senhub-agent.go/internal/agent/probes/types"
 	"time"
+
+	"senhub-agent.go/internal/agent/probes/types"
 )
 
 // config holds the validated process probe configuration.
@@ -23,6 +24,9 @@ type config struct {
 	// carries the process id and creation time, so the series set grows
 	// with each process that enters the top.
 	perPID bool
+	// includeKernelThreads keeps Linux kernel threads in the report.
+	// Off by default: their names scale with CPUs, disks and IRQ lines.
+	includeKernelThreads bool
 	// interval between collection cycles.
 	interval time.Duration
 }
@@ -43,6 +47,10 @@ func parseConfig(raw map[string]interface{}) (config, error) {
 
 	if v, ok := types.IntParam(raw, "interval"); ok && v > 0 {
 		cfg.interval = time.Duration(v) * time.Second
+	}
+
+	if v, ok := raw["include_kernel_threads"].(bool); ok {
+		cfg.includeKernelThreads = v
 	}
 
 	if filter, ok := raw["filter"].(map[string]interface{}); ok {
