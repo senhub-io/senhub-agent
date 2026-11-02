@@ -72,15 +72,34 @@ func FromLinuxSysfs(s string) (string, bool) {
 	}
 }
 
+// maxUnmapped bounds the values remembered: an SNMP device answers any
+// integer, so an unbounded set would let it grow memory and the log.
+const maxUnmapped = 64
+
 // unmapped remembers the values already reported, so each one is logged
 // once per process: an omitted oper_state is otherwise indistinguishable
 // from a state never measured, and the table would stop being complete
 // without anyone learning it.
-var unmapped sync.Map
+var unmapped = struct {
+	sync.Mutex
+	seen   map[string]struct{}
+	capped bool
+}{seen: map[string]struct{}{}}
 
 func reportUnmapped(source, value string) {
-	if _, seen := unmapped.LoadOrStore(source+"\x00"+value, struct{}{}); seen {
+	key := source + "\x00" + value
+	unmapped.Lock()
+	defer unmapped.Unlock()
+	if _, ok := unmapped.seen[key]; ok {
 		return
 	}
+	if len(unmapped.seen) >= maxUnmapped {
+		if !unmapped.capped {
+			unmapped.capped = true
+			log.Warn().Int("reported", maxUnmapped).Msg("Further interface operational states outside the oper_state table are not reported")
+		}
+		return
+	}
+	unmapped.seen[key] = struct{}{}
 	log.Warn().Str("source", source).Str("value", value).Msg("Interface operational state outside the oper_state table; the attribute is omitted until the table maps it")
 }
