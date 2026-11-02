@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/entity/operstate"
 	"senhub-agent.go/internal/agent/services/snmpcore"
 )
 
@@ -154,23 +155,12 @@ func parseInterfaces(nameBinds, speedBinds, operBinds, typeBinds, mtuBinds, macB
 }
 
 // operStateName maps the IF-MIB ifOperStatus enum to the oper_state state-key
-// value (frozen casing, Toise #87). notPresent is filtered upstream (the
-// interface is not emitted), so it has no name here.
-func operStateName(v int) string {
-	switch v {
-	case ifOperUp:
-		return "up"
-	case ifOperDown:
-		return "down"
-	case ifOperTesting:
-		return "testing"
-	case ifOperDormant:
-		return "dormant"
-	case ifOperLowerLayerDown:
-		return "lowerLayerDown"
-	default:
-		return "unknown"
-	}
+// value via the shared operstate table. ok=false means the raw value is
+// outside the closed vocabulary, so the caller must OMIT the attribute
+// (absence is distinct from "unknown"). notPresent is still filtered
+// upstream (the interface is not emitted), but the table knows it.
+func operStateName(v int) (string, bool) {
+	return operstate.FromIFMIB(v)
 }
 
 // macString formats ifPhysAddress octets in the canonical MAC form

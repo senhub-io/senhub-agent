@@ -96,13 +96,23 @@ func TestDuplexName(t *testing.T) {
 
 func TestOperStateName(t *testing.T) {
 	cases := map[int]string{
-		ifOperUp: "up", ifOperDown: "down", ifOperTesting: "testing",
-		ifOperDormant: "dormant", ifOperLowerLayerDown: "lowerLayerDown",
-		4: "unknown", 99: "unknown",
+		ifOperUp:             "up",
+		ifOperDown:           "down",
+		ifOperTesting:        "testing",
+		4:                    "unknown",
+		ifOperDormant:        "dormant",
+		ifOperNotPresent:     "not_present",
+		ifOperLowerLayerDown: "lower_layer_down",
 	}
 	for in, want := range cases {
-		if got := operStateName(in); got != want {
-			t.Errorf("operStateName(%d) = %q, want %q", in, got, want)
+		got, ok := operStateName(in)
+		if !ok || got != want {
+			t.Errorf("operStateName(%d) = %q, %v; want %q, true", in, got, ok, want)
+		}
+	}
+	for _, in := range []int{0, 8, 99, -1} {
+		if got, ok := operStateName(in); ok {
+			t.Errorf("operStateName(%d) = %q, true; want omitted", in, got)
 		}
 	}
 }

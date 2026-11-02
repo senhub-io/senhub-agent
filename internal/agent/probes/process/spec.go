@@ -13,6 +13,7 @@ func init() {
 		DefaultInterval: 30,
 		Params: []probes.ParamSpec{
 			{Key: "interval", Kind: probes.KindInt, Default: 30, Group: "collection", Description: "Seconds between collections"},
+			{Key: "include_kernel_threads", Kind: probes.KindBool, Default: false, Group: "collection", Description: "Report Linux kernel threads (kworker, ksoftirqd, scsi_eh_N…) as processes. Off by default: one name per CPU, disk and interrupt line."},
 			{Key: "filter", Kind: probes.KindBlock, Group: "filter", Description: "Narrows the process table; by_name and by_user turn on the per-process detail unless top_n is also set; empty reports the per-name roll-up over every process", Fields: []probes.ParamSpec{
 				{Key: "by_name", Kind: probes.KindString, Description: "Regular expression (RE2) a process name must match", Example: "^(nginx|php-fpm)"},
 				{Key: "by_user", Kind: probes.KindString, Description: "OS user owning the processes; empty accepts every user", Example: "www-data"},

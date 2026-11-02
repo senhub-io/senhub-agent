@@ -4,14 +4,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v3"
 
-	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/configuration"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/cliexit"
@@ -46,10 +44,11 @@ type checkFinding struct {
 
 type configCheckReport struct {
 	jsonHeader
-	ConfigPath string         `json:"config_path"`
-	Errors     int            `json:"errors"`
-	Warnings   int            `json:"warnings"`
-	Findings   []checkFinding `json:"findings"`
+	ConfigPath   string         `json:"config_path"`
+	ConfigOrigin string         `json:"config_origin"`
+	Errors       int            `json:"errors"`
+	Warnings     int            `json:"warnings"`
+	Findings     []checkFinding `json:"findings"`
 }
 
 var checkFindingLine = regexp.MustCompile(`^\s*\[(OK|INFO|WARN|ERROR|OFF)\]\s+(.*\S)\s*$`)
@@ -78,11 +77,14 @@ func runConfigCheck(args []string, out io.Writer) int {
 	if err != nil {
 		return reportFailure("config.check", jsonMode, out, fmt.Errorf("config check: %w", err))
 	}
-	if resolved, resErr := cliArgs.GetAbsoluteConfigPath(configPath); resErr == nil {
-		configPath = resolved
+	resolved, origin, resErr := resolveCLIConfigPath(configPath)
+	if resErr != nil {
+		return reportFailure("config.check", jsonMode, out, fmt.Errorf("config check: resolving the config path: %w", resErr))
 	}
+	configPath = resolved
 
 	if !jsonMode {
+		fmt.Fprintf(out, "config: %s (%s)\n", configPath, origin)
 		return checkConfig(configPath).exitCode()
 	}
 
@@ -93,16 +95,13 @@ func runConfigCheck(args []string, out io.Writer) int {
 	}
 
 	code := outcome.exitCode()
-	absPath, absErr := filepath.Abs(configPath)
-	if absErr != nil {
-		absPath = configPath
-	}
 	report := configCheckReport{
-		jsonHeader: newJSONHeader("config.check", code),
-		ConfigPath: absPath,
-		Errors:     outcome.errors,
-		Warnings:   outcome.warnings,
-		Findings:   parseCheckFindings(text),
+		jsonHeader:   newJSONHeader("config.check", code),
+		ConfigPath:   configPath,
+		ConfigOrigin: origin,
+		Errors:       outcome.errors,
+		Warnings:     outcome.warnings,
+		Findings:     parseCheckFindings(text),
 	}
 	if outcome.loadErr != nil {
 		report.Error = outcome.loadErr.Error()
@@ -115,9 +114,10 @@ func runConfigCheck(args []string, out io.Writer) int {
 
 type configShowReport struct {
 	jsonHeader
-	ConfigPath string `json:"config_path"`
-	Mode       string `json:"mode"`
-	Config     any    `json:"config"`
+	ConfigPath   string `json:"config_path"`
+	ConfigOrigin string `json:"config_origin"`
+	Mode         string `json:"mode"`
+	Config       any    `json:"config"`
 	// EnvProbeVariables names, never valued, the SENHUB_PROBE_* variables
 	// the merged probes were read from.
 	EnvProbeVariables []string `json:"env_probe_variables,omitempty"`
@@ -174,13 +174,11 @@ func runConfigShow(args []string, out io.Writer) int {
 		}
 	}
 
-	// Resolve to the OS-canonical absolute path when no explicit path
-	// was given, mirroring what `agent run` / `agent start` use.
-	if resolved, err := cliArgs.GetAbsoluteConfigPath(configPath); err == nil {
-		configPath = resolved
-	} else if absPath, absErr := filepath.Abs(configPath); absErr == nil {
-		configPath = absPath
+	resolved, origin, err := resolveCLIConfigPath(configPath)
+	if err != nil {
+		return reportFailure("config.show", jsonMode, out, fmt.Errorf("config show: resolving the config path: %w", err))
 	}
+	configPath = resolved
 
 	// The loader WARNs about legacy detection and duplicate strategies;
 	// those go to stderr so stdout carries the document alone.
@@ -200,6 +198,11 @@ func runConfigShow(args []string, out io.Writer) int {
 
 	envVars := configuration.EnvProbeVariables()
 	if !jsonMode {
+		// A YAML comment, and only when the operator did not name the file:
+		// the output stays a valid document to diff or re-read.
+		if origin != "--config-path" {
+			fmt.Fprintf(out, "# config: %s (%s)\n", configPath, origin)
+		}
 		if len(envVars) > 0 {
 			// A comment, so the document stays valid YAML for a diff or a
 			// re-read. Values are in the document, never in this line.
@@ -216,10 +219,11 @@ func runConfigShow(args []string, out io.Writer) int {
 		return reportFailure("config.show", true, out, fmt.Errorf("config show: reading back the configuration: %w", err))
 	}
 	report := configShowReport{
-		jsonHeader: newJSONHeader("config.show", cliexit.OK),
-		ConfigPath: configPath,
-		Mode:       showModeName(mode),
-		Config:     jsonSafeTree(tree),
+		jsonHeader:   newJSONHeader("config.show", cliexit.OK),
+		ConfigPath:   configPath,
+		ConfigOrigin: origin,
+		Mode:         showModeName(mode),
+		Config:       jsonSafeTree(tree),
 
 		EnvProbeVariables: envVars,
 	}
