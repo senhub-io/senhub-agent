@@ -3,7 +3,13 @@
 // the closed oper_state vocabulary (RFC 2863 ifOperStatus, snake_case).
 package operstate
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+	"sync"
+
+	"github.com/rs/zerolog/log"
+)
 
 const (
 	Up             = "up"
@@ -34,6 +40,7 @@ func FromIFMIB(v int) (string, bool) {
 	case 7:
 		return LowerLayerDown, true
 	default:
+		reportUnmapped("if-mib", strconv.Itoa(v))
 		return "", false
 	}
 }
@@ -58,6 +65,22 @@ func FromLinuxSysfs(s string) (string, bool) {
 	case "lowerlayerdown":
 		return LowerLayerDown, true
 	default:
+		if v := strings.TrimSpace(s); v != "" {
+			reportUnmapped("linux-sysfs", v)
+		}
 		return "", false
 	}
+}
+
+// unmapped remembers the values already reported, so each one is logged
+// once per process: an omitted oper_state is otherwise indistinguishable
+// from a state never measured, and the table would stop being complete
+// without anyone learning it.
+var unmapped sync.Map
+
+func reportUnmapped(source, value string) {
+	if _, seen := unmapped.LoadOrStore(source+"\x00"+value, struct{}{}); seen {
+		return
+	}
+	log.Warn().Str("source", source).Str("value", value).Msg("Interface operational state outside the oper_state table; the attribute is omitted until the table maps it")
 }
