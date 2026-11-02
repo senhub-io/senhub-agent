@@ -285,7 +285,7 @@ func (v *JWTValidator) parseDelegation(token *jwt.Token) (*delegationInfo, error
 		return v.publicKey, nil
 	}, jwt.WithoutClaimsValidation())
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrDelegationInvalid, err)
+		return nil, fmt.Errorf("%w: %w", ErrDelegationInvalid, err)
 	}
 	if typ, _ := dlgToken.Header["typ"].(string); typ != DelegationType {
 		return nil, fmt.Errorf("%w: delegation typ is %q, want %q", ErrDelegationInvalid, typ, DelegationType)
