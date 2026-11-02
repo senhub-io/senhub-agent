@@ -1,8 +1,10 @@
 package license
 
 import (
+	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -38,6 +40,24 @@ func looksLikeLegacyCompactLicense(token string) bool {
 	return strings.HasPrefix(strings.TrimSpace(token), legacyCompactPrefix)
 }
 
+// DelegationType is the JWT header `typ` of a delegation token. A
+// delegation is never a licence, so a root-signed token carrying this
+// typ is refused outright.
+const DelegationType = "senhub-dlg+jwt"
+
+// ErrDelegationMissing is returned when a delegated (EdDSA) licence
+// carries no `dlg` header.
+var ErrDelegationMissing = errors.New("delegated licence is missing its delegation")
+
+// ErrDelegationInvalid is returned when the delegation chain itself is
+// unsound: bad signature, wrong typ, mismatched kid, malformed scope or
+// a licence issued outside the delegation's validity window.
+var ErrDelegationInvalid = errors.New("invalid delegation")
+
+// ErrDelegationScope is returned when the licence subject is not covered
+// by the delegation's scope.
+var ErrDelegationScope = errors.New("licence subject outside the delegation scope")
+
 // LicenseTier represents the subscription tier
 type LicenseTier string
 
@@ -58,6 +78,24 @@ type LicenseClaims struct {
 	jwt.RegisteredClaims
 }
 
+// DelegationScope narrows which licence subjects a platform may issue
+// for: exact matches, or prefixes.
+type DelegationScope struct {
+	Subjects        []string `json:"subjects"`
+	SubjectPrefixes []string `json:"subject_prefixes"`
+}
+
+// DelegationClaims are the claims of a delegation token: the root key
+// signs, per signing platform, which ed25519 key that platform may use
+// and which subjects it may issue licences for.
+type DelegationClaims struct {
+	Platform string          `json:"platform"`
+	KID      string          `json:"kid"`
+	Pub      string          `json:"pub"`
+	Scope    DelegationScope `json:"scope"`
+	jwt.RegisteredClaims
+}
+
 // License represents a validated license
 type License struct {
 	Tier             LicenseTier
@@ -69,6 +107,12 @@ type License struct {
 	ID              string
 	IsExpired       bool
 	GracePeriodDays int
+	// Platform is the signing platform named by the delegation; empty
+	// for a root-signed licence.
+	Platform string
+	// DelegationExpiresAt is the delegation's exp; zero for a
+	// root-signed licence.
+	DelegationExpiresAt time.Time
 }
 
 // Validator validates license tokens
@@ -83,11 +127,27 @@ type Validator interface {
 	IsInGracePeriod(license *License) bool
 }
 
-// JWTValidator implements the Validator interface using JWT with RSA signature
+// JWTValidator implements the Validator interface. Two kinds of signing
+// key are trusted: the single root RSA key (RS256, kid ignored), and the
+// per-platform ed25519 keys reached through a root-signed delegation
+// carried in the licence's `dlg` header. The algorithm is pinned by the
+// kind of key, so a token can never be checked against a key of the
+// other kind.
 type JWTValidator struct {
 	publicKey       *rsa.PublicKey
 	gracePeriodDays int
 }
+
+// delegatedLicenceMaxLifetime bounds the validity of a delegated
+// licence. Platforms sign automatically renewed short-lived licences;
+// the bound keeps a misused platform key from minting a long-lived
+// licence, which only the root key may sign.
+const delegatedLicenceMaxLifetime = 92 * 24 * time.Hour
+
+// delegatedLicenceClockSkew is how far in the future a delegated
+// licence's iat may be. Without it a forward-dated iat would move the
+// lifetime bound with it.
+const delegatedLicenceClockSkew = 5 * time.Minute
 
 // NewJWTValidator creates a new JWT validator with the provided RSA public key
 func NewJWTValidator(publicKeyPEM string, gracePeriodDays int) (*JWTValidator, error) {
@@ -114,9 +174,11 @@ func NewJWTValidator(publicKeyPEM string, gracePeriodDays int) (*JWTValidator, e
 	}, nil
 }
 
-// ValidateLicense validates a JWT licence token. RS256 with the
-// embedded SenHub public key; expiry is checked manually so the
-// grace-period semantics in IsInGracePeriod stay authoritative.
+// ValidateLicense validates a JWT licence token: RS256 with the
+// embedded root key, or EdDSA with the platform key named by the
+// root-signed delegation in the licence's `dlg` header; expiry is
+// checked manually so the grace-period semantics in IsInGracePeriod
+// stay authoritative.
 //
 // The compact-licence path that used to live here was removed when
 // the repository went open-source — its HMAC secret could not
@@ -134,14 +196,28 @@ func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
 
 	// Parse and validate JWT token.
 	// WithoutClaimsValidation: expiry is managed manually to support grace periods.
+	var delegation *delegationInfo
 	token, err := jwt.ParseWithClaims(tokenString, &LicenseClaims{}, func(token *jwt.Token) (interface{}, error) {
-		// SECURITY: Verify signing method is specifically RS256 (not just any RSA method)
-		// This prevents algorithm confusion/downgrade attacks
-		method, ok := token.Method.(*jwt.SigningMethodRSA)
-		if !ok || method.Alg() != "RS256" {
-			return nil, fmt.Errorf("unexpected signing method: %v, expected RS256", token.Header["alg"])
+		switch method := token.Method.(type) {
+		case *jwt.SigningMethodRSA:
+			if method.Alg() != "RS256" {
+				return nil, fmt.Errorf("unexpected signing method: %v, expected RS256 or EdDSA", token.Header["alg"])
+			}
+			// A delegation is never a licence.
+			if typ, _ := token.Header["typ"].(string); typ == DelegationType {
+				return nil, fmt.Errorf("delegation token presented as a licence")
+			}
+			return v.publicKey, nil
+		case *jwt.SigningMethodEd25519:
+			dlg, err := v.parseDelegation(token)
+			if err != nil {
+				return nil, err
+			}
+			delegation = dlg
+			return dlg.platformKey, nil
+		default:
+			return nil, fmt.Errorf("unexpected signing method: %v, expected RS256 or EdDSA", token.Header["alg"])
 		}
-		return v.publicKey, nil
 	}, jwt.WithoutClaimsValidation())
 
 	if err != nil {
@@ -162,20 +238,158 @@ func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
 	if claims.RegisteredClaims.IssuedAt != nil {
 		issuedAt = claims.RegisteredClaims.IssuedAt.Time
 	}
+	var platform string
+	var delegationExpiresAt time.Time
+	if delegation != nil {
+		if err := checkDelegatedLicenceClaims(claims, issuedAt, expiresAt, delegation); err != nil {
+			return nil, err
+		}
+		platform = delegation.Platform
+		if delegation.RegisteredClaims.ExpiresAt != nil {
+			delegationExpiresAt = delegation.RegisteredClaims.ExpiresAt.Time
+		}
+	}
 	isExpired := time.Now().After(expiresAt)
 
 	license := &License{
-		Tier:             claims.Tier,
-		AuthorizedProbes: claims.AuthorizedProbes,
-		ExpiresAt:        expiresAt,
-		IssuedAt:         issuedAt,
-		Subject:          claims.RegisteredClaims.Subject,
-		ID:               claims.RegisteredClaims.ID,
-		IsExpired:        isExpired,
-		GracePeriodDays:  v.gracePeriodDays,
+		Tier:                claims.Tier,
+		AuthorizedProbes:    claims.AuthorizedProbes,
+		ExpiresAt:           expiresAt,
+		IssuedAt:            issuedAt,
+		Subject:             claims.RegisteredClaims.Subject,
+		ID:                  claims.RegisteredClaims.ID,
+		IsExpired:           isExpired,
+		GracePeriodDays:     v.gracePeriodDays,
+		Platform:            platform,
+		DelegationExpiresAt: delegationExpiresAt,
 	}
 
 	return license, nil
+}
+
+// parseDelegation verifies the root-signed delegation carried in the
+// licence's `dlg` header and returns its claims together with the
+// platform ed25519 key the licence must be signed with.
+func (v *JWTValidator) parseDelegation(token *jwt.Token) (*delegationInfo, error) {
+	kid, _ := token.Header["kid"].(string)
+	dlgHeader, ok := token.Header["dlg"].(string)
+	if !ok || dlgHeader == "" {
+		return nil, ErrDelegationMissing
+	}
+
+	dlgToken, err := jwt.ParseWithClaims(dlgHeader, &DelegationClaims{}, func(t *jwt.Token) (interface{}, error) {
+		method, ok := t.Method.(*jwt.SigningMethodRSA)
+		if !ok || method.Alg() != "RS256" {
+			return nil, fmt.Errorf("unexpected signing method: %v, expected RS256", t.Header["alg"])
+		}
+		return v.publicKey, nil
+	}, jwt.WithoutClaimsValidation())
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrDelegationInvalid, err)
+	}
+	if typ, _ := dlgToken.Header["typ"].(string); typ != DelegationType {
+		return nil, fmt.Errorf("%w: delegation typ is %q, want %q", ErrDelegationInvalid, typ, DelegationType)
+	}
+	if !dlgToken.Valid {
+		return nil, fmt.Errorf("%w: delegation token invalid", ErrDelegationInvalid)
+	}
+	dlg, ok := dlgToken.Claims.(*DelegationClaims)
+	if !ok {
+		return nil, fmt.Errorf("%w: invalid delegation claims", ErrDelegationInvalid)
+	}
+
+	if dlg.Platform == "" {
+		return nil, fmt.Errorf("%w: delegation without platform", ErrDelegationInvalid)
+	}
+	if dlg.KID == "" {
+		return nil, fmt.Errorf("%w: delegation without kid", ErrDelegationInvalid)
+	}
+	if dlg.KID != kid {
+		return nil, fmt.Errorf("%w: delegation kid %q does not match licence kid %q", ErrDelegationInvalid, dlg.KID, kid)
+	}
+	rawPub, err := base64.StdEncoding.DecodeString(dlg.Pub)
+	if err != nil || len(rawPub) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("%w: delegation pub is not a %d-byte ed25519 key", ErrDelegationInvalid, ed25519.PublicKeySize)
+	}
+	if len(dlg.Scope.Subjects) == 0 && len(dlg.Scope.SubjectPrefixes) == 0 {
+		return nil, fmt.Errorf("%w: delegation scope is empty", ErrDelegationInvalid)
+	}
+	for _, s := range dlg.Scope.Subjects {
+		if s == "" {
+			return nil, fmt.Errorf("%w: delegation scope has an empty subject", ErrDelegationInvalid)
+		}
+	}
+	for _, p := range dlg.Scope.SubjectPrefixes {
+		if p == "" {
+			return nil, fmt.Errorf("%w: delegation scope has an empty subject prefix", ErrDelegationInvalid)
+		}
+	}
+	if dlg.RegisteredClaims.IssuedAt == nil || dlg.RegisteredClaims.ExpiresAt == nil {
+		return nil, fmt.Errorf("%w: delegation without iat or exp", ErrDelegationInvalid)
+	}
+	if !dlg.RegisteredClaims.ExpiresAt.Time.After(dlg.RegisteredClaims.IssuedAt.Time) {
+		return nil, fmt.Errorf("%w: delegation exp is not after iat", ErrDelegationInvalid)
+	}
+
+	return &delegationInfo{
+		DelegationClaims: dlg,
+		platformKey:      ed25519.PublicKey(rawPub),
+	}, nil
+}
+
+// delegationInfo pairs verified delegation claims with the platform key
+// they authorize.
+type delegationInfo struct {
+	*DelegationClaims
+	platformKey ed25519.PublicKey
+}
+
+// checkDelegatedLicenceClaims holds a delegated licence to what the
+// delegation allows: a licence bound to an in-scope customer, issued
+// while the delegation was valid, never outliving it, with an expiry no
+// further than delegatedLicenceMaxLifetime from an issue time that is
+// not in the future.
+func checkDelegatedLicenceClaims(claims *LicenseClaims, issuedAt, expiresAt time.Time, dlg *delegationInfo) error {
+	if claims.RegisteredClaims.Subject == "" {
+		return fmt.Errorf("delegated licence without a subject")
+	}
+	if issuedAt.IsZero() || expiresAt.IsZero() {
+		return fmt.Errorf("delegated licence without iat or exp")
+	}
+	if issuedAt.After(time.Now().Add(delegatedLicenceClockSkew)) {
+		return fmt.Errorf("delegated licence issued in the future (iat %s)", issuedAt.UTC().Format(time.RFC3339))
+	}
+	if expiresAt.Sub(issuedAt) > delegatedLicenceMaxLifetime {
+		return fmt.Errorf("delegated licence valid for %s, above the %s limit", expiresAt.Sub(issuedAt), delegatedLicenceMaxLifetime)
+	}
+	dlgIat := dlg.RegisteredClaims.IssuedAt.Time
+	dlgExp := dlg.RegisteredClaims.ExpiresAt.Time
+	if issuedAt.Before(dlgIat) || issuedAt.After(dlgExp) {
+		return fmt.Errorf("%w: licence issued outside the delegation validity", ErrDelegationInvalid)
+	}
+	if expiresAt.After(dlgExp) {
+		return fmt.Errorf("%w: licence outlives its delegation", ErrDelegationInvalid)
+	}
+	sub := claims.RegisteredClaims.Subject
+	inScope := false
+	for _, s := range dlg.Scope.Subjects {
+		if sub == s {
+			inScope = true
+			break
+		}
+	}
+	if !inScope {
+		for _, p := range dlg.Scope.SubjectPrefixes {
+			if strings.HasPrefix(sub, p) {
+				inScope = true
+				break
+			}
+		}
+	}
+	if !inScope {
+		return fmt.Errorf("%w: subject %q", ErrDelegationScope, sub)
+	}
+	return nil
 }
 
 // IsProbeAuthorized checks if a probe is authorized by the license
