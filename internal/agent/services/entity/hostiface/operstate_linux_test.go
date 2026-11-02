@@ -2,16 +2,28 @@
 
 package hostiface
 
-import "testing"
+import (
+	"testing"
 
-func TestNormOperstate(t *testing.T) {
+	"senhub-agent.go/internal/agent/services/entity/operstate"
+)
+
+func TestReadSysLinkOperstateMapping(t *testing.T) {
 	cases := map[string]string{
-		"up": "up", "down": "down", "lowerlayerdown": "down", "dormant": "down",
-		"unknown": "", "notpresent": "", "": "",
+		"up":             "up",
+		"down":           "down",
+		"testing":        "testing",
+		"unknown":        "unknown",
+		"dormant":        "dormant",
+		"notpresent":     "not_present",
+		"lowerlayerdown": "lower_layer_down",
+		"":               "",
+		"garbage":        "",
 	}
 	for in, want := range cases {
-		if got := normOperstate(in); got != want {
-			t.Errorf("normOperstate(%q) = %q, want %q", in, got, want)
+		got, _ := operstate.FromLinuxSysfs(in)
+		if got != want {
+			t.Errorf("FromLinuxSysfs(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
