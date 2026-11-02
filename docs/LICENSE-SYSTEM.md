@@ -815,6 +815,6 @@ This system balances security, usability, and offline operation requirements whi
 Two kinds of key sign licences.
 
 - **Root key** (RSA-4096, RS256): `SenHubPublicKey` in `public_key.go`. Kept offline; signs licences outside the standard terms.
-- **Team keys** (ed25519, EdDSA): `TeamPublicKeys` in `public_key.go`, by `kid`. Held non-exportable by the signing service's key store, which only signs. A team-signed licence must carry `kid`, a non-empty `sub`, `iat` and `exp`, with `exp - iat` at most 92 days.
+- **Team keys** (ed25519, EdDSA): `TeamPublicKeys` in `public_key.go`, by `kid`. Held non-exportable by the signing service's key store, which only signs. A team-signed licence must carry `kid`, a non-empty `sub`, `iat` and `exp`, with `exp - iat` at most 92 days and `iat` no more than 5 minutes in the future.
 
 The algorithm is pinned by the kind of key: an RS256 token is checked against the root key only, an EdDSA token against the team key its `kid` names. Any other algorithm, an EdDSA token without `kid`, or a `kid` that is not listed is refused.

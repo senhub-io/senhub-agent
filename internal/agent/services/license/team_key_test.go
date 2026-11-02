@@ -78,6 +78,10 @@ func TestTeamKeyLicenceRefused(t *testing.T) {
 	noExp := teamClaims("acme", day)
 	noExp.ExpiresAt = nil
 
+	future := teamClaims("acme", 90*day)
+	future.IssuedAt = jwt.NewNumericDate(time.Now().Add(3650 * day))
+	future.ExpiresAt = jwt.NewNumericDate(time.Now().Add(3740 * day))
+
 	cases := []struct {
 		name  string
 		token string
@@ -89,6 +93,7 @@ func TestTeamKeyLicenceRefused(t *testing.T) {
 		{"lifetime above the limit", signEd(t, "teams-1", priv, teamClaims("acme", 365*day)), "limit"},
 		{"no subject", signEd(t, "teams-1", priv, teamClaims("", day)), "subject"},
 		{"no expiry", signEd(t, "teams-1", priv, noExp), "iat or exp"},
+		{"forward-dated iat", signEd(t, "teams-1", priv, future), "in the future"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

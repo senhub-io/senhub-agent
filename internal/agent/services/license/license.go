@@ -101,6 +101,11 @@ type JWTValidator struct {
 // which only the root key may sign.
 const teamLicenceMaxLifetime = 92 * 24 * time.Hour
 
+// teamLicenceClockSkew is how far in the future a team-signed iat may
+// be. Without it a forward-dated iat would move the lifetime bound with
+// it.
+const teamLicenceClockSkew = 5 * time.Minute
+
 // ErrUnknownSigningKey is returned when an EdDSA token names a kid that
 // is not a trusted team key.
 var ErrUnknownSigningKey = errors.New("licence signed by an unknown key")
@@ -232,13 +237,16 @@ func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
 
 // checkTeamLicenceClaims holds a team-signed licence to what team keys
 // are for: a licence bound to a customer, with an expiry no further than
-// teamLicenceMaxLifetime from its issue time.
+// teamLicenceMaxLifetime from an issue time that is not in the future.
 func checkTeamLicenceClaims(claims *LicenseClaims, issuedAt, expiresAt time.Time) error {
 	if claims.RegisteredClaims.Subject == "" {
 		return fmt.Errorf("team-signed licence without a subject")
 	}
 	if issuedAt.IsZero() || expiresAt.IsZero() {
 		return fmt.Errorf("team-signed licence without iat or exp")
+	}
+	if issuedAt.After(time.Now().Add(teamLicenceClockSkew)) {
+		return fmt.Errorf("team-signed licence issued in the future (iat %s)", issuedAt.UTC().Format(time.RFC3339))
 	}
 	if expiresAt.Sub(issuedAt) > teamLicenceMaxLifetime {
 		return fmt.Errorf("team-signed licence valid for %s, above the %s limit", expiresAt.Sub(issuedAt), teamLicenceMaxLifetime)
