@@ -8,28 +8,23 @@ import (
 	"syscall"
 )
 
-// alignLicenseOwner gives a licence sidecar written by root the owner,
-// group and (at most 0640) mode of agent.yaml. A package install keeps
-// agent.yaml root:senhub 0640 so the service user reads it through its
-// group; a sidecar left 0600 root would stop the service from loading
-// the licence it was just given.
-func alignLicenseOwner(sidecar, configPath string) error {
+// licenseSidecarOwner is the owner and mode a licence sidecar written by
+// root takes: those of agent.yaml, the mode narrowed to at most 0640. A
+// package install keeps agent.yaml root:senhub 0640 so the service user
+// reads it through its group; a sidecar left 0600 root would stop the
+// service from loading the licence it was just given. Not root: nil, the
+// writer's own 0600 file.
+func licenseSidecarOwner(configPath string) (*fileOwner, os.FileMode, error) {
 	if os.Geteuid() != 0 {
-		return nil
+		return nil, 0o600, nil
 	}
 	ci, err := os.Stat(configPath)
 	if err != nil {
-		return fmt.Errorf("reading the owner of %s: %w", configPath, err)
+		return nil, 0, fmt.Errorf("reading the owner of %s: %w", configPath, err)
 	}
 	st, ok := ci.Sys().(*syscall.Stat_t)
 	if !ok {
-		return fmt.Errorf("reading the owner of %s: no unix stat", configPath)
+		return nil, 0, fmt.Errorf("reading the owner of %s: no unix stat", configPath)
 	}
-	if err := os.Chown(sidecar, int(st.Uid), int(st.Gid)); err != nil {
-		return fmt.Errorf("giving %s the owner of %s: %w", sidecar, configPath, err)
-	}
-	if err := os.Chmod(sidecar, licenseSidecarMode(ci.Mode())); err != nil {
-		return fmt.Errorf("setting the mode of %s: %w", sidecar, err)
-	}
-	return nil
+	return &fileOwner{uid: int(st.Uid), gid: int(st.Gid)}, licenseSidecarMode(ci.Mode()), nil
 }

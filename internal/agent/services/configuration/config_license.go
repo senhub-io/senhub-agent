@@ -60,11 +60,12 @@ func applyLicenseSidecar(cfg *LocalConfigurationData, configPath string) error {
 // service user can read it. It backs `license activate`.
 func WriteLicenseSidecar(configPath, jwt string) error {
 	path := LicenseSidecarPath(configPath)
-	if err := atomicWriteFile(path, []byte(jwt+"\n"), 0o600); err != nil {
-		return fmt.Errorf("writing license sidecar %s: %w", path, err)
-	}
-	if err := alignLicenseOwner(path, configPath); err != nil {
+	owner, mode, err := licenseSidecarOwner(configPath)
+	if err != nil {
 		return err
+	}
+	if err := atomicWriteFileOwned(path, []byte(jwt+"\n"), mode, owner); err != nil {
+		return fmt.Errorf("writing license sidecar %s: %w", path, err)
 	}
 	if err := SetLicenseField(configPath, ""); err != nil {
 		return fmt.Errorf("clearing inline license in %s: %w", configPath, err)
