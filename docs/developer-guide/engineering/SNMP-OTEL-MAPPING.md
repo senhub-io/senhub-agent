@@ -235,7 +235,11 @@ same device derive byte-identical ids.
   `network.interface` entity `{network.device.id, network.interface.name}` the device
   **owns** via `has_interface`. `oper_state` (ifOperStatus) is a Toise
   **state-key** (underscore spelling — a change fires `entity.state_changed`;
-  the earlier dotted `oper.state` was silently demoted to a plain attribute);
+  the earlier dotted `oper.state` was silently demoted to a plain attribute).
+  Its values are the closed RFC 2863 set in snake_case (`up`, `down`, `testing`,
+  `unknown`, `dormant`, `not_present`, `lower_layer_down`), from the table in
+  `internal/agent/services/entity/operstate` that the host interface source
+  shares; a value outside it is omitted, never mapped to `unknown`;
   `speed` (ifHighSpeed Mbit/s → bit/s), `mac` (ifPhysAddress, all-zero
   dropped), `mtu` (ifMtu), `interface.type` (IANAifType →
   physical/virtual/wireless/loopback) and `duplex` (EtherLike-MIB
