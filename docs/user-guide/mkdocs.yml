@@ -118,6 +118,7 @@ nav:
   - Alert rules and dashboards: packs.md
   - CLI reference: cli.md
   - OTLP / OpenTelemetry: otlp.md
+  - OpAMP remote management: opamp.md
   - Topology: topology.md
   - Probes:
       - Overview: probes/index.md

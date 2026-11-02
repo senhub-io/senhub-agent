@@ -36,6 +36,14 @@ var otlpReceiverDropped = struct {
 	m  map[otlpReceiverDropKey]uint64
 }{m: map[otlpReceiverDropKey]uint64{}}
 
+// otlpReceiverRefused counts OTLP/HTTP requests the receiver refused before
+// decoding (bad body, too large, media type, encoding, rate limit, method,
+// auth), keyed by the same (signal, reason) shape as the dropped counter.
+var otlpReceiverRefused = struct {
+	mu sync.RWMutex
+	m  map[otlpReceiverDropKey]uint64
+}{m: map[otlpReceiverDropKey]uint64{}}
+
 // IncrementOTLPReceiverIngested records n items accepted for a signal.
 func IncrementOTLPReceiverIngested(signal string, n int) {
 	if signal == "" || n <= 0 {
@@ -101,7 +109,31 @@ func GetOTLPReceiverDroppedBySignal() map[otlpReceiverDropKey]uint64 {
 	return out
 }
 
-// ResetOTLPReceiverCountersForTest clears both counters. Test-only.
+// IncrementOTLPReceiverRefused records one OTLP/HTTP request refused for
+// (signal, reason).
+func IncrementOTLPReceiverRefused(signal, reason string) {
+	if signal == "" || reason == "" {
+		return
+	}
+	key := otlpReceiverDropKey{Signal: signal, Reason: reason}
+	otlpReceiverRefused.mu.Lock()
+	otlpReceiverRefused.m[key]++
+	otlpReceiverRefused.mu.Unlock()
+}
+
+// GetOTLPReceiverRefusedBySignal returns a snapshot copy of the
+// per-(signal, reason) refusal counters.
+func GetOTLPReceiverRefusedBySignal() map[otlpReceiverDropKey]uint64 {
+	otlpReceiverRefused.mu.RLock()
+	defer otlpReceiverRefused.mu.RUnlock()
+	out := make(map[otlpReceiverDropKey]uint64, len(otlpReceiverRefused.m))
+	for k, v := range otlpReceiverRefused.m {
+		out[k] = v
+	}
+	return out
+}
+
+// ResetOTLPReceiverCountersForTest clears all receiver counters. Test-only.
 func ResetOTLPReceiverCountersForTest() {
 	otlpReceiverIngested.mu.Lock()
 	otlpReceiverIngested.m = map[string]uint64{}
@@ -109,6 +141,9 @@ func ResetOTLPReceiverCountersForTest() {
 	otlpReceiverDropped.mu.Lock()
 	otlpReceiverDropped.m = map[otlpReceiverDropKey]uint64{}
 	otlpReceiverDropped.mu.Unlock()
+	otlpReceiverRefused.mu.Lock()
+	otlpReceiverRefused.m = map[otlpReceiverDropKey]uint64{}
+	otlpReceiverRefused.mu.Unlock()
 }
 
 // OTLPReceiverCoverageKey labels one coverage series: which signal, which
