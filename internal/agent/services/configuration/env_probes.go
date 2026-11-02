@@ -25,6 +25,8 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"senhub-agent.go/internal/agent/probes/spec"
 	"senhub-agent.go/internal/agent/services/configuration/secret"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -111,7 +113,7 @@ func applyEnvProbes(data *LocalConfigurationData, environ []string, log *logger.
 	if err != nil {
 		return err
 	}
-	groups = withImplicitACAJobs(groups, data, log)
+	groups = withImplicitACAJobs(groups, data, environ, log)
 	for _, g := range groups {
 		if err := mergeEnvProbe(data, g, log); err != nil {
 			return err
@@ -808,7 +810,7 @@ var acaJobsCopied = map[string]bool{
 // groups is added. SENHUB_PROBE_JOBS_TYPE=none removes it; any other JOBS
 // variable is the operator's own probe and is left as it is. A file
 // configuration is never changed.
-func withImplicitACAJobs(groups []envProbe, data *LocalConfigurationData, log *logger.ModuleLogger) []envProbe {
+func withImplicitACAJobs(groups []envProbe, data *LocalConfigurationData, environ []string, log *logger.ModuleLogger) []envProbe {
 	for i, g := range groups {
 		if g.name == implicitJobsName {
 			if t, ok := envProbeType(g); ok && strings.EqualFold(t, disabledType) {
@@ -821,48 +823,141 @@ func withImplicitACAJobs(groups []envProbe, data *LocalConfigurationData, log *l
 		}
 	}
 	for _, p := range data.Probes {
-		if nameKey(p.Name) == implicitJobsName {
+		if nameKey(p.Name) == implicitJobsName || p.Type == acaJobsType {
 			return groups
 		}
 	}
 	if probeTypeLookup != nil && !probeTypeLookup(acaJobsType) {
 		return groups
 	}
+
+	declared := descriptorProbeNames(environ)
 	var apps []envProbe
 	for _, g := range groups {
 		if t, ok := envProbeType(g); ok && t == acaAppsType && hasDiscovery(g) {
 			apps = append(apps, g)
 		}
 	}
-	if len(apps) != 1 {
-		if len(apps) > 1 && log != nil {
-			log.Info().Int("discoveries", len(apps)).
+	var descriptors []*ProbeConfig
+	for i := range data.Probes {
+		p := &data.Probes[i]
+		if !declared[p.Name] || p.Type != acaAppsType {
+			continue
+		}
+		params, _ := asMap(p.Params)
+		if _, ok := asMap(params["discovery"]); ok {
+			descriptors = append(descriptors, p)
+		}
+	}
+
+	total := len(apps) + len(descriptors)
+	if total != 1 {
+		if total > 1 && log != nil {
+			log.Info().Int("discoveries", total).
 				Msg("Several Container Apps discoveries are declared from the environment: no jobs probe is added; declare SENHUB_PROBE_<NAME>_TYPE=azure_container_app_jobs for the ones wanted")
 		}
 		return groups
 	}
-	src := apps[0]
-	// Copied settings keep their real variable name: a secret parameter is
-	// stored as ${env:<variable>} and resolved from the environment later.
-	jobs := envProbe{name: implicitJobsName}
-	jobs.settings = append(jobs.settings, envSetting{variable: "SENHUB_PROBE_JOBS_TYPE (implicit)", segments: []string{"type"}, value: acaJobsType})
-	interval := "300"
-	for _, st := range src.settings {
-		switch {
-		case len(st.segments) == 1 && acaJobsCopied[st.segments[0]]:
-			jobs.settings = append(jobs.settings, envSetting{variable: st.variable, segments: st.segments, value: st.value})
-		case len(st.segments) == 2 && st.segments[0] == "discovery" && st.segments[1] == "resource_groups":
-			jobs.settings = append(jobs.settings, envSetting{variable: st.variable, segments: st.segments, value: st.value})
-		case len(st.segments) == 2 && st.segments[0] == "discovery" && st.segments[1] == "interval":
-			interval = st.value
+
+	if len(apps) == 1 {
+		src := apps[0]
+		// Copied settings keep their real variable name: a secret parameter is
+		// stored as ${env:<variable>} and resolved from the environment later.
+		jobs := envProbe{name: implicitJobsName}
+		jobs.settings = append(jobs.settings, envSetting{variable: "SENHUB_PROBE_JOBS_TYPE (implicit)", segments: []string{"type"}, value: acaJobsType})
+		interval := "300"
+		for _, st := range src.settings {
+			switch {
+			case len(st.segments) == 1 && acaJobsCopied[st.segments[0]]:
+				jobs.settings = append(jobs.settings, envSetting{variable: st.variable, segments: st.segments, value: st.value})
+			case len(st.segments) == 2 && st.segments[0] == "discovery" && st.segments[1] == "resource_groups":
+				jobs.settings = append(jobs.settings, envSetting{variable: st.variable, segments: st.segments, value: st.value})
+			case len(st.segments) == 2 && st.segments[0] == "discovery" && st.segments[1] == "interval":
+				interval = st.value
+			}
+		}
+		jobs.settings = append(jobs.settings, envSetting{variable: "SENHUB_PROBE_JOBS_DISCOVERY__INTERVAL (implicit)", segments: []string{"discovery", "interval"}, value: interval})
+		if log != nil {
+			log.Info().Str("from", src.name).
+				Msg("Container Apps jobs followed by default with the discovery's identity and resource groups; SENHUB_PROBE_JOBS_TYPE=none turns it off")
+		}
+		return append(groups, jobs)
+	}
+
+	src := descriptors[0]
+	srcParams, _ := asMap(src.Params)
+	params := map[string]interface{}{}
+	for k := range acaJobsCopied {
+		if v, ok := srcParams[k]; ok {
+			params[k] = v
 		}
 	}
-	jobs.settings = append(jobs.settings, envSetting{variable: "SENHUB_PROBE_JOBS_DISCOVERY__INTERVAL (implicit)", segments: []string{"discovery", "interval"}, value: interval})
+	discovery := map[string]interface{}{"interval": 300}
+	if srcDiscovery, ok := asMap(srcParams["discovery"]); ok {
+		if v, ok := srcDiscovery["resource_groups"]; ok {
+			discovery["resource_groups"] = v
+		}
+		if v, ok := srcDiscovery["interval"]; ok {
+			discovery["interval"] = v
+		}
+	}
+	params["discovery"] = discovery
+	enabled := true
+	data.Probes = append(data.Probes, ProbeConfig{
+		Name:    implicitJobsName,
+		Type:    acaJobsType,
+		Enabled: &enabled,
+		Params:  params,
+	})
 	if log != nil {
-		log.Info().Str("from", src.name).
+		log.Info().Str("from", src.Name).
 			Msg("Container Apps jobs followed by default with the discovery's identity and resource groups; SENHUB_PROBE_JOBS_TYPE=none turns it off")
 	}
-	return append(groups, jobs)
+	return groups
+}
+
+// descriptorProbeNames reads the names declared by SENHUB_PROBES, the
+// container's YAML fragment, in either of its two shapes: a top-level
+// probes: list or a bare list.
+func descriptorProbeNames(environ []string) map[string]bool {
+	var raw string
+	for _, kv := range environ {
+		k, v, ok := strings.Cut(kv, "=")
+		if ok && k == "SENHUB_PROBES" && v != "" {
+			raw = v
+			break
+		}
+	}
+	if raw == "" {
+		return nil
+	}
+	names := map[string]bool{}
+	var doc struct {
+		Probes []struct {
+			Name string `yaml:"name"`
+		} `yaml:"probes"`
+	}
+	if err := yaml.Unmarshal([]byte(raw), &doc); err == nil {
+		for _, p := range doc.Probes {
+			if p.Name != "" {
+				names[p.Name] = true
+			}
+		}
+		if len(names) > 0 {
+			return names
+		}
+	}
+	var list []struct {
+		Name string `yaml:"name"`
+	}
+	if err := yaml.Unmarshal([]byte(raw), &list); err == nil {
+		for _, p := range list {
+			if p.Name != "" {
+				names[p.Name] = true
+			}
+		}
+	}
+	return names
 }
 
 func envProbeType(g envProbe) (string, bool) {
