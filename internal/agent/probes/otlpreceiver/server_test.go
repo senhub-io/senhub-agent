@@ -364,7 +364,7 @@ func TestHTTPReceiver_RejectsBadContentType(t *testing.T) {
 	probe, _ := newTestProbe(t, map[string]interface{}{"protocol": "http", "address": "127.0.0.1:0"}, cb)
 	addr := probe.listener.Addr().String()
 
-	resp, err := http.Post("http://"+addr+defaultHTTPPath, "application/json", bytes.NewReader([]byte("{}")))
+	resp, err := http.Post("http://"+addr+defaultHTTPPath, "text/plain", bytes.NewReader([]byte("{}")))
 	if err != nil {
 		t.Fatalf("POST: %v", err)
 	}

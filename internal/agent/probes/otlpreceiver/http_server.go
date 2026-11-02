@@ -5,16 +5,27 @@ import (
 	"context"
 	"errors"
 	"io"
+	"mime"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	collectorlogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	collectormetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	collectortracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+
+	"senhub-agent.go/internal/agent/services/agentstate"
+)
+
+// Request/response payload encodings accepted on OTLP/HTTP.
+const (
+	contentFormatProtobuf = "protobuf"
+	contentFormatJSON     = "json"
 )
 
 // httpReceiver wraps an *http.Server so the probe can hold it behind a
@@ -92,37 +103,68 @@ func (p *OTLPReceiverProbe) startHTTP(quitChannel chan struct{}) error {
 	return nil
 }
 
+// refuseHTTP logs (rate-limited) and counts one HTTP refusal, then writes
+// the error response. Retry-After is set for the retryable 429.
+func (p *OTLPReceiverProbe) refuseHTTP(w http.ResponseWriter, r *http.Request, signal string, status int, reason, msg string) {
+	remote, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		remote = r.RemoteAddr
+	}
+	p.refusals.log(p.moduleLogger, signal, status, reason, remote)
+	agentstate.IncrementOTLPReceiverRefused(signal, reason)
+	if status == http.StatusTooManyRequests {
+		w.Header().Set("Retry-After", strconv.Itoa(p.guard.retryAfterSeconds()))
+	}
+	http.Error(w, msg, status)
+}
+
 // authorizeAndReadBody runs the shared ingress preamble for an OTLP/HTTP
-// handler: guard (bearer/CIDR/rate-limit), POST-only, protobuf content type,
-// and a size-capped body read (identity or gzip; the cap applies to the
-// decompressed size). It writes the error response itself and
-// returns ok=false when the request must not proceed.
-func (p *OTLPReceiverProbe) authorizeAndReadBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+// handler: guard (bearer/CIDR/rate-limit), POST-only, content type
+// (application/x-protobuf or application/json, parameters allowed), and a
+// size-capped body read (identity or gzip; the cap applies to the
+// decompressed size). It writes the error response itself and returns
+// ok=false when the request must not proceed. The returned format is the
+// request payload encoding, which also selects the response encoding.
+func (p *OTLPReceiverProbe) authorizeAndReadBody(w http.ResponseWriter, r *http.Request, signal string) ([]byte, string, bool) {
 	if err := p.guard.allow(r.RemoteAddr, r.Header.Get("Authorization")); err != nil {
-		p.logRejection(r.RemoteAddr, err)
 		code := http.StatusInternalServerError
+		reason := "guard_error"
 		switch {
 		case errors.Is(err, errUnauthorized):
 			code = http.StatusUnauthorized
+			reason = "unauthorized"
 		case errors.Is(err, errForbidden):
 			code = http.StatusForbidden
+			reason = "forbidden"
 		case errors.Is(err, errRateLimited):
 			code = http.StatusTooManyRequests
-			w.Header().Set("Retry-After", strconv.Itoa(p.guard.retryAfterSeconds()))
+			reason = "rate_limited"
 		}
-		http.Error(w, err.Error(), code)
-		return nil, false
+		p.refuseHTTP(w, r, signal, code, reason, http.StatusText(code))
+		return nil, "", false
 	}
 
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return nil, false
+		p.refuseHTTP(w, r, signal, http.StatusMethodNotAllowed, "method", "method not allowed")
+		return nil, "", false
 	}
 
-	contentType := r.Header.Get("Content-Type")
-	if contentType != "" && contentType != "application/x-protobuf" {
-		http.Error(w, "only application/x-protobuf is supported", http.StatusUnsupportedMediaType)
-		return nil, false
+	format := contentFormatProtobuf
+	if contentType := r.Header.Get("Content-Type"); contentType != "" {
+		mediaType, _, err := mime.ParseMediaType(contentType)
+		if err != nil {
+			p.refuseHTTP(w, r, signal, http.StatusUnsupportedMediaType, "media_type", "unparseable Content-Type")
+			return nil, "", false
+		}
+		switch strings.ToLower(mediaType) {
+		case "application/x-protobuf":
+			format = contentFormatProtobuf
+		case "application/json":
+			format = contentFormatJSON
+		default:
+			p.refuseHTTP(w, r, signal, http.StatusUnsupportedMediaType, "media_type", "only application/x-protobuf and application/json are supported")
+			return nil, "", false
+		}
 	}
 
 	raw := &io.LimitedReader{R: r.Body, N: maxRecvMsgBytes + 1}
@@ -133,11 +175,11 @@ func (p *OTLPReceiverProbe) authorizeAndReadBody(w http.ResponseWriter, r *http.
 		zr, err := gzip.NewReader(reader)
 		if err != nil {
 			if raw.N == 0 {
-				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
-				return nil, false
+				p.refuseHTTP(w, r, signal, http.StatusRequestEntityTooLarge, "too_large", "request body too large")
+				return nil, "", false
 			}
-			http.Error(w, "invalid gzip body", http.StatusBadRequest)
-			return nil, false
+			p.refuseHTTP(w, r, signal, http.StatusBadRequest, "bad_body", "invalid gzip body")
+			return nil, "", false
 		}
 		defer func() {
 			if cerr := zr.Close(); cerr != nil {
@@ -146,39 +188,57 @@ func (p *OTLPReceiverProbe) authorizeAndReadBody(w http.ResponseWriter, r *http.
 		}()
 		reader = io.LimitReader(zr, maxRecvMsgBytes+1)
 	default:
-		http.Error(w, "unsupported Content-Encoding", http.StatusUnsupportedMediaType)
-		return nil, false
+		p.refuseHTTP(w, r, signal, http.StatusUnsupportedMediaType, "encoding", "unsupported Content-Encoding")
+		return nil, "", false
 	}
 
 	body, err := io.ReadAll(reader)
 	if err != nil {
 		if raw.N == 0 {
-			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
-			return nil, false
+			p.refuseHTTP(w, r, signal, http.StatusRequestEntityTooLarge, "too_large", "request body too large")
+			return nil, "", false
 		}
-		http.Error(w, "failed to read body", http.StatusBadRequest)
-		return nil, false
+		p.refuseHTTP(w, r, signal, http.StatusBadRequest, "bad_body", "failed to read body")
+		return nil, "", false
 	}
 	if len(body) > maxRecvMsgBytes {
-		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
-		return nil, false
+		p.refuseHTTP(w, r, signal, http.StatusRequestEntityTooLarge, "too_large", "request body too large")
+		return nil, "", false
 	}
-	return body, true
+	return body, format, true
 }
 
-// handleMetrics decodes an OTLP/HTTP protobuf metrics request, ingests
-// the datapoints, and replies with a (possibly partial-success) protobuf
-// ExportMetricsServiceResponse. Only the protobuf content type is
-// accepted — JSON ingestion is intentionally out of scope for this slice.
+// decodeRequest unmarshals a request body in the encoding the client used.
+func decodeRequest(body []byte, format string, msg proto.Message) error {
+	if format == contentFormatJSON {
+		return protojson.UnmarshalOptions{DiscardUnknown: true}.Unmarshal(body, msg)
+	}
+	return proto.Unmarshal(body, msg)
+}
+
+// encodeResponse marshals a response in the same encoding as the request,
+// returning the body and its Content-Type.
+func encodeResponse(format string, msg proto.Message) ([]byte, string, error) {
+	if format == contentFormatJSON {
+		out, err := protojson.MarshalOptions{}.Marshal(msg)
+		return out, "application/json", err
+	}
+	out, err := proto.Marshal(msg)
+	return out, "application/x-protobuf", err
+}
+
+// handleMetrics decodes an OTLP/HTTP metrics request (protobuf or JSON),
+// ingests the datapoints, and replies with a (possibly partial-success)
+// ExportMetricsServiceResponse in the request's encoding.
 func (p *OTLPReceiverProbe) handleMetrics(w http.ResponseWriter, r *http.Request) {
-	body, ok := p.authorizeAndReadBody(w, r)
+	body, format, ok := p.authorizeAndReadBody(w, r, signalMetrics)
 	if !ok {
 		return
 	}
 
 	var req collectormetricspb.ExportMetricsServiceRequest
-	if err := proto.Unmarshal(body, &req); err != nil {
-		http.Error(w, "invalid OTLP protobuf payload", http.StatusBadRequest)
+	if err := decodeRequest(body, format, &req); err != nil {
+		p.refuseHTTP(w, r, signalMetrics, http.StatusBadRequest, "bad_body", "invalid OTLP payload")
 		return
 	}
 
@@ -198,70 +258,69 @@ func (p *OTLPReceiverProbe) handleMetrics(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	out, err := proto.Marshal(resp)
+	out, contentType, err := encodeResponse(format, resp)
 	if err != nil {
 		http.Error(w, "failed to encode response", http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "application/x-protobuf")
+	w.Header().Set("Content-Type", contentType)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(out)
 }
 
-// handleLogs decodes an OTLP/HTTP protobuf logs request, publishes the
-// records on the agent log channel for relay, and replies with an empty
-// ExportLogsServiceResponse. Same protobuf-only, guarded contract as
-// handleMetrics.
+// handleLogs decodes an OTLP/HTTP logs request (protobuf or JSON),
+// publishes the records on the agent log channel for relay, and replies
+// with an empty ExportLogsServiceResponse in the request's encoding.
 func (p *OTLPReceiverProbe) handleLogs(w http.ResponseWriter, r *http.Request) {
-	body, ok := p.authorizeAndReadBody(w, r)
+	body, format, ok := p.authorizeAndReadBody(w, r, signalLogs)
 	if !ok {
 		return
 	}
 
 	var req collectorlogspb.ExportLogsServiceRequest
-	if err := proto.Unmarshal(body, &req); err != nil {
-		http.Error(w, "invalid OTLP protobuf payload", http.StatusBadRequest)
+	if err := decodeRequest(body, format, &req); err != nil {
+		p.refuseHTTP(w, r, signalLogs, http.StatusBadRequest, "bad_body", "invalid OTLP payload")
 		return
 	}
 
 	p.stampLogs(r.RemoteAddr, req.GetResourceLogs())
 	p.ingestLogs(req.GetResourceLogs())
 
-	out, err := proto.Marshal(&collectorlogspb.ExportLogsServiceResponse{})
+	out, contentType, err := encodeResponse(format, &collectorlogspb.ExportLogsServiceResponse{})
 	if err != nil {
 		http.Error(w, "failed to encode response", http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "application/x-protobuf")
+	w.Header().Set("Content-Type", contentType)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(out)
 }
 
-// handleTraces decodes an OTLP/HTTP protobuf traces request, publishes
-// the ResourceSpans verbatim on the agent span channel for relay, and
-// replies with an empty ExportTraceServiceResponse. Same protobuf-only,
-// guarded contract as handleMetrics.
+// handleTraces decodes an OTLP/HTTP traces request (protobuf or JSON),
+// publishes the ResourceSpans verbatim on the agent span channel for
+// relay, and replies with an empty ExportTraceServiceResponse in the
+// request's encoding.
 func (p *OTLPReceiverProbe) handleTraces(w http.ResponseWriter, r *http.Request) {
-	body, ok := p.authorizeAndReadBody(w, r)
+	body, format, ok := p.authorizeAndReadBody(w, r, signalTraces)
 	if !ok {
 		return
 	}
 
 	var req collectortracepb.ExportTraceServiceRequest
-	if err := proto.Unmarshal(body, &req); err != nil {
-		http.Error(w, "invalid OTLP protobuf payload", http.StatusBadRequest)
+	if err := decodeRequest(body, format, &req); err != nil {
+		p.refuseHTTP(w, r, signalTraces, http.StatusBadRequest, "bad_body", "invalid OTLP payload")
 		return
 	}
 
 	p.stampSpans(r.RemoteAddr, req.GetResourceSpans())
 	p.ingestSpans(req.GetResourceSpans())
 
-	out, err := proto.Marshal(&collectortracepb.ExportTraceServiceResponse{})
+	out, contentType, err := encodeResponse(format, &collectortracepb.ExportTraceServiceResponse{})
 	if err != nil {
 		http.Error(w, "failed to encode response", http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "application/x-protobuf")
+	w.Header().Set("Content-Type", contentType)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(out)
 }

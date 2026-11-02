@@ -588,6 +588,7 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Cumulative count of items the OTLP receiver discarded, by signal and reason (no_sink, unmapped).",
 		})
 	}
+	records = appendOTLPReceiverRefused(records)
 
 	// Host-join coverage of what the receiver relays. The total and the
 	// share still lacking host.id are two series rather than a ratio, so
