@@ -43,6 +43,7 @@ const (
 	TypeNetworkNeighbor  = wire.TypeNetworkNeighbor
 	TypeK8sNode          = wire.TypeK8sNode
 	TypeHostService      = wire.TypeHostService
+	TypeCloudResource    = wire.TypeCloudResource
 )
 
 // Relation types, same reasoning. The last three are registered but legacy:
@@ -203,6 +204,15 @@ var TelemetryContract = map[string]TelemetryDeclaration{
 		SubjectKey: "host.service.name",
 		Carrier:    CarrierDatapoint,
 		Shipped:    true,
+	},
+	// A cloud control-plane resource is a remote subject, keyed on
+	// azure.resource.id like the SDK's identity for it.
+	TypeCloudResource: {
+		Status:     StatusOwnKey,
+		SubjectKey: "azure.resource.id",
+		Carrier:    CarrierDatapoint,
+		Shipped:    false,
+		Gap:        "registered by pkg/emit v0.16.0; no producer in this module states its telemetry yet (ent#840)",
 	},
 	TypeNetworkSegment: {
 		Status:     StatusOwnKey,
