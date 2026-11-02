@@ -46,11 +46,12 @@ Reports the per-name roll-up for every process by default. Add a `filter` block 
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:aca4f5c0e800c6d65ce68f6ea65c17dea029f1806a775802159cf4bbb2126a50 -->
+<!-- sha256:9cf918fa650b5d67358c3073fad6a7fc64097e3f27ba8315049ed8725933aebb -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `interval` | No | `30` | Seconds between collections |
+| `include_kernel_threads` | No | `false` | Report Linux kernel threads (kworker, ksoftirqd, scsi_eh_N…) as processes. Off by default: one name per CPU, disk and interrupt line. |
 | `filter` | No | - | Narrows the process table; by_name and by_user turn on the per-process detail unless top_n is also set; empty reports the per-name roll-up over every process |
 | `filter.by_name` | No | - | Regular expression (RE2) a process name must match. Example: `^(nginx\|php-fpm)` |
 | `filter.by_user` | No | - | OS user owning the processes; empty accepts every user. Example: `www-data` |
