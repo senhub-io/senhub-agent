@@ -810,11 +810,12 @@ The SenHub Agent license system provides:
 
 This system balances security, usability, and offline operation requirements while providing comprehensive monitoring and integration capabilities.
 
-## Signing keys
+## Signing keys and delegation
 
-Two kinds of key sign licences.
+The agent embeds one key, the root key (RSA-4096, RS256, `SenHubPublicKey` in `public_key.go`). It stays offline and signs two things: licences outside the standard terms, and delegations.
 
-- **Root key** (RSA-4096, RS256): `SenHubPublicKey` in `public_key.go`. Kept offline; signs licences outside the standard terms.
-- **Team keys** (ed25519, EdDSA): `TeamPublicKeys` in `public_key.go`, by `kid`. Held non-exportable by the signing service's key store, which only signs. A team-signed licence must carry `kid`, a non-empty `sub`, `iat` and `exp`, with `exp - iat` at most 92 days and `iat` no more than 5 minutes in the future.
+A delegation lets a signing platform (the SenHub team platform, or a customer's on-site platform) issue licences with its own ed25519 key. It is a JWT signed RS256 by the root key, header `typ: senhub-dlg+jwt`, with the claims `platform`, `kid`, `pub` (base64 of the raw 32-byte ed25519 public key), `scope` (`subjects` and/or `subject_prefixes`, at least one entry), `iat` and `exp`. Delegations last one month and are renewed monthly.
 
-The algorithm is pinned by the kind of key: an RS256 token is checked against the root key only, an EdDSA token against the team key its `kid` names. Any other algorithm, an EdDSA token without `kid`, or a `kid` that is not listed is refused.
+A delegated licence is signed EdDSA by the platform key, with the header `kid` equal to the delegation's `kid` and the delegation itself in the header `dlg`. The agent checks, in order: the delegation verifies with the root key and has the delegation `typ`; its `kid` matches; the licence verifies with the delegation's `pub`; the licence has a `sub` inside the scope, an `iat` inside the delegation window and at most 5 minutes in the future, an `exp` at most 92 days after `iat` and never after the delegation's `exp`. After `exp` the usual grace period applies (7 days), with a warning in the log, then the licence is no longer valid.
+
+The algorithm is pinned by the kind of key: an RS256 token is checked against the root key only, an EdDSA token against the key its delegation carries. A root-signed delegation is never accepted as a licence. Any other algorithm, or an EdDSA licence without `dlg`, is refused. A scope prefix should end with a separator (`lna-`), since `lna` also covers `lnax`.

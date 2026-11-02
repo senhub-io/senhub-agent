@@ -136,6 +136,7 @@ func NewSensor(
 				Str("tier", tierName).
 				Bool("expired", lic.IsExpired).
 				Time("expires_at", lic.ExpiresAt).
+				Str("platform", lic.Platform).
 				Msg("License validated successfully")
 
 			if lic.IsExpired {
@@ -143,7 +144,9 @@ func NewSensor(
 					gracePeriodEnd := lic.ExpiresAt.Add(time.Duration(lic.GracePeriodDays) * 24 * time.Hour)
 					moduleLogger.Warn().
 						Time("grace_period_ends", gracePeriodEnd).
-						Msg("License expired but in grace period")
+						Str("platform", lic.Platform).
+						Time("delegation_expires_at", lic.DelegationExpiresAt).
+						Msg("License expired but in grace period: renew the licence, or the platform's delegation, before the grace period ends")
 				} else {
 					agentstate.SetLicenseInvalid("expired_no_grace")
 					moduleLogger.Error().Msg("License expired and grace period ended - all paid probes disabled, agent degraded to FREE TIER (self-metric senhub.agent.license.invalid=1)")
