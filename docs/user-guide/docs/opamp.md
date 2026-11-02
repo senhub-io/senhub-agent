@@ -11,14 +11,14 @@ The `opamp:` block of `agent.yaml` configures the client.
 | Name | Default | Meaning |
 |---|---|---|
 | `opamp.enabled` | `false` | Turns the OpAMP client on. |
-| `opamp.endpoint` | empty | OpAMP server URL. Required when enabled. Use `wss://` or `ws://` with websocket, `https://` or `http://` with http. |
+| `opamp.endpoint` | empty | OpAMP server URL. Required when enabled: `wss://` with websocket, `https://` with http. A plain `ws://` or `http://` endpoint is accepted only on a loopback address or with `tls.insecure_skip_verify: true`. |
 | `opamp.token` | empty | Access token. Required when enabled. Use a secret store reference; the token is never written in clear. |
 | `opamp.transport` | `websocket` | `websocket` or `http`. |
 | `opamp.heartbeat_interval` | `30s` | Heartbeat interval. Minimum `1s`. |
 | `opamp.tenant` | empty | Server-side tenant for this agent. Required for the overlay; an overlay naming another tenant is refused. |
 | `opamp.tls.ca_file` | empty | Optional CA bundle in PEM form. Without it, the system store is used. |
 | `opamp.tls.insecure_skip_verify` | `false` | Skips TLS verification. Not allowed when the overlay is enabled. |
-| `opamp.overlay.enabled` | `false` | Accepts a signed remote overlay. |
+| `opamp.overlay.enabled` | `false` | Accepts a signed remote overlay. Needs a `wss://` or `https://` endpoint, a `tenant` and at least one signing key. |
 | `opamp.overlay.signing_keys` | empty | Pinned ed25519 public keys. Each entry has `id` and `public_key`. A key never arrives over OpAMP. |
 | `opamp.overlay.managed_probe_types` | empty | Probe types the server may create as managed probes. Empty means every type except `exec`. |
 
