@@ -129,10 +129,12 @@ func TestHostReadsTheAgent(t *testing.T) {
 
 	id := h.Identity()
 	want := extension.Identity{
-		InstanceID:  configuration.AgentInstanceID(cfg.key),
-		Version:     "1.2.3",
-		Edition:     "oss",
-		LicenseTier: "free",
+		InstanceID:     configuration.AgentInstanceID(cfg.key),
+		Version:        "1.2.3",
+		Edition:        "oss",
+		LicenseTier:    "free",
+		ReleaseChannel: "stable",
+		ReleaseRing:    "all",
 	}
 	if id != want {
 		t.Errorf("Identity = %+v, want %+v", id, want)
