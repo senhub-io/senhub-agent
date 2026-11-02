@@ -335,6 +335,13 @@ func (s *Source) enumerate() ([]ifaceAddrs, error) {
 func resolveLinkMeta(name string, flags []string) linkMeta {
 	lm := readSysLink(name)
 	lm.AdminState = adminStateFromFlags(flags)
+	// The most specific type wins, read from the flag and never from the name:
+	// a loopback is "loopback" as snmp_poll's softwareLoopback is, not the
+	// "virtual" sysfs gives lo. Loopbacks are skipped before this today; the
+	// rule holds if that ever changes.
+	if isLoopbackIface(flags) {
+		lm.Type = "loopback"
+	}
 	return lm
 }
 
