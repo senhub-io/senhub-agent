@@ -34,6 +34,7 @@ Nothing released yet since 0.6.5. Changes land here as they are merged.
 
 ## Fixes
 
+- **Linux: commands run as root keep `agent.yaml` readable by the service.** `license activate` and the other commands that rewrite a configuration file gave the rewritten file the owner of its folder, so a package-installed `agent.yaml` (`root:senhub`) under a root-owned `/etc/senhub-agent` became `root:root`, and the service could no longer read it. A rewrite by root now keeps the owner and mode of the file it replaces.
 - **Windows ZIP install: `update` restarts the service.** The new binary was installed but the running service kept the old one until a manual `Restart-Service senhub-agent`. When the `senhub-agent` service is registered and running, and the host is not MSI-managed, `update` now restarts it and checks that it runs the new binary, as on Linux.
 - **Probes start in parallel.** The agent started its probes one after the other, so a probe slow to start, for instance one that connects to its target first, delayed every probe after it, the OTLP, syslog and SNMP trap receivers included. They now start eight at a time, receivers first, and a start that takes more than 10 seconds is named in the log; each start line gives its duration (`start_ms`).
 - **Linux: `sudo senhub-agent license activate` leaves a licence the service can read.** Run as root, the command wrote `license.jwt` as `0600 root`, so the agent, which runs as `senhub`, could not read it and kept retrying. The file now takes the owner and group of `agent.yaml` and its mode, up to `0640`.

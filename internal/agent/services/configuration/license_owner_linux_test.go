@@ -34,3 +34,29 @@ func TestRootLicenseActivateLeavesASidecarTheServiceGroupReads(t *testing.T) {
 		t.Fatalf("sidecar %o %d:%d, want 0640 0:%d like agent.yaml", fi.Mode().Perm(), st.Uid, st.Gid, serviceGID)
 	}
 }
+
+func TestRootLicenseActivateKeepsAgentYAMLReadableByTheServiceGroup(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("needs root: the fix is about a root-run rewrite")
+	}
+	dir := t.TempDir() // root:root, like /etc/senhub-agent
+	cfg := filepath.Join(dir, "agent.yaml")
+	if err := os.WriteFile(cfg, []byte("agent:\n  license: \"\"\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	const serviceGID = 4242
+	if err := os.Chown(cfg, 0, serviceGID); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteLicenseSidecar(cfg, "header.payload.sig"); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := fi.Sys().(*syscall.Stat_t)
+	if st.Gid != serviceGID || fi.Mode().Perm() != 0o640 {
+		t.Fatalf("agent.yaml %o %d:%d after license activate, want 0640 0:%d", fi.Mode().Perm(), st.Uid, st.Gid, serviceGID)
+	}
+}
