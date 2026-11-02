@@ -16,17 +16,17 @@ func TestParseConfig_ValuesAndDefaults(t *testing.T) {
 		{
 			name:   "defaults",
 			config: map[string]interface{}{"targets": []string{"db:5432"}},
-			want:   checkConfig{Targets: []string{"db:5432"}, Timeout: defaultTimeout, Interval: defaultInterval},
+			want:   checkConfig{Targets: []string{"db:5432"}, Timeout: defaultTimeout, Interval: defaultInterval, Mode: "auto"},
 		},
 		{
 			name:   "ipv6 literal and options",
 			config: map[string]interface{}{"targets": []interface{}{"[::1]:443", "mail:25"}, "timeout": 3, "interval": 20},
-			want:   checkConfig{Targets: []string{"[::1]:443", "mail:25"}, Timeout: 3 * time.Second, Interval: 20 * time.Second},
+			want:   checkConfig{Targets: []string{"[::1]:443", "mail:25"}, Timeout: 3 * time.Second, Interval: 20 * time.Second, Mode: "auto"},
 		},
 		{
 			name:   "non-positive options keep defaults",
 			config: map[string]interface{}{"targets": []string{"db:5432"}, "timeout": 0, "interval": -1},
-			want:   checkConfig{Targets: []string{"db:5432"}, Timeout: defaultTimeout, Interval: defaultInterval},
+			want:   checkConfig{Targets: []string{"db:5432"}, Timeout: defaultTimeout, Interval: defaultInterval, Mode: "auto"},
 		},
 	}
 	for _, tc := range cases {
