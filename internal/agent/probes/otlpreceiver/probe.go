@@ -56,6 +56,8 @@ const (
 // a capable strategy (the OTLP export pipeline).
 type OTLPReceiverProbe struct {
 	*types.BaseProbe
+	// refusals rate-limits the refusal log of this receiver.
+	refusals     *refusalLogState
 	rawConfig    map[string]interface{}
 	config       receiverConfig
 	guard        *ingressGuard
@@ -122,6 +124,7 @@ func NewOTLPReceiverProbe(config map[string]interface{}, baseLogger *logger.Logg
 		Msg("Creating new OTLP receiver probe")
 
 	probe := &OTLPReceiverProbe{
+		refusals:     newRefusalLogState(time.Now),
 		BaseProbe:    &types.BaseProbe{},
 		rawConfig:    config,
 		config:       cfg,
