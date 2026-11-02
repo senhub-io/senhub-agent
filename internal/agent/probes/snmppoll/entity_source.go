@@ -1127,6 +1127,19 @@ func buildObservationAs(selfID string, self deviceIdentity, topo lldpTopology, r
 		})
 	}
 
+	// same_as — the polled device keyed by serial (or another rung above the
+	// MAC) is also the device its LLDP neighbours name by chassis MAC: an agent
+	// polling a neighbour resolves this device as mac:<chassis MAC> and its
+	// connected_to edges otherwise target an entity nothing else names.
+	if alias := chassisMACAlias(selfID, self); alias != "" {
+		obs.Relations = append(obs.Relations, entity.Relation{
+			Type:     entity.RelSameAs,
+			FromType: entityTypeNetworkDevice, FromID: deviceKey(selfID),
+			ToType: entityTypeNetworkDevice, ToID: deviceKey(alias),
+			Attributes: map[string]any{"confidence": 1.0, "basis": "lldp_chassis"},
+		})
+	}
+
 	// network.interface — the device's ports as entities it owns. Bounded by
 	// the device's port count; notPresent and unnamed rows are skipped, and a
 	// duplicate network.interface.name keeps the first (identity is {device, name}).
@@ -2046,4 +2059,16 @@ func engineIDMAC(e []byte) ([]byte, bool) {
 	default:
 		return nil, false
 	}
+}
+
+// chassisMACAlias is the mac: id the device's LLDP neighbours resolve it to,
+// when that differs from the id it is keyed by here; "" when the device is
+// already keyed by its chassis MAC or advertises no usable one.
+func chassisMACAlias(selfID string, self deviceIdentity) string {
+	if strings.HasPrefix(selfID, "mac:") || !usableChassisMAC(self.ChassisMAC) {
+		return ""
+	}
+	// Built by the same function the neighbour side uses, so the two keys
+	// cannot drift apart.
+	return resolveDeviceID(deviceIdentity{ChassisMAC: self.ChassisMAC})
 }
