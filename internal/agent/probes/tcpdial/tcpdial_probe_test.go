@@ -17,7 +17,7 @@ func newTestProbe(t *testing.T, targets ...string) *TCPDialProbe {
 	for i, tg := range targets {
 		raw[i] = tg
 	}
-	probe, err := NewTCPDialProbe(map[string]interface{}{"targets": raw, "timeout": 2},
+	probe, err := NewTCPDialProbe(map[string]interface{}{"targets": raw, "timeout": 2, "mode": "dial"},
 		logger.NewLogger(&cliArgs.ParsedArgs{Env: "test"}))
 	if err != nil {
 		t.Fatalf("NewTCPDialProbe: %v", err)
