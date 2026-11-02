@@ -1148,7 +1148,10 @@ func buildObservationAs(selfID string, self deviceIdentity, topo lldpTopology, r
 		}
 		ifaceSeen[ifc.Name] = true
 		portID := map[string]any{idKeyNetworkDevice: selfID, idKeyInterfaceName: ifc.Name}
-		attrs := map[string]any{attrOperState: operStateName(ifc.OperStatus)}
+		attrs := map[string]any{}
+		if st, ok := operStateName(ifc.OperStatus); ok {
+			attrs[attrOperState] = st
+		}
 		if ifc.SpeedMbps > 0 {
 			attrs[attrSpeed] = ifc.SpeedMbps * 1_000_000 // Mbit/s → bit/s
 		}
