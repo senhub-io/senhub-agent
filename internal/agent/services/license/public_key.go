@@ -1,5 +1,11 @@
 package license
 
+import (
+	"crypto/ed25519"
+	"encoding/base64"
+	"fmt"
+)
+
 // SenHubPublicKey is the RSA public key used to verify license tokens
 // This key is embedded in the binary and corresponds to the private key
 // used by SenHub platform to sign licenses
@@ -31,7 +37,26 @@ xpKWcsyzFCvMC+Pz/tS1C0aOtl4yZl7/k7wKX6mYKRPgM2LbXuNxA7gonECLDl5j
 ojgktHLdogXsO8cHYmo4/+MCAwEAAQ==
 -----END PUBLIC KEY-----`
 
-// GetDefaultValidator returns a validator configured with the embedded SenHub public key
+// TeamPublicKeys are the ed25519 public keys of the team signing keys,
+// by kid, base64 standard encoding of the raw 32-byte key. Their private
+// halves never leave the signing service's key store.
+var TeamPublicKeys = map[string]string{}
+
+// GetDefaultValidator returns a validator that trusts the embedded root
+// key and every team key in TeamPublicKeys.
 func GetDefaultValidator(gracePeriodDays int) (*JWTValidator, error) {
-	return NewJWTValidator(SenHubPublicKey, gracePeriodDays)
+	v, err := NewJWTValidator(SenHubPublicKey, gracePeriodDays)
+	if err != nil {
+		return nil, err
+	}
+	for kid, b64 := range TeamPublicKeys {
+		raw, err := base64.StdEncoding.DecodeString(b64)
+		if err != nil {
+			return nil, fmt.Errorf("team key %q: %w", kid, err)
+		}
+		if err := v.WithTeamKey(kid, ed25519.PublicKey(raw)); err != nil {
+			return nil, err
+		}
+	}
+	return v, nil
 }

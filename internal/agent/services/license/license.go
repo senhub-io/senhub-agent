@@ -1,6 +1,7 @@
 package license
 
 import (
+	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
@@ -83,10 +84,45 @@ type Validator interface {
 	IsInGracePeriod(license *License) bool
 }
 
-// JWTValidator implements the Validator interface using JWT with RSA signature
+// JWTValidator implements the Validator interface. Two kinds of signing
+// key are trusted: the single root RSA key (RS256, kid ignored), and the
+// team keys (EdDSA, ed25519), each selected by the token's kid header.
+// The algorithm is pinned by the kind of key, so a token can never be
+// checked against a key of the other kind.
 type JWTValidator struct {
 	publicKey       *rsa.PublicKey
+	teamKeys        map[string]ed25519.PublicKey
 	gracePeriodDays int
+}
+
+// teamLicenceMaxLifetime bounds the validity of a licence signed by a
+// team key. Team keys sign automatically renewed 90-day licences; the
+// bound keeps a misused team key from minting a long-lived licence,
+// which only the root key may sign.
+const teamLicenceMaxLifetime = 92 * 24 * time.Hour
+
+// ErrUnknownSigningKey is returned when an EdDSA token names a kid that
+// is not a trusted team key.
+var ErrUnknownSigningKey = errors.New("licence signed by an unknown key")
+
+// WithTeamKey trusts an ed25519 team key under kid. It returns an error
+// when kid is empty or already trusted, or the key does not have the
+// ed25519 size.
+func (v *JWTValidator) WithTeamKey(kid string, pub ed25519.PublicKey) error {
+	if kid == "" {
+		return fmt.Errorf("team key: empty kid")
+	}
+	if len(pub) != ed25519.PublicKeySize {
+		return fmt.Errorf("team key %q: want %d bytes, got %d", kid, ed25519.PublicKeySize, len(pub))
+	}
+	if _, dup := v.teamKeys[kid]; dup {
+		return fmt.Errorf("team key %q: already trusted", kid)
+	}
+	if v.teamKeys == nil {
+		v.teamKeys = make(map[string]ed25519.PublicKey)
+	}
+	v.teamKeys[kid] = pub
+	return nil
 }
 
 // NewJWTValidator creates a new JWT validator with the provided RSA public key
@@ -114,8 +150,8 @@ func NewJWTValidator(publicKeyPEM string, gracePeriodDays int) (*JWTValidator, e
 	}, nil
 }
 
-// ValidateLicense validates a JWT licence token. RS256 with the
-// embedded SenHub public key; expiry is checked manually so the
+// ValidateLicense validates a JWT licence token: RS256 with the
+// embedded root key, or EdDSA with a trusted team key; expiry is checked manually so the
 // grace-period semantics in IsInGracePeriod stay authoritative.
 //
 // The compact-licence path that used to live here was removed when
@@ -134,14 +170,25 @@ func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
 
 	// Parse and validate JWT token.
 	// WithoutClaimsValidation: expiry is managed manually to support grace periods.
+	signedByTeamKey := false
 	token, err := jwt.ParseWithClaims(tokenString, &LicenseClaims{}, func(token *jwt.Token) (interface{}, error) {
-		// SECURITY: Verify signing method is specifically RS256 (not just any RSA method)
-		// This prevents algorithm confusion/downgrade attacks
-		method, ok := token.Method.(*jwt.SigningMethodRSA)
-		if !ok || method.Alg() != "RS256" {
-			return nil, fmt.Errorf("unexpected signing method: %v, expected RS256", token.Header["alg"])
+		switch method := token.Method.(type) {
+		case *jwt.SigningMethodRSA:
+			if method.Alg() != "RS256" {
+				return nil, fmt.Errorf("unexpected signing method: %v, expected RS256 or EdDSA", token.Header["alg"])
+			}
+			return v.publicKey, nil
+		case *jwt.SigningMethodEd25519:
+			kid, _ := token.Header["kid"].(string)
+			pub, ok := v.teamKeys[kid]
+			if kid == "" || !ok {
+				return nil, ErrUnknownSigningKey
+			}
+			signedByTeamKey = true
+			return pub, nil
+		default:
+			return nil, fmt.Errorf("unexpected signing method: %v, expected RS256 or EdDSA", token.Header["alg"])
 		}
-		return v.publicKey, nil
 	}, jwt.WithoutClaimsValidation())
 
 	if err != nil {
@@ -162,6 +209,11 @@ func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
 	if claims.RegisteredClaims.IssuedAt != nil {
 		issuedAt = claims.RegisteredClaims.IssuedAt.Time
 	}
+	if signedByTeamKey {
+		if err := checkTeamLicenceClaims(claims, issuedAt, expiresAt); err != nil {
+			return nil, err
+		}
+	}
 	isExpired := time.Now().After(expiresAt)
 
 	license := &License{
@@ -176,6 +228,22 @@ func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
 	}
 
 	return license, nil
+}
+
+// checkTeamLicenceClaims holds a team-signed licence to what team keys
+// are for: a licence bound to a customer, with an expiry no further than
+// teamLicenceMaxLifetime from its issue time.
+func checkTeamLicenceClaims(claims *LicenseClaims, issuedAt, expiresAt time.Time) error {
+	if claims.RegisteredClaims.Subject == "" {
+		return fmt.Errorf("team-signed licence without a subject")
+	}
+	if issuedAt.IsZero() || expiresAt.IsZero() {
+		return fmt.Errorf("team-signed licence without iat or exp")
+	}
+	if expiresAt.Sub(issuedAt) > teamLicenceMaxLifetime {
+		return fmt.Errorf("team-signed licence valid for %s, above the %s limit", expiresAt.Sub(issuedAt), teamLicenceMaxLifetime)
+	}
+	return nil
 }
 
 // IsProbeAuthorized checks if a probe is authorized by the license

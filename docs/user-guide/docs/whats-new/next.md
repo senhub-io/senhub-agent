@@ -31,6 +31,7 @@ Nothing released yet since 0.6.5. Changes land here as they are merged.
 - **Azure Monitor probe (Pro).** The new `azure_monitor` probe discovers the resources of one or more subscriptions through Azure Resource Graph, filtered by type, resource group and tag, and publishes their platform metrics, their provisioning and product state, and optional Service Bus, App Service Plan and VM disk figures. Entity emission is off by default; turn it on only with a Toise 0.23 or later, which registers the `cloud.resource` type (an older one refuses the records, counted in `senhub.agent.export.rejected`).
 - **Azure Log Query probe (Pro).** The new `azure_log_query` probe runs one KQL query on a Log Analytics workspace each cycle and publishes every row (`channel`, `value`, `unit`) as a gauge named `azure.log_query.<channel>`.
 - **Microsoft Entra ID probe (Pro).** The new `entra_id` probe reads one tenant through Microsoft Graph in 13 modules: secret and certificate expiry, directory synchronisation, users, licences, groups, applications, devices, service health, authentication methods, privileged access and security posture. Each module needs its own Application permission with admin consent.
+- **Licences signed by a team key.** Besides the root RSA key, the agent accepts licences signed with EdDSA by a trusted team key, named by the token's `kid`. A team-signed licence must name a customer and last 92 days at most; a token naming an unknown key is refused. Existing licences are unaffected.
 
 ## Fixes
 
