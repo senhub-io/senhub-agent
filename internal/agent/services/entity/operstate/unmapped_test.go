@@ -10,6 +10,7 @@ import (
 )
 
 func TestAnUnmappedValueIsReportedOncePerValue(t *testing.T) {
+	resetUnmapped(t)
 	var buf bytes.Buffer
 	prev := log.Logger
 	log.Logger = zerolog.New(&buf)
@@ -33,6 +34,7 @@ func TestAnUnmappedValueIsReportedOncePerValue(t *testing.T) {
 }
 
 func TestUnmappedReportsAreBounded(t *testing.T) {
+	resetUnmapped(t)
 	var buf bytes.Buffer
 	prev := log.Logger
 	log.Logger = zerolog.New(&buf)
@@ -50,4 +52,14 @@ func TestUnmappedReportsAreBounded(t *testing.T) {
 	if strings.Count(buf.String(), "are not reported") != 1 {
 		t.Fatalf("the cap must be reported exactly once:\n%s", buf.String())
 	}
+}
+
+// resetUnmapped empties the process-wide record so tests do not depend on
+// the order they run in.
+func resetUnmapped(t *testing.T) {
+	t.Helper()
+	unmapped.Lock()
+	unmapped.seen = map[string]struct{}{}
+	unmapped.capped = false
+	unmapped.Unlock()
 }
