@@ -121,12 +121,12 @@ func NewSensor(
 			// SH-XXXX token), not the legit no-licence free tier. Fail loud so
 			// monitoring alerts instead of the agent silently dropping every
 			// paid probe (#486).
-			agentstate.SetLicenseInvalid("validation_failed")
+			agentstate.SetLicenseInvalid(agentstate.LicenseReasonValidationFailed)
 			moduleLogger.Error().
 				Err(err).
 				Msg("Configured license token is INVALID and was rejected - all paid probes disabled, agent degraded to FREE TIER. Fix or remove the license to clear this alert (self-metric senhub.agent.license.invalid=1)")
 		} else if agentKey != "" && !license.VerifyBinding(config.Agent.License, agentKey, lic) {
-			agentstate.SetLicenseInvalid("binding_mismatch")
+			agentstate.SetLicenseInvalid(agentstate.LicenseReasonBindingMismatch)
 			moduleLogger.Error().
 				Msg("Configured license is NOT bound to this agent key and was rejected - all paid probes disabled, agent degraded to FREE TIER (self-metric senhub.agent.license.invalid=1)")
 		} else {
@@ -148,7 +148,7 @@ func NewSensor(
 						Time("delegation_expires_at", lic.DelegationExpiresAt).
 						Msg("License expired but in grace period: renew the licence, or the platform's delegation, before the grace period ends")
 				} else {
-					agentstate.SetLicenseInvalid("expired_no_grace")
+					agentstate.SetLicenseInvalid(agentstate.LicenseReasonExpiredNoGrace)
 					moduleLogger.Error().Msg("License expired and grace period ended - all paid probes disabled, agent degraded to FREE TIER (self-metric senhub.agent.license.invalid=1)")
 					validatedLicense = nil // Disable license if expired outside grace period
 				}
@@ -206,14 +206,14 @@ func (s *sensor) SyncConfiguration() error {
 	if s.license == nil && config.Agent.License != "" && s.licenseValidator != nil {
 		lic, err := s.licenseValidator.ValidateLicense(config.Agent.License)
 		if err != nil {
-			agentstate.SetLicenseInvalid("validation_failed")
+			agentstate.SetLicenseInvalid(agentstate.LicenseReasonValidationFailed)
 			s.moduleLogger.Error().Err(err).Msg("Configured license token is INVALID and was rejected during configuration sync - agent staying on FREE TIER (self-metric senhub.agent.license.invalid=1)")
 		} else if agentKey := config.Agent.AuthenticationKey; agentKey != "" && !license.VerifyBinding(config.Agent.License, agentKey, lic) {
 			// Mirror the constructor's binding enforcement (see above). Without
 			// it the initial binding_mismatch rejection is silently undone by
 			// the first SyncConfiguration — which runs at boot — unlocking paid
 			// probes for a licence not bound to this agent's authentication key.
-			agentstate.SetLicenseInvalid("binding_mismatch")
+			agentstate.SetLicenseInvalid(agentstate.LicenseReasonBindingMismatch)
 			s.moduleLogger.Error().Msg("Configured license is NOT bound to this agent key and was rejected during configuration sync - agent staying on FREE TIER (self-metric senhub.agent.license.invalid=1)")
 		} else {
 			isExpired := lic.IsExpired && !s.licenseValidator.IsInGracePeriod(lic)
@@ -226,7 +226,7 @@ func (s *sensor) SyncConfiguration() error {
 					Strs("probes", lic.AuthorizedProbes).
 					Msg("License validated during configuration sync")
 			} else {
-				agentstate.SetLicenseInvalid("expired_no_grace")
+				agentstate.SetLicenseInvalid(agentstate.LicenseReasonExpiredNoGrace)
 				s.moduleLogger.Error().Msg("Configured license is expired and outside its grace period - agent staying on FREE TIER (self-metric senhub.agent.license.invalid=1)")
 			}
 		}

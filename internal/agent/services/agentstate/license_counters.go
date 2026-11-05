@@ -2,12 +2,25 @@ package agentstate
 
 import "sync"
 
+// Known licence-rejection reasons for the senhub.agent.license.invalid gauge.
+const (
+	LicenseReasonValidationFailed = "validation_failed"
+	LicenseReasonBindingMismatch  = "binding_mismatch"
+	LicenseReasonExpiredNoGrace   = "expired_no_grace"
+)
+
+// licenseKnownReasons lists every known rejection reason so ClearLicenseInvalid
+// can publish 0 for each even before any rejection was latched.
+var licenseKnownReasons = []string{
+	LicenseReasonValidationFailed,
+	LicenseReasonBindingMismatch,
+	LicenseReasonExpiredNoGrace,
+}
+
 // licenseInvalid latches the current licence-rejection state, labelled by
-// reason (validation_failed, binding_mismatch, expired_no_grace). A configured
-// licence that the validator rejects silently drops the agent to free tier;
-// this gauge makes that visible so monitoring can alert instead of the failure
-// hiding in a single WARN line (#486). 1 = currently rejected for that reason,
-// 0 = not (cleared when a licence validates).
+// reason. A configured licence that the validator rejects silently drops the
+// agent to free tier; this gauge makes that visible (#486). 1 = currently
+// rejected for that reason, 0 = not (cleared when a licence validates).
 var licenseInvalid = struct {
 	mu sync.Mutex
 	m  map[string]uint64
@@ -20,10 +33,14 @@ func SetLicenseInvalid(reason string) {
 	licenseInvalid.mu.Unlock()
 }
 
-// ClearLicenseInvalid resets all rejection reasons to 0. Called when a licence
-// validates successfully so a recovered host stops alerting.
+// ClearLicenseInvalid publishes all known reasons at 0 (creating keys if
+// absent) and resets any other latched key to 0. Called when a licence
+// validates so a recovered host stops alerting.
 func ClearLicenseInvalid() {
 	licenseInvalid.mu.Lock()
+	for _, r := range licenseKnownReasons {
+		licenseInvalid.m[r] = 0
+	}
 	for k := range licenseInvalid.m {
 		licenseInvalid.m[k] = 0
 	}
