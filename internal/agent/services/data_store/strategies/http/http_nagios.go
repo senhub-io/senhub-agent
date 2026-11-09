@@ -1,4 +1,3 @@
-// senhub-agent/internal/agent/services/data_store/http_nagios.go
 package http
 
 import (
@@ -381,12 +380,13 @@ func (n *NagiosManager) getStatusText(status int) string {
 
 // Utility Methods for Nagios processing
 
-// relayProbeSummary answers for a probe that holds no metric. A syslog or
-// OTLP receiver relays records and measures nothing, so "no metrics" is
-// its normal state, and answering CRITICAL for it kept those services red
-// for ever. The probe's own state decides instead: running and healthy is
-// OK, a failed cycle or a listener that cannot receive is CRITICAL with
-// its cause, and an unknown name stays CRITICAL.
+// relayProbeSummary answers for a probe that holds no metric. An
+// event-driven relay (syslog, OTLP) measures nothing by nature, so a
+// healthy one is OK. A scheduled log probe (file tail, journald, Windows
+// event log) is not event-driven, but once it has completed a cycle it is
+// also OK even when that cycle produced zero metric points. Only a
+// non-event-driven probe that has not finished its first collection is
+// UNKNOWN; unknown or failed probes stay CRITICAL.
 func relayProbeSummary(name string) (int, string) {
 	state, known := agentstate.ProbeRunStateByName(name)
 	switch {
@@ -394,8 +394,13 @@ func relayProbeSummary(name string) (int, string) {
 		return 2, "CRITICAL - No metrics available for probe " + name
 	case state.Health == "failed":
 		return 2, "CRITICAL - Probe " + name + " is failing: " + state.LastError
+	case !state.EventDriven && state.LastCycle.IsZero():
+		return 3, "UNKNOWN - Probe " + name + " is waiting for its first collection"
 	case state.Health == "ok":
-		return 0, "OK - Probe " + name + " is running, it relays records and holds no metric"
+		if state.EventDriven {
+			return 0, "OK - Probe " + name + " is running, it relays records and holds no metric"
+		}
+		return 0, "OK - Probe " + name + " is running and holds no metric"
 	default:
 		return 3, "UNKNOWN - Probe " + name + " has not completed a cycle yet"
 	}
