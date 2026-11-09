@@ -26,8 +26,10 @@ func init() {
 	RegisterCommand(ExtraCommand{Name: "secret", ReadOnly: false, Run: runSecretCommand})
 }
 
-func secretUsage() {
-	fmt.Fprint(os.Stderr, `Usage: agent secret <command> [name]
+func secretUsage() { writeSecretUsage(os.Stderr) }
+
+func writeSecretUsage(w io.Writer) {
+	fmt.Fprint(w, `Usage: agent secret <command> [name]
 
   set <name>        store/replace a secret (hidden prompt, or stdin, or --from-file <path>)
   get <name>        print a secret value to stdout (deliberate reveal)

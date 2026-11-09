@@ -1,6 +1,9 @@
 package app
 
-import "fmt"
+import (
+	"fmt"
+	"io"
+)
 
 // ExtraCommand is a top-level subcommand contributed from outside the
 // core dispatch. It exists so a build can add a verb to the shared CLI
@@ -22,6 +25,8 @@ type ExtraCommand struct {
 	// Run executes the command. Like the built-in handlers it reads
 	// os.Args itself, so it can parse its own sub-verbs and flags.
 	Run func()
+	// Usage, when set, is printed for `<verb> -h|--help` instead of running the command.
+	Usage func(w io.Writer)
 }
 
 // extraCommands holds the registered top-level subcommands, keyed by
