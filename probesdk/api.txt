@@ -3,6 +3,7 @@ type ExtraCommand struct
   field Name string
   field ReadOnly bool
   field Run func()
+  field Usage func(w io.Writer)
 func Main()
 func RegisterCommand(c senhub-agent.go/app.ExtraCommand)
 == senhub-agent.go/probesdk/cliargs (package cliArgs) ==
