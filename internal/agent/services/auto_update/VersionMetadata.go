@@ -53,12 +53,24 @@ func fetchVersionMetadata(
 	return &versionMetadata, nil
 }
 
-// IsBetaVersion reports whether versionStr is a beta pre-release: the numbered
-// "X.Y.Z-beta.N", or the earlier "X.Y.Z-beta" and "X.Y.Z-betaN". Other
-// pre-releases (alpha, dev builds) are not betas.
+// IsBetaVersion reports whether versionStr is a beta-channel pre-release:
+// the numbered "X.Y.Z-beta.N", the earlier "X.Y.Z-beta" and "X.Y.Z-betaN",
+// or a numbered release candidate "X.Y.Z-rc.N". Other pre-releases (alpha,
+// dev builds) are not betas.
 func IsBetaVersion(versionStr string) bool {
 	core, _, _ := strings.Cut(versionStr, "+")
 	_, pre, found := strings.Cut(core, "-")
+	if rest, ok := strings.CutPrefix(pre, "rc."); ok {
+		if rest == "" {
+			return false
+		}
+		for _, r := range rest {
+			if r < '0' || r > '9' {
+				return false
+			}
+		}
+		return true
+	}
 	rest, ok := strings.CutPrefix(pre, "beta")
 	if !found || !ok || rest == "" {
 		return found && ok

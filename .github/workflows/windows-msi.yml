@@ -88,7 +88,7 @@ jobs:
             if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
               VERSION="${GITHUB_REF#refs/tags/}"
             else
-              VERSION="$(git tag --list '[0-9]*.[0-9]*.[0-9]*' | grep -v -- '-beta' | sort -V | tail -1)"
+              VERSION="$(git tag --list '[0-9]*.[0-9]*.[0-9]*' | grep -v -- '-' | sort -V | tail -1)"
             fi
           fi
           if [ -z "$VERSION" ]; then
