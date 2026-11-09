@@ -91,7 +91,7 @@ func TestSanitizeParamsForLog_LeavesAHarmlessURLIntact(t *testing.T) {
 		"password policy: rotate often",
 		"host=db port=5432",
 		"Is the service up? yes",
-		"https://example.com/path#section",
+		"plain text #section",
 		"author: Jane Smith",
 		"authority=paris",
 		"Basic authentication required",
@@ -121,7 +121,7 @@ func TestRedactSecretsInString_MasksCredentialShapes(t *testing.T) {
 		{
 			name:    "query with several params and a fragment",
 			in:      "https://h.example/api?page=2&token=fake-token-123#frag",
-			want:    "https://h.example/api?page=***&token=***#frag",
+			want:    "https://h.example/api?page=***&token=***#***",
 			secrets: []string{"fake-token-123"},
 		},
 		{
@@ -179,6 +179,23 @@ func TestRedactSecretsInString_MasksCredentialShapes(t *testing.T) {
 			secrets: []string{"fake-raw-2"},
 		},
 		{
+			name:    "authorization digest params keep trailing text",
+			in:      `Authorization: Digest username="u", response="fake1" -- retrying`,
+			want:    "Authorization: Digest *** -- retrying",
+			secrets: []string{"fake1"},
+		},
+		{
+			name:    "authorization basic token keeps trailing text",
+			in:      "Authorization: Basic fake2 request failed",
+			want:    "Authorization: Basic *** request failed",
+			secrets: []string{"fake2"},
+		},
+		{
+			name: "authorization scheme without credential unchanged",
+			in:   "Authorization: Basic",
+			want: "Authorization: Basic",
+		},
+		{
 			name:    "standalone bearer credential",
 			in:      "Bearer fake.tok3n",
 			want:    "Bearer ***",
@@ -203,9 +220,38 @@ func TestRedactSecretsInString_MasksCredentialShapes(t *testing.T) {
 			secrets: []string{"fake token 3"},
 		},
 		{
+			name:    "oauth pair",
+			in:      "oauth=fake",
+			want:    "oauth=***",
+			secrets: []string{"fake"},
+		},
+		{
+			name:    "authtoken pair",
+			in:      "authtoken=fake",
+			want:    "authtoken=***",
+			secrets: []string{"fake"},
+		},
+		{
+			name:    "accessToken pair",
+			in:      "accessToken=fake",
+			want:    "accessToken=***",
+			secrets: []string{"fake"},
+		},
+		{
+			name:    "proxyauth pair",
+			in:      "proxyauth=fake",
+			want:    "proxyauth=***",
+			secrets: []string{"fake"},
+		},
+		{
 			name: "url with no query unchanged",
 			in:   "https://example.com/path",
 			want: "https://example.com/path",
+		},
+		{
+			name: "url fragment masked",
+			in:   "https://example.com/path#section",
+			want: "https://example.com/path#***",
 		},
 	}
 	for _, tc := range cases {
@@ -232,5 +278,82 @@ func TestSanitizeParamsForLog_MasksAnyQueryValueUnderAHarmlessKey(t *testing.T) 
 	}
 	if strings.Contains(got, "fake-token-123") {
 		t.Errorf("token still present: %q", got)
+	}
+}
+
+func TestRedactSecretsInString_MasksWholeDigestAuthorizationParams(t *testing.T) {
+	cases := []struct {
+		name    string
+		in      string
+		want    string
+		secrets []string
+	}{
+		{
+			name:    "quoted digest parameters",
+			in:      `Authorization: Digest username="u", realm="r", nonce="n", response="fake-resp-1"`,
+			want:    "Authorization: Digest ***",
+			secrets: []string{"fake-resp-1", "username", "realm", "nonce"},
+		},
+		{
+			name:    "unquoted digest parameters",
+			in:      "Authorization: Digest username=u, response=fake-resp-2",
+			want:    "Authorization: Digest ***",
+			secrets: []string{"fake-resp-2"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := RedactSecretsInString(tc.in)
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+			for _, secret := range tc.secrets {
+				if strings.Contains(got, secret) {
+					t.Errorf("secret %q still present: %q", secret, got)
+				}
+			}
+		})
+	}
+}
+
+func TestRedactSecretsInString_MasksURLFragmentsOnlyInURLs(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"fragment after query", "https://h.example/p?x=1#fake-frag-3", "https://h.example/p?x=***#***"},
+		{"fragment without query", "https://h.example/p#fake-frag-4", "https://h.example/p#***"},
+		{"plain text fragment untouched", "see docs #fake-frag-5", "see docs #fake-frag-5"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := RedactSecretsInString(tc.in); got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSanitizeParamsForLog_DoesNotTreatAuthorWordsAsCredentials(t *testing.T) {
+	got := SanitizeParamsForLog(map[string]interface{}{"neg_author": "author: x"})["neg_author"]
+	if got != "author: x" {
+		t.Errorf("got %q, want %q", got, "author: x")
+	}
+
+	positives := []struct {
+		in   string
+		want string
+	}{
+		{"auth: fake", "auth: ***"},
+		{"x-auth-token: fake", "x-auth-token: ***"},
+		{"--auth=fake", "--auth=***"},
+	}
+	for _, tc := range positives {
+		t.Run(tc.in, func(t *testing.T) {
+			if got := RedactSecretsInString(tc.in); got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
