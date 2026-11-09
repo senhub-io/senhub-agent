@@ -51,6 +51,27 @@ func TestSplitEndpointScheme(t *testing.T) {
 	}
 }
 
+func TestSplitEndpointScheme_NoCredentialLeak(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+	}{
+		{name: "bad port with credentials", raw: "http://user:s3cretpw@host:99999x"},
+		{name: "invalid escape with credentials", raw: "http://user:s3cretpw@host:4318/%zz"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := splitEndpointScheme(tt.raw)
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if strings.Contains(err.Error(), "s3cretpw") {
+				t.Fatalf("error echoes credentials: %v", err)
+			}
+		})
+	}
+}
+
 func TestParseConfig_EndpointScheme(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -204,5 +225,50 @@ func TestParseConfig_EndpointUserinfoNotEchoed(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "user:pass") || strings.Contains(err.Error(), "pass") {
 		t.Fatalf("error echoes credentials: %v", err)
+	}
+}
+
+func TestParseConfig_NoCredentialLeak(t *testing.T) {
+	tests := []struct {
+		name   string
+		params map[string]interface{}
+	}{
+		{
+			name: "root endpoint bad port with credentials",
+			params: map[string]interface{}{
+				"endpoint": "http://user:s3cretpw@host:99999x",
+			},
+		},
+		{
+			name: "root endpoint invalid escape with credentials",
+			params: map[string]interface{}{
+				"endpoint": "http://user:s3cretpw@host:4318/%zz",
+			},
+		},
+		{
+			name: "fallback endpoint bad port with credentials",
+			params: map[string]interface{}{
+				"endpoint":           "http://a:4318",
+				"fallback_endpoints": []interface{}{"http://user:s3cretpw@host:99999x"},
+			},
+		},
+		{
+			name: "fallback endpoint invalid escape with credentials",
+			params: map[string]interface{}{
+				"endpoint":           "http://a:4318",
+				"fallback_endpoints": []interface{}{"http://user:s3cretpw@host:4318/%zz"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseConfig(tt.params)
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if strings.Contains(err.Error(), "s3cretpw") {
+				t.Fatalf("error echoes credentials: %v", err)
+			}
+		})
 	}
 }

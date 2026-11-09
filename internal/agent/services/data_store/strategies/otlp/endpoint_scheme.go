@@ -1,6 +1,7 @@
 package otlp
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -18,6 +19,10 @@ func splitEndpointScheme(raw string) (hostPort string, tls *bool, err error) {
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			return "", nil, fmt.Errorf("invalid endpoint URL: %w", urlErr.Err)
+		}
 		return "", nil, fmt.Errorf("invalid endpoint URL: %w", err)
 	}
 	if u.User != nil {
