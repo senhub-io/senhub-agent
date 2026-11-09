@@ -311,7 +311,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace}
 <h2>Channels</h2>
 <ul>
 <li><code>stable</code>: final releases.</li>
-<li><code>beta</code>: pre-releases (<code>X.Y.Z~beta.N</code>), published before the final release.</li>
+<li><code>beta</code>: pre-releases (<code>X.Y.Z~beta.N</code>, <code>X.Y.Z~rc.N</code>), published before the final release.</li>
 </ul>
 <p>Pick one channel per machine. The signing key fingerprint is <code>$FPR_SPACED</code>; it is served at <a href="$BASE_URL/gpg.key">$BASE_URL/gpg.key</a>.</p>
 EOF

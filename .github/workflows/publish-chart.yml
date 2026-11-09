@@ -22,7 +22,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to package (for example 0.6.2 or 0.6.2-beta.1)"
+        description: "Release tag to package (for example 0.6.2, 0.6.2-beta.1 or 0.6.2-rc.1)"
         required: true
 
 permissions:
@@ -38,8 +38,8 @@ jobs:
       - name: Validate the tag
         run: |
           set -euo pipefail
-          printf '%s' "$TAG" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$' \
-            || { echo "::error::Tag '$TAG' is neither X.Y.Z nor X.Y.Z-beta.N"; exit 1; }
+          printf '%s' "$TAG" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-(beta|rc)\.[0-9]+)?$' \
+            || { echo "::error::Tag '$TAG' is neither X.Y.Z, X.Y.Z-beta.N nor X.Y.Z-rc.N"; exit 1; }
           [ "${GITHUB_REF_NAME}" = "$TAG" ] \
             || { echo "::error::Dispatched on '${GITHUB_REF_NAME}', not on the tag $TAG: the chart must be built from the release's own commit"; exit 1; }
 

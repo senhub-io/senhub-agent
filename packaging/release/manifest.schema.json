@@ -11,7 +11,7 @@
     "version": {
       "description": "Release tag, without a v prefix.",
       "type": "string",
-      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-beta\\.[0-9]+)?$"
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-(beta|rc)\\.[0-9]+)?$"
     },
     "channel": { "enum": ["stable", "beta"] },
     "date": { "description": "When the release was published (UTC).", "type": "string", "format": "date-time" },

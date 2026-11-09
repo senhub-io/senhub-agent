@@ -373,6 +373,41 @@ func TestIsBetaVersion(t *testing.T) {
 			version:  "1.0.0-alpha",
 			expected: false,
 		},
+		{
+			name:     "Release candidate",
+			version:  "0.7.0-rc.1",
+			expected: true,
+		},
+		{
+			name:     "Release candidate, two digits",
+			version:  "0.7.0-rc.12",
+			expected: true,
+		},
+		{
+			name:     "Release candidate with build metadata",
+			version:  "0.7.0-rc.2+abc",
+			expected: true,
+		},
+		{
+			name:     "Unnumbered rc",
+			version:  "0.7.0-rc",
+			expected: false,
+		},
+		{
+			name:     "Rc with a dangling dot",
+			version:  "0.7.0-rc.",
+			expected: false,
+		},
+		{
+			name:     "Rc number is not numeric",
+			version:  "0.7.0-rc.x",
+			expected: false,
+		},
+		{
+			name:     "Earlier rcN form is not accepted",
+			version:  "0.7.0-rc2",
+			expected: false,
+		},
 	}
 
 	for _, tc := range testCases {
