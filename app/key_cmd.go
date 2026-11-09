@@ -19,10 +19,12 @@ func init() {
 	RegisterCommand(ExtraCommand{Name: "key", ReadOnly: false, Run: runKeyCommand})
 }
 
+const keyUsage = "Usage: agent key show|instance-id [--config-path <path>]"
+
 func runKeyCommand() {
 	args := os.Args[2:]
 	if len(args) == 0 || (args[0] != "show" && args[0] != "instance-id") {
-		fmt.Fprintln(os.Stderr, "Usage: agent key show|instance-id [--config-path <path>]")
+		fmt.Fprintln(os.Stderr, keyUsage)
 		os.Exit(cliexit.Failure)
 	}
 	cfgPath, err := secretConfigFile(args)
