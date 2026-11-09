@@ -170,6 +170,11 @@ jobs:
           push: true
           provenance: true
           sbom: true
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.release.outputs.ref }}
+            org.opencontainers.image.version=${{ inputs.tag }}
+            org.opencontainers.image.title=senhub-agent${{ inputs.variant == 'oss' && '-oss' || '' }}
           build-args: |
             VERSION=${{ inputs.tag }}
             VARIANT=${{ steps.name.outputs.variant_arg }}
