@@ -14,23 +14,23 @@ func TestSanitizeParamsForLog_MasksCredentialsEmbeddedInStrings(t *testing.T) {
 		in   string
 		want string
 	}{
-		{"mongodb", "mongodb://app:S3cret@db1:27017/prod", "mongodb://app:***@db1:27017/prod"},
-		{"mongodb+srv", "mongodb+srv://app:S3cret@cluster.example.net/prod?retryWrites=true", "mongodb+srv://app:***@cluster.example.net/prod?retryWrites=true"},
-		{"postgres", "postgres://app:S3cret@db:5432/prod?sslmode=require", "postgres://app:***@db:5432/prod?sslmode=require"},
-		{"postgresql", "postgresql://app:S3cret@db/prod", "postgresql://app:***@db/prod"},
-		{"amqp", "amqp://guest:S3cret@mq:5672/vhost", "amqp://guest:***@mq:5672/vhost"},
-		{"amqps", "amqps://guest:S3cret@mq:5671/", "amqps://guest:***@mq:5671/"},
-		{"redis", "redis://default:S3cret@cache:6379/0", "redis://default:***@cache:6379/0"},
-		{"https", "https://svc:S3cret@api.example.com/v1", "https://svc:***@api.example.com/v1"},
-		{"http", "http://svc:S3cret@10.0.0.5:8080", "http://svc:***@10.0.0.5:8080"},
-		{"empty user", "redis://:S3cret@cache:6379", "redis://:***@cache:6379"},
-		{"at sign in password", "mongodb://app:p@ss@db1/prod", "mongodb://app:***@db1/prod"},
-		{"several hosts", "mongodb://app:S3cret@h1:27017,h2:27017/prod", "mongodb://app:***@h1:27017,h2:27017/prod"},
+		{"mongodb", "mongodb://app:S3cret@db1:27017/prod", "mongodb://***@db1:27017/prod"},
+		{"mongodb+srv", "mongodb+srv://app:S3cret@cluster.example.net/prod?retryWrites=true", "mongodb+srv://***@cluster.example.net/prod?retryWrites=***"},
+		{"postgres", "postgres://app:S3cret@db:5432/prod?sslmode=require", "postgres://***@db:5432/prod?sslmode=***"},
+		{"postgresql", "postgresql://app:S3cret@db/prod", "postgresql://***@db/prod"},
+		{"amqp", "amqp://guest:S3cret@mq:5672/vhost", "amqp://***@mq:5672/vhost"},
+		{"amqps", "amqps://guest:S3cret@mq:5671/", "amqps://***@mq:5671/"},
+		{"redis", "redis://default:S3cret@cache:6379/0", "redis://***@cache:6379/0"},
+		{"https", "https://svc:S3cret@api.example.com/v1", "https://***@api.example.com/v1"},
+		{"http", "http://svc:S3cret@10.0.0.5:8080", "http://***@10.0.0.5:8080"},
+		{"empty user", "redis://:S3cret@cache:6379", "redis://***@cache:6379"},
+		{"at sign in password", "mongodb://app:p@ss@db1/prod", "mongodb://***@db1/prod"},
+		{"several hosts", "mongodb://app:S3cret@h1:27017,h2:27017/prod", "mongodb://***@h1:27017,h2:27017/prod"},
 		{"libpq dsn", "host=db user=app password=S3cret dbname=prod", "host=db user=app password=*** dbname=prod"},
 		{"libpq quoted", "host=db password='S 3cret' dbname=prod", "host=db password=*** dbname=prod"},
 		{"odbc dsn", "Server=db;Database=prod;User Id=app;Pwd=S3cret;Encrypt=true", "Server=db;Database=prod;User Id=app;Pwd=***;Encrypt=true"},
 		{"mysql dsn password key", "Password = S3cret;Port=3306", "Password = ***;Port=3306"},
-		{"query string", "https://host/path?password=S3cret&x=1", "https://host/path?password=***&x=1"},
+		{"query string", "https://host/path?password=S3cret&x=1", "https://host/path?password=***&x=***"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -65,18 +65,172 @@ func TestSanitizeParamsForLog_MasksEmbeddedCredentialsInNestedValues(t *testing.
 	}
 }
 
+func TestSanitizeParamsForLog_MasksURLForms(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"query value masked", "https://example.com/path?x=1", "https://example.com/path?x=***"},
+		{"userinfo masked", "https://token@example.com/repo", "https://***@example.com/repo"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := SanitizeParamsForLog(map[string]interface{}{"target": tc.in})["target"]
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSanitizeParamsForLog_LeavesAHarmlessURLIntact(t *testing.T) {
 	for _, v := range []string{
-		"https://example.com/path?x=1",
 		"http://10.0.0.5:8080/api/key",
-		"https://token@example.com/repo",
 		"mongodb://db1:27017/prod",
 		"password policy: rotate often",
 		"host=db port=5432",
+		"Is the service up? yes",
+		"https://example.com/path#section",
+		"author: Jane Smith",
+		"authority=paris",
+		"Basic authentication required",
+		"bearer of the news",
 	} {
 		got := SanitizeParamsForLog(map[string]interface{}{"target": v})["target"]
 		if got != v {
 			t.Errorf("%q was altered to %q", v, got)
 		}
+	}
+}
+
+func TestRedactSecretsInString_MasksCredentialShapes(t *testing.T) {
+	jwt := "eyJhbGciOiJub25lIn0.eyJzdWIiOiJ0ZXN0In0.c2ln"
+	cases := []struct {
+		name    string
+		in      string
+		want    string
+		secrets []string
+	}{
+		{
+			name:    "query with token and api_key",
+			in:      "https://h.example/api?token=fake-token-123&api_key=fake-key-456",
+			want:    "https://h.example/api?token=***&api_key=***",
+			secrets: []string{"fake-token-123", "fake-key-456"},
+		},
+		{
+			name:    "query with several params and a fragment",
+			in:      "https://h.example/api?page=2&token=fake-token-123#frag",
+			want:    "https://h.example/api?page=***&token=***#frag",
+			secrets: []string{"fake-token-123"},
+		},
+		{
+			name:    "userinfo user password",
+			in:      "https://user:fake-pass-123@example.com/path",
+			want:    "https://***@example.com/path",
+			secrets: []string{"fake-pass-123"},
+		},
+		{
+			name:    "userinfo user only",
+			in:      "https://fake-user@example.com/repo",
+			want:    "https://***@example.com/repo",
+			secrets: []string{"fake-user"},
+		},
+		{
+			name:    "jwt inside a URL path segment",
+			in:      "https://h.example/" + jwt + "/resource",
+			want:    "https://h.example/***/resource",
+			secrets: []string{jwt},
+		},
+		{
+			name:    "jwt after bearer",
+			in:      "Bearer " + jwt,
+			want:    "Bearer ***",
+			secrets: []string{jwt},
+		},
+		{
+			name:    "access key id inside a sentence",
+			in:      "key AKIAFAKEFAKEFAKE0000 here",
+			want:    "key *** here",
+			secrets: []string{"AKIAFAKEFAKEFAKE0000"},
+		},
+		{
+			name:    "dsn password still masked",
+			in:      "host=db password=fake-pass-123",
+			want:    "host=db password=***",
+			secrets: []string{"fake-pass-123"},
+		},
+		{
+			name:    "authorization bearer header",
+			in:      "Authorization: Bearer fake-opaque-token",
+			want:    "Authorization: Bearer ***",
+			secrets: []string{"fake-opaque-token"},
+		},
+		{
+			name:    "authorization digest header",
+			in:      "Authorization: Digest fake-digest-1",
+			want:    "Authorization: Digest ***",
+			secrets: []string{"fake-digest-1"},
+		},
+		{
+			name:    "authorization raw credential header",
+			in:      "Authorization: fake-raw-2",
+			want:    "Authorization: ***",
+			secrets: []string{"fake-raw-2"},
+		},
+		{
+			name:    "standalone bearer credential",
+			in:      "Bearer fake.tok3n",
+			want:    "Bearer ***",
+			secrets: []string{"fake.tok3n"},
+		},
+		{
+			name:    "dashed api key flag",
+			in:      "--api-key=fake-key-1 --verbose",
+			want:    "--api-key=*** --verbose",
+			secrets: []string{"fake-key-1"},
+		},
+		{
+			name:    "client secret colon pair",
+			in:      "client_secret: fake-secret-2",
+			want:    "client_secret: ***",
+			secrets: []string{"fake-secret-2"},
+		},
+		{
+			name:    "quoted token value",
+			in:      `token="fake token 3"`,
+			want:    `token=***`,
+			secrets: []string{"fake token 3"},
+		},
+		{
+			name: "url with no query unchanged",
+			in:   "https://example.com/path",
+			want: "https://example.com/path",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := RedactSecretsInString(tc.in)
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+			for _, secret := range tc.secrets {
+				if strings.Contains(got, secret) {
+					t.Errorf("secret %q still present: %q", secret, got)
+				}
+			}
+		})
+	}
+}
+
+func TestSanitizeParamsForLog_MasksAnyQueryValueUnderAHarmlessKey(t *testing.T) {
+	got := SanitizeParamsForLog(map[string]interface{}{
+		"url": "https://h.example/api?token=fake-token-123",
+	})["url"].(string)
+	if !strings.Contains(got, "token=***") {
+		t.Errorf("expected token=*** in %q", got)
+	}
+	if strings.Contains(got, "fake-token-123") {
+		t.Errorf("token still present: %q", got)
 	}
 }
