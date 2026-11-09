@@ -433,6 +433,16 @@ func checkConfig(configPath string) checkOutcome {
 		}
 	}
 
+	// A top-level key no field reads is dropped by the loader: a typo in a
+	// block name loses the whole block without a word.
+	if unknown, uerr := configuration.FindUnknownRootKeys(configPath); uerr == nil {
+		for _, k := range unknown {
+			fmt.Printf("  [WARN] %s: top-level key %q is not read and has no effect (accepted: %s)\n",
+				filepath.Base(configPath), k, strings.Join(configuration.KnownRootKeys(), ", "))
+			warnings++
+		}
+	}
+
 	// Config version. Validate against the agent's supported range
 	// (MinimumConfigVersion..CurrentConfigVersion) rather than a
 	// hardcoded literal, so `config check` tracks the source of truth
