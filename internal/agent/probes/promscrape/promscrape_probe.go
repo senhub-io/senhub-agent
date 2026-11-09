@@ -19,7 +19,10 @@ package promscrape
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -61,8 +64,11 @@ type sample struct {
 }
 
 // scrapeResult is the per-target outcome the datapoint builder consumes.
+// target is the real request URL; display is the redacted form used for
+// logs and tags.
 type scrapeResult struct {
 	target   string
+	display  string
 	samples  []sample
 	dropped  int // series in unsupported families (histogram/summary)
 	duration time.Duration
@@ -83,6 +89,7 @@ type PromScrapeProbe struct {
 
 type scrapeConfig struct {
 	Targets            []string
+	displayTargets     []string
 	Interval           time.Duration
 	Timeout            time.Duration
 	InsecureSkipVerify bool
@@ -154,6 +161,13 @@ func parseConfig(config map[string]interface{}) (scrapeConfig, error) {
 		return cfg, fmt.Errorf("prometheus_scrape requires at least one target")
 	}
 
+	// Redact credentials/query secrets once, at parse time, so no log or
+	// tag path can emit the raw target.
+	cfg.displayTargets = make([]string, len(cfg.Targets))
+	for i, t := range cfg.Targets {
+		cfg.displayTargets[i] = displayTarget(t)
+	}
+
 	if v, ok := types.IntParam(config, "interval"); ok && v > 0 {
 		cfg.Interval = time.Duration(v) * time.Second
 	}
@@ -172,6 +186,66 @@ func parseConfig(config map[string]interface{}) (scrapeConfig, error) {
 	return cfg, nil
 }
 
+// displayTarget returns the form of a target safe for logs and tags.
+// Plain URLs are unchanged so series names stay stable; anything carrying
+// userinfo, a query, or a fragment is rebuilt without secrets and tagged
+// with a short hash so distinct raw targets remain distinct series.
+// Opaque or scheme-less forms have no safe host to show, so they collapse
+// to the hash-only form like unparsable targets.
+func displayTarget(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		sum := sha256.Sum256([]byte(raw))
+		return "[" + hex.EncodeToString(sum[:])[:8] + "]"
+	}
+	if u.Scheme == "" || u.Host == "" {
+		sum := sha256.Sum256([]byte(raw))
+		return "[" + hex.EncodeToString(sum[:])[:8] + "]"
+	}
+	if u.User == nil && u.RawQuery == "" && !u.ForceQuery && u.Fragment == "" && u.RawFragment == "" {
+		return raw
+	}
+
+	var b strings.Builder
+	b.WriteString(u.Scheme)
+	b.WriteString("://")
+	b.WriteString(u.Host)
+	b.WriteString(u.Path)
+	if u.RawQuery != "" {
+		b.WriteString("?")
+		parts := strings.Split(u.RawQuery, "&")
+		for i, part := range parts {
+			if i > 0 {
+				b.WriteString("&")
+			}
+			name := part
+			if idx := strings.IndexByte(part, '='); idx >= 0 {
+				name = part[:idx]
+			}
+			b.WriteString(name)
+			b.WriteString("=***")
+		}
+	}
+	sum := sha256.Sum256([]byte(raw))
+	b.WriteString(" [")
+	b.WriteString(hex.EncodeToString(sum[:])[:8])
+	b.WriteString("]")
+	return b.String()
+}
+
+// unwrapURLErr strips the *url.Error wrapper the HTTP client adds around
+// request-construction, transport, and body-read failures: its Error()
+// text repeats the full request URL (userinfo and query included), which
+// would leak the raw target into logs and the up=0 measurement. The inner
+// cause carries the useful part.
+func unwrapURLErr(err error) error {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return urlErr.Err
+	}
+	return err
+}
+
 func (p *PromScrapeProbe) GetTargetStrategies() []string {
 	return []string{"senhub", "prtg", "http", "otlp"}
 }
@@ -181,12 +255,12 @@ func (p *PromScrapeProbe) GetInterval() time.Duration { return p.config.Interval
 
 func (p *PromScrapeProbe) OnStart(quitChannel chan struct{}) error {
 	p.moduleLogger.Info().
-		Strs("targets", p.config.Targets).
+		Strs("targets", p.config.displayTargets).
 		Msg("Starting prometheus_scrape probe")
-	for _, t := range p.config.Targets {
+	for i, t := range p.config.Targets {
 		if looksLikeOwnEndpoint(t) {
 			p.moduleLogger.Warn().
-				Str("target", t).
+				Str("target", p.config.displayTargets[i]).
 				Msg("prometheus_scrape target looks like the agent's own Prometheus endpoint; scraping it re-ingests already-namespaced series and is almost never intended")
 		}
 	}
@@ -246,6 +320,7 @@ func (p *PromScrapeProbe) CollectContext(ctx context.Context) ([]data_store.Data
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			results[i] = p.scrape(ctx, target)
+			results[i].display = p.config.displayTargets[i]
 		}(i, target)
 	}
 	wg.Wait()
@@ -263,17 +338,21 @@ func (p *PromScrapeProbe) CollectContext(ctx context.Context) ([]data_store.Data
 // buildDatapoints converts one scrape outcome into datapoints: the
 // scraped series as typed pass-throughs plus the probe's self-metrics.
 func (p *PromScrapeProbe) buildDatapoints(res scrapeResult, ts time.Time) []data_store.DataPoint {
+	display := res.display
+	if display == "" {
+		display = displayTarget(res.target)
+	}
 	selfTags := []tags.Tag{
-		{Key: "target", Value: res.target},
+		{Key: "target", Value: display},
 		{Key: "metric_type", Value: "scrape"},
 	}
 
 	up := float64(1)
 	if res.err != nil {
 		up = 0
-		p.failures.Failed(p.moduleLogger, subcollect.Warn, res.target, res.err, "prometheus_scrape target failed")
+		p.failures.Failed(p.moduleLogger, subcollect.Warn, display, res.err, "prometheus_scrape target failed")
 	} else {
-		p.failures.Succeeded(p.moduleLogger, res.target, "prometheus_scrape target recovered")
+		p.failures.Succeeded(p.moduleLogger, display, "prometheus_scrape target recovered")
 	}
 
 	points := []data_store.DataPoint{
@@ -290,7 +369,7 @@ func (p *PromScrapeProbe) buildDatapoints(res scrapeResult, ts time.Time) []data
 	for _, s := range res.samples {
 		t := make([]tags.Tag, 0, len(s.labels)+3)
 		t = append(t,
-			tags.Tag{Key: "target", Value: res.target},
+			tags.Tag{Key: "target", Value: display},
 			tags.Tag{Key: "metric_type", Value: "scrape"},
 			tags.Tag{Key: "otel_type", Value: s.otelType},
 		)
@@ -312,11 +391,12 @@ func (p *PromScrapeProbe) buildDatapoints(res scrapeResult, ts time.Time) []data
 
 // scrapeOnce is the production scrapeFunc: one HTTP GET + text parse.
 func (p *PromScrapeProbe) scrapeOnce(ctx context.Context, target string) scrapeResult {
-	res := scrapeResult{target: target}
+	display := displayTarget(target)
+	res := scrapeResult{target: target, display: display}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
-		res.err = fmt.Errorf("building scrape request for %s: %w", target, err)
+		res.err = fmt.Errorf("building scrape request for %s: %w", display, unwrapURLErr(err))
 		return res
 	}
 	req.Header.Set("Accept", "text/plain;version=0.0.4")
@@ -327,13 +407,13 @@ func (p *PromScrapeProbe) scrapeOnce(ctx context.Context, target string) scrapeR
 	start := time.Now()
 	resp, err := p.client.Do(req)
 	if err != nil {
-		res.err = fmt.Errorf("scraping %s: %w", target, err)
+		res.err = fmt.Errorf("scraping %s: %w", display, unwrapURLErr(err))
 		return res
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		res.err = fmt.Errorf("scraping %s: unexpected status %d", target, resp.StatusCode)
+		res.err = fmt.Errorf("scraping %s: unexpected status %d", display, resp.StatusCode)
 		return res
 	}
 
@@ -344,7 +424,7 @@ func (p *PromScrapeProbe) scrapeOnce(ctx context.Context, target string) scrapeR
 	families, err := parser.TextToMetricFamilies(io.LimitReader(resp.Body, maxBodyBytes))
 	res.duration = time.Since(start)
 	if err != nil {
-		res.err = fmt.Errorf("parsing exposition from %s: %w", target, err)
+		res.err = fmt.Errorf("parsing exposition from %s: %w", display, unwrapURLErr(err))
 		return res
 	}
 
