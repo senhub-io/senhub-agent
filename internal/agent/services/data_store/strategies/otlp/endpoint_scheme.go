@@ -23,7 +23,7 @@ func splitEndpointScheme(raw string) (hostPort string, tls *bool, err error) {
 		if errors.As(err, &urlErr) {
 			return "", nil, fmt.Errorf("invalid endpoint URL: %w", urlErr.Err)
 		}
-		return "", nil, fmt.Errorf("invalid endpoint URL: %w", err)
+		return "", nil, errors.New("invalid endpoint URL")
 	}
 	if u.User != nil {
 		return "", nil, fmt.Errorf("endpoint: credentials do not belong in the endpoint; use headers")

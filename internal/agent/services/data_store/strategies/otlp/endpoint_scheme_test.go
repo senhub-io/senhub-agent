@@ -65,7 +65,7 @@ func TestSplitEndpointScheme_NoCredentialLeak(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected an error")
 			}
-			if strings.Contains(err.Error(), "s3cretpw") {
+			if strings.Contains(err.Error(), "s3cretpw") || strings.Contains(err.Error(), "user:") || strings.Contains(err.Error(), "@host") {
 				t.Fatalf("error echoes credentials: %v", err)
 			}
 		})
@@ -266,7 +266,7 @@ func TestParseConfig_NoCredentialLeak(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected an error")
 			}
-			if strings.Contains(err.Error(), "s3cretpw") {
+			if strings.Contains(err.Error(), "s3cretpw") || strings.Contains(err.Error(), "user:") || strings.Contains(err.Error(), "@host") {
 				t.Fatalf("error echoes credentials: %v", err)
 			}
 		})
