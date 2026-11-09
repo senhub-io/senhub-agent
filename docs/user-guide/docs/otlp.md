@@ -203,13 +203,17 @@ agent can still push over OTLP.
 
 ### `endpoint` (required)
 
-`host:port` of the OTLP receiver, without a scheme prefix, for both
-transports. `protocol` selects the transport: `grpc` (the default,
-OTLP/gRPC, usual port **4317**) or `http` (OTLP/HTTP protobuf, usual
-port **4318**). With `http`, the agent builds the URL itself: `https://`
-when `tls.enabled` is true, `http://` otherwise, then the standard
-`/v1/metrics`, `/v1/logs` and `/v1/traces` paths. There is intentionally **no
-default** for this field — silently shipping data to localhost when
+The endpoint of the OTLP receiver, written either as `host:port` or as
+`http(s)://host:port`. Any scheme is stripped before use; when
+`tls.enabled` is not set, `http://` disables TLS and `https://` enables
+it. A scheme that contradicts an explicit `tls.enabled`, as well as a URL
+path, query, or embedded credentials, is rejected with a configuration
+error. `protocol` selects the transport: `grpc` (the default, OTLP/gRPC,
+usual port **4317**) or `http` (OTLP/HTTP protobuf, usual port **4318**).
+With `http`, the agent builds the URL itself: `https://` when
+`tls.enabled` is true, `http://` otherwise, then the standard
+`/v1/metrics`, `/v1/logs` and `/v1/traces` paths. There is intentionally
+**no default** for this field — silently shipping data to localhost when
 the operator forgets to set it would be a worse failure mode than
 refusing to start.
 
