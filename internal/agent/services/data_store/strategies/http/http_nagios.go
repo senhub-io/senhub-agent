@@ -50,12 +50,15 @@ func (n *NagiosManager) HandleNagiosMetricsGET(w http.ResponseWriter, r *http.Re
 	// Parse query parameters
 	filter := n.strategy.metricsProcessor.ParseMetricFilter(r)
 
+	// Snapshot the start-phase flag before the wait: waitForFirstData can block
+	// up to 10s, and the start window may end during that wait.
+	starting := n.strategy.inStartPhase()
 	n.strategy.waitForFirstData(r.Context(), w, probeNameLower)
 
 	// Get probe metrics from cache
 	metrics := n.strategy.cache.GetProbeMetrics(probeNameLower)
 	if len(metrics) == 0 {
-		status, body := relayProbeSummary(probeNameLower)
+		status, body := relayProbeSummary(probeNameLower, starting)
 		w.Header().Set("Content-Type", "text/plain")
 		if status >= 2 {
 			w.WriteHeader(500)
@@ -386,8 +389,10 @@ func (n *NagiosManager) getStatusText(status int) string {
 // event log) is not event-driven, but once it has completed a cycle it is
 // also OK even when that cycle produced zero metric points. Only a
 // non-event-driven probe that has not finished its first collection is
-// UNKNOWN; unknown or failed probes stay CRITICAL.
-func relayProbeSummary(name string) (int, string) {
+// UNKNOWN; unknown or failed probes stay CRITICAL. A scheduled probe whose
+// last cycle handed points is UNKNOWN while those metrics are not readable
+// only while the agent is starting.
+func relayProbeSummary(name string, starting bool) (int, string) {
 	state, known := agentstate.ProbeRunStateByName(name)
 	switch {
 	case !known:
@@ -396,6 +401,8 @@ func relayProbeSummary(name string) (int, string) {
 		return 2, "CRITICAL - Probe " + name + " is failing: " + state.LastError
 	case !state.EventDriven && state.LastCycle.IsZero():
 		return 3, "UNKNOWN - Probe " + name + " is waiting for its first collection"
+	case !state.EventDriven && state.LastPoints > 0 && starting:
+		return 3, "UNKNOWN - Probe " + name + " has collected, its metrics are not readable yet"
 	case state.Health == "ok":
 		if state.EventDriven {
 			return 0, "OK - Probe " + name + " is running, it relays records and holds no metric"
