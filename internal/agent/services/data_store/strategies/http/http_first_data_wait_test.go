@@ -221,3 +221,72 @@ func TestPRTGFirstData_WaitEndsWhenFirstCycleFinishesEmpty(t *testing.T) {
 		t.Fatalf("answered after %v, want about 300ms (when the first cycle ended, not at the wait limit)", elapsed)
 	}
 }
+
+func TestNagiosFirstData_CycleWithPointsWaitsForData(t *testing.T) {
+	api, cache, registry := firstWaitHarness(t, time.Second)
+	api.strategy.firstDataWait = 5 * time.Second
+	api.strategy.nagiosManager = NewNagiosManager(api.strategy, api.logger)
+	agentstate.SetActiveProbes([]string{"probe-id-wait"})
+	t.Cleanup(func() { agentstate.SetActiveProbes(nil) })
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		agentstate.RecordProbeCycle("probe-id-wait", 3)
+		time.Sleep(150 * time.Millisecond)
+		addFirstWaitData(cache, registry)
+	}()
+
+	w := httptest.NewRecorder()
+	begin := time.Now()
+	api.strategy.nagiosManager.HandleNagiosMetricsGET(w, firstWaitRequest(context.Background()))
+	elapsed := time.Since(begin)
+
+	body := w.Body.String()
+	if strings.Contains(body, "holds no metric") {
+		t.Fatalf("answered with the no-data summary: %q", body)
+	}
+	if !strings.HasPrefix(body, "OK") {
+		t.Fatalf("body = %q, want an OK data response", body)
+	}
+	if elapsed < 150*time.Millisecond {
+		t.Fatalf("answered after %v, want at least the 150ms data delay", elapsed)
+	}
+}
+
+func TestNagiosFirstData_CycleWithPointsNoDataIsUnknown(t *testing.T) {
+	api, _, _ := firstWaitHarness(t, time.Second)
+	api.strategy.firstDataWait = 300 * time.Millisecond
+	api.strategy.nagiosManager = NewNagiosManager(api.strategy, api.logger)
+	agentstate.SetActiveProbes([]string{"probe-id-wait"})
+	t.Cleanup(func() { agentstate.SetActiveProbes(nil) })
+	agentstate.RecordProbeCycle("probe-id-wait", 3)
+
+	w := httptest.NewRecorder()
+	api.strategy.nagiosManager.HandleNagiosMetricsGET(w, firstWaitRequest(context.Background()))
+
+	body := w.Body.String()
+	if !strings.HasPrefix(body, "UNKNOWN") || !strings.Contains(body, "not readable yet") {
+		t.Fatalf("body = %q, want UNKNOWN not readable yet", body)
+	}
+}
+
+func TestPRTGFirstData_CycleWithPointsWaitsForData(t *testing.T) {
+	api, cache, registry := firstWaitHarness(t, time.Second)
+	api.strategy.firstDataWait = 5 * time.Second
+	agentstate.SetActiveProbes([]string{"probe-id-wait"})
+	t.Cleanup(func() { agentstate.SetActiveProbes(nil) })
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		agentstate.RecordProbeCycle("probe-id-wait", 3)
+		time.Sleep(150 * time.Millisecond)
+		addFirstWaitData(cache, registry)
+	}()
+
+	w := httptest.NewRecorder()
+	api.HandlePRTGMetricsGET(w, firstWaitRequest(context.Background()))
+
+	if n := channelCount(t, w); n == 0 {
+		t.Fatal("response has no channel although data landed after the cycle")
+	}
+}
