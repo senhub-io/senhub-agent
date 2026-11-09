@@ -30,11 +30,12 @@ WORKDIR /out
 # beside it, each with a detached minisign signature. The archive is
 # verified against the release key before it is unzipped, and a missing
 # or invalid signature fails the build. minisign lives in this stage only.
+# GitHub's release download service answers transient 5xx right after a release is created, so retry.
 RUN set -eu; \
     name="senhub-agent${VARIANT:+-$VARIANT}-linux-${TARGETARCH}.zip"; \
     base="https://github.com/senhub-io/senhub-agent/releases/download/${VERSION}"; \
-    curl -fsSL -o agent.zip "${base}/${name}"; \
-    curl -fsSL -o agent.zip.minisig "${base}/${name}.minisig"; \
+    curl -fsSL --retry 6 --retry-all-errors --retry-delay 10 --retry-max-time 180 -o agent.zip "${base}/${name}"; \
+    curl -fsSL --retry 6 --retry-all-errors --retry-delay 10 --retry-max-time 180 -o agent.zip.minisig "${base}/${name}.minisig"; \
     minisign -V -P "${RELEASE_PUBKEY}" -m agent.zip -x agent.zip.minisig; \
     unzip -q agent.zip; \
     chmod +x senhub-agent
