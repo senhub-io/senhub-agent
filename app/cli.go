@@ -339,7 +339,7 @@ func stripFlags(argv []string, drop ...string) []string {
 // `agent config check` before sudo'ing into the install would hit
 // the privilege gate.
 func readOnlyCommand(args []string) bool {
-	if len(args) > 2 && interceptsHelp(args[1]) && helpRequested(args[2:]) {
+	if len(args) > 2 && helpRequested(args[2:]) {
 		return true
 	}
 	if len(args) <= 1 {
