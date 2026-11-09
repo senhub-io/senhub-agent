@@ -590,19 +590,36 @@ func defaultConfig() Config {
 func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 	cfg := defaultConfig()
 
+	var rootSchemeTLS *bool
 	if v, ok := params["endpoint"].(string); ok && v != "" {
-		cfg.Endpoint = expandEnv(v)
+		v = expandEnv(v)
+		hostPort, schemeTLS, err := splitEndpointScheme(v)
+		if err != nil {
+			return cfg, fmt.Errorf("endpoint: %w", err)
+		}
+		cfg.Endpoint = hostPort
+		rootSchemeTLS = schemeTLS
 	}
 
+	var fallbackSchemes []fallbackEndpointScheme
 	if raw, ok := params["fallback_endpoints"].([]interface{}); ok {
 		for _, item := range raw {
 			s, ok := item.(string)
 			if !ok {
 				return cfg, fmt.Errorf("fallback_endpoints entries must be strings")
 			}
-			if s = expandEnv(strings.TrimSpace(s)); s != "" {
-				cfg.FallbackEndpoints = append(cfg.FallbackEndpoints, s)
+			s = expandEnv(strings.TrimSpace(s))
+			if s == "" {
+				continue
 			}
+			hostPort, schemeTLS, err := splitEndpointScheme(s)
+			if err != nil {
+				return cfg, fmt.Errorf("fallback_endpoints: %w", err)
+			}
+			if schemeTLS != nil {
+				fallbackSchemes = append(fallbackSchemes, fallbackEndpointScheme{entry: s, tls: schemeTLS})
+			}
+			cfg.FallbackEndpoints = append(cfg.FallbackEndpoints, hostPort)
 		}
 	}
 
@@ -742,10 +759,24 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 	if err := parseTLS(params["tls"], &cfg.TLS); err != nil {
 		return cfg, fmt.Errorf("tls: %w", err)
 	}
+	if rootSchemeTLS != nil {
+		if tlsEnabledExplicit(params["tls"]) {
+			if *rootSchemeTLS != cfg.TLS.Enabled {
+				return cfg, fmt.Errorf("endpoint scheme implies TLS=%v but tls.enabled is %v; drop the scheme or set tls.enabled: %v", *rootSchemeTLS, cfg.TLS.Enabled, *rootSchemeTLS)
+			}
+		} else {
+			cfg.TLS.Enabled = *rootSchemeTLS
+		}
+	}
+	for _, fallback := range fallbackSchemes {
+		if *fallback.tls != cfg.TLS.Enabled {
+			return cfg, fmt.Errorf("fallback_endpoints entry %q: scheme implies TLS=%v but tls.enabled resolves to %v; drop the scheme or make them agree", fallback.entry, *fallback.tls, cfg.TLS.Enabled)
+		}
+	}
 	if err := parseRetry(params["retry"], &cfg.Retry); err != nil {
 		return cfg, fmt.Errorf("retry: %w", err)
 	}
-	if err := parseSignals(params["signals"], &cfg.Metrics, &cfg.Logs, &cfg.Traces, &cfg.Entities); err != nil {
+	if err := parseSignals(params["signals"], cfg.TLS.Enabled, &cfg.Metrics, &cfg.Logs, &cfg.Traces, &cfg.Entities); err != nil {
 		return cfg, fmt.Errorf("signals: %w", err)
 	}
 	if err := parseRelay(params["relay"], &cfg.Relay); err != nil {
@@ -1062,7 +1093,7 @@ func parseMemoryLimit(raw interface{}, out *MemoryLimitConfig) error {
 	return nil
 }
 
-func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, traces *TracesSignal, entities *EntitiesSignal) error {
+func parseSignals(raw interface{}, rootTLS bool, metrics *MetricsSignal, logs *LogsSignal, traces *TracesSignal, entities *EntitiesSignal) error {
 	m := readStringKeyedMap(raw)
 	if m == nil {
 		return nil
@@ -1087,7 +1118,7 @@ func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, tra
 				return fmt.Errorf("metrics.temporality must be 'cumulative' or 'delta', got %q", v)
 			}
 		}
-		if err := parseSignalTransport("metrics", mm, &metrics.SignalTransport); err != nil {
+		if err := parseSignalTransport("metrics", mm, rootTLS, &metrics.SignalTransport); err != nil {
 			return err
 		}
 	}
@@ -1115,7 +1146,7 @@ func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, tra
 			}
 			logs.MaxExportBytes = v
 		}
-		if err := parseSignalTransport("logs", lm, &logs.SignalTransport); err != nil {
+		if err := parseSignalTransport("logs", lm, rootTLS, &logs.SignalTransport); err != nil {
 			return err
 		}
 	}
@@ -1195,7 +1226,7 @@ func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, tra
 		} else if overrides != nil {
 			traces.RelayTenantOverrides = overrides
 		}
-		if err := parseSignalTransport("traces", tm, &traces.SignalTransport); err != nil {
+		if err := parseSignalTransport("traces", tm, rootTLS, &traces.SignalTransport); err != nil {
 			return err
 		}
 	}
@@ -1237,9 +1268,16 @@ func parseTraceTenantOverrides(raw interface{}) ([]TraceTenantOverride, error) {
 // parseSignalTransport reads the optional endpoint/headers/tls fields
 // inside a signals.<name> block and assigns them to the SignalTransport.
 // signalName is used purely for error context.
-func parseSignalTransport(signalName string, m map[string]interface{}, out *SignalTransport) error {
+func parseSignalTransport(signalName string, m map[string]interface{}, rootTLS bool, out *SignalTransport) error {
+	var schemeTLS *bool
 	if v, ok := m["endpoint"].(string); ok && v != "" {
-		out.Endpoint = expandEnv(v)
+		v = expandEnv(v)
+		hostPort, st, err := splitEndpointScheme(v)
+		if err != nil {
+			return fmt.Errorf("%s.endpoint: %w", signalName, err)
+		}
+		out.Endpoint = hostPort
+		schemeTLS = st
 	}
 	if hdrs := readStringMap(m["headers"]); hdrs != nil {
 		out.Headers = expandEnvMap(hdrs)
@@ -1252,7 +1290,18 @@ func parseSignalTransport(signalName string, m map[string]interface{}, out *Sign
 		if err := parseTLS(tlsRaw, &tlsCfg); err != nil {
 			return fmt.Errorf("%s.tls: %w", signalName, err)
 		}
+		if schemeTLS != nil {
+			if tlsEnabledExplicit(tlsRaw) {
+				if *schemeTLS != tlsCfg.Enabled {
+					return fmt.Errorf("%s.endpoint scheme implies TLS=%v but %s.tls.enabled is %v; drop the scheme or set tls.enabled: %v", signalName, *schemeTLS, signalName, tlsCfg.Enabled, *schemeTLS)
+				}
+			} else {
+				tlsCfg.Enabled = *schemeTLS
+			}
+		}
 		out.TLS = &tlsCfg
+	} else if schemeTLS != nil && *schemeTLS != rootTLS {
+		return fmt.Errorf("%s.endpoint scheme implies TLS=%v but the root endpoint resolves to TLS=%v; give the signal its own tls block or make the schemes agree", signalName, *schemeTLS, rootTLS)
 	}
 	return nil
 }
