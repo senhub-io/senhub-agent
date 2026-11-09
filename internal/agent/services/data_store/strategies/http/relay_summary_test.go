@@ -26,20 +26,43 @@ func TestARelayProbeSummaryFollowsTheProbeState(t *testing.T) {
 	agentstate.RecordProbeError("id-otlp", "listener closed")
 	agentstate.RecordProbeHealth("id-slow", true)
 
-	if st, body := relayProbeSummary("syslog"); st != 0 || !strings.HasPrefix(body, "OK") {
+	if st, body := relayProbeSummary("syslog", false); st != 0 || !strings.HasPrefix(body, "OK") {
 		t.Errorf("a healthy event-driven relay probe: %d %q", st, body)
 	}
-	if st, body := relayProbeSummary("otlp-in"); st != 2 || !strings.Contains(body, "listener closed") {
+	if st, body := relayProbeSummary("otlp-in", false); st != 2 || !strings.Contains(body, "listener closed") {
 		t.Errorf("a failing relay probe: %d %q", st, body)
 	}
-	if st, _ := relayProbeSummary("nope"); st != 2 {
+	if st, _ := relayProbeSummary("nope", false); st != 2 {
 		t.Errorf("an unknown probe must stay CRITICAL, got %d", st)
 	}
-	if st, body := relayProbeSummary("slow"); st != 3 || !strings.Contains(body, "waiting for its first collection") {
+	if st, body := relayProbeSummary("slow", false); st != 3 || !strings.Contains(body, "waiting for its first collection") {
 		t.Errorf("a non-event-driven probe before its first cycle: %d %q", st, body)
 	}
 	agentstate.RecordProbeCycle("id-slow", 0)
-	if st, body := relayProbeSummary("slow"); st != 0 || !strings.HasPrefix(body, "OK") {
+	if st, body := relayProbeSummary("slow", false); st != 0 || !strings.HasPrefix(body, "OK") {
 		t.Errorf("a non-event-driven probe after a cycle with no metric: %d %q", st, body)
+	}
+}
+
+func TestRelayProbeSummaryCollectedPointsNotReadableYet(t *testing.T) {
+	agentstate.SetActiveProbes([]string{"id-points"})
+	agentstate.SetActiveProbeNames(map[string]string{"points": "id-points"})
+	t.Cleanup(func() {
+		agentstate.SetActiveProbes(nil)
+		agentstate.SetActiveProbeNames(nil)
+	})
+	agentstate.RecordProbeHealth("id-points", true)
+
+	agentstate.RecordProbeCycle("id-points", 5)
+	if st, body := relayProbeSummary("points", true); st != 3 || !strings.Contains(body, "not readable yet") {
+		t.Errorf("starting with points but no readable metric: %d %q", st, body)
+	}
+	if st, body := relayProbeSummary("points", false); st != 0 || !strings.Contains(body, "holds no metric") {
+		t.Errorf("outside the start phase with points but no readable metric: %d %q", st, body)
+	}
+
+	agentstate.RecordProbeCycle("id-points", 0)
+	if st, body := relayProbeSummary("points", true); st != 0 || !strings.Contains(body, "holds no metric") {
+		t.Errorf("starting with zero points: %d %q", st, body)
 	}
 }

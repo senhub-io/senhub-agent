@@ -25,6 +25,16 @@ const (
 	writeDeadlineMargin = 2 * time.Second
 )
 
+// inStartPhase reports whether the agent is still inside the window in
+// which a probe's first data may still be in flight.
+func (h *HTTPSyncStrategy) inStartPhase() bool {
+	window := h.firstDataWindow
+	if window <= 0 {
+		window = defaultFirstDataWindow
+	}
+	return time.Since(h.startTime) < window
+}
+
 // waitForFirstData holds a pull request for a probe that has no data yet
 // until its first points land, its first collection finishes, the wait
 // elapses or the client goes. The probe is either running, or configured
@@ -34,8 +44,9 @@ const (
 // rules. It returns at once for a name the agent neither runs nor
 // configures, one whose last cycle failed, one that already has data, an
 // event-driven one (no first collection to wait for), one whose first
-// collection already finished, or once the start window is over. The
-// caller reads the cache afterwards whatever the outcome.
+// collection already finished, or once the start window is over. If that
+// first cycle handed points, the wait continues until those points become
+// readable. The caller reads the cache afterwards whatever the outcome.
 func (h *HTTPSyncStrategy) waitForFirstData(ctx context.Context, w http.ResponseWriter, probeName string) {
 	window, wait := h.firstDataWindow, h.firstDataWait
 	if window <= 0 {
@@ -44,7 +55,7 @@ func (h *HTTPSyncStrategy) waitForFirstData(ctx context.Context, w http.Response
 	if wait <= 0 {
 		wait = defaultFirstDataWait
 	}
-	if time.Since(h.startTime) >= window {
+	if !h.inStartPhase() {
 		return
 	}
 
@@ -93,6 +104,15 @@ func (h *HTTPSyncStrategy) waitForFirstData(ctx context.Context, w http.Response
 	case <-ready:
 		got = true
 	case <-cycled:
+		state, _ = agentstate.ProbeRunStateByName(probeName)
+		if state.LastPoints > 0 {
+			select {
+			case <-ready:
+				got = true
+			case <-timer.C:
+			case <-ctx.Done():
+			}
+		}
 	case <-timer.C:
 	case <-ctx.Done():
 	}
