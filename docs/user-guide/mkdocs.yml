@@ -214,6 +214,7 @@ nav:
   - What's new:
       - Overview: whats-new/index.md
       - Next (unreleased): whats-new/next.md
+      - 0.7.0: whats-new/0.7.0.md
       - 0.6.5: whats-new/0.6.5.md
       - 0.6.4: whats-new/0.6.4.md
       - 0.6.3: whats-new/0.6.3.md
