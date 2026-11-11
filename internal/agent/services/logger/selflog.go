@@ -79,13 +79,15 @@ func (w *selfLogWriter) WriteLevel(level zerolog.Level, p []byte) (int, error) {
 		return len(p), nil
 	}
 
-	// Masking happens here, after the level check, rather than through a
-	// MaskingWriter in front: that one parses every event, debug included.
+	// The logger puts one MaskingWriter in front of every output, this rail
+	// included, so the record arrives masked. This rail leaves the host, so
+	// it masks again on its own: a caller that wires it without the writer
+	// must not ship a secret. Both passes are idempotent.
 	var evt map[string]any
 	if err := json.Unmarshal(p, &evt); err != nil {
 		return len(p), nil
 	}
-	evt = maskJSONFields(evt)
+	evt, _ = redactJSONStrings(maskJSONFields(evt)).(map[string]any)
 
 	if module, _ := evt["module"].(string); w.pipelineLoopModule(module) {
 		return len(p), nil
