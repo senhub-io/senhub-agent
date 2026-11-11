@@ -445,7 +445,7 @@ Downloads and installs the specified version. On Linux, when the unit was writte
 
 | Flag | Description |
 |------|-------------|
-| `--dry-run`, `-d` | Do not install; print the version that would be installed |
+| `--dry-run`, `-d` | Do not install; print the version that would be installed over the running one. Nothing is downloaded or changed |
 | `--registry-url URL` | Release registry to download from, instead of the built-in one |
 | `--no-restart` | Install the binary and leave the running service as it is, for a script that restarts it itself. Until the service restarts it keeps running the previous version, whatever `senhub-agent version` says: that command reads the file on disk |
 | `--no-refresh-unit` | Leave the systemd unit as it is, for an operator who manages it with their own tooling (Ansible or other). Run `refresh-unit` yourself, or ship the unit, when a version changes it |

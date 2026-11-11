@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"sort"
 
@@ -71,12 +72,16 @@ func UpdateAgent(args *cliArgs.ParsedArgs, opts ...UpdateOption) {
 		opt(&options)
 	}
 
+	// Read include_beta from config file
+	includeBeta := readIncludeBetaFromConfig(args.ConfigPath)
+
 	updater := auto_update.NewAutoUpdate(auto_update.AutoUpdateConfig{
 		Logger: log,
 		DryRun: args.DryRun,
 		// This is the operator running `sudo senhub-agent update`, the only
 		// path allowed to install the binary on Linux (#794).
 		OperatorDriven: true,
+		IncludeBeta:    includeBeta,
 	})
 
 	if args.WantedVersion != "list" {
@@ -91,9 +96,6 @@ func UpdateAgent(args *cliArgs.ParsedArgs, opts ...UpdateOption) {
 			}
 		}
 	}
-
-	// Read include_beta from config file
-	includeBeta := readIncludeBetaFromConfig(args.ConfigPath)
 
 	// Also include beta if explicitly requesting a beta version
 	if args.WantedVersion != "" && auto_update.IsBetaVersion(args.WantedVersion) {
@@ -211,7 +213,7 @@ func installVersion(updater auto_update.AutoUpdate, args *cliArgs.ParsedArgs, lo
 	// propagate the still-current binary either.
 	reconciled := ""
 	if options.afterInstall != nil && !args.DryRun {
-		reconciled, err = options.afterInstall(self, args.WantedVersion != "latest")
+		reconciled, err = options.afterInstall(self, auto_update.IsExactVersion(args.WantedVersion))
 		if err != nil {
 			log.Error().Err(err).Msg("Updating the systemd-managed service binary failed")
 			os.Exit(cliexit.Failure)
@@ -236,26 +238,62 @@ func installVersion(updater auto_update.AutoUpdate, args *cliArgs.ParsedArgs, lo
 		restartLine = restarted
 	}
 
-	switch {
-	case updated && reconciled != "":
-		fmt.Println("Update installed:")
-		fmt.Printf("  %s (CLI)\n", self)
-		fmt.Printf("  %s (systemd service)\n", reconciled)
-		fmt.Println(restartLine)
-	case updated:
-		fmt.Printf("Update installed: %s\n", self)
-		fmt.Println(restartLine)
-	case reconciled != "":
-		fmt.Printf("Already up to date; the systemd service binary was stale and has been refreshed:\n  %s\n", reconciled)
-		fmt.Println(restartLine)
-	default:
-		fmt.Println("Already up to date.")
+	wanted := args.WantedVersion
+	if r, ok := updater.(interface{ ResolvedVersion() string }); ok && r.ResolvedVersion() != "" {
+		wanted = r.ResolvedVersion()
 	}
-	if unitLine != "" {
-		fmt.Println(unitLine)
-	}
+	writeUpdateSummary(os.Stdout, updateSummary{
+		dryRun:      args.DryRun,
+		updated:     updated,
+		self:        self,
+		reconciled:  reconciled,
+		restartLine: restartLine,
+		unitLine:    unitLine,
+		current:     cliArgs.Version,
+		wanted:      wanted,
+	})
 	if unitFailed {
 		os.Exit(cliexit.Warning)
+	}
+}
+
+type updateSummary struct {
+	dryRun      bool
+	updated     bool
+	self        string
+	reconciled  string
+	restartLine string
+	unitLine    string
+	current     string
+	wanted      string
+}
+
+func writeUpdateSummary(w io.Writer, s updateSummary) {
+	if s.dryRun {
+		if s.updated {
+			fmt.Fprintf(w, "Dry run: would install %s over %s; no change made.\n", s.wanted, s.current)
+		} else {
+			fmt.Fprintf(w, "Dry run: nothing to install over %s; no change made.\n", s.current)
+		}
+		return
+	}
+	switch {
+	case s.updated && s.reconciled != "":
+		fmt.Fprintln(w, "Update installed:")
+		fmt.Fprintf(w, "  %s (CLI)\n", s.self)
+		fmt.Fprintf(w, "  %s (systemd service)\n", s.reconciled)
+		fmt.Fprintln(w, s.restartLine)
+	case s.updated:
+		fmt.Fprintf(w, "Update installed: %s\n", s.self)
+		fmt.Fprintln(w, s.restartLine)
+	case s.reconciled != "":
+		fmt.Fprintf(w, "Already up to date; the systemd service binary was stale and has been refreshed:\n  %s\n", s.reconciled)
+		fmt.Fprintln(w, s.restartLine)
+	default:
+		fmt.Fprintln(w, "Already up to date.")
+	}
+	if s.unitLine != "" {
+		fmt.Fprintln(w, s.unitLine)
 	}
 }
 
