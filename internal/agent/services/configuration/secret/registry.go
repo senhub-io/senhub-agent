@@ -181,3 +181,8 @@ func Resolve(name, dflt string, hasDefault bool) (string, error) {
 	}
 	return v, nil
 }
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
