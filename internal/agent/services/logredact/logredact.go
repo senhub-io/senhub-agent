@@ -102,6 +102,22 @@ func maskURLQuery(s string) string {
 	return parts[1] + queryParamPattern.ReplaceAllString(parts[2], "${1}=***")
 }
 
+// maskURLFragment masks a URL fragment but keeps the punctuation that
+// follows it in prose ("https://h/x#frag: dial tcp" keeps its colon), since
+// the fragment match runs to the next blank.
+func maskURLFragment(m string) string {
+	parts := urlFragmentPattern.FindStringSubmatch(m)
+	if len(parts) != 3 {
+		return m
+	}
+	frag := parts[2]
+	trail := len(frag)
+	for trail > 1 && strings.ContainsRune(`:;,.!?)]}'"`, rune(frag[trail-1])) {
+		trail--
+	}
+	return parts[1] + "#***" + frag[trail:]
+}
+
 // maskAuthorizationCredential masks only the credential portion of an
 // Authorization header value: a Digest-style parameter list is masked from the
 // first parameter through the last parameter of that list, otherwise a single
@@ -126,7 +142,7 @@ func maskAuthorizationCredential(rest string) string {
 func String(s string) string {
 	s = uriUserinfoPattern.ReplaceAllString(s, "${1}***@")
 	s = urlQueryPattern.ReplaceAllStringFunc(s, maskURLQuery)
-	s = urlFragmentPattern.ReplaceAllString(s, "${1}#***")
+	s = urlFragmentPattern.ReplaceAllStringFunc(s, maskURLFragment)
 	s = dsnPasswordPattern.ReplaceAllString(s, "${1}${2}***")
 	s = authorizationHeaderPattern.ReplaceAllStringFunc(s, func(m string) string {
 		parts := authorizationHeaderPattern.FindStringSubmatch(m)

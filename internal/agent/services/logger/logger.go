@@ -287,14 +287,11 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 func buildDevelopmentLogger(_ *cliArgs.ParsedArgs, config *LoggerConfig, selfLogs *selfLogWriter) *Logger {
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 
-	// Default writer is console with masking
 	consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: consoleTimeFormat}
-	writers := []io.Writer{NewMaskingWriter(consoleWriter)}
+	writers := []io.Writer{consoleWriter}
 
-	// If debug log shipper is configured, create a multi-writer with masking
 	if config.logShipper != nil {
-		// Apply masking to the log shipper
-		writers = append(writers, NewMaskingWriter(config.logShipper))
+		writers = append(writers, config.logShipper)
 		bootstrapLog().Info().Msg("Debug log shipping enabled in development mode")
 	}
 
@@ -302,7 +299,9 @@ func buildDevelopmentLogger(_ *cliArgs.ParsedArgs, config *LoggerConfig, selfLog
 		writers = append(writers, selfLogs)
 	}
 
-	writer := io.Writer(zerolog.MultiLevelWriter(writers...))
+	// One masking step in front of the fan-out, so every output, the
+	// self-log rail included, receives the same masked record.
+	writer := io.Writer(NewMaskingWriter(zerolog.MultiLevelWriter(writers...)))
 
 	logger := zerolog.
 		New(writer).
@@ -351,14 +350,13 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig, selfL
 
 	logRotator := rotatorFor(logPath)
 
-	// Define masked writers - start with log file
-	writers := []io.Writer{NewMaskingWriter(fileWriter(logRotator, args))}
+	writers := []io.Writer{fileWriter(logRotator, args)}
 
 	// Add console output in interactive mode (run command)
 	// This ensures logs are visible in console when using: ./agent run
 	if isInteractive {
 		consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr, NoColor: !stderrIsTerminal(), TimeFormat: consoleTimeFormat}
-		writers = append(writers, NewMaskingWriter(consoleWriter))
+		writers = append(writers, consoleWriter)
 		bootstrapLog().Info().Msg("Running in interactive mode - console output enabled")
 	} else if journaldAttached() {
 		// systemd says it captures our standard error into the journal.
@@ -366,12 +364,12 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig, selfL
 		// start and stop and nothing in between, which is where a
 		// refused port or a broken output would have been said.
 		consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr, NoColor: true, TimeFormat: consoleTimeFormat}
-		writers = append(writers, NewMaskingWriter(consoleWriter))
+		writers = append(writers, consoleWriter)
 	}
 
 	// Add debug log shipper if configured
 	if config.logShipper != nil {
-		writers = append(writers, NewMaskingWriter(config.logShipper))
+		writers = append(writers, config.logShipper)
 		bootstrapLog().Info().Msg("Debug log shipping enabled in production mode")
 	}
 
@@ -391,7 +389,9 @@ func buildProductionLogger(args *cliArgs.ParsedArgs, config *LoggerConfig, selfL
 	// override asks for debug.
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 
-	logWriter := zerolog.MultiLevelWriter(writers...)
+	// One masking step in front of the fan-out: console, file, shipper and
+	// the self-log rail all receive the same masked record.
+	logWriter := NewMaskingWriter(zerolog.MultiLevelWriter(writers...))
 
 	logger := zerolog.
 		New(logWriter).
