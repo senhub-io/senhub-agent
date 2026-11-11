@@ -18,7 +18,7 @@ import (
 type UpdateOption func(*updateOptions)
 
 type updateOptions struct {
-	afterInstall func(newBinary string) (string, error)
+	afterInstall func(newBinary string, requested bool) (string, error)
 	refreshUnit  func(newBinary string) (string, error)
 	restart      func() (string, error)
 }
@@ -26,14 +26,15 @@ type updateOptions struct {
 // AfterInstall registers a hook run once the new binary is on disk and
 // before the operator-facing summary is printed. It receives the path the
 // new binary was written to and returns an extra path it reconciled, or
-// "" when it had nothing to do.
+// "" when it had nothing to do. requested reports that the operator named
+// the version on the command line rather than asking for "latest".
 //
 // The caller in app uses it to propagate the new binary to the
 // systemd-managed service copy: only that package knows about units, and
 // it cannot be called from here (app imports this package, not the
 // reverse). A failing hook fails the command — an update that left the
 // service on the old binary did not do what the operator asked (#723).
-func AfterInstall(hook func(newBinary string) (string, error)) UpdateOption {
+func AfterInstall(hook func(newBinary string, requested bool) (string, error)) UpdateOption {
 	return func(o *updateOptions) { o.afterInstall = hook }
 }
 
@@ -210,7 +211,7 @@ func installVersion(updater auto_update.AutoUpdate, args *cliArgs.ParsedArgs, lo
 	// propagate the still-current binary either.
 	reconciled := ""
 	if options.afterInstall != nil && !args.DryRun {
-		reconciled, err = options.afterInstall(self)
+		reconciled, err = options.afterInstall(self, args.WantedVersion != "latest")
 		if err != nil {
 			log.Error().Err(err).Msg("Updating the systemd-managed service binary failed")
 			os.Exit(cliexit.Failure)

@@ -166,14 +166,6 @@ func fatalf(format string, args ...any) {
 	os.Exit(cliexit.Failure)
 }
 
-// readYesConfirmation reads a single interactive answer from stdin and
-// reports whether it is an affirmative ("y"/"Y"). Anything else aborts,
-// the safe outcome for a destructive command.
-func readYesConfirmation() bool {
-	ok, _ := confirmFrom(os.Stdin, os.Stderr)
-	return ok
-}
-
 // confirmFrom reads the answer from in only when in is a terminal. A
 // script piped into a shell (`bash -s`, a heredoc) is the process's
 // stdin: reading a line there would swallow the script's next command
@@ -192,7 +184,7 @@ func confirmFrom(in *os.File, errOut io.Writer) (ok, interactive bool) {
 	return answerIsYes(answer), true
 }
 
-// answerIsYes is the pure decision behind readYesConfirmation: only an
+// answerIsYes is the pure decision behind the confirmation prompts: only an
 // explicit "y"/"Y" (ignoring surrounding whitespace) is affirmative.
 // Empty input — EOF or a non-TTY stdin — is NOT affirmative, so a
 // destructive command aborts by default.

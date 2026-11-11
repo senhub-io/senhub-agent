@@ -9,4 +9,4 @@ package app
 
 func installedServiceBinary() string { return "" }
 
-func syncServiceBinary(string) (string, error) { return "", nil }
+func syncServiceBinary(string, bool) (string, error) { return "", nil }
