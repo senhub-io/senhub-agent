@@ -172,9 +172,9 @@ func fatalf(format string, args ...any) {
 // as the answer. A non-terminal stdin therefore reads nothing, says how
 // to confirm without a prompt, and reports interactive == false so the
 // caller can fail loudly instead of looking like a user's "no".
-func confirmFrom(in *os.File, errOut io.Writer) (ok, interactive bool) {
+func confirmFrom(in *os.File, errOut io.Writer, flag string) (ok, interactive bool) {
 	if !term.IsTerminal(int(in.Fd())) {
-		fmt.Fprintln(errOut, "\nstdin is not a terminal, so nothing was read; pass --yes to confirm without a prompt.")
+		fmt.Fprintf(errOut, "\nstdin is not a terminal, so nothing was read; pass %s to confirm without a prompt.\n", flag)
 		return false, false
 	}
 	var answer string

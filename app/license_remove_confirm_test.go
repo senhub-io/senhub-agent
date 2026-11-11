@@ -34,6 +34,9 @@ func TestConfirmLicenseRemoveWithoutTerminalFails(t *testing.T) {
 	if !strings.Contains(errOut.String(), "confirmation required: nothing was removed; rerun with --force") {
 		t.Fatalf("errOut = %q, want it to contain %q", errOut.String(), "confirmation required: nothing was removed; rerun with --force")
 	}
+	if strings.Contains(errOut.String(), "--yes") {
+		t.Fatalf("errOut = %q, must not mention --yes", errOut.String())
+	}
 	if strings.Contains(out.String(), "Cancelled.") {
 		t.Fatalf("out = %q, must not contain %q", out.String(), "Cancelled.")
 	}

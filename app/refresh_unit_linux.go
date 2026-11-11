@@ -86,7 +86,7 @@ func runRefreshUnit() {
 
 	if !*yes {
 		fmt.Print("Apply changes? [y/N] ")
-		ok, interactive := confirmFrom(os.Stdin, os.Stderr)
+		ok, interactive := confirmFrom(os.Stdin, os.Stderr, "--yes")
 		if !interactive {
 			os.Exit(cliexit.Failure)
 		}

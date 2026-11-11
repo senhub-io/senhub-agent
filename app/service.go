@@ -73,7 +73,7 @@ func confirmUninstall(in *os.File, out, errOut io.Writer) (proceed bool, code in
 	fmt.Fprintln(out, "That is irreversible: sealed values cannot be recovered afterwards.")
 	fmt.Fprintln(out, "The certs/ directory and log files/directories are removed too.")
 	fmt.Fprint(out, "Proceed? [y/N] ")
-	ok, interactive := confirmFrom(in, errOut)
+	ok, interactive := confirmFrom(in, errOut, "--yes")
 	if ok {
 		return true, cliexit.OK
 	}
