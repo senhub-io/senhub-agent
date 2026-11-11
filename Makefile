@@ -233,6 +233,8 @@ package-linux: build-linux ## Create ZIP packages for Linux
 #
 #   make packages EDITION=oss                    senhub-agent-oss, built from
 #                                                this repository's binaries
+#   make packages EDITION=oss BINARY_DIR=<dir>  senhub-agent-oss, from given
+#                                                OSS binaries (no rebuild)
 #   make packages EDITION=full BINARY_DIR=<dir>  senhub-agent, from the binaries
 #                                                the enterprise build supplies
 #                                                (<dir>/linux-amd64/senhub-agent,
@@ -269,7 +271,7 @@ endif
 package-version: ## Print the package form of VERSION (0.6.2-beta.1 -> 0.6.2~beta.1)
 	@echo $(PKG_VERSION)
 
-packages: $(if $(filter oss,$(EDITION)),build-linux) ## Build the .deb and .rpm of one EDITION (oss|full), amd64 and arm64, into dist/packages/
+packages: $(if $(and $(filter oss,$(EDITION)),$(filter $(DIST_DIR),$(BINARY_DIR))),build-linux) ## Build the .deb and .rpm of one EDITION (oss|full), amd64 and arm64, into dist/packages/
 	@test -n "$(PKG_NAME)" || { echo "$(RED)EDITION must be oss or full$(NC)"; exit 1; }
 	@echo "$(GREEN)📦 Building $(PKG_NAME) .deb/.rpm packages (version $(VERSION), SOURCE_DATE_EPOCH $(SOURCE_DATE_EPOCH))...$(NC)"
 	@mkdir -p $(PACKAGES_DIR)/stage
