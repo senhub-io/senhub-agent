@@ -415,15 +415,7 @@ func (lc *LocalConfiguration) Start(ctx context.Context) error {
 		// before the seal below, so the fresh plaintext key is moved
 		// into the OS store in the same start rather than sitting in
 		// the file until the next one.
-		if ConfigDirWritable(filepath.Dir(lc.configPath)) {
-			if err := EnsureAdminKey(lc.configPath, lc.logger); err != nil {
-				lc.logger.Warn().Err(err).Msg("Adding the administration key failed; the console and the configuration API will not answer until one is set")
-			}
-		} else {
-			warnOnce("admin-key-readonly", filepath.Dir(lc.configPath), func() {
-				lc.logger.Warn().Msg("Configuration directory is not writable: no administration key can be added; set agent.admin_key in the configuration")
-			})
-		}
+		ensureAdminKeyOrWarn(lc.configPath, lc.logger)
 
 		// Seal any inline plaintext secrets into the OS-native store (default
 		// policy). Non-fatal by design: SealInlineSecrets restores its own backups
