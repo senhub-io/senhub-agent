@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"io"
 	"strings"
+
+	"senhub-agent.go/internal/agent/services/logredact"
 )
 
 // MaskingWriter is an io.Writer that masks sensitive information before writing
@@ -32,12 +34,12 @@ func (w *MaskingWriter) Write(p []byte) (n int, err error) {
 	var jsonObj map[string]interface{}
 	if json.Unmarshal(p, &jsonObj) == nil {
 		// If it's JSON, mask sensitive fields in the structure
-		masked := maskJSONFields(jsonObj)
+		masked := redactJSONStrings(maskJSONFields(jsonObj))
 		// Re-encode as JSON
 		maskedJSON, err := json.Marshal(masked)
 		if err != nil {
 			// In case of error, mask the raw string
-			maskedStr := MaskSensitiveData(string(p))
+			maskedStr := logredact.String(MaskSensitiveData(string(p)))
 			if _, writeErr := w.out.Write(appendNewlineIfMissing([]byte(maskedStr))); writeErr != nil {
 				return 0, writeErr
 			}
@@ -50,7 +52,7 @@ func (w *MaskingWriter) Write(p []byte) (n int, err error) {
 	}
 
 	// If it's not JSON, treat as string
-	maskedStr := MaskSensitiveData(string(p))
+	maskedStr := logredact.String(MaskSensitiveData(string(p)))
 	if _, writeErr := w.out.Write(appendNewlineIfMissing([]byte(maskedStr))); writeErr != nil {
 		return 0, writeErr
 	}
@@ -93,6 +95,28 @@ func maskJSONFields(obj map[string]interface{}) map[string]interface{} {
 	}
 
 	return result
+}
+
+// redactJSONStrings applies the full credential redaction to every string
+// value in a decoded JSON record, recursing through maps and arrays. Field
+// names are left untouched; only values are rewritten.
+func redactJSONStrings(v interface{}) interface{} {
+	switch t := v.(type) {
+	case map[string]interface{}:
+		for k, vv := range t {
+			t[k] = redactJSONStrings(vv)
+		}
+		return t
+	case []interface{}:
+		for i, vv := range t {
+			t[i] = redactJSONStrings(vv)
+		}
+		return t
+	case string:
+		return logredact.String(t)
+	default:
+		return v
+	}
 }
 
 // isSensitiveFieldName checks if a field name is likely to contain sensitive data
