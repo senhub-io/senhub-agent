@@ -48,10 +48,7 @@ func (h *HTTPSyncStrategy) inStartPhase() bool {
 // first cycle handed points, the wait continues until those points become
 // readable. The caller reads the cache afterwards whatever the outcome.
 func (h *HTTPSyncStrategy) waitForFirstData(ctx context.Context, w http.ResponseWriter, probeName string) {
-	window, wait := h.firstDataWindow, h.firstDataWait
-	if window <= 0 {
-		window = defaultFirstDataWindow
-	}
+	wait := h.firstDataWait
 	if wait <= 0 {
 		wait = defaultFirstDataWait
 	}
