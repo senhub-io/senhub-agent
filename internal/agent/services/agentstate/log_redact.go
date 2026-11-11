@@ -452,6 +452,10 @@ func maskFieldsSlice(rs *redactionRuleset, s []any, probe string) ([]any, bool) 
 	return out, true
 }
 
+// RecordLogRedaction counts one masked occurrence outside the log-record
+// pipeline, for instance in the agent's own log writer (probe "agent").
+func RecordLogRedaction(probe, rule string) { recordRedaction(probe, rule) }
+
 func recordRedaction(probe, rule string) {
 	key := redactionCounterKey{probe: probe, rule: rule}
 	val, _ := redactionCounters.LoadOrStore(key, new(atomic.Uint64))

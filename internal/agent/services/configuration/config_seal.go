@@ -155,6 +155,10 @@ func SealInlineSecrets(configPath string, log *logger.ModuleLogger) error {
 		return nil
 	}
 
+	if !ConfigDirWritable(baseDir) {
+		return secret.ErrConfigDirReadOnly
+	}
+
 	// Harmonise first: convert a legacy monolithic config to the multi-file
 	// layout so secrets are sealed into fragments, not a single file. The split
 	// engine carries its own backup + data-equality verification; it is a no-op

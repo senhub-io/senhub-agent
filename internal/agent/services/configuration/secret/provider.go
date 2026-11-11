@@ -41,6 +41,10 @@ var ErrNotFound = fmt.Errorf("secret not found")
 // reads what systemd decrypted for it, and cannot encrypt with the host key.
 var ErrSealNeedsRoot = fmt.Errorf("this secret backend seals only as root")
 
+// ErrConfigDirReadOnly is returned when the configuration directory cannot
+// accept writes, so sealing (which rewrites the config) is skipped.
+var ErrConfigDirReadOnly = fmt.Errorf("configuration directory is read-only")
+
 // MemoryProvider is an in-memory Provider used by tests and as a transient
 // holder. It never persists to disk. Safe for concurrent use.
 type MemoryProvider struct {

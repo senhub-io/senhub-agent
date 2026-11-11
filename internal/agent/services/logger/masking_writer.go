@@ -5,6 +5,9 @@ import (
 	"io"
 	"strings"
 
+	"github.com/rs/zerolog"
+
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/logredact"
 )
 
@@ -30,34 +33,51 @@ func NewMaskingWriter(out io.Writer) *MaskingWriter {
 // preserve NDJSON whether the input was JSON, masked-as-string, or
 // fell back to raw masking.
 func (w *MaskingWriter) Write(p []byte) (n int, err error) {
-	// Detect if it's valid JSON
-	var jsonObj map[string]interface{}
-	if json.Unmarshal(p, &jsonObj) == nil {
-		// If it's JSON, mask sensitive fields in the structure
-		masked := redactJSONStrings(maskJSONFields(jsonObj))
-		// Re-encode as JSON
-		maskedJSON, err := json.Marshal(masked)
-		if err != nil {
-			// In case of error, mask the raw string
-			maskedStr := logredact.String(MaskSensitiveData(string(p)))
-			if _, writeErr := w.out.Write(appendNewlineIfMissing([]byte(maskedStr))); writeErr != nil {
-				return 0, writeErr
-			}
-			return len(p), nil // Return original input length
-		}
-		if _, writeErr := w.out.Write(appendNewlineIfMissing(maskedJSON)); writeErr != nil {
-			return 0, writeErr
-		}
-		return len(p), nil // Return original input length
-	}
-
-	// If it's not JSON, treat as string
-	maskedStr := logredact.String(MaskSensitiveData(string(p)))
-	if _, writeErr := w.out.Write(appendNewlineIfMissing([]byte(maskedStr))); writeErr != nil {
+	if _, writeErr := w.out.Write(w.mask(p)); writeErr != nil {
 		return 0, writeErr
 	}
 	return len(p), nil // Return original input length
 }
+
+// WriteLevel masks the record once, then hands it to the wrapped writer
+// with its level when that writer is level-aware (zerolog's MultiLevelWriter,
+// the self-log rail), so a single MaskingWriter in front of the fan-out
+// covers every output: console, file, shipper and OTLP alike.
+func (w *MaskingWriter) WriteLevel(level zerolog.Level, p []byte) (int, error) {
+	masked := w.mask(p)
+	var writeErr error
+	if lw, ok := w.out.(zerolog.LevelWriter); ok {
+		_, writeErr = lw.WriteLevel(level, masked)
+	} else {
+		_, writeErr = w.out.Write(masked)
+	}
+	if writeErr != nil {
+		return 0, writeErr
+	}
+	return len(p), nil
+}
+
+// mask returns the record with its sensitive values masked, always ending
+// with exactly one newline: a JSON record is masked field by field and by
+// value, anything else as text.
+func (w *MaskingWriter) mask(p []byte) []byte {
+	var jsonObj map[string]interface{}
+	if json.Unmarshal(p, &jsonObj) == nil {
+		masked := redactJSONStrings(maskJSONFields(jsonObj))
+		if maskedJSON, err := json.Marshal(masked); err == nil {
+			return appendNewlineIfMissing(maskedJSON)
+		}
+	}
+	return appendNewlineIfMissing([]byte(redactText(MaskSensitiveData(string(p)))))
+}
+
+// redactProbe is the probe label of the agent's own log masking in
+// senhub.agent.logs.redacted.
+const redactProbe = "agent"
+
+func countRedaction(rule string) { agentstate.RecordLogRedaction(redactProbe, rule) }
+
+func redactText(s string) string { return logredact.Redact(s, countRedaction) }
 
 // maskJSONFields recursively traverses a JSON object and masks sensitive fields
 func maskJSONFields(obj map[string]interface{}) map[string]interface{} {
@@ -113,7 +133,7 @@ func redactJSONStrings(v interface{}) interface{} {
 		}
 		return t
 	case string:
-		return logredact.String(t)
+		return redactText(t)
 	default:
 		return v
 	}
