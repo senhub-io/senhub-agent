@@ -30,11 +30,12 @@ const backendEnv = "SENHUB_SECRET_BACKEND"
 // age is the default because it works unprivileged from any context and needs no
 // systemd unit wiring; systemd-creds is the hardened opt-in.
 func InitRegistry(configDir string) error {
-	ageStore := filepath.Join(configDir, "secrets.age")
 	if useSystemdCreds(configDir) {
+		setStoreDir(configDir)
 		creds := newSystemdCredsProvider(configDir)
 		// An age store beside it holds secrets the configuration still
 		// references: keep reading them rather than orphan them.
+		ageStore := filepath.Join(configDir, "secrets.age")
 		if fileExists(ageStore) {
 			age, err := NewAgeKeyfileProvider(filepath.Join(configDir, "agent-secret.key"), ageStore)
 			if err != nil {
@@ -46,7 +47,12 @@ func InitRegistry(configDir string) error {
 		SetProvider(creds)
 		return nil
 	}
-	p, err := NewAgeKeyfileProvider(filepath.Join(configDir, "agent-secret.key"), ageStore)
+	keyPath, storePath, err := ageStorePaths(configDir)
+	if err != nil {
+		return err
+	}
+	setStoreDir(filepath.Dir(keyPath))
+	p, err := NewAgeKeyfileProvider(keyPath, storePath)
 	if err != nil {
 		return err
 	}
@@ -93,9 +99,4 @@ func hasCredFiles(configDir string) bool {
 		}
 	}
 	return false
-}
-
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }
