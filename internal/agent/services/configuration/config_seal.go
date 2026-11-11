@@ -141,6 +141,9 @@ func (st *sealState) sealValue(key, value, where string) (string, error) {
 func SealInlineSecrets(configPath string, log *logger.ModuleLogger) error {
 	baseDir := filepath.Dir(configPath)
 	secret.SetConfigDir(baseDir)
+	if !ConfigDirWritable(baseDir) {
+		return secret.ErrConfigDirReadOnly
+	}
 
 	// Version gate FIRST: never touch a config newer than this agent
 	// understands. Sealing rewrites (and would stamp config_version down to 3),

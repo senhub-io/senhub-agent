@@ -3,6 +3,7 @@ package secret
 import (
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 )
 
@@ -38,6 +39,36 @@ func SetProvider(p Provider) {
 	mu.Lock()
 	provider = p
 	mu.Unlock()
+}
+
+var storeDir string
+
+// StoreDir returns the directory InitRegistry chose for the age key and
+// store (the configuration directory, or the agent state directory when the
+// configuration directory is read-only).
+func StoreDir() string {
+	mu.RLock()
+	defer mu.RUnlock()
+	return storeDir
+}
+
+func setStoreDir(dir string) {
+	mu.Lock()
+	storeDir = dir
+	mu.Unlock()
+}
+
+// dirWritable mirrors configuration.ConfigDirWritable without importing that
+// package (which would be an import cycle).
+func dirWritable(dir string) bool {
+	f, err := os.CreateTemp(dir, ".senhub-write-check-*")
+	if err != nil {
+		return false
+	}
+	name := f.Name()
+	_ = f.Close()
+	_ = os.Remove(name)
+	return true
 }
 
 // ActiveProvider returns the installed provider, or nil when no secret backend

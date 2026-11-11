@@ -5,6 +5,8 @@ package secret
 import (
 	"os"
 	"path/filepath"
+
+	"senhub-agent.go/internal/agent/services/instanceid"
 )
 
 // backendEnv lets an operator force the systemd-creds backend in the admin
@@ -30,11 +32,12 @@ const backendEnv = "SENHUB_SECRET_BACKEND"
 // age is the default because it works unprivileged from any context and needs no
 // systemd unit wiring; systemd-creds is the hardened opt-in.
 func InitRegistry(configDir string) error {
-	ageStore := filepath.Join(configDir, "secrets.age")
 	if useSystemdCreds(configDir) {
+		setStoreDir(configDir)
 		creds := newSystemdCredsProvider(configDir)
 		// An age store beside it holds secrets the configuration still
 		// references: keep reading them rather than orphan them.
+		ageStore := filepath.Join(configDir, "secrets.age")
 		if fileExists(ageStore) {
 			age, err := NewAgeKeyfileProvider(filepath.Join(configDir, "agent-secret.key"), ageStore)
 			if err != nil {
@@ -46,7 +49,21 @@ func InitRegistry(configDir string) error {
 		SetProvider(creds)
 		return nil
 	}
-	p, err := NewAgeKeyfileProvider(filepath.Join(configDir, "agent-secret.key"), ageStore)
+	keyPath := filepath.Join(configDir, "agent-secret.key")
+	storePath := filepath.Join(configDir, "secrets.age")
+	// A read-only configuration directory (e.g. a ConfigMap mount) cannot
+	// hold the age key and store: fall back to the agent state directory
+	// unless those files are already in the configuration directory.
+	if !fileExists(keyPath) && !fileExists(storePath) && !dirWritable(configDir) {
+		stateDir := instanceid.OwnStateDir()
+		if err := os.MkdirAll(stateDir, 0700); err != nil {
+			return err
+		}
+		keyPath = filepath.Join(stateDir, "agent-secret.key")
+		storePath = filepath.Join(stateDir, "secrets.age")
+	}
+	setStoreDir(filepath.Dir(keyPath))
+	p, err := NewAgeKeyfileProvider(keyPath, storePath)
 	if err != nil {
 		return err
 	}

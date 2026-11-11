@@ -125,7 +125,17 @@ func EnsureDefaultProbeFragments(configPath string, log *logger.ModuleLogger, op
 		return
 	}
 
-	probesDir := filepath.Join(filepath.Dir(configPath), "probes.d")
+	dir := filepath.Dir(configPath)
+	if !ConfigDirWritable(dir) {
+		warnOnce("default-fragments-readonly", func() {
+			if log != nil {
+				log.Warn().Str("path", dir).Msg("Configuration directory is not writable: default probe fragments and their marker are not written")
+			}
+		})
+		return
+	}
+
+	probesDir := filepath.Join(dir, "probes.d")
 	existingTypes, err := probeTypesConfigured(probesDir)
 	if err != nil {
 		if log != nil {
