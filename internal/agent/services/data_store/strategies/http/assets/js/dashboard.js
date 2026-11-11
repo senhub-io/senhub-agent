@@ -499,7 +499,10 @@
 
       if (active.length === 0) {
         const totalMetrics = system && system.cache ? system.cache.total_metrics : null;
-        let text = 'Series metering is part of the Enterprise edition.';
+        const untracked = records.some(record => record && record.name === 'senhub.agent.series.untracked');
+        let text = untracked
+          ? 'Series are counted on OTLP outputs only, and none has exported in the last hour.'
+          : 'Series metering is part of the Enterprise edition.';
         if (totalMetrics != null) {
           text += ' The cache holds ' + num(totalMetrics) + ' series.';
         }
