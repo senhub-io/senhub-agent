@@ -102,43 +102,30 @@ func maskURLQuery(s string) string {
 	return parts[1] + queryParamPattern.ReplaceAllStringFunc(parts[2], maskQueryValue)
 }
 
-// maskQueryValue masks one name=value pair but keeps the punctuation that
-// ends the value in prose ("?x=1: dial" keeps its colon), since the value
-// match runs to the next blank.
+// maskQueryValue masks one name=value pair whole. The value runs to the
+// next blank, so prose punctuation glued to it ("?x=1: dial") goes with it:
+// a value may end with that same character, and the last character of a
+// secret must never stay visible.
 func maskQueryValue(m string) string {
 	parts := queryParamPattern.FindStringSubmatch(m)
 	if len(parts) != 3 {
 		return m
 	}
-	return parts[1] + "=***" + trailingPunctuation(parts[2])
+	return parts[1] + "=***"
 }
 
-// trailingPunctuation returns the prose punctuation that ends s.
-func trailingPunctuation(s string) string {
-	i := len(s)
-	for i > 0 && strings.ContainsRune(`:;,.!?)]}'"`, rune(s[i-1])) {
-		i--
-	}
-	return s[i:]
-}
-
-// maskURLFragment masks a URL fragment but keeps the punctuation that
-// follows it in prose ("https://h/x#frag: dial tcp" keeps its colon), since
-// the fragment match runs to the next blank.
+// maskURLFragment masks a URL fragment whole, up to the next blank, prose
+// punctuation included: the last character of a secret must never stay
+// visible. A bare "#" carries nothing and is left as it is.
 func maskURLFragment(m string) string {
 	parts := urlFragmentPattern.FindStringSubmatch(m)
 	if len(parts) != 3 {
 		return m
 	}
-	frag := parts[2]
-	if len(frag) == 1 {
-		return m // a bare "#" carries nothing to mask
+	if len(parts[2]) == 1 {
+		return m
 	}
-	trail := trailingPunctuation(frag[1:])
-	if len(trail) == len(frag)-1 {
-		return m // punctuation only: not a fragment, the sentence goes on
-	}
-	return parts[1] + "#***" + trail
+	return parts[1] + "#***"
 }
 
 // maskAuthorizationCredential masks only the credential portion of an

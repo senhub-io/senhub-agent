@@ -105,7 +105,7 @@ func TestRedactCountsEachMaskedFormOnce(t *testing.T) {
 	in := `checking https://user:s3cretPW@h.example.com/x?x=plainVAL&api_key=tok3nVAL#fr4gSEC: Get "https://h.example.com/p?x=1: ok" key AKIAFAKEFAKEFAKE1234 eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln`
 	counts := map[string]int{}
 	out := Redact(in, func(rule string) { counts[rule]++ })
-	for _, want := range []string{"?x=***&api_key=***#***: Get", "?x=***: ok", "https://***@h.example.com"} {
+	for _, want := range []string{"?x=***&api_key=***#*** Get", "?x=*** ok", "https://***@h.example.com"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
@@ -118,5 +118,27 @@ func TestRedactCountsEachMaskedFormOnce(t *testing.T) {
 	again := map[string]int{}
 	if out2 := Redact(out, func(rule string) { again[rule]++ }); out2 != out || len(again) != 0 {
 		t.Errorf("second pass changed the text or counted: %q %v", out2, again)
+	}
+}
+
+func TestRedactNeverKeepsTheLastCharacterOfASecret(t *testing.T) {
+	for _, in := range []string{
+		"https://h/x?password=hunter2!) next",
+		"https://h/x#fr4g!, next",
+		"https://h/x?k=abc: next",
+		"https://h/x#abc: next",
+	} {
+		out := String(in)
+		for _, leak := range []string{"hunter2", "fr4g", "abc"} {
+			if strings.Contains(out, leak) {
+				t.Errorf("%q leaks %q: %q", in, leak, out)
+			}
+		}
+		if !strings.HasSuffix(out, " next") || !strings.Contains(out, "***") {
+			t.Errorf("%q: unexpected output %q", in, out)
+		}
+	}
+	if got := String("https://h/x# next"); got != "https://h/x# next" {
+		t.Errorf("bare # changed: %q", got)
 	}
 }

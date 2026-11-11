@@ -67,8 +67,8 @@ func TestMaskingCoversEveryRail(t *testing.T) {
 		t.Fatalf("file rail is not JSON: %v\n%s", err, line)
 	}
 	errField, _ := evt["error"].(string)
-	if !strings.Contains(errField, "#***: Get") {
-		t.Errorf("punctuation after the masked fragment was lost: %q", errField)
+	if !strings.Contains(errField, "#*** Get") || strings.Contains(errField, "fr4gSEC") {
+		t.Errorf("fragment not masked whole: %q", errField)
 	}
 	if tgt, _ := evt["target"].(string); !strings.HasSuffix(tgt, "#***") {
 		t.Errorf("target not masked up to its fragment: %q", tgt)
@@ -146,7 +146,7 @@ func TestMaskingWriterCountsRedactions(t *testing.T) {
 			t.Errorf("rule %s counted %d, want %d", rule, got, want)
 		}
 	}
-	if s := out.String(); !strings.Contains(s, `#***: Get`) || !strings.Contains(s, `?x=***#***`) {
+	if s := out.String(); !strings.Contains(s, `#*** Get`) || !strings.Contains(s, `?x=***#***`) {
 		t.Errorf("unexpected masking: %s", s)
 	}
 }
