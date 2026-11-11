@@ -2,6 +2,7 @@ package auto_update
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -67,6 +68,48 @@ func TestErrFirst_ReturnsFirstNonNil(t *testing.T) {
 	second := &mockErr{"second"}
 	if got := errFirst(nil, mock, second); !errors.Is(got, mock) {
 		t.Errorf("got %v, want %v (first non-nil)", got, mock)
+	}
+}
+
+func TestDecideUpdate(t *testing.T) {
+	tests := []struct {
+		name             string
+		current          string
+		expected         string
+		operatorExplicit bool
+		msiManaged       bool
+		wantProceed      bool
+		wantDowngrade    bool
+		wantErr          string
+	}{
+		{name: "guard kept: daemon older does not proceed", current: "0.7.0", expected: "0.6.5", wantProceed: false},
+		{name: "guard kept: daemon newer proceeds", current: "0.6.5", expected: "0.7.0", wantProceed: true},
+		{name: "guard kept: daemon unparseable passes error through", current: "0.7.0", expected: "not-a-version", wantProceed: false, wantErr: "malformed version"},
+		{name: "operator explicit older non-MSI proceeds as downgrade", current: "0.7.0", expected: "0.6.5", operatorExplicit: true, wantProceed: true, wantDowngrade: true},
+		{name: "operator explicit older MSI refuses", current: "0.7.0", expected: "0.6.5", operatorExplicit: true, msiManaged: true, wantProceed: false, wantDowngrade: true, wantErr: "cannot be downgraded"},
+		{name: "operator explicit newer MSI proceeds", current: "0.6.5", expected: "0.7.0", operatorExplicit: true, msiManaged: true, wantProceed: true},
+		{name: "operator explicit equal does not proceed", current: "0.7.0", expected: "0.7.0", operatorExplicit: true, wantProceed: false},
+		{name: "operator explicit unparseable is an error", current: "0.7.0", expected: "bogus", operatorExplicit: true, wantProceed: false, wantErr: "cannot compare versions"},
+		{name: "pre-release: operator explicit downgrades past a pre-release", current: "0.7.0-rc.4", expected: "0.6.5", operatorExplicit: true, wantProceed: true, wantDowngrade: true},
+		{name: "pre-release: daemon does not downgrade past a pre-release", current: "0.7.0-rc.4", expected: "0.6.5", wantProceed: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			proceed, downgrade, err := decideUpdate(tt.current, tt.expected, tt.operatorExplicit, tt.msiManaged)
+			if proceed != tt.wantProceed {
+				t.Errorf("proceed = %v, want %v", proceed, tt.wantProceed)
+			}
+			if downgrade != tt.wantDowngrade {
+				t.Errorf("downgrade = %v, want %v", downgrade, tt.wantDowngrade)
+			}
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Errorf("err = %v, want nil", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("err = %v, want it to contain %q", err, tt.wantErr)
+			}
+		})
 	}
 }
 

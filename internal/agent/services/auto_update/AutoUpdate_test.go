@@ -161,6 +161,49 @@ func TestAutoUpdate_ShouldUpdate(t *testing.T) {
 	}
 }
 
+func TestAutoUpdate_DowngradeGuardKept(t *testing.T) {
+	versionServer := testUtils.GetTestHTTPServerWithURLPath(
+		NewAutoUpdateVersionRoutes([][2]string{
+			{"1.0.0"},
+			{"1.1.0"},
+			{"latest", "1.1.0"},
+		}),
+	)
+	defer versionServer.Server.Close()
+
+	oldVersion := cliArgs.Version
+	t.Cleanup(func() { cliArgs.Version = oldVersion })
+	cliArgs.Version = "1.2.0"
+
+	testCases := []struct {
+		name           string
+		operatorDriven bool
+		requested      string
+	}{
+		{"daemon, explicit older", false, "1.1.0"},
+		{"daemon, latest older", false, "latest"},
+		{"operator, latest older", true, "latest"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			au := &autoUpdate{
+				configSource:   newMockConfiguration("http://localhost:8000", `{ "agent": {} }`),
+				logger:         createTestModuleLogger(),
+				httpClient:     httpretry.NewDefaultClient(),
+				operatorDriven: tc.operatorDriven,
+			}
+			updated, err := au.Update(tc.requested, versionServer.URL)
+			if updated {
+				t.Fatalf("expected updated to be false, got true")
+			}
+			if err != nil {
+				t.Fatalf("expected err to be nil, got %v", err)
+			}
+		})
+	}
+}
+
 func TestAutoUpdate_getExpectedVersion_WithFailingServer(t *testing.T) {
 	versionServer := testUtils.GetTestHTTPServerWithURLPath([]testUtils.TestHTTPServerURLConf{
 		NewAutoUpdateVersionMetadataRoute("0.9.2"),
