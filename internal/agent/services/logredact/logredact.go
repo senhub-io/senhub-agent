@@ -111,6 +111,9 @@ func maskURLFragment(m string) string {
 		return m
 	}
 	frag := parts[2]
+	if len(frag) == 1 {
+		return m // a bare "#" carries nothing to mask
+	}
 	trail := len(frag)
 	for trail > 1 && strings.ContainsRune(`:;,.!?)]}'"`, rune(frag[trail-1])) {
 		trail--

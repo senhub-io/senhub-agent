@@ -14,6 +14,7 @@ import (
 
 	"github.com/kardianos/service"
 	"github.com/rs/zerolog"
+	zlog "github.com/rs/zerolog/log"
 	"golang.org/x/term"
 	"gopkg.in/natefinch/lumberjack.v2"
 	"senhub-agent.go/internal/agent/cliArgs"
@@ -279,6 +280,11 @@ func NewLogger(args *cliArgs.ParsedArgs) *Logger {
 		logger.Warn().Msg("--debug-modules requires --verbose flag. Ignoring debug modules configuration.")
 	}
 
+	// The package-level zerolog logger writes raw JSON to stderr; the few
+	// call sites that use it (panic recovery, DPAPI, operstate) must go
+	// through the same masked outputs as everything else.
+	zlog.Logger = *logger
+
 	return logger
 }
 
@@ -461,7 +467,7 @@ const consoleTimeFormat = "2006-01-02 15:04:05.000"
 // stateless and every caller here runs during start-up.
 var bootstrapLog = sync.OnceValue(func() *ModuleLogger {
 	l := zerolog.
-		New(zerolog.ConsoleWriter{Out: os.Stderr, NoColor: !stderrIsTerminal(), TimeFormat: consoleTimeFormat}).
+		New(NewMaskingWriter(zerolog.ConsoleWriter{Out: os.Stderr, NoColor: !stderrIsTerminal(), TimeFormat: consoleTimeFormat})).
 		With().
 		Timestamp().
 		Logger()
