@@ -420,7 +420,7 @@ func (lc *LocalConfiguration) Start(ctx context.Context) error {
 				lc.logger.Warn().Err(err).Msg("Adding the administration key failed; the console and the configuration API will not answer until one is set")
 			}
 		} else {
-			warnOnce("admin-key-readonly", func() {
+			warnOnce("admin-key-readonly", filepath.Dir(lc.configPath), func() {
 				lc.logger.Warn().Msg("Configuration directory is not writable: no administration key can be added; set agent.admin_key in the configuration")
 			})
 		}
@@ -445,7 +445,7 @@ func (lc *LocalConfiguration) Start(ctx context.Context) error {
 				Str("seal_with", "sudo senhub-agent secret migrate --wire-unit").
 				Msg("Inline secrets left in place: the secret store seals only as root")
 		} else if errors.Is(err, secret.ErrConfigDirReadOnly) {
-			warnOnce("seal-readonly", func() {
+			warnOnce("seal-readonly", filepath.Dir(lc.configPath), func() {
 				lc.logger.Info().Msg("Inline secrets left in place: the configuration directory is read-only; reference them with ${env:}, ${file:} or ${secret:}")
 			})
 		} else if err != nil {

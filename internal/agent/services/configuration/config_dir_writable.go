@@ -21,11 +21,20 @@ func ConfigDirWritable(dir string) bool {
 
 var warnOnceSeen sync.Map
 
-// warnOnce runs fn the first time key is seen in this process. Keys are
-// short strings naming the cause, so a condition that recurs on every
-// configuration load is reported once.
-func warnOnce(key string, fn func()) {
+// warnOnce runs fn the first time the cause is seen for dir in this process.
+// Keys combine the cause and directory, so a condition that recurs on every
+// configuration load is reported once per directory.
+func warnOnce(cause, dir string, fn func()) {
+	key := cause + "\x00" + dir
 	if _, loaded := warnOnceSeen.LoadOrStore(key, struct{}{}); !loaded {
 		fn()
 	}
+}
+
+// resetWarnOnceForTest clears the warn-once state.
+func resetWarnOnceForTest() {
+	warnOnceSeen.Range(func(key, _ any) bool {
+		warnOnceSeen.Delete(key)
+		return true
+	})
 }

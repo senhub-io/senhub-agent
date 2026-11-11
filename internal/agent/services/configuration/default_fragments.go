@@ -127,7 +127,7 @@ func EnsureDefaultProbeFragments(configPath string, log *logger.ModuleLogger, op
 
 	dir := filepath.Dir(configPath)
 	if !ConfigDirWritable(dir) {
-		warnOnce("default-fragments-readonly", func() {
+		warnOnce("default-fragments-readonly", filepath.Dir(configPath), func() {
 			if log != nil {
 				log.Warn().Str("path", dir).Msg("Configuration directory is not writable: default probe fragments and their marker are not written")
 			}

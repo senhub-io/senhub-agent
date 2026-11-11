@@ -141,9 +141,6 @@ func (st *sealState) sealValue(key, value, where string) (string, error) {
 func SealInlineSecrets(configPath string, log *logger.ModuleLogger) error {
 	baseDir := filepath.Dir(configPath)
 	secret.SetConfigDir(baseDir)
-	if !ConfigDirWritable(baseDir) {
-		return secret.ErrConfigDirReadOnly
-	}
 
 	// Version gate FIRST: never touch a config newer than this agent
 	// understands. Sealing rewrites (and would stamp config_version down to 3),
@@ -156,6 +153,10 @@ func SealInlineSecrets(configPath string, log *logger.ModuleLogger) error {
 				Msg("Config version is newer than this agent supports; skipping seal to avoid downgrading it")
 		}
 		return nil
+	}
+
+	if !ConfigDirWritable(baseDir) {
+		return secret.ErrConfigDirReadOnly
 	}
 
 	// Harmonise first: convert a legacy monolithic config to the multi-file

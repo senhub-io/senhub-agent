@@ -17,6 +17,7 @@ import (
 )
 
 func TestReadOnlyConfigDirSkipsWrites(t *testing.T) {
+	resetWarnOnceForTest()
 	if os.Geteuid() == 0 {
 		t.Skip("root bypasses directory permission modes")
 	}
@@ -47,8 +48,10 @@ func TestReadOnlyConfigDirSkipsWrites(t *testing.T) {
 		t.Fatalf("expected exactly one not-writable warning over two calls, got %d\n%s", n, buf.String())
 	}
 
-	if err := SealInlineSecrets(configPath, log); !errors.Is(err, secret.ErrConfigDirReadOnly) {
-		t.Fatalf("SealInlineSecrets error = %v, want ErrConfigDirReadOnly", err)
+	for _, pass := range []string{"first", "second"} {
+		if err := SealInlineSecrets(configPath, log); !errors.Is(err, secret.ErrConfigDirReadOnly) {
+			t.Fatalf("%s SealInlineSecrets error = %v, want ErrConfigDirReadOnly", pass, err)
+		}
 	}
 	assertOnlyConfigFiles(t, dir)
 }

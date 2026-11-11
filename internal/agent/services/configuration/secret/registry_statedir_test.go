@@ -36,6 +36,23 @@ func TestInitRegistryFallsBackToStateDir(t *testing.T) {
 	}
 }
 
+func TestInitRegistryPrefersExistingStateDirKey(t *testing.T) {
+	stateDir := t.TempDir()
+	t.Setenv("SENHUB_STATE_DIR", stateDir)
+	configDir := t.TempDir()
+	if _, err := NewAgeKeyfileProvider(filepath.Join(stateDir, "agent-secret.key"), filepath.Join(stateDir, "secrets.age")); err != nil {
+		t.Fatalf("creating age key in state dir: %v", err)
+	}
+	SetProvider(nil)
+	t.Cleanup(func() { SetProvider(nil) })
+	if err := InitRegistry(configDir); err != nil {
+		t.Fatalf("InitRegistry with existing state-dir key: %v", err)
+	}
+	if got := StoreDir(); got != stateDir {
+		t.Fatalf("StoreDir() = %q, want state dir %q", got, stateDir)
+	}
+}
+
 func TestInitRegistryKeepsWritableConfigDir(t *testing.T) {
 	configDir := t.TempDir()
 
