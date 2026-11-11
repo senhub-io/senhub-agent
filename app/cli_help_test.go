@@ -43,11 +43,16 @@ func TestInterceptHelp(t *testing.T) {
 		{[]string{"agent", "secret", "wire-unit", "--", "-h"}, false, false},
 		{[]string{"agent", "key", "show", "-h"}, true, true},
 		{[]string{"agent", "zabbix", "setup", "-h"}, true, true},
+		{[]string{"agent", "config", "-h"}, true, true},
+		{[]string{"agent", "config", "check", "-h"}, true, true},
+		{[]string{"agent", "config", "set", "--help"}, true, true},
+		{[]string{"agent", "doctor", "-h"}, true, true},
+		{[]string{"agent", "console", "-h"}, true, true},
+		{[]string{"agent", "refresh-unit", "-h"}, true, true},
 		{[]string{"agent", "license", "activate", "-h"}, false, false},
 		{[]string{"agent", "update", "-h"}, false, false},
 		{[]string{"agent", "install", "-h"}, false, false},
 		{[]string{"agent", "restart", "--help"}, false, false},
-		{[]string{"agent", "refresh-unit", "-h"}, false, false},
 		{[]string{"agent", "secret", "wire-unit"}, false, false},
 		{[]string{"agent", "secret"}, false, false},
 	}
@@ -60,6 +65,33 @@ func TestInterceptHelp(t *testing.T) {
 		}
 		if tt.wantUsage && (buf.Len() == 0 || !strings.Contains(buf.String(), "Usage")) {
 			t.Errorf("interceptHelp(%v) wrote %q, want non-empty usage", tt.args, buf.String())
+		}
+	}
+}
+
+func TestInterceptHelpCommandUsage(t *testing.T) {
+	tests := []struct {
+		args []string
+		want string
+	}{
+		{[]string{"agent", "config", "check", "-h"}, "config check"},
+		{[]string{"agent", "config", "set", "--help"}, "config set"},
+		{[]string{"agent", "doctor", "-h"}, "doctor"},
+		{[]string{"agent", "console", "-h"}, "console"},
+		{[]string{"agent", "refresh-unit", "-h"}, "refresh-unit"},
+	}
+	for _, tt := range tests {
+		var buf bytes.Buffer
+		if !interceptHelp(tt.args, &buf) {
+			t.Errorf("interceptHelp(%v) = false, want true", tt.args)
+			continue
+		}
+		out := buf.String()
+		if !strings.Contains(out, tt.want) {
+			t.Errorf("interceptHelp(%v) wrote %q, want it to contain %q", tt.args, out, tt.want)
+		}
+		if strings.Contains(out, "SenHub Agent - Infrastructure Monitoring Agent") {
+			t.Errorf("interceptHelp(%v) wrote the general help banner: %q", tt.args, out)
 		}
 	}
 }
@@ -87,20 +119,26 @@ func TestInterceptHelpExtraCommandUsage(t *testing.T) {
 }
 
 func TestReadOnlyCommandHelp(t *testing.T) {
-	if !readOnlyCommand([]string{"agent", "secret", "wire-unit", "-h"}) {
-		t.Error("readOnlyCommand with -h = false, want true")
+	readOnly := []struct {
+		args []string
+		want bool
+	}{
+		{[]string{"agent", "secret", "wire-unit", "-h"}, true},
+		{[]string{"agent", "secret", "wire-unit"}, false},
+		{[]string{"agent", "secret", "wire-unit", "--", "-h"}, false},
+		{[]string{"agent", "install", "-h"}, true},
+		{[]string{"agent", "uninstall", "--help"}, true},
+		{[]string{"agent", "restart", "-h"}, true},
+		{[]string{"agent", "refresh-unit", "-h"}, true},
+		{[]string{"agent", "update", "-h"}, true},
+		{[]string{"agent", "license", "activate", "-h"}, true},
+		{[]string{"agent", "install"}, false},
+		{[]string{"agent", "restart"}, false},
 	}
-	if readOnlyCommand([]string{"agent", "secret", "wire-unit"}) {
-		t.Error("readOnlyCommand without -h = true, want false")
-	}
-	if readOnlyCommand([]string{"agent", "secret", "wire-unit", "--", "-h"}) {
-		t.Error("readOnlyCommand with -- -h = true, want false")
-	}
-	if readOnlyCommand([]string{"agent", "install", "-h"}) {
-		t.Error("readOnlyCommand install -h = true, want false")
-	}
-	if readOnlyCommand([]string{"agent", "restart", "--help"}) {
-		t.Error("readOnlyCommand restart --help = true, want false")
+	for _, tt := range readOnly {
+		if got := readOnlyCommand(tt.args); got != tt.want {
+			t.Errorf("readOnlyCommand(%v) = %v, want %v", tt.args, got, tt.want)
+		}
 	}
 }
 
@@ -110,6 +148,7 @@ func TestEveryCommandHasHelpGuard(t *testing.T) {
 		"db-monitoring": {},
 		"console":       {},
 		"doctor":        {},
+		"refresh-unit":  {},
 		"secret":        {},
 		"key":           {},
 		"zabbix":        {},
@@ -151,8 +190,12 @@ func TestMainHelpDoesNotAct(t *testing.T) {
 	}{
 		{[]string{"agent", "key", "show", "-h", "--config-path", "/nonexistent/agent.yaml"}, "Usage"},
 		{[]string{"agent", "secret", "list", "--help", "--config-path", "/nonexistent/agent.yaml"}, "Usage"},
-		{[]string{"agent", "config", "migrate", "-h"}, "SenHub Agent"},
+		{[]string{"agent", "config", "migrate", "-h"}, "Usage"},
 		{[]string{"agent", "license", "show", "-h"}, "sage"},
+		{[]string{"agent", "install", "-h"}, "Usage"},
+		{[]string{"agent", "uninstall", "--help"}, "Usage"},
+		{[]string{"agent", "restart", "-h"}, "Usage"},
+		{[]string{"agent", "refresh-unit", "-h"}, "Usage"},
 	}
 	for _, tt := range cases {
 		cmd := exec.Command(os.Args[0], "-test.run=^TestMainHelpDoesNotAct$")
