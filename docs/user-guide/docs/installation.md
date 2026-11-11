@@ -593,7 +593,9 @@ sudo /usr/local/bin/senhub-agent update <version>
     `update` installs the version you name, older ones included. Copying
     a version number out of a document downgrades an agent that is
     already ahead of it, so take the number from `update --list` on the
-    host you are updating.
+    host you are updating. An MSI-managed Windows install cannot go
+    backwards in place, so `update` refuses an older version there and
+    says so; uninstall the agent, then install the older MSI.
 
 On an MSI-managed Windows install, auto-update applies a new signed MSI rather than swapping the binary in place — see the note under [MSI installer](#msi-installer-recommended).
 

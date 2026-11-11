@@ -240,10 +240,16 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) (b
 	// Auto-update used to fire on any version-string mismatch — including
 	// downgrades. An agent running a beta would silently revert to the
 	// latest prod when the update server's "latest" alias resolved to a
-	// release older than the running beta. shouldUpdateTo enforces
-	// strict-greater-than per semver, with pre-release ordering honoured.
-	ok, err := shouldUpdateTo(currentVersionStr, expectedVersion)
+	// release older than the running beta. The daemon and `update latest`
+	// keep strict-greater-than per semver, with pre-release ordering
+	// honoured; a version the operator names on the command line is
+	// installed even when older, except on an MSI install.
+	operatorExplicit := a.operatorDriven && expectedVersionStr != "" && expectedVersionStr != "latest"
+	proceed, downgrade, err := decideUpdate(currentVersionStr, expectedVersion, operatorExplicit, isMsiManaged())
 	if err != nil {
+		if operatorExplicit {
+			return false, err
+		}
 		a.logger.Warn().
 			Str("current_version", currentVersionStr).
 			Str("expected_version", expectedVersion).
@@ -251,12 +257,18 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) (b
 			Msg("Auto-update skipped: cannot parse version for comparison")
 		return false, nil
 	}
-	if !ok {
+	if !proceed {
 		a.logger.Debug().
 			Str("current_version", currentVersionStr).
 			Str("expected_version", expectedVersion).
 			Msg("Auto-update skipped: expected version is not newer than current")
 		return false, nil
+	}
+	if downgrade {
+		a.logger.Info().
+			Str("current_version", currentVersionStr).
+			Str("expected_version", expectedVersion).
+			Msg("Installing an older version on the operator's request")
 	}
 
 	a.logger.Info().

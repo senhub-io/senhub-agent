@@ -136,7 +136,7 @@ type binaryFS struct {
 // disk is therefore an error, not a skip: it means the caller passed a
 // post-update path, and failing loudly beats silently leaving the service
 // on the old binary.
-func reconcileServiceBinary(unit, newBinary string, fs binaryFS, out io.Writer) (string, error) {
+func reconcileServiceBinary(unit, newBinary string, requested bool, fs binaryFS, out io.Writer) (string, error) {
 	if _, err := fs.stat(newBinary); err != nil {
 		return "", fmt.Errorf("the updated binary is not readable at %s: %w", newBinary, err)
 	}
@@ -145,7 +145,7 @@ func reconcileServiceBinary(unit, newBinary string, fs binaryFS, out io.Writer) 
 	if target == "" {
 		return "", nil
 	}
-	if ok, why := serviceBinaryNeedsSync(binaryVersion(newBinary), binaryVersion(target)); !ok {
+	if ok, why := serviceBinaryNeedsSync(binaryVersion(newBinary), binaryVersion(target), requested); !ok {
 		if why != "" {
 			fmt.Fprintf(out, "Service binary: %s\n", why)
 		}
@@ -170,11 +170,12 @@ func reconcileServiceBinary(unit, newBinary string, fs binaryFS, out io.Writer) 
 // the daemon self-updates ahead of the CLI (its copy is the only one it
 // can write), so copying an older CLI binary over it would downgrade the
 // running agent behind the operator's back — something auto-update itself
-// never does (shouldUpdateTo is strict-greater-than).
+// never does (shouldUpdateTo is strict-greater-than). A version the
+// operator explicitly named is copied even when it is older.
 //
 // An unreadable version on either side is not a reason to skip: the
 // operator asked for a specific release and this copy is what delivers it.
-func serviceBinaryNeedsSync(cliVersion, serviceVersion string) (bool, string) {
+func serviceBinaryNeedsSync(cliVersion, serviceVersion string, requested bool) (bool, string) {
 	if cliVersion != "" && cliVersion == serviceVersion {
 		return false, ""
 	}
@@ -189,7 +190,7 @@ func serviceBinaryNeedsSync(cliVersion, serviceVersion string) (bool, string) {
 	if err != nil {
 		return true, ""
 	}
-	if service.GreaterThan(cli) {
+	if service.GreaterThan(cli) && !requested {
 		return false, fmt.Sprintf(
 			"the systemd service already runs %s, which is newer than %s — left untouched",
 			serviceVersion, cliVersion)
