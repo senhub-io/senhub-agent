@@ -4,9 +4,11 @@
 # the first run of the job, which for a release workflow is the release itself. Local actions (./...) and docker://
 # references are not pins. Needs gh with a token that can read public repos.
 set -euo pipefail
-dir="${1:-.github/workflows}"
+dir="${1:-.github}"
 status=0
+seen=0
 while read -r ref; do
+  seen=$((seen + 1))
   path="${ref%@*}"; sha="${ref##*@}"
   repo="$(printf '%s' "$path" | cut -d/ -f1-2)"
   # A pin may name an annotated tag object rather than a commit: Actions
@@ -18,6 +20,10 @@ while read -r ref; do
     echo "::error::$ref: commit $sha not found in $repo"
     status=1
   fi
-done < <(grep -rhoE 'uses:[[:space:]]*[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(/[A-Za-z0-9_./-]+)?@[0-9a-f]{40}' "$dir" \
-  | sed -E 's/^uses:[[:space:]]*//' | sort -u)
+done < <(grep -rhoE 'uses:[[:space:]]*["'"'"']?[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(/[A-Za-z0-9_./-]+)?@[0-9a-f]{40}' "$dir" \
+  | sed -E 's/^uses:[[:space:]]*["'"'"']?//' | sort -u)
+if [ "$seen" -eq 0 ]; then
+  echo "::error::no pinned action found under $dir: wrong directory?"
+  status=1
+fi
 exit "$status"
