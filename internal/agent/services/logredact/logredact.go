@@ -99,7 +99,27 @@ func maskURLQuery(s string) string {
 	if parts == nil {
 		return s
 	}
-	return parts[1] + queryParamPattern.ReplaceAllString(parts[2], "${1}=***")
+	return parts[1] + queryParamPattern.ReplaceAllStringFunc(parts[2], maskQueryValue)
+}
+
+// maskQueryValue masks one name=value pair but keeps the punctuation that
+// ends the value in prose ("?x=1: dial" keeps its colon), since the value
+// match runs to the next blank.
+func maskQueryValue(m string) string {
+	parts := queryParamPattern.FindStringSubmatch(m)
+	if len(parts) != 3 {
+		return m
+	}
+	return parts[1] + "=***" + trailingPunctuation(parts[2])
+}
+
+// trailingPunctuation returns the prose punctuation that ends s.
+func trailingPunctuation(s string) string {
+	i := len(s)
+	for i > 0 && strings.ContainsRune(`:;,.!?)]}'"`, rune(s[i-1])) {
+		i--
+	}
+	return s[i:]
 }
 
 // maskURLFragment masks a URL fragment but keeps the punctuation that
@@ -114,11 +134,11 @@ func maskURLFragment(m string) string {
 	if len(frag) == 1 {
 		return m // a bare "#" carries nothing to mask
 	}
-	trail := len(frag)
-	for trail > 1 && strings.ContainsRune(`:;,.!?)]}'"`, rune(frag[trail-1])) {
-		trail--
+	trail := trailingPunctuation(frag[1:])
+	if len(trail) == len(frag)-1 {
+		return m // punctuation only: not a fragment, the sentence goes on
 	}
-	return parts[1] + "#***" + frag[trail:]
+	return parts[1] + "#***" + trail
 }
 
 // maskAuthorizationCredential masks only the credential portion of an
@@ -138,16 +158,49 @@ func maskAuthorizationCredential(rest string) string {
 	return "***"
 }
 
+// Rule names reported to the counter, one per masked form.
+const (
+	RuleURLUserinfo         = "url_userinfo"
+	RuleURLQuery            = "url_query"
+	RuleURLFragment         = "url_fragment"
+	RuleDSNPassword         = "dsn_password"
+	RuleAuthorizationHeader = "authorization_header"
+	RuleBearerToken         = "bearer_token"
+	RuleCredentialParam     = "credential_param"
+	RuleJWT                 = "jwt"
+	RuleAWSAccessKeyID      = "aws_access_key_id"
+)
+
 // String masks credentials embedded in a free-form value whatever its key:
 // URI userinfo, URL query values, URL fragments, DSN passwords, HTTP
 // authorization headers and standalone scheme credentials, generic key=value
 // pairs, JWTs and cloud access key ids.
 func String(s string) string {
-	s = uriUserinfoPattern.ReplaceAllString(s, "${1}***@")
-	s = urlQueryPattern.ReplaceAllStringFunc(s, maskURLQuery)
-	s = urlFragmentPattern.ReplaceAllStringFunc(s, maskURLFragment)
-	s = dsnPasswordPattern.ReplaceAllString(s, "${1}${2}***")
-	s = authorizationHeaderPattern.ReplaceAllStringFunc(s, func(m string) string {
+	return Redact(s, nil)
+}
+
+// Redact is String with an observer: count, when not nil, is called once
+// per masked occurrence with the rule name. A replacement that leaves the
+// text unchanged, as on text masked already, is not counted.
+func Redact(s string, count func(rule string)) string {
+	counted := func(rule string, re *regexp.Regexp, repl func(string) string) {
+		s = re.ReplaceAllStringFunc(s, func(m string) string {
+			out := repl(m)
+			if out != m && count != nil {
+				count(rule)
+			}
+			return out
+		})
+	}
+	counted(RuleURLUserinfo, uriUserinfoPattern, func(m string) string {
+		return uriUserinfoPattern.ReplaceAllString(m, "${1}***@")
+	})
+	counted(RuleURLQuery, urlQueryPattern, maskURLQuery)
+	counted(RuleURLFragment, urlFragmentPattern, maskURLFragment)
+	counted(RuleDSNPassword, dsnPasswordPattern, func(m string) string {
+		return dsnPasswordPattern.ReplaceAllString(m, "${1}${2}***")
+	})
+	counted(RuleAuthorizationHeader, authorizationHeaderPattern, func(m string) string {
 		parts := authorizationHeaderPattern.FindStringSubmatch(m)
 		if len(parts) != 3 {
 			return m
@@ -167,21 +220,21 @@ func String(s string) string {
 		}
 		return parts[1] + maskAuthorizationCredential(rest)
 	})
-	s = httpAuthSchemePattern.ReplaceAllStringFunc(s, func(m string) string {
+	counted(RuleBearerToken, httpAuthSchemePattern, func(m string) string {
 		parts := httpAuthSchemePattern.FindStringSubmatch(m)
 		if len(parts) != 4 || !looksLikeCredential(parts[3]) {
 			return m
 		}
 		return parts[1] + parts[2] + "***"
 	})
-	s = genericCredentialPairPattern.ReplaceAllStringFunc(s, func(m string) string {
+	counted(RuleCredentialParam, genericCredentialPairPattern, func(m string) string {
 		parts := genericCredentialPairPattern.FindStringSubmatch(m)
 		if len(parts) != 4 || !isSensitivePairKey(parts[1]) {
 			return m
 		}
 		return parts[1] + parts[2] + "***"
 	})
-	s = jwtPattern.ReplaceAllString(s, "***")
-	s = cloudAccessKeyIDPattern.ReplaceAllString(s, "***")
+	counted(RuleJWT, jwtPattern, func(string) string { return "***" })
+	counted(RuleAWSAccessKeyID, cloudAccessKeyIDPattern, func(string) string { return "***" })
 	return s
 }

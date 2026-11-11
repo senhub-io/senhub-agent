@@ -7,6 +7,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/logredact"
 )
 
@@ -67,8 +68,16 @@ func (w *MaskingWriter) mask(p []byte) []byte {
 			return appendNewlineIfMissing(maskedJSON)
 		}
 	}
-	return appendNewlineIfMissing([]byte(logredact.String(MaskSensitiveData(string(p)))))
+	return appendNewlineIfMissing([]byte(redactText(MaskSensitiveData(string(p)))))
 }
+
+// redactProbe is the probe label of the agent's own log masking in
+// senhub.agent.logs.redacted.
+const redactProbe = "agent"
+
+func countRedaction(rule string) { agentstate.RecordLogRedaction(redactProbe, rule) }
+
+func redactText(s string) string { return logredact.Redact(s, countRedaction) }
 
 // maskJSONFields recursively traverses a JSON object and masks sensitive fields
 func maskJSONFields(obj map[string]interface{}) map[string]interface{} {
@@ -124,7 +133,7 @@ func redactJSONStrings(v interface{}) interface{} {
 		}
 		return t
 	case string:
-		return logredact.String(t)
+		return redactText(t)
 	default:
 		return v
 	}

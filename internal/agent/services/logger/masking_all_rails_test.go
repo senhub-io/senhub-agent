@@ -10,6 +10,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/services/agentstate"
 )
 
 // TestMaskingCoversEveryRail builds the logger the way the production and
@@ -117,5 +118,35 @@ func TestBuilderMasksTheSelfLogRail(t *testing.T) {
 				t.Errorf("%s rail leaks %q through the builder:\n%s", name, leak, text)
 			}
 		}
+	}
+}
+
+// TestMaskingWriterCountsRedactions checks that the agent's own masking is
+// visible in senhub.agent.logs.redacted under probe "agent".
+func TestMaskingWriterCountsRedactions(t *testing.T) {
+	before := map[string]uint64{}
+	for _, c := range agentstate.LogRedactedCounts() {
+		if c.Probe == redactProbe {
+			before[c.Rule] = c.Count
+		}
+	}
+	var out bytes.Buffer
+	w := NewMaskingWriter(&out)
+	if _, err := w.Write([]byte(`{"level":"warn","error":"checking https://user:s3cretPW@h.example.com/x?x=plainVAL#fr4gSEC: Get \"https://user:s3cretPW@h.example.com/x?x=plainVAL#fr4gSEC\": refused","key":"AKIAFAKEFAKEFAKE1234"}` + "\n")); err != nil {
+		t.Fatal(err)
+	}
+	after := map[string]uint64{}
+	for _, c := range agentstate.LogRedactedCounts() {
+		if c.Probe == redactProbe {
+			after[c.Rule] = c.Count
+		}
+	}
+	for rule, want := range map[string]uint64{"url_userinfo": 2, "url_query": 2, "url_fragment": 2, "aws_access_key_id": 1} {
+		if got := after[rule] - before[rule]; got != want {
+			t.Errorf("rule %s counted %d, want %d", rule, got, want)
+		}
+	}
+	if s := out.String(); !strings.Contains(s, `#***: Get`) || !strings.Contains(s, `?x=***#***`) {
+		t.Errorf("unexpected masking: %s", s)
 	}
 }
