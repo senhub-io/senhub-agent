@@ -1,0 +1,8 @@
+# Statement coverage floors, checked by .github/scripts/coverage-floor.sh
+# on every pull request. A floor only moves up, in the PR that earns it.
+# Measured on b284a28a (0.7.0-rc.7): TOTAL 77.7, app 54.6,
+# strategies/http 65.7. Floors sit just under the measure so the
+# timing-dependent branches of a few tests do not flip the check.
+TOTAL 77.5
+app 54.5
+internal/agent/services/data_store/strategies/http 65.5

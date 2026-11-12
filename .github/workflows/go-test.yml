@@ -66,6 +66,24 @@ jobs:
       - name: Test with race detector
         run: go test -race ./...
 
+  # The coverage floor never goes down: a PR that lowers coverage below the
+  # floor fails here, and a PR that raises coverage should raise the floor in
+  # .github/coverage-floor in the same PR.
+  coverage-floor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+      - name: Read the base branch's floor
+        run: git show "origin/${{ github.base_ref }}:.github/coverage-floor" > "$RUNNER_TEMP/base-coverage-floor" 2>/dev/null || echo "No floor on the base branch yet"
+      - name: Check the coverage floor
+        run: make coverage-floor BASE_COVERAGE_FLOOR="$RUNNER_TEMP/base-coverage-floor"
+
   # Boot smoke: builds the agent binary, exec's `version` + parses
   # every shipped free-tier example config via `config check`. Catches
   # the kind of bring-up regression that unit tests can't see — linker

@@ -476,6 +476,11 @@ coverage: ## Rapport de couverture de tests
 	@echo "$(GREEN)✅ Rapport généré: coverage.html$(NC)"
 	@echo "$(YELLOW)📈 Résumé de la couverture:$(NC)"
 	@go tool cover -func=$(COVERAGE_FILE) | tail -1
+coverage-floor: ## Check statement coverage against .github/coverage-floor
+	@bash .github/scripts/coverage-floor_test.sh
+	@rm -f $(COVERAGE_FILE)
+	@go test -count=1 -coverprofile=$(COVERAGE_FILE) ./... > /dev/null || echo "Some tests failed; the test job reports them, the floor is checked on the coverage that was measured"
+	@bash .github/scripts/coverage-floor.sh $(COVERAGE_FILE) .github/coverage-floor $(BASE_COVERAGE_FLOOR)
 
 # NEW: Analyse de qualité du code
 lint: ## Analyse de qualité du code (golangci-lint)
@@ -576,4 +581,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build helm-lint build-windows verify-windows-version build-linux build-darwin package package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics probesdk-api check-alerts test-oracle test-mysql test-postgresql test-database test-zabbix-import help package-version test-release-manifest
+.PHONY: all build helm-lint build-windows verify-windows-version build-linux build-darwin package package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics probesdk-api check-alerts test-oracle test-mysql test-postgresql test-database test-zabbix-import help package-version test-release-manifest coverage-floor
