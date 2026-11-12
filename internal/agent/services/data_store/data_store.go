@@ -391,7 +391,7 @@ func (d *dataStore) GenerateStrategyId(strategyName string, params configuration
 		d.logger.Error().
 			Err(err).
 			Str("strategy", strategyName).
-			Any("params", configuration.SanitizeParamsForLog(params)).
+			Any("params", configuration.SanitizeOutputParamsForLog(strategyName, params)).
 			Msg("marshaling error: failed to marshal strategy parameters - using empty config")
 		paramsBytes = []byte("{}")
 	}
@@ -641,8 +641,8 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 			} else {
 				// Same name but different parameters - try to update
 				d.logger.Info().
-					Any("old_params", configuration.SanitizeParamsForLog(strategy.GetStrategyParams())).
-					Any("new_params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
+					Any("old_params", configuration.SanitizeOutputParamsForLog(strategy.GetStrategyName(), strategy.GetStrategyParams())).
+					Any("new_params", configuration.SanitizeOutputParamsForLog(strategyConfig.Name, strategyConfig.Params)).
 					Msg("Strategy configuration changed, attempting update")
 
 				// Try to update the strategy if it supports live updates
