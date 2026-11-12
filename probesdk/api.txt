@@ -245,6 +245,7 @@ alias Identity = senhub-agent.go/internal/agent/services/extension.Identity
   field ReleaseChannel string
   field ReleaseRing string
   field Version string
+func IsTargetParam(key string) bool
 alias ManagedProbe = senhub-agent.go/internal/agent/services/extension.ManagedProbe
   field Enabled bool
   field Interval int
@@ -263,6 +264,7 @@ alias OverlayProbe = senhub-agent.go/internal/agent/services/extension.OverlayPr
   field Interval int
   field Name string
   field Params map[string]any
+  field SecretParams []string
   field Type string
 alias OverlayTarget = senhub-agent.go/internal/agent/services/extension.OverlayTarget
   imethod AddProbe(p senhub-agent.go/internal/agent/services/extension.ManagedProbe) bool

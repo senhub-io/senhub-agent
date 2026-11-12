@@ -1,5 +1,7 @@
 package extension
 
+import "regexp"
+
 // OverlayTarget is the loaded configuration as an overlay may change it.
 // It exposes only what an overlay is allowed to touch: whether a probe
 // runs, its interval, whole managed probes and the entity detection
@@ -63,6 +65,10 @@ type OverlayProbe struct {
 	// and any other string goes through the log redaction (URL user
 	// part, query values, tokens). Nil when the file cannot be read.
 	Params map[string]any
+	// SecretParams are the names of the local parameters that carry or may
+	// carry a secret: a secret-like name with a value, a reference, or a
+	// value the log redaction changes.
+	SecretParams []string
 }
 
 // EntitySwitches are the entity detection switches an overlay may set.
@@ -72,3 +78,12 @@ type EntitySwitches struct {
 	Neighbors   bool
 	Aggregation bool
 }
+
+// targetParamPattern names the parameters that say where a probe connects.
+var targetParamPattern = regexp.MustCompile(`(?i)(^|_)(host|hosts|hostname|url|urls|uri|endpoint|endpoints|address|addresses|addr|server|servers|dsn|target|targets|domain|ip|port|connection|connection_string)$`)
+
+// IsTargetParam reports whether a probe parameter says where the probe
+// connects. An overlay that adopts a local probe may not change such a
+// parameter while the probe keeps a local secret: the secret would go
+// to the new target.
+func IsTargetParam(key string) bool { return targetParamPattern.MatchString(key) }

@@ -37,7 +37,7 @@ func TestOverlayAdoptKeepsLocalParams(t *testing.T) {
 		Type:     "postgresql",
 		Enabled:  true,
 		Interval: 120,
-		Params:   map[string]any{"host": "db2"},
+		Params:   map[string]any{"sslmode": "require"},
 	})
 	if !ok {
 		t.Fatal("AdoptProbe refused a valid adoption")
@@ -46,8 +46,8 @@ func TestOverlayAdoptKeepsLocalParams(t *testing.T) {
 		t.Fatalf("expected 1 probe, got %d", len(cfg.Probes))
 	}
 	probe := cfg.Probes[0]
-	if probe.Params["host"] != "db2" {
-		t.Errorf("host = %v, want db2", probe.Params["host"])
+	if probe.Params["sslmode"] != "require" || probe.Params["host"] != "db1" {
+		t.Errorf("params = %v, want sslmode require and the local host kept", probe.Params)
 	}
 	if probe.Params["password"] != "resolved-s3cret" {
 		t.Errorf("password = %v, want resolved-s3cret", probe.Params["password"])
@@ -124,7 +124,7 @@ func TestOverlayAdoptRollback(t *testing.T) {
 		Name:    "db",
 		Type:    "postgresql",
 		Enabled: true,
-		Params:  map[string]any{"host": "db2"},
+		Params:  map[string]any{"sslmode": "require"},
 	}) {
 		t.Fatal("AdoptProbe refused a valid adoption")
 	}
