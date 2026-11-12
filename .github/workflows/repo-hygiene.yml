@@ -109,3 +109,14 @@ jobs:
             echo '::error::The PR description names a customer or a host'; fail=1
           fi
           exit $fail
+
+  # A pinned action that does not exist fails only when its job runs, which
+  # for a release workflow is the release itself. Resolve every pin here.
+  action-pins:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Resolve every pinned action
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/check-action-pins.sh .github
