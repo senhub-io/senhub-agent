@@ -433,7 +433,7 @@
       const cat = (List.types[p.type] && List.types[p.type].category) || 'other';
       tr.classList.add('go');
       tr.innerHTML = '<td class="pname">' + name + '</td><td><span class="tcell">' + glyphFor(cat) + '<code>' + esc(p.type) + '</code></span></td><td>' + state + '</td>' +
-        '<td class="num">' + (p.interval ? esc(p.interval) + ' s' : '&ndash;') + '</td>' +
+        '<td class="num">' + (p.interval ? esc(p.interval) + ' s' : '&ndash;') + (p.interval_remote ? ' <span class="muted xs" title="Set by remote management; the file says ' + esc(p.file_interval) + ' s">remote</span>' : '') + '</td>' +
         '<td class="num">' + (p.enabled ? esc(p.metrics_count || 0) : '&ndash;') + '</td>' +
         '<td class="num">' + (p.last_update ? esc(hhmmss(p.last_update)) : '&ndash;') + '</td>' +
         '<td class="acts">' + acts + '</td>';
@@ -583,7 +583,7 @@
   
       const rows = [];
       rows.push(`<dt>Last collection</dt><dd>${p.last_update ? esc(hhmmss(p.last_update)) : '-'}</dd>`);
-      rows.push(`<dt>Interval</dt><dd>${p.interval ? `${esc(String(p.interval))} s` : '-'}</dd>`);
+      rows.push(`<dt>Interval</dt><dd>${p.interval ? `${esc(String(p.interval))} s${p.interval_remote ? ` (set by remote management; the file says ${esc(String(p.file_interval))} s)` : ''}` : '-'}</dd>`);
       rows.push(`<dt>Metrics</dt><dd>${p.enabled ? esc(String(p.metrics_count || 0)) : '-'}</dd>`);
   
       if (!p.managed || (p.env_variables && p.env_variables.length)) {
@@ -748,7 +748,7 @@
     renderConfig(p) {
       const rows = [];
       rows.push(`<dt>Enabled</dt><dd>${p.enabled ? 'yes' : 'no'}</dd>`);
-      rows.push(`<dt>Interval</dt><dd>${p.interval ? `${esc(String(p.interval))} s` : '-'}</dd>`);
+      rows.push(`<dt>Interval</dt><dd>${p.interval ? `${esc(String(p.interval))} s${p.interval_remote ? ` (set by remote management; the file says ${esc(String(p.file_interval))} s)` : ''}` : '-'}</dd>`);
   
       const params = p.params || {};
       const keys = Object.keys(params).sort();

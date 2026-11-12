@@ -151,6 +151,11 @@ func SetStartFailedProbes(failed map[string]string) {
 // probe's own state rather than infer it from the metrics it holds.
 var activeProbeByName = map[string]string{}
 
+// activeProbeInterval maps a running probe's case-folded name to the
+// interval it runs at, in seconds, which a remote overlay may have
+// changed from the file's.
+var activeProbeInterval = map[string]int{}
+
 // activeNamesChanged is closed, and replaced, each time the set of
 // running probe names is published. Guarded by probeStateMu.
 var activeNamesChanged = make(chan struct{})
@@ -166,6 +171,26 @@ func SetActiveProbeNames(byName map[string]string) {
 	activeProbeByName = next
 	close(activeNamesChanged)
 	activeNamesChanged = make(chan struct{})
+}
+
+// SetActiveProbeIntervals publishes the interval each running probe runs at.
+func SetActiveProbeIntervals(byName map[string]int) {
+	probeStateMu.Lock()
+	defer probeStateMu.Unlock()
+	next := make(map[string]int, len(byName))
+	for name, interval := range byName {
+		next[strings.ToLower(name)] = interval
+	}
+	activeProbeInterval = next
+}
+
+// ProbeIntervalByName reports the interval a running probe runs at, in
+// seconds, whatever the case of its name.
+func ProbeIntervalByName(name string) (int, bool) {
+	probeStateMu.RLock()
+	defer probeStateMu.RUnlock()
+	interval, ok := activeProbeInterval[strings.ToLower(name)]
+	return interval, ok
 }
 
 // ActiveProbeNamesChanged returns a channel closed the next time the

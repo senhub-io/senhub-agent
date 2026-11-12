@@ -763,12 +763,15 @@ func (s *sensor) Shutdown(ctx context.Context) error {
 func publishActiveProbes(pollers []*probes.ProbePoller) {
 	out := make([]string, 0, len(pollers))
 	byName := make(map[string]string, len(pollers))
+	intervals := make(map[string]int, len(pollers))
 	for _, pp := range pollers {
 		if pp != nil {
 			out = append(out, pp.ProbeId)
 			byName[pp.Probe.GetName()] = pp.ProbeId
+			intervals[pp.Probe.GetName()] = int(pp.Probe.GetInterval().Seconds())
 		}
 	}
 	agentstate.SetActiveProbes(out)
 	agentstate.SetActiveProbeNames(byName)
+	agentstate.SetActiveProbeIntervals(intervals)
 }
