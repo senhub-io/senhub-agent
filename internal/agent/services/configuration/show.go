@@ -53,7 +53,7 @@ const (
 // be masked in ShowRedact mode. The pattern uses substring matching
 // (no `^…$` anchors) so composite names like `api_key`, `auth_token`,
 // `db_password`, `client_secret` are all caught. Case-insensitive.
-var secretFieldPattern = regexp.MustCompile(`(?i)(key|token|password|passphrase|secret|community|credential|authorization|bearer|license|jwt)`)
+var secretFieldPattern = regexp.MustCompile(`(?i)(key|token|password|passphrase|secret|community|credential|authorization|bearer|license|jwt|cookie)`)
 
 // fileRefPattern recognises a `${file:..}` reference inside a raw
 // (pre-substitution) string. The trailing capture is intentionally
@@ -305,7 +305,7 @@ func redactInPlace(rawV, resV reflect.Value, currentName string) {
 		// empty — an empty secret is still a secret slot.
 		hasFileRef := fileRefPattern.MatchString(raw)
 		hasSecretRef := secretRefPattern.MatchString(raw) || envProbeRefPattern.MatchString(raw)
-		nameLooksSecret := currentName != "" && secretFieldPattern.MatchString(currentName)
+		nameLooksSecret := currentName != "" && (secretFieldPattern.MatchString(currentName) || secret.IsSensitiveKey(currentName))
 		if !hasFileRef && !hasSecretRef && !nameLooksSecret {
 			return
 		}
