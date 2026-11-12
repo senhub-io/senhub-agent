@@ -38,3 +38,31 @@ func TestListVersionsSkipsRegistryAliases(t *testing.T) {
 		t.Fatalf("unexpected output:\n%s", out)
 	}
 }
+
+type listStubAliasFirst struct{ stubUpdater }
+
+func (listStubAliasFirst) ListAvailableVersions(includeBeta bool) ([]auto_update.VersionMetadata, error) {
+	if !includeBeta {
+		return []auto_update.VersionMetadata{{Name: "0.6.5", Version: "0.6.5"}, {Name: "latest", Version: "0.6.5"}}, nil
+	}
+	return []auto_update.VersionMetadata{{Name: "latest-beta", Version: "0.7.0-rc.6"}, {Name: "0.7.0-rc.6", Version: "0.7.0-rc.6"}, {Name: "0.7.0-rc.5", Version: "0.7.0-rc.5"}}, nil
+}
+
+func TestListVersionsKeepsTheNewestBeta(t *testing.T) {
+	oldVersion := cliArgs.Version
+	t.Cleanup(func() { cliArgs.Version = oldVersion })
+	cliArgs.Version = "0.7.0-rc.3"
+
+	r, w, _ := os.Pipe()
+	oldStdout := os.Stdout
+	os.Stdout = w
+	listVersions(listStubAliasFirst{}, true, logger.NewLogger(&cliArgs.ParsedArgs{Env: "test"}))
+	w.Close()
+	os.Stdout = oldStdout
+	outBytes, _ := io.ReadAll(r)
+	out := string(outBytes)
+
+	if strings.Count(out, "0.7.0-rc.6") != 1 || strings.Count(out, "0.6.5") != 1 {
+		t.Fatalf("unexpected output:\n%s", out)
+	}
+}

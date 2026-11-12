@@ -129,6 +129,7 @@ func listVersions(updater auto_update.AutoUpdate, includeBeta bool, log *logger.
 		log.Error().Err(err).Msg("Failed to fetch versions")
 		os.Exit(cliexit.Failure)
 	}
+	stable = auto_update.DedupeVersions(stable)
 
 	// Fetch beta only if enabled
 	var beta []auto_update.VersionMetadata
@@ -137,6 +138,7 @@ func listVersions(updater auto_update.AutoUpdate, includeBeta bool, log *logger.
 		if err != nil {
 			log.Debug().Err(err).Msg("Failed to fetch beta versions")
 		}
+		beta = auto_update.DedupeVersions(beta)
 	}
 
 	// Sort stable versions
@@ -146,9 +148,6 @@ func listVersions(updater auto_update.AutoUpdate, includeBeta bool, log *logger.
 
 	fmt.Println("  Stable releases:")
 	for _, v := range stable {
-		if v.Name != "" && v.Name != v.Version {
-			continue
-		}
 		marker := "  "
 		if v.Version == cliArgs.Version {
 			marker = "* "
@@ -163,7 +162,7 @@ func listVersions(updater auto_update.AutoUpdate, includeBeta bool, log *logger.
 	}
 	var betaOnly []auto_update.VersionMetadata
 	for _, v := range beta {
-		if !stableSet[v.Version] && (v.Name == "" || v.Name == v.Version) {
+		if !stableSet[v.Version] {
 			betaOnly = append(betaOnly, v)
 		}
 	}

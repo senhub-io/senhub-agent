@@ -224,7 +224,7 @@ func FetchAllVersions(httpClient *http.Client, registryUrl string, includeBeta b
 	}
 
 	if !includeBeta {
-		return stable, nil
+		return DedupeVersions(stable), nil
 	}
 
 	beta, err := fetchVersionListBeta(httpClient, registryUrl)
@@ -235,26 +235,50 @@ func FetchAllVersions(httpClient *http.Client, registryUrl string, includeBeta b
 				Err(err).
 				Msg("Failed to fetch beta releases list; continuing with stable channel only")
 		}
-		return stable, nil
+		return DedupeVersions(stable), nil
 	}
 
 	// Merge, dedup by version
-	seen := make(map[string]bool)
-	var all []VersionMetadata
-	for _, v := range stable {
-		if !seen[v.Version] {
-			seen[v.Version] = true
-			all = append(all, v)
-		}
-	}
-	for _, v := range beta {
-		if !seen[v.Version] {
-			seen[v.Version] = true
-			all = append(all, v)
-		}
-	}
+	all := append(append([]VersionMetadata{}, stable...), beta...)
+	return DedupeVersions(all), nil
+}
 
-	return all, nil
+// IsAlias reports whether the entry names a channel ("latest",
+// "latest-beta") rather than a release: its name is not a version.
+func (v VersionMetadata) IsAlias() bool {
+	if v.Name == "" {
+		return false
+	}
+	_, err := version.NewVersion(v.Name)
+	return err != nil
+}
+
+// DedupeVersions keeps each version once, in the order it first
+// appears, preferring the entry named after the release over an alias
+// for the same version, so a release listed after its alias is kept.
+func DedupeVersions(in []VersionMetadata) []VersionMetadata {
+	type entry struct {
+		meta  VersionMetadata
+		alias bool
+	}
+	order := make([]string, 0, len(in))
+	byVersion := make(map[string]entry, len(in))
+	for _, v := range in {
+		e, ok := byVersion[v.Version]
+		if !ok {
+			byVersion[v.Version] = entry{meta: v, alias: v.IsAlias()}
+			order = append(order, v.Version)
+			continue
+		}
+		if e.alias && !v.IsAlias() {
+			byVersion[v.Version] = entry{meta: v, alias: false}
+		}
+	}
+	out := make([]VersionMetadata, 0, len(order))
+	for _, ver := range order {
+		out = append(out, byVersion[ver].meta)
+	}
+	return out
 }
 
 // GetLatestVersion returns the highest version from a list.
