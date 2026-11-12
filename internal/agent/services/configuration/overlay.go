@@ -2,10 +2,12 @@ package configuration
 
 import (
 	"maps"
+	"regexp"
 
 	"github.com/rs/zerolog/log"
 
 	"senhub-agent.go/internal/agent/services/extension"
+	"senhub-agent.go/internal/agent/services/logredact"
 )
 
 // minOverlayInterval and maxOverlayInterval bound the interval an
@@ -20,8 +22,9 @@ const (
 // Every mutation records how to undo it, so a panicking overlay leaves
 // the configuration exactly as it was.
 type overlayTarget struct {
-	cfg  *LocalConfigurationData
-	undo []func()
+	cfg        *LocalConfigurationData
+	configPath string
+	undo       []func()
 }
 
 // applyOverlays runs the registered overlays on cfg, one extension at a
@@ -30,12 +33,12 @@ type overlayTarget struct {
 // during a reload nor leave half of its changes behind. Probe
 // parameters are copied before the first change so a map shared with
 // the previous configuration is never written.
-func applyOverlays(cfg *LocalConfigurationData) {
+func applyOverlays(cfg *LocalConfigurationData, configPath string) {
 	for _, e := range extension.Registered() {
 		if e.Overlay == nil {
 			continue
 		}
-		t := &overlayTarget{cfg: cfg}
+		t := &overlayTarget{cfg: cfg, configPath: configPath}
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -57,6 +60,12 @@ func (t *overlayTarget) rollback() {
 }
 
 func (t *overlayTarget) Probes() []extension.OverlayProbe {
+	names := make([]string, len(t.cfg.Probes))
+	for i, p := range t.cfg.Probes {
+		names[i] = p.Name
+	}
+	envDefined := EnvProbeSources(names)
+	reported := reportedProbeParams(t.configPath)
 	out := make([]extension.OverlayProbe, 0, len(t.cfg.Probes))
 	for _, p := range t.cfg.Probes {
 		seconds, _ := wholeSeconds(p.Params["interval"])
@@ -65,9 +74,66 @@ func (t *overlayTarget) Probes() []extension.OverlayProbe {
 			Type:            p.Type,
 			DisabledLocally: p.Enabled != nil && !*p.Enabled,
 			Interval:        seconds,
+			EnvDefined:      len(envDefined[p.Name]) > 0,
+			Params:          reported[p.Name],
 		})
 	}
 	return out
+}
+
+func reportedProbeParams(configPath string) map[string]map[string]any {
+	if configPath == "" {
+		return nil
+	}
+	data, err := loadMerged(configPath, nil)
+	if err != nil {
+		return nil
+	}
+	out := make(map[string]map[string]any, len(data.Probes))
+	for _, p := range data.Probes {
+		out[p.Name] = maskReported(map[string]any(p.Params))
+	}
+	return out
+}
+
+func maskReported(params map[string]any) map[string]any {
+	out := make(map[string]any, len(params))
+	for k, v := range params {
+		out[k] = maskReportedValue(k, v)
+	}
+	return out
+}
+
+// wholeReferencePattern matches a value that is one reference and nothing
+// else; a reference inside a longer string is masked like any literal, since
+// the rest of the string may itself carry a secret.
+var wholeReferencePattern = regexp.MustCompile(`^\$\{[a-z]+:[^}]+\}$`)
+
+func maskReportedValue(key string, v any) any {
+	switch value := v.(type) {
+	case string:
+		if wholeReferencePattern.MatchString(value) {
+			return value
+		}
+		if secretFieldPattern.MatchString(key) {
+			return "***"
+		}
+		return logredact.String(value)
+	case map[string]any:
+		out := make(map[string]any, len(value))
+		for k, child := range value {
+			out[k] = maskReportedValue(k, child)
+		}
+		return out
+	case []any:
+		out := make([]any, len(value))
+		for i, child := range value {
+			out[i] = maskReportedValue(key, child)
+		}
+		return out
+	default:
+		return v
+	}
 }
 
 func (t *overlayTarget) SetProbeEnabled(name string, enabled bool) bool {
@@ -131,6 +197,47 @@ func (t *overlayTarget) AddProbe(p extension.ManagedProbe) bool {
 		Enabled: &p.Enabled,
 		Params:  params,
 	})
+	return true
+}
+
+func (t *overlayTarget) AdoptProbe(p extension.ManagedProbe) bool {
+	i := t.probeIndex(p.Name)
+	if i < 0 {
+		return false
+	}
+	local := t.cfg.Probes[i]
+	if local.Type != p.Type {
+		return false
+	}
+	if local.Enabled != nil && !*local.Enabled {
+		return false
+	}
+	if len(EnvProbeSources([]string{p.Name})[p.Name]) > 0 {
+		return false
+	}
+	if p.Interval != 0 && (p.Interval < minOverlayInterval || p.Interval > maxOverlayInterval) {
+		return false
+	}
+	if _, ok := p.Params["interval"]; ok {
+		return false
+	}
+	prev := t.cfg.Probes[i]
+	t.undo = append(t.undo, func() { t.cfg.Probes[i] = prev })
+	params := maps.Clone(prev.Params)
+	if params == nil {
+		params = ProbeConfigParams{}
+	}
+	for k, v := range p.Params {
+		params[k] = v
+	}
+	if p.Interval != 0 {
+		params["interval"] = p.Interval
+	}
+	adopted := prev
+	enabled := p.Enabled
+	adopted.Enabled = &enabled
+	adopted.Params = params
+	t.cfg.Probes[i] = adopted
 	return true
 }
 

@@ -259,11 +259,14 @@ alias OutputHealth = senhub-agent.go/internal/agent/services/extension.OutputHea
   field Name string
 alias OverlayProbe = senhub-agent.go/internal/agent/services/extension.OverlayProbe
   field DisabledLocally bool
+  field EnvDefined bool
   field Interval int
   field Name string
+  field Params map[string]any
   field Type string
 alias OverlayTarget = senhub-agent.go/internal/agent/services/extension.OverlayTarget
   imethod AddProbe(p senhub-agent.go/internal/agent/services/extension.ManagedProbe) bool
+  imethod AdoptProbe(p senhub-agent.go/internal/agent/services/extension.ManagedProbe) bool
   imethod Entities() senhub-agent.go/internal/agent/services/extension.EntitySwitches
   imethod Probes() []senhub-agent.go/internal/agent/services/extension.OverlayProbe
   imethod SetEntities(senhub-agent.go/internal/agent/services/extension.EntitySwitches)
@@ -674,6 +677,7 @@ type senhub-agent.go/internal/agent/services/extension.OutputHealth struct
   field Name string
 type senhub-agent.go/internal/agent/services/extension.OverlayTarget interface
   imethod AddProbe(p senhub-agent.go/internal/agent/services/extension.ManagedProbe) bool
+  imethod AdoptProbe(p senhub-agent.go/internal/agent/services/extension.ManagedProbe) bool
   imethod Entities() senhub-agent.go/internal/agent/services/extension.EntitySwitches
   imethod Probes() []senhub-agent.go/internal/agent/services/extension.OverlayProbe
   imethod SetEntities(senhub-agent.go/internal/agent/services/extension.EntitySwitches)

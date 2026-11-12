@@ -21,6 +21,16 @@ type OverlayTarget interface {
 	// or Interval is non-zero and outside 10..3600, or Params carries
 	// "interval" (the interval goes in Interval only).
 	AddProbe(p ManagedProbe) bool
+	// AdoptProbe replaces, in memory, the local probe that has p.Name with
+	// the managed definition p: same name and same type. A parameter p
+	// does not carry keeps its local value, secrets included; Interval,
+	// when non-zero, replaces the local interval. The files are never
+	// touched, and dropping the overlay brings the local probe back. It
+	// returns false, changing nothing, when no local probe has that name,
+	// the types differ, the local file disables the probe, the probe is
+	// declared by SENHUB_PROBE_* environment variables, Interval is
+	// non-zero and outside 10..3600, or Params carries "interval".
+	AdoptProbe(p ManagedProbe) bool
 	// Entities returns the entity detection switches.
 	Entities() EntitySwitches
 	// SetEntities replaces the entity detection switches.
@@ -44,6 +54,15 @@ type OverlayProbe struct {
 	DisabledLocally bool
 	// Interval is params.interval in seconds; zero when unset.
 	Interval int
+	// EnvDefined is true when SENHUB_PROBE_* environment variables declare
+	// the probe or set one of its parameters.
+	EnvDefined bool
+	// Params are the probe's parameters as the file writes them, masked
+	// for a remote reader: a ${...} reference stays a reference (it is
+	// never resolved here), a literal under a secret-like name is "***",
+	// and any other string goes through the log redaction (URL user
+	// part, query values, tokens). Nil when the file cannot be read.
+	Params map[string]any
 }
 
 // EntitySwitches are the entity detection switches an overlay may set.
