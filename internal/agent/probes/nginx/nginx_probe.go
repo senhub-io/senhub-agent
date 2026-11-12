@@ -153,18 +153,27 @@ func (p *NginxProbe) checkResultValue(err error) float64 {
 	return float64(dbcommon.ClassifyError(err))
 }
 
-// Collect fetches the stub_status page and emits the Nginx metrics.
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
+func (p *NginxProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext fetches the stub_status page and emits the Nginx metrics.
 // A non-reachable endpoint is a measurement (up=0), never a
 // collection-level error.
-func (p *NginxProbe) Collect() ([]data_store.DataPoint, error) {
+func (p *NginxProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 	commonTags := p.baseTags("connections")
 	upTags := p.baseTags("availability")
 	throughputTags := p.baseTags("throughput")
 	statusTags := p.baseTags("status")
 
-	body, err := p.fetchStatus()
+	body, err := p.fetchStatus(ctx)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("nginx collection interrupted: %w", ctxErr)
+		}
 		p.failures.Failed(p.moduleLogger, subcollect.Warn, "stub_status", err, "nginx stub_status unreachable")
 		p.entitySrc.setReachable(false)
 		points := []data_store.DataPoint{
@@ -213,8 +222,12 @@ func nginxVersionFromServerHeader(h string) string {
 	return strings.TrimPrefix(h, prefix)
 }
 
-func (p *NginxProbe) fetchStatus() (string, error) {
-	resp, err := p.client.Get(p.cfg.Endpoint) // #nosec G107 - endpoint is operator-configured
+func (p *NginxProbe) fetchStatus(ctx context.Context) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.cfg.Endpoint, nil)
+	if err != nil {
+		return "", fmt.Errorf("building request for %s: %w", p.cfg.Endpoint, err)
+	}
+	resp, err := p.client.Do(req) // #nosec G107 - endpoint is operator-configured
 	if err != nil {
 		return "", fmt.Errorf("GET %s: %w", p.cfg.Endpoint, err)
 	}

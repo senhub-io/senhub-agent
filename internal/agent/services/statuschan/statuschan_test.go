@@ -2,6 +2,7 @@ package statuschan
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/extension"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/status"
 )
@@ -204,6 +206,28 @@ func TestShutdownIsBoundedWhenCloseHangs(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("Shutdown waited on a listener Close that never returns")
+	}
+}
+
+func TestSnapshotCarriesWhatExtensionsPublished(t *testing.T) {
+	extension.ResetForTest()
+	t.Cleanup(extension.ResetForTest)
+	svc := status.NewStatusService(logger.NewLogger(&cliArgs.ParsedArgs{}), "1", "c")
+	if st := Snapshot(svc); st.Extensions != nil {
+		t.Fatalf("nothing published, snapshot carries %+v", st.Extensions)
+	}
+	extension.SetStatus("sample", map[string]any{"connected": true})
+	st := Snapshot(svc)
+	body, err := json.Marshal(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back status.SystemStatus
+	if err := json.Unmarshal(body, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.Extensions["sample"]["connected"] != true {
+		t.Fatalf("the published status did not survive the channel: %s", body)
 	}
 }
 

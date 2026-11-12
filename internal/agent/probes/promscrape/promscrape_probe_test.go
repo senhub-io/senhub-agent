@@ -2,6 +2,7 @@ package promscrape
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -207,7 +208,7 @@ func TestScrape_BearerTokenSent(t *testing.T) {
 func TestCollect_SeamForChassis(t *testing.T) {
 	p := newTestProbe(t, map[string]interface{}{"targets": []interface{}{"http://a/metrics", "http://b/metrics"}})
 	var calls atomic.Int32
-	p.scrape = func(target string) scrapeResult {
+	p.scrape = func(_ context.Context, target string) scrapeResult {
 		calls.Add(1)
 		return scrapeResult{target: target}
 	}

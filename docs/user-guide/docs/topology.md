@@ -39,7 +39,7 @@ otlp:
 |---|---|---|
 | `enabled` | `false` | Runs entity detection. Off means nothing is produced and nothing is polled |
 | `interval` | `5m` | Heartbeat. Every entity is described again at this cadence, and the value travels with the event as the consumer's staleness hint |
-| `depends_on.enabled` | `false` | Maps the outbound connections of the host. Needs root, see [OTLP](otlp.md#signalsentities) |
+| `depends_on.enabled` | `false` | Maps the outbound connections of the host. Runs as root, or as the service user when the unit grants `CAP_SYS_PTRACE` and `CAP_DAC_READ_SEARCH`; see [OTLP](otlp.md#signalsentities) |
 | `neighbors.enabled` | `false` | Reports ARP and NDP neighbours |
 | `neighbors.resolves_to` | `false` | Links a neighbour to the interface that owns its MAC address |
 | `aggregation.enabled` | `false` | Links the members of an Ethernet aggregate to it |

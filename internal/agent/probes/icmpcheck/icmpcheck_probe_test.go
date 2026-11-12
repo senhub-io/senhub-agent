@@ -1,6 +1,7 @@
 package icmpcheck
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -102,7 +103,7 @@ func TestParseConfig(t *testing.T) {
 // per-target outcomes never become a collection error.
 func TestCollect_BuildsExpectedMetricSet(t *testing.T) {
 	p := newTestProbe(t, map[string]interface{}{"targets": []interface{}{"ok.example", "down.example"}})
-	p.ping = func(target string) pingResult {
+	p.ping = func(_ context.Context, target string) pingResult {
 		if target == "ok.example" {
 			return pingResult{
 				target: target, resolvedIP: "192.0.2.10",

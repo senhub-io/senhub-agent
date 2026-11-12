@@ -16,7 +16,7 @@ func TestParseConfig_ValuesAndDefaults(t *testing.T) {
 		{
 			name:   "defaults",
 			config: map[string]interface{}{"targets": []string{"http://exporter:9100/metrics"}},
-			want:   scrapeConfig{Targets: []string{"http://exporter:9100/metrics"}, Interval: defaultInterval, Timeout: defaultTimeout},
+			want:   scrapeConfig{Targets: []string{"http://exporter:9100/metrics"}, displayTargets: []string{"http://exporter:9100/metrics"}, Interval: defaultInterval, Timeout: defaultTimeout},
 		},
 		{
 			name: "every option",
@@ -30,6 +30,7 @@ func TestParseConfig_ValuesAndDefaults(t *testing.T) {
 			},
 			want: scrapeConfig{
 				Targets:            []string{"https://a:9100/metrics", "https://b:9100/metrics"},
+				displayTargets:     []string{"https://a:9100/metrics", "https://b:9100/metrics"},
 				Interval:           15 * time.Second,
 				Timeout:            4 * time.Second,
 				InsecureSkipVerify: true,
@@ -40,7 +41,7 @@ func TestParseConfig_ValuesAndDefaults(t *testing.T) {
 		{
 			name:   "non-positive interval and timeout keep defaults",
 			config: map[string]interface{}{"targets": []string{"http://x/metrics"}, "interval": 0, "timeout": -3},
-			want:   scrapeConfig{Targets: []string{"http://x/metrics"}, Interval: defaultInterval, Timeout: defaultTimeout},
+			want:   scrapeConfig{Targets: []string{"http://x/metrics"}, displayTargets: []string{"http://x/metrics"}, Interval: defaultInterval, Timeout: defaultTimeout},
 		},
 	}
 	for _, tc := range cases {

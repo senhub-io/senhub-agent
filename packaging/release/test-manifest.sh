@@ -34,7 +34,7 @@ check() { # check <label> <jq filter> <file>
 CONFORMS='
   def sha: test("^[0-9a-f]{64}$");
   .schema_version == 1
-  and (.version | test("^[0-9]+\\.[0-9]+\\.[0-9]+(-beta\\.[0-9]+)?$"))
+  and (.version | test("^[0-9]+\\.[0-9]+\\.[0-9]+(-(beta|rc)\\.[0-9]+)?$"))
   and (.channel | IN("stable","beta"))
   and (.date | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$"))
   and (.commit | test("^[0-9a-f]{40}$"))
@@ -143,11 +143,20 @@ check "regenerating an older beta keeps latest" '.version == "0.6.2-beta.1"' "$S
 jq '.tag_name = "0.6.2-beta.10"' "$BETA" > "$WORK/b10.json"
 "$GEN" --release-json "$WORK/b10.json" > "$WORK/b10m.json" && "$PUB" --manifest "$WORK/b10m.json" --site-dir "$SITE" >/dev/null
 check "beta.10 outranks beta.1 (numeric order)" '.version == "0.6.2-beta.10"' "$SITE/releases/beta/latest.json"
+jq '.tag_name = "0.6.2-rc.1"' "$BETA" > "$WORK/rc1.json"
+"$GEN" --release-json "$WORK/rc1.json" > "$WORK/rc1m.json" && "$PUB" --manifest "$WORK/rc1m.json" --site-dir "$SITE" >/dev/null
+check "rc is published on the beta channel" '.channel == "beta"' "$SITE/releases/0.6.2-rc.1/manifest.json"
+check "rc.1 outranks beta.10" '.version == "0.6.2-rc.1"' "$SITE/releases/beta/latest.json"
+jq '.tag_name = "0.6.2-rc.2"' "$BETA" > "$WORK/rc2.json"
+"$GEN" --release-json "$WORK/rc2.json" > "$WORK/rc2m.json" && "$PUB" --manifest "$WORK/rc2m.json" --site-dir "$SITE" >/dev/null
+jq '.tag_name = "0.6.2-rc.10"' "$BETA" > "$WORK/rc10.json"
+"$GEN" --release-json "$WORK/rc10.json" > "$WORK/rc10m.json" && "$PUB" --manifest "$WORK/rc10m.json" --site-dir "$SITE" >/dev/null
+check "rc.10 outranks rc.2 (numeric order)" '.version == "0.6.2-rc.10"' "$SITE/releases/beta/latest.json"
 jq '.tag_name = "0.6.2" | .prerelease = false' "$STABLE" > "$WORK/s2.json"
 "$GEN" --release-json "$WORK/s2.json" > "$WORK/s2m.json" && "$PUB" --manifest "$WORK/s2m.json" --site-dir "$SITE" >/dev/null
 check "stable latest follows the highest version" '.version == "0.6.2"' "$SITE/releases/stable/latest.json"
 check "the index lists newest first" '
-  (.channels.beta.releases | map(.version)) == ["0.6.2-beta.10","0.6.2-beta.1","0.6.2-beta.0"]
+  (.channels.beta.releases | map(.version)) == ["0.6.2-rc.10","0.6.2-rc.2","0.6.2-rc.1","0.6.2-beta.10","0.6.2-beta.1","0.6.2-beta.0"]
   and (.channels.stable.releases | map(.version)) == ["0.6.2","0.6.1"]
   and .channels.stable.latest_url == "https://packages.senhub.io/releases/stable/latest.json"' "$SITE/releases/index.json"
 

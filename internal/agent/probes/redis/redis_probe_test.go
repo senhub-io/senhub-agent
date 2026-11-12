@@ -2,6 +2,7 @@ package redis
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"net"
 	"strconv"
@@ -940,7 +941,7 @@ func TestSeam_ConnectAndParse(t *testing.T) {
 		"cmdstat_get:calls=100,usec=500,usec_per_call=5.00,rejected_calls=0,failed_calls=0\r\n"
 
 	p := newTestProbe(t)
-	p.dialFn = func(network, address string, timeout time.Duration) (net.Conn, error) {
+	p.dialFn = func(_ context.Context, network, address string, timeout time.Duration) (net.Conn, error) {
 		return fakeServer(t, respBulkString(infoBody), respBulkString(cmdStatsBody)), nil
 	}
 
@@ -978,7 +979,7 @@ func TestSeam_AuthFailure(t *testing.T) {
 	}
 	rp := p.(*redisProbe)
 	rp.SetName("redis-auth-fail")
-	rp.dialFn = func(network, address string, timeout time.Duration) (net.Conn, error) {
+	rp.dialFn = func(_ context.Context, network, address string, timeout time.Duration) (net.Conn, error) {
 		return fakeServer(t, "-WRONGPASS invalid username-password pair or user is disabled\r\n"), nil
 	}
 
@@ -996,7 +997,7 @@ func TestSeam_AuthFailure(t *testing.T) {
 // without a collection error.
 func TestSeam_ConnectError(t *testing.T) {
 	p := newTestProbe(t)
-	p.dialFn = func(network, address string, timeout time.Duration) (net.Conn, error) {
+	p.dialFn = func(_ context.Context, network, address string, timeout time.Duration) (net.Conn, error) {
 		return nil, fmt.Errorf("connection refused")
 	}
 	pts, err := p.Collect()

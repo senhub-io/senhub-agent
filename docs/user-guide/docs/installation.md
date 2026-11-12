@@ -44,12 +44,12 @@ Prefer them for a first install. For a build you need to reproduce
 later, pin the version instead:
 
 ```bash
-https://github.com/senhub-io/senhub-agent/releases/download/0.6.5/senhub-agent-linux-amd64.zip
+https://github.com/senhub-io/senhub-agent/releases/download/0.7.1/senhub-agent-linux-amd64.zip
 ```
 
 !!! warning "Release tags carry no `v` prefix"
 
-    The tag is `0.6.5`, not `v0.6.5`. A pinned URL built with the `v`
+    The tag is `0.7.1`, not `v0.7.1`. A pinned URL built with the `v`
     returns 404, which reads like a missing file rather than a wrong
     name — this is the single most common reason a direct download fails.
 
@@ -79,7 +79,7 @@ signature next to it. Verify before you run it, especially in an
 automated build:
 
 ```bash
-VERSION=0.6.5
+VERSION=0.7.1
 BASE=https://github.com/senhub-io/senhub-agent/releases/download/$VERSION
 curl -fsSLO "$BASE/senhub-agent-linux-amd64.zip"
 curl -fsSLO "$BASE/senhub-agent-linux-amd64.zip.minisig"
@@ -249,7 +249,7 @@ Invoke-WebRequest -Uri "http://localhost:8080/health"
 
 Expected response:
 ```json
-{"status":"ok","version":"0.6.5","uptime":"1m30s","probes_active":2,"metrics_cached":12}
+{"status":"ok","version":"0.7.1","uptime":"1m30s","probes_active":2,"metrics_cached":12}
 ```
 
 ![Windows service running](images/installation/windows-service-running.webp "Services.msc showing SenHub Agent in Running state")
@@ -593,7 +593,9 @@ sudo /usr/local/bin/senhub-agent update <version>
     `update` installs the version you name, older ones included. Copying
     a version number out of a document downgrades an agent that is
     already ahead of it, so take the number from `update --list` on the
-    host you are updating.
+    host you are updating. An MSI-managed Windows install cannot go
+    backwards in place, so `update` refuses an older version there and
+    says so; uninstall the agent, then install the older MSI.
 
 On an MSI-managed Windows install, auto-update applies a new signed MSI rather than swapping the binary in place — see the note under [MSI installer](#msi-installer-recommended).
 

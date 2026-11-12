@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -76,6 +77,15 @@ type failedProbe struct {
 // back by itself rather than wait for a restart nobody knows is needed.
 var probeStartRetryInterval = 2 * time.Minute
 
+// maxParallelProbeStarts bounds how many probes SyncConfiguration brings up
+// at once. A slow probe start (os_updates took 1m55s on a Linux host) must
+// not delay the OTLP receiver's listener behind it.
+const maxParallelProbeStarts = 8
+
+// slowStartNoticeDelay is when a still-running probe start is called out:
+// the other probes are already running in parallel and are not waiting.
+const slowStartNoticeDelay = 10 * time.Second
+
 func NewSensor(
 	addDataPoint data_store.AddCallback,
 	configProvider configuration.ConfigurationProvider,
@@ -111,12 +121,12 @@ func NewSensor(
 			// SH-XXXX token), not the legit no-licence free tier. Fail loud so
 			// monitoring alerts instead of the agent silently dropping every
 			// paid probe (#486).
-			agentstate.SetLicenseInvalid("validation_failed")
+			agentstate.SetLicenseInvalid(agentstate.LicenseReasonValidationFailed)
 			moduleLogger.Error().
 				Err(err).
 				Msg("Configured license token is INVALID and was rejected - all paid probes disabled, agent degraded to FREE TIER. Fix or remove the license to clear this alert (self-metric senhub.agent.license.invalid=1)")
 		} else if agentKey != "" && !license.VerifyBinding(config.Agent.License, agentKey, lic) {
-			agentstate.SetLicenseInvalid("binding_mismatch")
+			agentstate.SetLicenseInvalid(agentstate.LicenseReasonBindingMismatch)
 			moduleLogger.Error().
 				Msg("Configured license is NOT bound to this agent key and was rejected - all paid probes disabled, agent degraded to FREE TIER (self-metric senhub.agent.license.invalid=1)")
 		} else {
@@ -126,6 +136,7 @@ func NewSensor(
 				Str("tier", tierName).
 				Bool("expired", lic.IsExpired).
 				Time("expires_at", lic.ExpiresAt).
+				Str("platform", lic.Platform).
 				Msg("License validated successfully")
 
 			if lic.IsExpired {
@@ -133,9 +144,11 @@ func NewSensor(
 					gracePeriodEnd := lic.ExpiresAt.Add(time.Duration(lic.GracePeriodDays) * 24 * time.Hour)
 					moduleLogger.Warn().
 						Time("grace_period_ends", gracePeriodEnd).
-						Msg("License expired but in grace period")
+						Str("platform", lic.Platform).
+						Time("delegation_expires_at", lic.DelegationExpiresAt).
+						Msg("License expired but in grace period: renew the licence, or the platform's delegation, before the grace period ends")
 				} else {
-					agentstate.SetLicenseInvalid("expired_no_grace")
+					agentstate.SetLicenseInvalid(agentstate.LicenseReasonExpiredNoGrace)
 					moduleLogger.Error().Msg("License expired and grace period ended - all paid probes disabled, agent degraded to FREE TIER (self-metric senhub.agent.license.invalid=1)")
 					validatedLicense = nil // Disable license if expired outside grace period
 				}
@@ -193,14 +206,14 @@ func (s *sensor) SyncConfiguration() error {
 	if s.license == nil && config.Agent.License != "" && s.licenseValidator != nil {
 		lic, err := s.licenseValidator.ValidateLicense(config.Agent.License)
 		if err != nil {
-			agentstate.SetLicenseInvalid("validation_failed")
+			agentstate.SetLicenseInvalid(agentstate.LicenseReasonValidationFailed)
 			s.moduleLogger.Error().Err(err).Msg("Configured license token is INVALID and was rejected during configuration sync - agent staying on FREE TIER (self-metric senhub.agent.license.invalid=1)")
 		} else if agentKey := config.Agent.AuthenticationKey; agentKey != "" && !license.VerifyBinding(config.Agent.License, agentKey, lic) {
 			// Mirror the constructor's binding enforcement (see above). Without
 			// it the initial binding_mismatch rejection is silently undone by
 			// the first SyncConfiguration — which runs at boot — unlocking paid
 			// probes for a licence not bound to this agent's authentication key.
-			agentstate.SetLicenseInvalid("binding_mismatch")
+			agentstate.SetLicenseInvalid(agentstate.LicenseReasonBindingMismatch)
 			s.moduleLogger.Error().Msg("Configured license is NOT bound to this agent key and was rejected during configuration sync - agent staying on FREE TIER (self-metric senhub.agent.license.invalid=1)")
 		} else {
 			isExpired := lic.IsExpired && !s.licenseValidator.IsInGracePeriod(lic)
@@ -213,7 +226,7 @@ func (s *sensor) SyncConfiguration() error {
 					Strs("probes", lic.AuthorizedProbes).
 					Msg("License validated during configuration sync")
 			} else {
-				agentstate.SetLicenseInvalid("expired_no_grace")
+				agentstate.SetLicenseInvalid(agentstate.LicenseReasonExpiredNoGrace)
 				s.moduleLogger.Error().Msg("Configured license is expired and outside its grace period - agent staying on FREE TIER (self-metric senhub.agent.license.invalid=1)")
 			}
 		}
@@ -331,7 +344,7 @@ func (s *sensor) SyncConfiguration() error {
 				Str("probe_name", startedProbe.Probe.GetName()).
 				Msg("Stopping removed probe")
 
-			err := startedProbe.Shutdown(context.Background())
+			err := stopProbe(startedProbe)
 			if err != nil {
 				s.moduleLogger.Error().
 					Str("probe_id", startedProbe.ProbeId).
@@ -350,31 +363,76 @@ func (s *sensor) SyncConfiguration() error {
 	s.startedProbes = activeProbes
 
 	// Phase 3: Start new probes, now that what they replace is gone.
-	startedCount := 0
-	for _, p := range toStart {
-		probeLogger := s.getLoggerForProbe(p.config)
+	// Listener probes go first so the semaphore never queues a receiver
+	// behind slow probes; the starts themselves run in parallel.
+	sort.SliceStable(toStart, func(i, j int) bool {
+		return isListenerProbeType(toStart[i].config.Type) && !isListenerProbeType(toStart[j].config.Type)
+	})
+
+	type startResult struct {
+		poller  *probes.ProbePoller
+		err     error
+		elapsed time.Duration
+	}
+	results := make([]startResult, len(toStart))
+	sem := make(chan struct{}, maxParallelProbeStarts)
+	var wg sync.WaitGroup
+	for i, p := range toStart {
+		// The edition and licence checks need no I/O and stay sequential;
+		// a probe they refuse never reaches a goroutine.
+		if err := s.checkStartAllowed(p.config); err != nil {
+			results[i] = startResult{err: err}
+			continue
+		}
 		s.moduleLogger.Info().
 			Str("probe_id", p.id).
 			Str("probe_name", p.config.Name).
-			Any("probe_params", configuration.SanitizeParamsForLog(p.config.Params)).
+			Any("probe_params", configuration.SanitizeProbeParamsForLog(p.config.Type, p.config.Params)).
 			Msg("Starting new probe")
 
-		err := s.startProbe(p.config)
-		if err != nil {
-			noRetry := errors.Is(err, types.ErrCredentialsRejected)
-			if noRetry {
-				probeLogger.Error().Err(err).
+		wg.Add(1)
+		go func(i int, p pendingStart) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			start := time.Now()
+			timer := time.AfterFunc(slowStartNoticeDelay, func() {
+				s.moduleLogger.Warn().
 					Str("probe_name", p.config.Name).
 					Str("probe_type", p.config.Type).
+					Msg("Probe start is slow; the other probes are not waiting for it")
+			})
+			poller, err := s.buildAndStart(p.config)
+			timer.Stop()
+			results[i] = startResult{poller: poller, err: err, elapsed: time.Since(start)}
+		}(i, p)
+	}
+	wg.Wait()
+
+	// Bookkeeping stays sequential in toStart order so logs, retries and
+	// counters behave exactly as they did when starts were serial.
+	startedCount := 0
+	for i, p := range toStart {
+		r := results[i]
+		probeLogger := s.getLoggerForProbe(p.config)
+		if r.err != nil {
+			noRetry := errors.Is(r.err, types.ErrCredentialsRejected)
+			if noRetry {
+				probeLogger.Error().Err(r.err).
+					Str("probe_name", p.config.Name).
+					Str("probe_type", p.config.Type).
+					Int64("start_ms", r.elapsed.Milliseconds()).
 					Msg("Error starting probe: the target refused the credentials; not retried automatically, to avoid locking the account. Fix them, then reload the configuration or restart the agent")
 			} else {
-				probeLogger.Error().Err(err).
+				probeLogger.Error().Err(r.err).
 					Str("probe_name", p.config.Name).
 					Str("probe_type", p.config.Type).
 					Dur("retry_in", probeStartRetryInterval).
+					Int64("start_ms", r.elapsed.Milliseconds()).
 					Msg("Error starting probe")
 			}
-			s.failedProbes[p.id] = failedProbe{config: p.config, reason: err.Error(), noRetry: noRetry}
+			s.failedProbes[p.id] = failedProbe{config: p.config, reason: r.err.Error(), noRetry: noRetry}
 			if !noRetry {
 				select {
 				case s.retryWake <- struct{}{}:
@@ -384,9 +442,11 @@ func (s *sensor) SyncConfiguration() error {
 		} else {
 			delete(s.failedProbes, p.id)
 			startedCount++
+			s.startedProbes = append(s.startedProbes, r.poller)
 			s.moduleLogger.Info().
 				Str("probe_id", p.id).
 				Str("probe_name", p.config.Name).
+				Int64("start_ms", r.elapsed.Milliseconds()).
 				Msg("Probe started successfully")
 		}
 	}
@@ -418,6 +478,17 @@ func (s *sensor) SyncConfiguration() error {
 		Msg("Configuration synchronization completed")
 
 	return nil
+}
+
+// isListenerProbeType reports whether a probe type opens a listener. Those
+// are sorted ahead of the others in Phase 3 so a slow probe cannot hold the
+// semaphore slot a receiver needs.
+func isListenerProbeType(probeType string) bool {
+	switch probeType {
+	case "otlp_receiver", "syslog", "snmp_trap":
+		return true
+	}
+	return false
 }
 
 // StopBudget gives the probe pool longer than the default: probes close
@@ -452,8 +523,8 @@ func (s *sensor) getLoggerForProbe(probeConfig configuration.ProbeConfig) *logge
 	return s.moduleLogger.Logger
 }
 
-// startProbe brings up one probe under the sensor's lifecycle context.
-// Callers hold s.mu, which is also what makes reading s.runCtx safe here.
+// startProbe is the sequential path used by the retry timer: the no-I/O
+// checks, then the build-and-start, then the startedProbes append.
 func (s *sensor) startProbe(probeConfig configuration.ProbeConfig) error {
 	probeId := probes.GenerateProbeId(probeConfig)
 
@@ -463,7 +534,21 @@ func (s *sensor) startProbe(probeConfig configuration.ProbeConfig) error {
 		}
 	}
 
-	// License validation: Check if probe is authorized
+	if err := s.checkStartAllowed(probeConfig); err != nil {
+		return err
+	}
+
+	probePoller, err := s.buildAndStart(probeConfig)
+	if err != nil {
+		return err
+	}
+	s.startedProbes = append(s.startedProbes, probePoller)
+	return nil
+}
+
+// checkStartAllowed runs the checks that need no I/O: the probe type must
+// exist in this build and the licence must allow it.
+func (s *sensor) checkStartAllowed(probeConfig configuration.ProbeConfig) error {
 	probeType := probeConfig.Type
 	if probeType == "" {
 		// Fallback to name if type is not set (for backward compatibility)
@@ -507,15 +592,20 @@ func (s *sensor) startProbe(probeConfig configuration.ProbeConfig) error {
 			return fmt.Errorf("probe %q requires a valid license", probeType)
 		}
 	}
+	return nil
+}
 
-	// Probe is authorized - continue with probe initialization
+// buildAndStart constructs and starts one probe. It is safe to call from
+// Phase 3 goroutines while the caller holds s.mu: it only reads s.runCtx,
+// s.addDataPoint and the logger, and never mutates sensor state.
+func (s *sensor) buildAndStart(probeConfig configuration.ProbeConfig) (*probes.ProbePoller, error) {
 	probePoller, err := probes.NewProbePoller(
 		probeConfig,
 		s.getLoggerForProbe(probeConfig),
 		s.addDataPoint,
 	)
 	if err != nil {
-		return fmt.Errorf("Failed to create probe poller: %w", err)
+		return nil, fmt.Errorf("Failed to create probe poller: %w", err)
 	}
 
 	runCtx := s.runCtx
@@ -530,13 +620,24 @@ func (s *sensor) startProbe(probeConfig configuration.ProbeConfig) error {
 		// Not kept as started: a poller left in startedProbes after a
 		// failed start reads as running to every later sync, which then
 		// never tries it again.
-		if stopErr := probePoller.Shutdown(context.Background()); stopErr != nil {
+		if stopErr := stopProbe(probePoller); stopErr != nil {
 			s.moduleLogger.Warn().Err(stopErr).Str("probe_name", probeConfig.Name).Msg("Stopping a probe that failed to start")
 		}
-		return err
+		return nil, err
 	}
-	s.startedProbes = append(s.startedProbes, probePoller)
-	return nil
+	return probePoller, nil
+}
+
+// probeStopBudget bounds the stop of one probe on a reload. The sensor
+// lock is held meanwhile, and a probe blocked in a collection against an
+// unreachable target would otherwise hold it, and every later reload,
+// for as long as that collection lasts.
+var probeStopBudget = 5 * time.Second
+
+func stopProbe(p *probes.ProbePoller) error {
+	ctx, cancel := context.WithTimeout(context.Background(), probeStopBudget)
+	defer cancel()
+	return p.Shutdown(ctx)
 }
 
 // publishFailedProbes hands the probes that failed to start to agentstate,
@@ -662,12 +763,15 @@ func (s *sensor) Shutdown(ctx context.Context) error {
 func publishActiveProbes(pollers []*probes.ProbePoller) {
 	out := make([]string, 0, len(pollers))
 	byName := make(map[string]string, len(pollers))
+	intervals := make(map[string]int, len(pollers))
 	for _, pp := range pollers {
 		if pp != nil {
 			out = append(out, pp.ProbeId)
 			byName[pp.Probe.GetName()] = pp.ProbeId
+			intervals[pp.Probe.GetName()] = int(pp.Probe.GetInterval().Seconds())
 		}
 	}
 	agentstate.SetActiveProbes(out)
 	agentstate.SetActiveProbeNames(byName)
+	agentstate.SetActiveProbeIntervals(intervals)
 }

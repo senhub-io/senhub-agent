@@ -21,7 +21,7 @@ func TestConfirmFromDoesNotReadANonTerminal(t *testing.T) {
 	w.Close()
 
 	var errOut bytes.Buffer
-	ok, interactive := confirmFrom(r, &errOut)
+	ok, interactive := confirmFrom(r, &errOut, "--yes")
 	if ok || interactive {
 		t.Fatalf("confirmFrom(pipe) = %v, %v; want false, false", ok, interactive)
 	}

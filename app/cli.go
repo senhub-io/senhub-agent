@@ -166,23 +166,15 @@ func fatalf(format string, args ...any) {
 	os.Exit(cliexit.Failure)
 }
 
-// readYesConfirmation reads a single interactive answer from stdin and
-// reports whether it is an affirmative ("y"/"Y"). Anything else aborts,
-// the safe outcome for a destructive command.
-func readYesConfirmation() bool {
-	ok, _ := confirmFrom(os.Stdin, os.Stderr)
-	return ok
-}
-
 // confirmFrom reads the answer from in only when in is a terminal. A
 // script piped into a shell (`bash -s`, a heredoc) is the process's
 // stdin: reading a line there would swallow the script's next command
 // as the answer. A non-terminal stdin therefore reads nothing, says how
 // to confirm without a prompt, and reports interactive == false so the
 // caller can fail loudly instead of looking like a user's "no".
-func confirmFrom(in *os.File, errOut io.Writer) (ok, interactive bool) {
+func confirmFrom(in *os.File, errOut io.Writer, flag string) (ok, interactive bool) {
 	if !term.IsTerminal(int(in.Fd())) {
-		fmt.Fprintln(errOut, "\nstdin is not a terminal, so nothing was read; pass --yes to confirm without a prompt.")
+		fmt.Fprintf(errOut, "\nstdin is not a terminal, so nothing was read; pass %s to confirm without a prompt.\n", flag)
 		return false, false
 	}
 	var answer string
@@ -192,7 +184,7 @@ func confirmFrom(in *os.File, errOut io.Writer) (ok, interactive bool) {
 	return answerIsYes(answer), true
 }
 
-// answerIsYes is the pure decision behind readYesConfirmation: only an
+// answerIsYes is the pure decision behind the confirmation prompts: only an
 // explicit "y"/"Y" (ignoring surrounding whitespace) is affirmative.
 // Empty input — EOF or a non-TTY stdin — is NOT affirmative, so a
 // destructive command aborts by default.
@@ -339,6 +331,9 @@ func stripFlags(argv []string, drop ...string) []string {
 // `agent config check` before sudo'ing into the install would hit
 // the privilege gate.
 func readOnlyCommand(args []string) bool {
+	if len(args) > 2 && helpRequested(args[2:]) {
+		return true
+	}
 	if len(args) <= 1 {
 		return true // showHelp() — informational only
 	}
@@ -471,6 +466,9 @@ func Main() {
 	// Diagnostic subcommands (version, config check, config show) don't
 	// touch the service or its paths, so they stay ungated for usability
 	// (CI smoke checks, contributor onboarding).
+	if interceptHelp(os.Args, os.Stdout) {
+		return
+	}
 	if !readOnlyCommand(os.Args) {
 		if err := checkPrivileges(command); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)

@@ -140,16 +140,26 @@ func (p *cassandraProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
-// Collect gathers all Cassandra metrics from Jolokia. A connection failure
-// produces up=0 and returns nil (collection error is a measurement, not a
-// framework failure), consistent with the convention used by httpcheck and
-// icmpcheck.
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
 func (p *cassandraProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext gathers all Cassandra metrics from Jolokia. A connection
+// failure produces up=0 and returns nil (collection error is a measurement,
+// not a framework failure), consistent with the convention used by httpcheck
+// and icmpcheck. A cycle whose parent context ends returns that error
+// instead.
+func (p *cassandraProbe) CollectContext(parent context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
-	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
+	ctx, cancel := context.WithTimeout(parent, p.cfg.Timeout)
 	defer cancel()
 
 	collected, version, hostID, err := p.collect(ctx, now)
+	if parentErr := parent.Err(); parentErr != nil {
+		return nil, fmt.Errorf("cassandra collection interrupted: %w", parentErr)
+	}
 
 	up := float64(1)
 	if err != nil {

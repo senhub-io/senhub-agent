@@ -172,6 +172,7 @@ func (h *HTTPSyncStrategy) servePrometheusExposition(w http.ResponseWriter, _ *h
 	probesTotal, probesHealthy := agentstate.GetProbeCounts()
 	agentRecords := agentmetrics.BuildAgentRecords(agentmetrics.AgentMetricsSnapshot{
 		StartTime:              h.startTime,
+		Reader:                 "prometheus",
 		CacheEntries:           h.cache.GetCacheInfo().TotalMetrics,
 		ProbesActive:           h.cache.GetCacheInfo().ProbeCount,
 		ProbesTotal:            probesTotal,

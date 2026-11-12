@@ -433,6 +433,16 @@ func checkConfig(configPath string) checkOutcome {
 		}
 	}
 
+	// A top-level key no field reads is dropped by the loader: a typo in a
+	// block name loses the whole block without a word.
+	if unknown, uerr := configuration.FindUnknownRootKeys(configPath); uerr == nil {
+		for _, k := range unknown {
+			fmt.Printf("  [WARN] %s: top-level key %q is not read and has no effect (accepted: %s)\n",
+				filepath.Base(configPath), k, strings.Join(configuration.KnownRootKeys(), ", "))
+			warnings++
+		}
+	}
+
 	// Config version. Validate against the agent's supported range
 	// (MinimumConfigVersion..CurrentConfigVersion) rather than a
 	// hardcoded literal, so `config check` tracks the source of truth
@@ -583,6 +593,7 @@ func checkConfig(configPath string) checkOutcome {
 			errorCount += e
 			warnings += w
 			errorCount += reportGovernanceProblems(p)
+			errorCount += reportCollectTimeoutProblems(p)
 		}
 		for _, o := range filetailOverlaps(config.Probes) {
 			fmt.Printf("  [WARN] %s is read by filetail probes %s: each line is sent once per probe and the probes share one rotation notice; declare the file in a single probe\n",
@@ -676,6 +687,10 @@ func checkConfig(configPath string) checkOutcome {
 
 	errorCount += reportAgentGovernanceProblems(config.Governance)
 	errorCount += reportLogsProblems(config.Logs)
+
+	extErrors, extWarnings := reportExtensions(config)
+	errorCount += extErrors
+	warnings += extWarnings
 
 	errorCount, warnings = reportNagiosFile(configPath, errorCount, warnings)
 
@@ -955,6 +970,17 @@ func reportGovernanceProblems(p configuration.ProbeConfig) (errors int) {
 	}
 	if _, err := p.ParseGovernance(); err != nil {
 		fmt.Printf("         [ERROR] Probe %q: governance: %v\n", p.Name, err)
+		errors++
+	}
+	return errors
+}
+
+// reportCollectTimeoutProblems checks the probe's collect_timeout: a value
+// that is not a duration or a number of seconds, or is negative, is an
+// error naming the key. Absent is silent.
+func reportCollectTimeoutProblems(p configuration.ProbeConfig) (errors int) {
+	if _, err := probes.CollectTimeoutOf(p); err != nil {
+		fmt.Printf("         [ERROR] %v\n", err)
 		errors++
 	}
 	return errors

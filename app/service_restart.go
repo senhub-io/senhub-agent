@@ -9,14 +9,15 @@ import (
 // serviceRestarter holds what restarting the installed service needs, so
 // the sequence can be tested without systemd.
 type serviceRestarter struct {
-	installed func() bool
-	isActive  func() bool
-	mainPID   func() string
-	restart   func() error
-	exePath   func(pid string) (string, error)
-	version   func(exe string) string
-	wait      time.Duration
-	poll      time.Duration
+	installed  func() bool
+	isActive   func() bool
+	mainPID    func() string
+	restart    func() error
+	exePath    func(pid string) (string, error)
+	version    func(exe string) string
+	wait       time.Duration
+	poll       time.Duration
+	statusHint string
 }
 
 // run restarts the service when it is installed and running, waits for a
@@ -39,7 +40,7 @@ func (r serviceRestarter) run() (string, error) {
 			break
 		}
 		if time.Now().After(deadline) {
-			return "", fmt.Errorf("the service did not come back within %s; check 'systemctl status senhub-agent'", r.wait)
+			return "", fmt.Errorf("the service did not come back within %s; %s", r.wait, r.statusHint)
 		}
 		time.Sleep(r.poll)
 	}

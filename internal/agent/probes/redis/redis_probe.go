@@ -42,8 +42,8 @@ type redisProbe struct {
 	moduleLogger *logger.ModuleLogger
 	entityObs    *entityObserver
 
-	// dialFn is overridable in tests; defaults to net.DialTimeout.
-	dialFn func(network, address string, timeout time.Duration) (net.Conn, error)
+	// dialFn is overridable in tests; defaults to a context-aware net.Dialer.
+	dialFn func(ctx context.Context, network, address string, timeout time.Duration) (net.Conn, error)
 
 	failures subcollect.Tracker
 }
@@ -73,7 +73,9 @@ func NewRedisProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 		instance:     instance,
 		moduleLogger: moduleLogger,
 		entityObs:    newEntityObserver(cfg, dbcommon.HostID),
-		dialFn:       net.DialTimeout,
+		dialFn: func(ctx context.Context, network, address string, timeout time.Duration) (net.Conn, error) {
+			return (&net.Dialer{Timeout: timeout}).DialContext(ctx, network, address)
+		},
 	}
 	probe.SetProbeType(ProbeType)
 	// Redis is a remote db entity, not host-local: declare the real source
@@ -125,53 +127,64 @@ func authCommandArgs(cfg probeConfig) []string {
 	return []string{"AUTH", cfg.Password}
 }
 
-// Collect dials the Redis server, authenticates if configured, issues
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
+func (p *redisProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext dials the Redis server, authenticates if configured, issues
 // INFO all, INFO commandstats, and conditionally INFO cluster / INFO sentinel,
 // parses the results and emits OTel-canonical datapoints. A connection or
 // auth failure is a measurement (senhub.db.up=0), not a collection error.
-func (p *redisProbe) Collect() ([]data_store.DataPoint, error) {
+func (p *redisProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 
-	conn, err := p.dialFn("tcp", p.instance, p.cfg.Timeout)
+	conn, err := p.dialFn(ctx, "tcp", p.instance, p.cfg.Timeout)
 	if err != nil {
-		p.failures.Failed(p.moduleLogger, subcollect.Warn, p.failureKey("connection"), err, "Redis connect failed")
-		return p.BaseProbe.EnrichDataPointsWithProbeName(p.failurePoints(err, now), p.GetName()), nil
+		return p.failed(ctx, err, now, "Redis connect failed")
 	}
 	defer conn.Close()
+
+	// The end of the cycle's context interrupts a blocked read or write.
+	// The raw connection is the one closed: closing the TLS layer would
+	// first try to send close_notify to a server that may not be reading.
+	raw := conn
+	stop := context.AfterFunc(ctx, func() {
+		if err := raw.Close(); err != nil {
+			p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("Redis connection close on cancellation failed")
+		}
+	})
+	defer stop()
 
 	if p.cfg.TLS {
 		tlsConn, err := p.handshake(conn)
 		if err != nil {
-			p.failures.Failed(p.moduleLogger, subcollect.Warn, p.failureKey("connection"), err, "Redis TLS handshake failed")
-			return p.BaseProbe.EnrichDataPointsWithProbeName(p.failurePoints(err, now), p.GetName()), nil
+			return p.failed(ctx, err, now, "Redis TLS handshake failed")
 		}
 		conn = tlsConn
 	}
 
 	if parts := authCommandArgs(p.cfg); len(parts) > 0 {
 		if err := sendCommand(conn, p.cfg.Timeout, parts...); err != nil {
-			p.failures.Failed(p.moduleLogger, subcollect.Warn, p.failureKey("connection"), err, "Redis AUTH send failed")
-			return p.BaseProbe.EnrichDataPointsWithProbeName(p.failurePoints(err, now), p.GetName()), nil
+			return p.failed(ctx, err, now, "Redis AUTH send failed")
 		}
 		resp, err := readLine(conn, p.cfg.Timeout)
 		if err != nil || strings.HasPrefix(resp, "-") {
 			if err == nil {
 				err = fmt.Errorf("auth rejected: %s", resp)
 			}
-			p.failures.Failed(p.moduleLogger, subcollect.Warn, p.failureKey("connection"), err, "Redis AUTH failed")
-			return p.BaseProbe.EnrichDataPointsWithProbeName(p.failurePoints(err, now), p.GetName()), nil
+			return p.failed(ctx, err, now, "Redis AUTH failed")
 		}
 	}
 
 	if err := sendCommand(conn, p.cfg.Timeout, "INFO", "all"); err != nil {
-		p.failures.Failed(p.moduleLogger, subcollect.Warn, p.failureKey("connection"), err, "Redis INFO send failed")
-		return p.BaseProbe.EnrichDataPointsWithProbeName(p.failurePoints(err, now), p.GetName()), nil
+		return p.failed(ctx, err, now, "Redis INFO send failed")
 	}
 
 	blob, err := readInfo(conn, p.cfg.Timeout)
 	if err != nil {
-		p.failures.Failed(p.moduleLogger, subcollect.Warn, p.failureKey("connection"), err, "Redis INFO read failed")
-		return p.BaseProbe.EnrichDataPointsWithProbeName(p.failurePoints(err, now), p.GetName()), nil
+		return p.failed(ctx, err, now, "Redis INFO read failed")
 	}
 
 	p.failures.Succeeded(p.moduleLogger, p.failureKey("connection"), "Redis connection recovered")
@@ -239,6 +252,10 @@ func (p *redisProbe) Collect() ([]data_store.DataPoint, error) {
 		}
 	}
 
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("redis collection interrupted: %w", ctxErr)
+	}
+
 	points := p.buildDatapoints(info, cmdStats, clusterInfo, sentinelInfo, now, 1)
 	if len(sentinelMasters) > 0 {
 		p.addSentinelMasterDetailPoints(&points, sentinelMasters, now)
@@ -291,6 +308,17 @@ func (p *redisProbe) failurePoints(err error, ts time.Time) []data_store.DataPoi
 		{Name: "senhub.db.up", Value: 0, Timestamp: ts, Tags: p.baseTags("overview")},
 		{Name: dbcommon.CheckResultMetric, Value: float64(dbcommon.ClassifyError(err)), Timestamp: ts, Tags: p.baseTags("status")},
 	}
+}
+
+// failed turns an error into the probe's failure datapoints, unless the
+// collection context has ended: then the target did not fail, the cycle was
+// interrupted, and no measurement is emitted.
+func (p *redisProbe) failed(ctx context.Context, err error, now time.Time, msg string) ([]data_store.DataPoint, error) {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("redis collection interrupted: %w", ctxErr)
+	}
+	p.failures.Failed(p.moduleLogger, subcollect.Warn, p.failureKey("connection"), err, msg)
+	return p.BaseProbe.EnrichDataPointsWithProbeName(p.failurePoints(err, now), p.GetName()), nil
 }
 
 func (p *redisProbe) addGauge(out *[]data_store.DataPoint, name string, value float64, ts time.Time, metricType string, extra ...tags.Tag) {

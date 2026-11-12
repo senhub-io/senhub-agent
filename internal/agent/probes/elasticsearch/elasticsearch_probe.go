@@ -152,10 +152,20 @@ func classifyProbeError(err error) dbcommon.CheckResult {
 // On the first successful collect it also calls GET / to pin the cluster_uuid
 // used as the stable db.instance.id in the entity rail.
 func (p *elasticsearchProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext is Collect under the poller's context. A cycle whose
+// context ends returns its error instead of reporting the cluster
+// unreachable: it was not, the cycle was stopped.
+func (p *elasticsearchProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 	var points []data_store.DataPoint
 
-	health, err := p.fetchClusterHealth()
+	health, err := p.fetchClusterHealth(ctx)
+	if err != nil && ctx.Err() != nil {
+		return nil, fmt.Errorf("elasticsearch collection interrupted: %w", ctx.Err())
+	}
 	if err != nil {
 		p.failures.Failed(p.moduleLogger, subcollect.Warn, "cluster_health", err, "elasticsearch cluster health fetch failed")
 		p.entitySrc.setReachable(false)
@@ -171,7 +181,7 @@ func (p *elasticsearchProbe) Collect() ([]data_store.DataPoint, error) {
 
 	// Pin the stable cluster id on first successful reach.  The entity source
 	// suppresses the db entity until this is called at least once.
-	p.maybePin()
+	p.maybePin(ctx)
 
 	p.entitySrc.setReachable(true)
 
@@ -181,7 +191,10 @@ func (p *elasticsearchProbe) Collect() ([]data_store.DataPoint, error) {
 	)
 	points = append(points, p.buildClusterHealthPoints(health, now)...)
 
-	nodeStats, err := p.fetchNodeStats()
+	nodeStats, err := p.fetchNodeStats(ctx)
+	if err != nil && ctx.Err() != nil {
+		return nil, fmt.Errorf("elasticsearch collection interrupted: %w", ctx.Err())
+	}
 	if err != nil {
 		p.failures.Failed(p.moduleLogger, subcollect.Warn, "node_stats", err, "elasticsearch node stats fetch failed")
 		// Return what we have (cluster health is available).
@@ -210,7 +223,7 @@ type rootInfo struct {
 // (either by instance_name at construction or by a prior call here).
 // Errors are logged at debug level and silently ignored: the entity is simply
 // not emitted until a successful fetch pins the id.
-func (p *elasticsearchProbe) maybePin() {
+func (p *elasticsearchProbe) maybePin(ctx context.Context) {
 	p.entitySrc.mu.RLock()
 	already := p.entitySrc.pinned
 	p.entitySrc.mu.RUnlock()
@@ -219,7 +232,7 @@ func (p *elasticsearchProbe) maybePin() {
 	}
 
 	var info rootInfo
-	if err := p.getJSON("/", &info); err != nil {
+	if err := p.getJSON(ctx, "/", &info); err != nil {
 		p.moduleLogger.Debug().Err(err).Msg("elasticsearch root fetch failed; cluster_uuid pending")
 		return
 	}
@@ -240,9 +253,9 @@ type clusterHealth struct {
 	NumberOfPendingTasks int    `json:"number_of_pending_tasks"`
 }
 
-func (p *elasticsearchProbe) fetchClusterHealth() (*clusterHealth, error) {
+func (p *elasticsearchProbe) fetchClusterHealth(ctx context.Context) (*clusterHealth, error) {
 	var h clusterHealth
-	if err := p.getJSON("/_cluster/health", &h); err != nil {
+	if err := p.getJSON(ctx, "/_cluster/health", &h); err != nil {
 		return nil, err
 	}
 	return &h, nil
@@ -338,9 +351,9 @@ type threadPoolStats struct {
 	Rejected  int64 `json:"rejected"`
 }
 
-func (p *elasticsearchProbe) fetchNodeStats() (*nodeStatsResponse, error) {
+func (p *elasticsearchProbe) fetchNodeStats(ctx context.Context) (*nodeStatsResponse, error) {
 	var r nodeStatsResponse
-	if err := p.getJSON("/_nodes/_local/stats", &r); err != nil {
+	if err := p.getJSON(ctx, "/_nodes/_local/stats", &r); err != nil {
 		return nil, err
 	}
 	return &r, nil
@@ -483,9 +496,9 @@ func (p *elasticsearchProbe) buildNodeStatsPoints(r *nodeStatsResponse, ts time.
 
 // ----- HTTP helpers -----------------------------------------------------------
 
-func (p *elasticsearchProbe) getJSON(path string, v interface{}) error {
+func (p *elasticsearchProbe) getJSON(ctx context.Context, path string, v interface{}) error {
 	url := p.cfg.Endpoint + path
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("building request for %s: %w", url, err)
 	}

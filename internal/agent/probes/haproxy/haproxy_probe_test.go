@@ -2,6 +2,7 @@ package haproxy
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -232,7 +233,7 @@ func TestFetchCSV_HTMLPageNamesTheCSVForm(t *testing.T) {
 	defer srv.Close()
 
 	probe := makeTestProbe(srv.URL + "/stats")
-	_, err := probe.fetchCSV()
+	_, err := probe.fetchCSV(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "/stats;csv") {
 		t.Errorf("error = %v, want it to point at the ;csv form", err)
 	}

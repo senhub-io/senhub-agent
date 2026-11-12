@@ -2,6 +2,7 @@
 package configuration
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -149,8 +150,23 @@ func shouldIgnoreEvent(event fsnotify.Event) bool {
 	return false
 }
 
+// Reload reads the configuration again and notifies the observers when
+// it changed. On error the configuration in force is kept; an error is
+// also returned when a reload is already running, instead of blocking.
+func (lc *LocalConfiguration) Reload() error {
+	return lc.reloadConfiguration()
+}
+
 // reloadConfiguration reloads the configuration and notifies observers
 func (lc *LocalConfiguration) reloadConfiguration() error {
+	// The mutex is not re-entrant: an overlay asking for a reload from
+	// inside a running one would deadlock on Lock, so a busy reload is
+	// refused with an error instead.
+	if !lc.reloadMu.TryLock() {
+		return errors.New("a configuration reload is already in progress")
+	}
+	defer lc.reloadMu.Unlock()
+
 	// Store previous configuration for comparison
 	previousData := *lc.snapshot()
 
@@ -215,6 +231,11 @@ func (lc *LocalConfiguration) hasConfigurationChanged(old, new LocalConfiguratio
 
 	if !reflect.DeepEqual(old.Entities, new.Entities) {
 		lc.logger.Debug().Msg("Entities configuration changed")
+		return true
+	}
+
+	if !reflect.DeepEqual(old.Extensions, new.Extensions) {
+		lc.logger.Debug().Msg("Extension configuration changed")
 		return true
 	}
 

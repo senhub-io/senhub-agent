@@ -125,10 +125,18 @@ func (p *pgProbe) OnShutdown(_ context.Context) error {
 // best-effort basis (partial failure keeps the up gauge and skips the
 // rest, logged at Warn).
 func (p *pgProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext is Collect under the poller's context. A cycle whose
+// context ends returns its error and publishes nothing: the server did
+// not go down, and the families not reached yet would be missing from a
+// cycle that still reports up=1.
+func (p *pgProbe) CollectContext(parent context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 	instance := p.cfg.Host + ":" + strconv.Itoa(p.cfg.Port)
 
-	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
+	ctx, cancel := context.WithTimeout(parent, p.cfg.Timeout)
 	defer cancel()
 
 	// Ping first — the connection is established here (not in OnStart) so a
@@ -144,6 +152,9 @@ func (p *pgProbe) Collect() ([]data_store.DataPoint, error) {
 		return p.BaseProbe.EnrichDataPointsWithProbeName([]data_store.DataPoint{up, check}, p.GetName()), nil
 	}
 	if err := p.db.PingContext(ctx); err != nil {
+		if parent.Err() != nil {
+			return nil, fmt.Errorf("postgresql collection interrupted: %w", parent.Err())
+		}
 		p.moduleLogger.Warn().Err(err).Str("instance", instance).Msg("postgresql: ping failed")
 		baseTags := p.baseTags(instance)
 		up := p.dp("senhub.db.up", 0, now, baseTags)
@@ -186,6 +197,10 @@ func (p *pgProbe) Collect() ([]data_store.DataPoint, error) {
 
 	// ── Replication ─────────────────────────────────────────────────────────
 	p.collectReplication(ctx, now, instance, &points)
+
+	if err := parent.Err(); err != nil {
+		return nil, fmt.Errorf("postgresql collection interrupted: %w", err)
+	}
 
 	// ── Entity update ───────────────────────────────────────────────────────
 	// instanceID is already pinned above. Pass "" so update() uses the

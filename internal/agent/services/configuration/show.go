@@ -37,6 +37,7 @@ import (
 
 	"senhub-agent.go/internal/agent/services/configuration/secret"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/services/logredact"
 )
 
 // ShowMode picks the rendering strategy. Zero value is ShowResolved
@@ -48,12 +49,6 @@ const (
 	ShowRaw
 	ShowRedact
 )
-
-// secretFieldPattern matches the YAML field names whose VALUE should
-// be masked in ShowRedact mode. The pattern uses substring matching
-// (no `^…$` anchors) so composite names like `api_key`, `auth_token`,
-// `db_password`, `client_secret` are all caught. Case-insensitive.
-var secretFieldPattern = regexp.MustCompile(`(?i)(key|token|password|passphrase|secret|community|credential|authorization|bearer|license|jwt)`)
 
 // fileRefPattern recognises a `${file:..}` reference inside a raw
 // (pre-substitution) string. The trailing capture is intentionally
@@ -78,32 +73,45 @@ var envProbeRefPattern = regexp.MustCompile(`\$\{env:SENHUB_PROBE_[^}]+\}`)
 // On error the path that broke is included in the message so the
 // operator can edit the offending file without trial-and-error.
 func LoadForShow(configPath string, mode ShowMode, log *logger.ModuleLogger) (LocalConfigurationData, error) {
-	raw, err := loadMerged(configPath, log)
+	load := func() (LocalConfigurationData, error) { return loadMerged(configPath, log) }
+	switch mode {
+	case ShowRaw:
+		return load()
+	case ShowResolved:
+		resolved, err := load()
+		if err != nil {
+			return LocalConfigurationData{}, err
+		}
+		if err := Substitute(&resolved); err != nil {
+			return LocalConfigurationData{}, fmt.Errorf("substituting variables: %w", err)
+		}
+		return resolved, nil
+	default:
+		return redactedCopy(load)
+	}
+}
+
+// redactedCopy loads the same tree twice, resolves the second copy and
+// masks it against the first: the raw copy is what tells a value that came
+// from a ${file:} or ${secret:} reference from one written inline. Loading
+// twice is cheap I/O and avoids a deep-copy routine over a shape full of
+// nested map[string]interface{} payloads.
+func redactedCopy(load func() (LocalConfigurationData, error)) (LocalConfigurationData, error) {
+	raw, err := load()
 	if err != nil {
 		return LocalConfigurationData{}, err
 	}
-	if mode == ShowRaw {
-		return raw, nil
-	}
-
-	// Re-load to keep `raw` pristine for the redact mode; cheap I/O,
-	// avoids a deep-copy routine over the LocalConfigurationData
-	// shape (which has nested map[string]interface{} payloads).
-	resolved, err := loadMerged(configPath, log)
+	resolved, err := load()
 	if err != nil {
 		return LocalConfigurationData{}, err
 	}
 	if err := Substitute(&resolved); err != nil {
 		return LocalConfigurationData{}, fmt.Errorf("substituting variables: %w", err)
 	}
-
-	if mode == ShowResolved {
-		return resolved, nil
-	}
-	// ShowRedact: walk raw + resolved in lockstep, masking every
-	// string that was either file-backed or sits under a secret-
-	// named key.
+	// Walk raw + resolved in lockstep, masking every string that was
+	// either file-backed or sits under a secret-named key.
 	redactInPlace(reflect.ValueOf(&raw).Elem(), reflect.ValueOf(&resolved).Elem(), "")
+	maskSpecSecrets(&resolved)
 	return resolved, nil
 }
 
@@ -215,7 +223,7 @@ func loadMerged(configPath string, log *logger.ModuleLogger) (LocalConfiguration
 //   - the value came from a ${file:..} reference (detected by
 //     looking at the matching position in the raw tree), OR
 //   - the most recent named context (struct YAML tag or map key)
-//     matches secretFieldPattern.
+//     matches logredact.IsSecretKey.
 //
 // Both trees must have the same shape (same struct types, parallel
 // slice lengths). They will, because they were loaded from the same
@@ -293,8 +301,16 @@ func redactInPlace(rawV, resV reflect.Value, currentName string) {
 		// empty — an empty secret is still a secret slot.
 		hasFileRef := fileRefPattern.MatchString(raw)
 		hasSecretRef := secretRefPattern.MatchString(raw) || envProbeRefPattern.MatchString(raw)
-		nameLooksSecret := currentName != "" && secretFieldPattern.MatchString(currentName)
+		nameLooksSecret := currentName != "" && logredact.IsSecretKey(currentName)
 		if !hasFileRef && !hasSecretRef && !nameLooksSecret {
+			// A value can carry a credential under any key name: the URL
+			// user part, query values, a fragment, a token. Mask it the
+			// way the logs do.
+			if resV.CanSet() {
+				if masked := logredact.String(resV.String()); masked != resV.String() {
+					resV.SetString(masked)
+				}
+			}
 			return
 		}
 		if !resV.CanSet() {

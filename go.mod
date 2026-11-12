@@ -1,6 +1,6 @@
 module senhub-agent.go
 
-go 1.26.10
+go 1.26.11
 
 require (
 	filippo.io/age v1.3.1
@@ -40,8 +40,8 @@ require (
 	go.opentelemetry.io/otel/sdk/log v0.21.0
 	go.opentelemetry.io/otel/sdk/metric v1.45.0
 	go.opentelemetry.io/otel/trace v1.45.0
-	golang.org/x/sys v0.48.0
-	golang.org/x/text v0.42.0
+	golang.org/x/sys v0.49.0
+	golang.org/x/text v0.43.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260803160001-6ac0973c030d
 	google.golang.org/grpc v1.83.2
 	gopkg.in/mcuadros/go-syslog.v2 v2.3.0
@@ -54,7 +54,7 @@ require (
 	github.com/Microsoft/go-winio v0.6.2
 	github.com/billgraziano/dpapi v0.5.0
 	github.com/sijms/go-ora/v2 v2.9.0
-	github.com/toise-dev/toise/pkg/emit v0.15.0
+	github.com/toise-dev/toise/pkg/emit v0.16.0
 	go.opentelemetry.io/collector/pdata v1.59.0
 )
 
@@ -67,7 +67,7 @@ require (
 	github.com/jcmturner/gofork v1.7.6 // indirect
 	github.com/jcmturner/gokrb5/v8 v8.4.4 // indirect
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
-	github.com/klauspost/compress v1.18.7 // indirect
+	github.com/klauspost/compress v1.20.2 // indirect
 	github.com/pierrec/lz4/v4 v4.1.27 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
@@ -96,7 +96,7 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/term v0.46.0
+	golang.org/x/term v0.47.0
 	golang.org/x/time v0.14.0 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
@@ -162,9 +162,9 @@ require (
 	go.opentelemetry.io/otel/metric v1.45.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.0
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
-	golang.org/x/crypto v0.57.0 // indirect
-	golang.org/x/net v0.60.0 // indirect
-	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
+	golang.org/x/net v0.62.0 // indirect
+	golang.org/x/sync v0.24.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260803160001-6ac0973c030d // indirect
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect

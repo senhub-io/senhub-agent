@@ -1,6 +1,7 @@
 package execprobe
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -239,7 +240,7 @@ func TestCollect_ConcurrentRunSkipped(t *testing.T) {
 
 	block := make(chan struct{})
 	started := make(chan struct{})
-	p.run = func() execResult {
+	p.run = func(context.Context) execResult {
 		close(started)
 		<-block
 		return execResult{}
@@ -267,14 +268,14 @@ func TestCollect_SeamStatusMapping(t *testing.T) {
 
 	cases := map[int]float64{0: 0, 1: 1, 2: 2, 5: 3}
 	for exit, want := range cases {
-		p.run = func() execResult { return execResult{exitCode: exit} }
+		p.run = func(context.Context) execResult { return execResult{exitCode: exit} }
 		got := collectByName(t, p)
 		if got["senhub.exec.status"] != want {
 			t.Errorf("exit %d: status = %v, want %v", exit, got["senhub.exec.status"], want)
 		}
 	}
 
-	p.run = func() execResult { return execResult{err: os.ErrPermission} }
+	p.run = func(context.Context) execResult { return execResult{err: os.ErrPermission} }
 	if got := collectByName(t, p); got["senhub.exec.status"] != 3 {
 		t.Errorf("spawn failure: status = %v, want 3", got["senhub.exec.status"])
 	}

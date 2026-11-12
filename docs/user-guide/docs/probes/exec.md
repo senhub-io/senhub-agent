@@ -50,6 +50,8 @@ output contracts are supported:
 
 <!-- schema:params:end -->
 
+`timeout` bounds one run of the command. The probe-level `collect_timeout` (see [Configuration](../configuration.md)) bounds the whole collection; the shorter of the two ends the command and all its children.
+
 `env` entries are added on top of the agent's own environment, which the
 program inherits.
 

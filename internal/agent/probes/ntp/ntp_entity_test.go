@@ -1,6 +1,7 @@
 package ntp
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"syscall"
@@ -189,7 +190,7 @@ func TestNTPEntitySourceAndCheckResult(t *testing.T) {
 			})
 			p.entitySrc.hostID = tt.hostID
 			p.entitySrc.agentID = func() string { return tt.agentID }
-			p.query = func(server string, _ time.Duration) (sample, error) {
+			p.query = func(_ context.Context, server string, _ time.Duration) (sample, error) {
 				if tt.queryErr != nil {
 					return sample{}, tt.queryErr
 				}

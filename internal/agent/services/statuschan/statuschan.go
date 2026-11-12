@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/extension"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/status"
 )
@@ -205,6 +206,7 @@ func Snapshot(svc *status.StatusService) status.SystemStatus {
 		st.StrategyFailures = append(st.StrategyFailures, status.StrategyFailure{Strategy: name, Reason: f.Reason, Detail: f.Detail})
 	}
 	sort.Slice(st.StrategyFailures, func(i, j int) bool { return st.StrategyFailures[i].Strategy < st.StrategyFailures[j].Strategy })
+	st.Extensions = extension.Statuses()
 	if w := agentstate.GetConfigWatchDisabled(); w != nil {
 		st.ConfigWatch = &status.ConfigWatch{Reason: w.Reason, Detail: w.Detail}
 	}

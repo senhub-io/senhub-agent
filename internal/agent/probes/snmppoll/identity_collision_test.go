@@ -103,7 +103,7 @@ func TestResolveDeviceID_MACBeforeEngine(t *testing.T) {
 func TestClaimID(t *testing.T) {
 	now := time.Now()
 	fresh := now
-	stale := now.Add(-polledRegistryTTL - time.Second)
+	stale := now.Add(-freshFor(defaultTopologyInterval) - time.Second)
 
 	usableMAC := []byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55}
 	otherMAC := []byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x66}

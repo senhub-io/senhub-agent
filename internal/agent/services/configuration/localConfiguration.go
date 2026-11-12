@@ -44,6 +44,10 @@ type LocalConfigurationData struct {
 	// location and lifecycle of the host this agent runs on. It is kept
 	// raw: the governance package owns the shape and the closed sets.
 	Governance map[string]interface{} `yaml:"governance,omitempty"`
+	// Extensions holds the top-level blocks a registered extension
+	// claims, keyed by block name. Any other unknown top-level key is
+	// dropped by normalizeYAMLTypes, as it always was.
+	Extensions map[string]interface{} `yaml:",inline"`
 }
 
 // EntitiesConfig is the operator's control over entity detection.
@@ -151,6 +155,11 @@ type LocalConfiguration struct {
 	// agent from running at all (#850) and that no test could reach
 	// while the constructor was called directly.
 	newWatcher func() (*fsnotify.Watcher, error)
+
+	// reloadMu serializes reloads: the file watcher and an extension
+	// asking for one would otherwise compare against the same previous
+	// configuration and notify twice, or not at all.
+	reloadMu sync.Mutex
 
 	// lastCacheRetention is the retention GetCacheConfig last announced, so a
 	// value that has not changed is not re-announced on every call.
@@ -406,9 +415,7 @@ func (lc *LocalConfiguration) Start(ctx context.Context) error {
 		// before the seal below, so the fresh plaintext key is moved
 		// into the OS store in the same start rather than sitting in
 		// the file until the next one.
-		if err := EnsureAdminKey(lc.configPath, lc.logger); err != nil {
-			lc.logger.Warn().Err(err).Msg("Adding the administration key failed; the console and the configuration API will not answer until one is set")
-		}
+		ensureAdminKeyOrWarn(lc.configPath, lc.logger)
 
 		// Seal any inline plaintext secrets into the OS-native store (default
 		// policy). Non-fatal by design: SealInlineSecrets restores its own backups
@@ -429,6 +436,10 @@ func (lc *LocalConfiguration) Start(ctx context.Context) error {
 			lc.logger.Info().
 				Str("seal_with", "sudo senhub-agent secret migrate --wire-unit").
 				Msg("Inline secrets left in place: the secret store seals only as root")
+		} else if errors.Is(err, secret.ErrConfigDirReadOnly) {
+			warnOnce("seal-readonly", filepath.Dir(lc.configPath), func() {
+				lc.logger.Info().Msg("Inline secrets left in place: the configuration directory is read-only; reference them with ${env:}, ${file:} or ${secret:}")
+			})
 		} else if err != nil {
 			lc.logger.Warn().Err(err).Msg("Sealing inline secrets failed; continuing with the existing config")
 		}

@@ -287,7 +287,7 @@ func (p *snmppollProbe) crawlPollDevice(ctx context.Context, target string) (str
 	}
 
 	if p.entitySource != nil && p.entitySource.registry != nil {
-		p.entitySource.registry.recordPolled(self, deviceID, time.Now())
+		p.entitySource.registry.recordPolled(self, deviceID, effectiveSweepCadence(p.cfg.Interval, p.discoveryInterval()), time.Now())
 	}
 
 	neighbours := make([]string, 0, len(topo.Neighbors))
@@ -482,7 +482,7 @@ func (p *snmppollProbe) pollDiscoveredDevice(ctx context.Context, d discoveredDe
 	}
 
 	if p.entitySource != nil && p.entitySource.registry != nil {
-		p.entitySource.registry.recordPolled(self, deviceID, time.Now())
+		p.entitySource.registry.recordPolled(self, deviceID, effectiveSweepCadence(p.cfg.Interval, p.discoveryInterval()), time.Now())
 		p.entitySource.registry.recordPortStates(deviceID, ifaces, p.discoveryInterval(), time.Now())
 	}
 

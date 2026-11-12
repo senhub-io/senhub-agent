@@ -55,7 +55,7 @@ type serverResult struct {
 	err    error
 }
 
-type queryFunc func(server string, timeout time.Duration) (sample, error)
+type queryFunc func(ctx context.Context, server string, timeout time.Duration) (sample, error)
 
 // NTPProbe measures the local clock against one or more NTP servers.
 type NTPProbe struct {
@@ -162,11 +162,17 @@ func (p *NTPProbe) OnStart(_ chan struct{}) error {
 
 func (p *NTPProbe) OnShutdown(_ context.Context) error { return nil }
 
-// Collect measures the clock against every configured server with bounded
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
+func (p *NTPProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext measures the clock against every configured server with bounded
 // parallelism. A server that fails is a measurement (up=0 plus the reason),
 // never a collection error — one unreachable time source must not suppress the
 // reading taken from another.
-func (p *NTPProbe) Collect() ([]data_store.DataPoint, error) {
+func (p *NTPProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 
 	results := make([]serverResult, len(p.config.Servers))
@@ -178,11 +184,14 @@ func (p *NTPProbe) Collect() ([]data_store.DataPoint, error) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			results[i] = p.measure(server)
+			results[i] = p.measure(ctx, server)
 		}(i, server)
 	}
 	wg.Wait()
 
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("ntp collection interrupted: %w", ctxErr)
+	}
 	// Rebuild the entity snapshot from the configured targets. The targets do
 	// not change at runtime; rebuilding each cycle keeps Observe() consistent.
 	p.entitySrc.rebuild(p.config.Servers)
@@ -198,13 +207,16 @@ func (p *NTPProbe) Collect() ([]data_store.DataPoint, error) {
 // the least-delayed one. Samples are sequential: they exist to catch a
 // transient queue, and firing them together would share the queue they are
 // meant to sample around.
-func (p *NTPProbe) measure(server string) serverResult {
+func (p *NTPProbe) measure(ctx context.Context, server string) serverResult {
 	var samples []sample
 	var lastErr error
 	for i := 0; i < p.config.Samples; i++ {
-		s, err := p.query(server, p.config.Timeout)
+		s, err := p.query(ctx, server, p.config.Timeout)
 		if err != nil {
 			lastErr = err
+			if ctx.Err() != nil {
+				break
+			}
 			if errors.Is(err, errRefused) {
 				break
 			}

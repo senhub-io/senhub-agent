@@ -1,4 +1,6 @@
 package probes
 
+import "context"
+
 // CollectOnce runs one collection cycle the way the scheduler does.
-func (p *ProbePoller) CollectOnce() error { return p.collect() }
+func (p *ProbePoller) CollectOnce() error { return p.collect(context.Background()) }
