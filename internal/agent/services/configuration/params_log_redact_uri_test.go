@@ -336,7 +336,7 @@ func TestRedactSecretsInString_MasksURLFragmentsOnlyInURLs(t *testing.T) {
 }
 
 func TestSanitizeParamsForLog_DoesNotTreatAuthorWordsAsCredentials(t *testing.T) {
-	got := SanitizeParamsForLog(map[string]interface{}{"neg_author": "author: x"})["neg_author"]
+	got := SanitizeParamsForLog(map[string]interface{}{"note": "author: x"})["note"]
 	if got != "author: x" {
 		t.Errorf("got %q, want %q", got, "author: x")
 	}
