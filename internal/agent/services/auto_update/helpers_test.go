@@ -132,3 +132,26 @@ func TestGetLatestVersion_NumberedBetas(t *testing.T) {
 		t.Fatalf("GetLatestVersion() = %v, want 0.6.2", got)
 	}
 }
+
+func TestIsExactVersion(t *testing.T) {
+	testCases := []struct {
+		input string
+		want  bool
+	}{
+		{"0.6.5", true},
+		{"0.7.0-rc.4", true},
+		{"0.7.0-beta.1", true},
+		{"latest", false},
+		{">=0.6", false},
+		{">=0.7.0, <0.8", false},
+		{"", false},
+		{"pas-une-version", false},
+		{"latest-beta", false},
+	}
+
+	for _, tc := range testCases {
+		if got := IsExactVersion(tc.input); got != tc.want {
+			t.Errorf("IsExactVersion(%q) = %v, want %v", tc.input, got, tc.want)
+		}
+	}
+}

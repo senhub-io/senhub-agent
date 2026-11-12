@@ -35,6 +35,10 @@ type configuredProbe struct {
 	// Interval is the collection cadence in seconds as configured, or
 	// the type's default; 0 when neither is known (a listener probe).
 	Interval int `json:"interval,omitempty"`
+	// IntervalRemote is true when the probe runs at an interval a remote
+	// management overlay set, and FileInterval is then what the file says.
+	IntervalRemote bool `json:"interval_remote,omitempty"`
+	FileInterval   int  `json:"file_interval,omitempty"`
 	// MetricsCount and LastUpdate come from the metric cache: how many
 	// series this probe holds and when it last wrote one.
 	MetricsCount int        `json:"metrics_count"`
@@ -86,6 +90,12 @@ func (h *HTTPSyncStrategy) handleConfiguredProbes(w http.ResponseWriter, r *http
 	out := make([]configuredProbe, 0, len(cfg.Probes))
 	for _, p := range cfg.Probes {
 		state := agentstate.GetProbeRunState(p.ID())
+		// A probe whose parameters a remote overlay changed runs under another ID; its name still finds it.
+		if !state.Running {
+			if s, ok := agentstate.ProbeRunStateByName(p.Name); ok {
+				state = s
+			}
+		}
 		ps, hasSpec := spec.For(p.Type)
 		var secretPaths []string
 		if hasSpec {
@@ -132,6 +142,11 @@ func (h *HTTPSyncStrategy) handleConfiguredProbes(w http.ResponseWriter, r *http
 		}
 		entry.HasSchema = hasSpec
 		entry.Interval = intervalOf(p.Params, known.DefaultInterval)
+		if live, ok := agentstate.ProbeIntervalByName(p.Name); ok && live > 0 && live != entry.Interval {
+			entry.FileInterval = entry.Interval
+			entry.Interval = live
+			entry.IntervalRemote = true
+		}
 		verdict := annotateCatalogEntry(known, lic, h.licenseAgentKey())
 		entry.Tier, entry.Authorized, entry.Reason = verdict.Tier, verdict.Authorized, verdict.Reason
 		out = append(out, entry)

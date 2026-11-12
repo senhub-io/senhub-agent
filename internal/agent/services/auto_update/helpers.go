@@ -67,3 +67,11 @@ func decideUpdate(currentStr, expectedStr string, operatorExplicit, msiManaged b
 		return false, false, nil
 	}
 }
+
+// IsExactVersion reports whether s names one release rather than an
+// alias ("latest") or a constraint (">=0.6"): only such a request may
+// go backwards.
+func IsExactVersion(s string) bool {
+	_, err := version.NewVersion(s)
+	return err == nil
+}

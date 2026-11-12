@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -183,6 +184,7 @@ func TestAutoUpdate_DowngradeGuardKept(t *testing.T) {
 		{"daemon, explicit older", false, "1.1.0"},
 		{"daemon, latest older", false, "latest"},
 		{"operator, latest older", true, "latest"},
+		{"operator, constraint older", true, "<1.2"},
 	}
 
 	for _, tc := range testCases {
@@ -201,6 +203,119 @@ func TestAutoUpdate_DowngradeGuardKept(t *testing.T) {
 				t.Fatalf("expected err to be nil, got %v", err)
 			}
 		})
+	}
+}
+
+func TestAutoUpdate_OperatorResolutionFailsLoudly(t *testing.T) {
+	versionServer := testUtils.GetTestHTTPServerWithURLPath(
+		NewAutoUpdateVersionRoutes([][2]string{
+			{"1.0.0"},
+			{"1.1.0"},
+			{"latest", "1.1.0"},
+		}),
+	)
+	defer versionServer.Server.Close()
+
+	oldVersion := cliArgs.Version
+	t.Cleanup(func() { cliArgs.Version = oldVersion })
+	cliArgs.Version = "1.0.0"
+
+	testCases := []struct {
+		name        string
+		requested   string
+		errContains string
+	}{
+		{"unparseable word", "pas-une-version", "not a valid version"},
+		{"unparseable rc", "0.7.0.rc.4", "not a valid version"},
+		{"unparseable constraint", "9.x.zz", "not a valid version"},
+		{"well-formed but absent prerelease", "0.0.1-nexiste-pas", "not found in the update registry"},
+		{"well-formed but absent stable", "9.9.9", "not found in the update registry"},
+		{"well-formed but absent beta", "0.7.0-beta.99", "cannot fetch version 0.7.0-beta.99"},
+		{"equal version", "1.0.0", ""},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			au := &autoUpdate{
+				configSource:   newMockConfiguration("http://localhost:8000", `{ "agent": {} }`),
+				logger:         createTestModuleLogger(),
+				httpClient:     httpretry.NewDefaultClient(),
+				operatorDriven: true,
+			}
+			updated, err := au.Update(tc.requested, versionServer.URL)
+			if updated {
+				t.Fatalf("expected updated to be false, got true")
+			}
+			if tc.errContains == "" {
+				if err != nil {
+					t.Fatalf("expected err to be nil, got %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tc.errContains)
+			}
+			if !strings.Contains(err.Error(), tc.errContains) {
+				t.Fatalf("expected error containing %q, got %v", tc.errContains, err)
+			}
+		})
+	}
+
+	t.Run("unreachable registry", func(t *testing.T) {
+		unreachableServer := testUtils.GetTestHTTPServerWithURLPath(
+			NewAutoUpdateVersionRoutes([][2]string{
+				{"1.0.0"},
+				{"1.1.0"},
+			}),
+		)
+		closedURL := unreachableServer.URL
+		unreachableServer.Server.Close()
+
+		au := &autoUpdate{
+			configSource:   newMockConfiguration("http://localhost:8000", `{ "agent": {} }`),
+			logger:         createTestModuleLogger(),
+			httpClient:     httpretry.NewDefaultClient(httpretry.WithMaxRetryCount(0)),
+			operatorDriven: true,
+		}
+		updated, err := au.Update("1.1.0", closedURL)
+		if updated {
+			t.Fatalf("expected updated to be false, got true")
+		}
+		if err == nil {
+			t.Fatalf("expected an error, got nil")
+		}
+		if !strings.Contains(err.Error(), "cannot reach the update registry") {
+			t.Fatalf("expected error containing %q, got %v", "cannot reach the update registry", err)
+		}
+	})
+}
+
+func TestAutoUpdate_DaemonKeepsSilentFallback(t *testing.T) {
+	versionServer := testUtils.GetTestHTTPServerWithURLPath(
+		NewAutoUpdateVersionRoutes([][2]string{
+			{"1.0.0"},
+			{"1.1.0"},
+			{"latest", "1.1.0"},
+		}),
+	)
+	defer versionServer.Server.Close()
+
+	oldVersion := cliArgs.Version
+	t.Cleanup(func() { cliArgs.Version = oldVersion })
+	cliArgs.Version = "1.0.0"
+
+	au := &autoUpdate{
+		configSource:   newMockConfiguration("http://localhost:8000", `{ "agent": {} }`),
+		logger:         createTestModuleLogger(),
+		httpClient:     httpretry.NewDefaultClient(),
+		operatorDriven: false,
+	}
+	updated, err := au.Update("pas-une-version", versionServer.URL)
+	if updated {
+		t.Fatalf("expected updated to be false, got true")
+	}
+	if err != nil {
+		t.Fatalf("expected err to be nil, got %v", err)
 	}
 }
 
@@ -626,5 +741,60 @@ func TestAutoUpdate_GetUpdateCheckInterval(t *testing.T) {
 				t.Errorf("Expected %v, got %v", tc.expectedResult, result)
 			}
 		})
+	}
+}
+
+func TestAutoUpdate_LatestFollowsIncludeBetaWithoutConfigSource(t *testing.T) {
+	versionServer := testUtils.GetTestHTTPServerWithURLPath(NewAutoUpdateVersionRoutes([][2]string{{"1.0.0"}, {"1.1.0"}, {"1.2.0-beta.1"}, {"latest", "1.1.0"}}))
+	defer versionServer.Server.Close()
+
+	oldVersion := cliArgs.Version
+	t.Cleanup(func() { cliArgs.Version = oldVersion })
+	cliArgs.Version = "1.0.0"
+
+	au := &autoUpdate{logger: createTestModuleLogger(), httpClient: httpretry.NewDefaultClient(), operatorDriven: true, includeBeta: true}
+	got, err := au.resolveVersion("latest", versionServer.URL)
+	if err != nil {
+		t.Fatalf("resolveVersion(latest) with includeBeta=true returned error: %v", err)
+	}
+	if got != "1.2.0-beta.1" {
+		t.Fatalf("resolveVersion(latest) with includeBeta=true = %q, want %q", got, "1.2.0-beta.1")
+	}
+
+	auStable := &autoUpdate{logger: createTestModuleLogger(), httpClient: httpretry.NewDefaultClient(), operatorDriven: true, includeBeta: false}
+	gotStable, err := auStable.resolveVersion("latest", versionServer.URL)
+	if err != nil {
+		t.Fatalf("resolveVersion(latest) with includeBeta=false returned error: %v", err)
+	}
+	if gotStable != "1.1.0" {
+		t.Fatalf("resolveVersion(latest) with includeBeta=false = %q, want %q", gotStable, "1.1.0")
+	}
+}
+
+func TestAutoUpdate_ResolvedVersionNamesTheConcreteRelease(t *testing.T) {
+	versionServer := testUtils.GetTestHTTPServerWithURLPath(NewAutoUpdateVersionRoutes([][2]string{{"1.0.0"}, {"1.1.0"}, {"latest", "1.1.0"}}))
+	defer versionServer.Server.Close()
+
+	oldVersion := cliArgs.Version
+	cliArgs.Version = "1.0.0"
+	t.Cleanup(func() { cliArgs.Version = oldVersion })
+
+	au := &autoUpdate{
+		configSource:   newMockConfiguration("http://localhost:8000", `{ "agent": {} }`),
+		logger:         createTestModuleLogger(),
+		httpClient:     httpretry.NewDefaultClient(),
+		operatorDriven: true,
+		dryRun:         true,
+	}
+
+	updated, err := au.Update("latest", versionServer.URL)
+	if err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+	if !updated {
+		t.Fatal("expected Update to report an update")
+	}
+	if got := au.ResolvedVersion(); got != "1.1.0" {
+		t.Fatalf("ResolvedVersion = %q, want %q", got, "1.1.0")
 	}
 }
