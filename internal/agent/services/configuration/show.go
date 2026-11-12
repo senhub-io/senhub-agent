@@ -50,14 +50,6 @@ const (
 	ShowRedact
 )
 
-// secretFieldPattern matches the YAML field names whose VALUE should
-// be masked in ShowRedact mode. The pattern uses substring matching
-// (no `^…$` anchors) so composite names like `api_key`, `auth_token`,
-// `db_password`, `client_secret` are all caught. Case-insensitive.
-// Matched words: pass, pwd, secret, token, key, session, private,
-// cookie, auth, credential, dsn, uri, community, bearer, license, jwt.
-var secretFieldPattern = regexp.MustCompile(`(?i)(pass|pwd|secret|token|key|session|private|cookie|auth|credential|dsn|uri|community|bearer|license|jwt)`)
-
 // fileRefPattern recognises a `${file:..}` reference inside a raw
 // (pre-substitution) string. The trailing capture is intentionally
 // permissive — the redact pass doesn't care what's inside, only
@@ -231,7 +223,7 @@ func loadMerged(configPath string, log *logger.ModuleLogger) (LocalConfiguration
 //   - the value came from a ${file:..} reference (detected by
 //     looking at the matching position in the raw tree), OR
 //   - the most recent named context (struct YAML tag or map key)
-//     matches secretFieldPattern.
+//     matches logredact.IsSecretKey.
 //
 // Both trees must have the same shape (same struct types, parallel
 // slice lengths). They will, because they were loaded from the same
@@ -309,7 +301,7 @@ func redactInPlace(rawV, resV reflect.Value, currentName string) {
 		// empty — an empty secret is still a secret slot.
 		hasFileRef := fileRefPattern.MatchString(raw)
 		hasSecretRef := secretRefPattern.MatchString(raw) || envProbeRefPattern.MatchString(raw)
-		nameLooksSecret := currentName != "" && (secretFieldPattern.MatchString(currentName) || secret.IsSensitiveKey(currentName))
+		nameLooksSecret := currentName != "" && logredact.IsSecretKey(currentName)
 		if !hasFileRef && !hasSecretRef && !nameLooksSecret {
 			// A value can carry a credential under any key name: the URL
 			// user part, query values, a fragment, a token. Mask it the

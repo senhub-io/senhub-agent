@@ -132,7 +132,7 @@ func TestMaskingWriterCountsRedactions(t *testing.T) {
 	}
 	var out bytes.Buffer
 	w := NewMaskingWriter(&out)
-	if _, err := w.Write([]byte(`{"level":"warn","error":"checking https://user:s3cretPW@h.example.com/x?x=plainVAL#fr4gSEC: Get \"https://user:s3cretPW@h.example.com/x?x=plainVAL#fr4gSEC\": refused","key":"AKIAFAKEFAKEFAKE1234"}` + "\n")); err != nil {
+	if _, err := w.Write([]byte(`{"level":"warn","error":"checking https://user:s3cretPW@h.example.com/x?x=plainVAL#fr4gSEC: Get \"https://user:s3cretPW@h.example.com/x?x=plainVAL#fr4gSEC\": refused","detail":"AKIAFAKEFAKEFAKE1234"}` + "\n")); err != nil {
 		t.Fatal(err)
 	}
 	after := map[string]uint64{}
