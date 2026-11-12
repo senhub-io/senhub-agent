@@ -146,7 +146,7 @@ func listVersions(updater auto_update.AutoUpdate, includeBeta bool, log *logger.
 
 	fmt.Println("  Stable releases:")
 	for _, v := range stable {
-		if v.Name == "latest" {
+		if v.Name != "" && v.Name != v.Version {
 			continue
 		}
 		marker := "  "
@@ -163,7 +163,7 @@ func listVersions(updater auto_update.AutoUpdate, includeBeta bool, log *logger.
 	}
 	var betaOnly []auto_update.VersionMetadata
 	for _, v := range beta {
-		if !stableSet[v.Version] && v.Name != "latest" {
+		if !stableSet[v.Version] && (v.Name == "" || v.Name == v.Version) {
 			betaOnly = append(betaOnly, v)
 		}
 	}
