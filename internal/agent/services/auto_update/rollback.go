@@ -255,6 +255,53 @@ func (e rollbackEnv) boot() bootAction {
 	return bootRolledBack
 }
 
+func (e rollbackEnv) cleanStop() error {
+	path := filepath.Join(e.stateDir, pendingFileName)
+	data, err := e.fs.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("read pending update marker: %w", err)
+	}
+
+	var marker pendingUpdate
+	if err := json.Unmarshal(data, &marker); err != nil || marker.ToVersion == "" {
+		return nil
+	}
+
+	if canonicalVersion(marker.ToVersion) != canonicalVersion(e.version) {
+		return nil
+	}
+
+	if marker.BootAttempts > 0 {
+		marker.BootAttempts--
+		if err := e.writePendingMarker(marker); err != nil {
+			return fmt.Errorf("write pending update marker: %w", err)
+		}
+	}
+	return nil
+}
+
+func (e rollbackEnv) stagedAwaitingRestart(candidate string) bool {
+	path := filepath.Join(e.stateDir, pendingFileName)
+	data, err := e.fs.ReadFile(path)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			e.log.Warn().Err(err).Str("path", path).Msg("cannot read pending update marker; a staged update may be applied again")
+		}
+		return false
+	}
+
+	var marker pendingUpdate
+	if err := json.Unmarshal(data, &marker); err != nil || marker.ToVersion == "" {
+		return false
+	}
+
+	return canonicalVersion(marker.ToVersion) == canonicalVersion(candidate) &&
+		canonicalVersion(marker.ToVersion) != canonicalVersion(e.version)
+}
+
 // clearOperatorRestored drops a not-performed record once the running version
 // is no longer the one that failed: the operator has done the rollback the
 // record asked for. A restored record is kept, it is what holds the failed

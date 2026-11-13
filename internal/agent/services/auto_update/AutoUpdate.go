@@ -375,6 +375,15 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) (b
 			}
 			return false, nil
 		}
+		// The binary on disk may already be this version, written by an
+		// "update --no-restart" the service has not restarted into yet;
+		// applying it again would keep it as the "previous" binary.
+		if a.rollbackEnvFor("").stagedAwaitingRestart(expectedVersion) {
+			a.logger.Info().
+				Str("version", expectedVersion).
+				Msg("Auto-update skipped: this version is already installed and waits for a service restart")
+			return false, nil
+		}
 	}
 
 	// Refuse to replace the binary from inside the daemon where the platform

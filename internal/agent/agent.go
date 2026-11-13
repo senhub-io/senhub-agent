@@ -9,6 +9,7 @@ package agent
 import (
 	"context"
 	"os"
+	"sync"
 	"time"
 
 	"senhub-agent.go/internal/agent/extensionhost"
@@ -50,6 +51,12 @@ type Agent interface {
 type bootGuard interface {
 	RolledBack() bool
 	ConfirmWhenHealthy(ctx context.Context)
+	StoppedCleanly()
+}
+
+type bootSlot struct {
+	mu    sync.Mutex
+	guard bootGuard
 }
 
 type agent struct {
@@ -67,6 +74,9 @@ type agent struct {
 	// beginBoot counts this start against a pending update and may roll the
 	// previous binary back. Nil when update rollback is not wired (tests).
 	beginBoot func() bootGuard
+	// boot holds the guard between Start and Shutdown so a clean stop can
+	// un-count this boot. Nil when update rollback is not wired (tests).
+	boot *bootSlot
 	// exitFn is called by handleStartError with cliexit.Failure. It defaults to
 	// os.Exit; tests inject a no-op to capture the call without aborting.
 	exitFn func(int)
@@ -227,6 +237,7 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		extensions:         extensions,
 		removeLeftovers:    func() { auto_update.RemoveUpdateLeftovers(logger) },
 		beginBoot:          func() bootGuard { return auto_update.BeginBoot(logger) },
+		boot:               &bootSlot{},
 		exitFn:             os.Exit,
 	}
 }
@@ -287,6 +298,12 @@ func (a agent) Start(ctx context.Context) error {
 		return nil
 	}
 
+	if a.boot != nil {
+		a.boot.mu.Lock()
+		a.boot.guard = guard
+		a.boot.mu.Unlock()
+	}
+
 	a.cleanUpPreviousUpdate()
 
 	if errors := a.supervisor.Start(ctx, a.services()...); len(errors) > 0 {
@@ -345,8 +362,17 @@ func (a agent) doVersionCheck(updater auto_update.AutoUpdate) {
 }
 
 func (a agent) Shutdown(ctx context.Context) error {
-	if errors := a.supervisor.Shutdown(ctx); len(errors) > 0 {
-		return errors[0]
+	errs := a.supervisor.Shutdown(ctx)
+	if a.boot != nil {
+		a.boot.mu.Lock()
+		guard := a.boot.guard
+		a.boot.mu.Unlock()
+		if guard != nil {
+			guard.StoppedCleanly()
+		}
+	}
+	if len(errs) > 0 {
+		return errs[0]
 	}
 	return nil
 }

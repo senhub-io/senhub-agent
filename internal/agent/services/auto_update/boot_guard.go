@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	"senhub-agent.go/internal/agent/cliArgs"
@@ -17,6 +18,11 @@ import (
 type BootGuard struct {
 	env    rollbackEnv
 	action bootAction
+	// mu orders the delayed confirmation against a clean stop: whichever
+	// runs first settles the marker and the other does nothing, so a clean
+	// stop can never rewrite a marker the confirmation just removed.
+	mu      sync.Mutex
+	settled bool
 }
 
 func (a *autoUpdate) rollbackEnvFor(binary string) rollbackEnv {
@@ -71,12 +77,38 @@ func (g *BootGuard) ConfirmWhenHealthy(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 		case <-timer.C:
+			g.mu.Lock()
+			defer g.mu.Unlock()
+			if g.settled {
+				return
+			}
 			if err := g.env.confirm(); err != nil {
 				g.env.log.Warn().Err(err).Str("state_dir", g.env.stateDir).
 					Msg("Could not confirm the update; it may be rolled back at a later restart")
 				return
 			}
+			g.settled = true
 			g.env.log.Info().Str("version", g.env.version).Msg("Update confirmed after a healthy run")
 		}
 	}()
+}
+
+// StoppedCleanly records that the service stopped on purpose before the
+// update was confirmed, so this boot must not count against it.
+func (g *BootGuard) StoppedCleanly() {
+	if g == nil || g.action != bootTracking {
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.settled {
+		return
+	}
+	g.settled = true
+	if err := g.env.cleanStop(); err != nil {
+		g.env.log.Warn().Err(err).Str("state_dir", g.env.stateDir).
+			Msg("Could not record clean stop; this start stays counted against the update")
+		return
+	}
+	g.env.log.Info().Msg("Clean stop before the update was confirmed; this start is not counted against it")
 }
