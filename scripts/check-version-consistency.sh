@@ -42,6 +42,8 @@ escaped=${version//./\\.}
 
 bad=0
 while IFS=$'\t' read -r file pattern; do
+  # A Windows checkout may hand the list over with CRLF line ends.
+  pattern=${pattern%$'\r'}
   case "$file" in ''|'#'*) continue ;; esac
   target="$root/$file"
   if [ ! -f "$target" ]; then

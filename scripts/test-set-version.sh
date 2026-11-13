@@ -10,6 +10,9 @@ trap 'rm -rf "$work"' EXIT
 
 (cd "$root" && git ls-files -co --exclude-standard -z | tar -cf - --null -T -) | tar -xf - -C "$work"
 
+# Run against CRLF line ends, as a Windows checkout hands them over.
+perl -pi -e 's/\r?\n/\r\n/' "$work/scripts/version-pins.tsv"
+
 target=9.8.7
 "$work/scripts/check-version-consistency.sh" --root "$work" --set "$target" >/dev/null
 
