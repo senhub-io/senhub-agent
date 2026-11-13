@@ -1,7 +1,6 @@
 package auto_update
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -691,56 +690,16 @@ func TestAutoUpdate_GetBinaryName(t *testing.T) {
 	}
 }
 
+// The check runs every hour whatever an old configuration still carries:
+// update_check_interval is not read.
 func TestAutoUpdate_GetUpdateCheckInterval(t *testing.T) {
-	testCases := []struct {
-		name           string
-		interval       any
-		expectedResult time.Duration
-	}{
-		{
-			name:           "1h",
-			interval:       "1h",
-			expectedResult: time.Hour,
-		},
-		{
-			name:           "1m",
-			interval:       "1m",
-			expectedResult: time.Minute,
-		},
-		{
-			name:           "number",
-			interval:       3600,
-			expectedResult: time.Hour,
-		},
-		{
-			name:           "default",
-			interval:       nil,
-			expectedResult: time.Hour,
-		},
+	au := &autoUpdate{
+		configSource: newMockConfiguration("http://localhost:8000", `{"agent": {"update_check_interval": "1m"}}`),
+		logger:       createTestModuleLogger(),
+		httpClient:   httpretry.NewDefaultClient(),
 	}
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			configInterval, _ := json.Marshal(tc.interval)
-			remoteConfig := newMockConfiguration(
-				"http://localhost:8000", `
-				{
-					"agent": {
-						"update_check_interval": `+string(configInterval)+`
-					}
-				}
-				`)
-
-			httpClient := httpretry.NewDefaultClient()
-			au := &autoUpdate{
-				configSource: remoteConfig,
-				logger:       createTestModuleLogger(),
-				httpClient:   httpClient,
-			}
-			result := au.GetUpdateCheckInterval()
-			if result != tc.expectedResult {
-				t.Errorf("Expected %v, got %v", tc.expectedResult, result)
-			}
-		})
+	if got := au.GetUpdateCheckInterval(); got != time.Hour {
+		t.Errorf("GetUpdateCheckInterval() = %v, want 1h", got)
 	}
 }
 
