@@ -498,5 +498,5 @@ func (q *Query) GetCounterValue(path string) (float64, error) {
 func (q *Query) Close() {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	pdhCloseQuery.Call(uintptr(q.handle))
+	_, _, _ = pdhCloseQuery.Call(uintptr(q.handle))
 }

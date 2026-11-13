@@ -244,6 +244,23 @@ func handleLicenseShow(args *cliArgs.LicenseShowArgs) {
 	}
 }
 
+// confirmLicenseRemove asks the operator to confirm the destructive
+// removal. A non-terminal stdin is an error, not a "no": an automation
+// must never read a removal that did not happen as success.
+func confirmLicenseRemove(in *os.File, out, errOut io.Writer) (proceed bool, code int) {
+	fmt.Fprint(out, "Are you sure you want to remove the license? [y/N] ")
+	ok, interactive := confirmFrom(in, errOut, "--force")
+	if ok {
+		return true, cliexit.OK
+	}
+	if !interactive {
+		fmt.Fprintln(errOut, "Error: confirmation required: nothing was removed; rerun with --force.")
+		return false, cliexit.Failure
+	}
+	fmt.Fprintln(out, "Cancelled.")
+	return false, cliexit.OK
+}
+
 // handleLicenseRemove removes the current license
 func handleLicenseRemove(args *cliArgs.LicenseRemoveArgs) {
 	// Get absolute config path
@@ -252,13 +269,14 @@ func handleLicenseRemove(args *cliArgs.LicenseRemoveArgs) {
 		fatalf("failed to determine config path: %v", err)
 	}
 
-	// Confirm if not forced. Reuse the shared confirmation helper so this
-	// destructive prompt behaves identically to uninstall / secret rm
-	// (whitespace-tolerant, non-TTY stdin aborts).
+	// Confirm unless forced; without a terminal and without --force the
+	// command fails instead of looking like a user's "no", as uninstall
+	// and secret rm do.
 	if !args.Force {
-		fmt.Print("Are you sure you want to remove the license? [y/N] ")
-		if !readYesConfirmation() {
-			fmt.Println("Cancelled.")
+		if proceed, code := confirmLicenseRemove(os.Stdin, os.Stdout, os.Stderr); !proceed {
+			if code != cliexit.OK {
+				os.Exit(code)
+			}
 			return
 		}
 	}

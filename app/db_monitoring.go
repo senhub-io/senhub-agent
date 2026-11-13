@@ -123,13 +123,17 @@ func printMySQLGrant(user, host string) {
 -- Grants explained:
 --   PROCESS              — SHOW PROCESSLIST, threads_running
 --   REPLICATION CLIENT   — SHOW SLAVE / REPLICA STATUS
+--   REPLICATION SLAVE    — SHOW REPLICAS, to count the replicas of a
+--                          source; it also lets the account read the
+--                          binary log. Without it a source with
+--                          replicas reads as standalone
 --   SELECT ON *.*        — read information_schema and
 --                          performance_schema views
 --   SLAVE MONITOR        — MariaDB 10.5.8+ only (drop the line
 --                          on older MariaDB and any MySQL)
 
 CREATE USER '%s'@'%s' IDENTIFIED BY 'STRONG-PASSWORD-HERE';
-GRANT PROCESS, REPLICATION CLIENT, SELECT ON *.* TO '%s'@'%s';
+GRANT PROCESS, REPLICATION CLIENT, REPLICATION SLAVE, SELECT ON *.* TO '%s'@'%s';
 
 -- For MariaDB 10.5.8+ only:
 -- GRANT SLAVE MONITOR ON *.* TO '%s'@'%s';

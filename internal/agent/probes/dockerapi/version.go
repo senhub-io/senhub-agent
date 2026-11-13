@@ -9,6 +9,7 @@
 package dockerapi
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -31,10 +32,11 @@ type Version struct {
 }
 
 // URL builds the request URL for path (starting with /) on the socket
-// client, negotiating the version on first use. When the daemon cannot be
-// asked, Highest is used and negotiation is retried on the next call.
-func (s *Version) URL(client *http.Client, path string) string {
-	return "http://localhost/v" + s.get(client) + path
+// client, negotiating the version on first use under ctx. When the daemon
+// cannot be asked, or ctx ends first, Highest is used and negotiation is
+// retried on the next call.
+func (s *Version) URL(ctx context.Context, client *http.Client, path string) string {
+	return "http://localhost/v" + s.get(ctx, client) + path
 }
 
 // Forget drops the negotiated version, so the next call asks again. Call
@@ -46,13 +48,13 @@ func (s *Version) Forget() {
 	s.mu.Unlock()
 }
 
-func (s *Version) get(client *http.Client) string {
+func (s *Version) get(ctx context.Context, client *http.Client) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.v != "" {
 		return s.v
 	}
-	v, err := Negotiate(client)
+	v, err := Negotiate(ctx, client)
 	if err != nil {
 		return Highest
 	}
@@ -62,8 +64,12 @@ func (s *Version) get(client *http.Client) string {
 
 // Negotiate asks the daemon which versions it serves, on the unversioned
 // /version endpoint, and returns the one to speak.
-func Negotiate(client *http.Client) (string, error) {
-	resp, err := client.Get("http://localhost/version")
+func Negotiate(ctx context.Context, client *http.Client) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost/version", nil)
+	if err != nil {
+		return "", fmt.Errorf("building docker /version request: %w", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}

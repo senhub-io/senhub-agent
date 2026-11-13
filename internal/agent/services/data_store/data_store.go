@@ -391,7 +391,7 @@ func (d *dataStore) GenerateStrategyId(strategyName string, params configuration
 		d.logger.Error().
 			Err(err).
 			Str("strategy", strategyName).
-			Any("params", configuration.SanitizeParamsForLog(params)).
+			Any("params", configuration.SanitizeOutputParamsForLog(strategyName, params)).
 			Msg("marshaling error: failed to marshal strategy parameters - using empty config")
 		paramsBytes = []byte("{}")
 	}
@@ -576,7 +576,14 @@ func (d *dataStore) publishSignalContext() {
 	cfg := d.configProvider.GetConfiguration()
 
 	var customByProbe map[string]map[string]string
+	var redactOff map[string]struct{}
 	for _, p := range cfg.Probes {
+		if p.LogRedact != nil && !*p.LogRedact {
+			if redactOff == nil {
+				redactOff = make(map[string]struct{})
+			}
+			redactOff[p.Name] = struct{}{}
+		}
 		operator, err := operatorTagsForProbe(p)
 		if err != nil {
 			d.logger.Warn().Err(err).Msg("governance block ignored on log records")
@@ -602,6 +609,8 @@ func (d *dataStore) publishSignalContext() {
 	agentstate.SetSignalContext(&agentstate.SignalContext{
 		CustomTagsByProbe: customByProbe,
 		GlobalTags:        global,
+
+		LogRedactOffProbes: redactOff,
 	})
 }
 
@@ -632,8 +641,8 @@ func (d *dataStore) retrieveOrCreate(strategyConfig configuration.StorageConfig)
 			} else {
 				// Same name but different parameters - try to update
 				d.logger.Info().
-					Any("old_params", configuration.SanitizeParamsForLog(strategy.GetStrategyParams())).
-					Any("new_params", configuration.SanitizeParamsForLog(strategyConfig.Params)).
+					Any("old_params", configuration.SanitizeOutputParamsForLog(strategy.GetStrategyName(), strategy.GetStrategyParams())).
+					Any("new_params", configuration.SanitizeOutputParamsForLog(strategyConfig.Name, strategyConfig.Params)).
 					Msg("Strategy configuration changed, attempting update")
 
 				// Try to update the strategy if it supports live updates

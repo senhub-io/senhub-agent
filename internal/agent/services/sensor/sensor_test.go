@@ -84,7 +84,8 @@ func TestSensor_Start_NoProbes(t *testing.T) {
 	}
 
 	sensor := NewSensor(addDataPoint, mockProvider, baseLogger)
-	runCtx := context.Background()
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
 
 	err := sensor.Start(runCtx)
 	if err != nil {
@@ -113,7 +114,8 @@ func TestSensor_Start_WithValidProbe(t *testing.T) {
 	}
 
 	sensor := NewSensor(addDataPoint, mockProvider, baseLogger)
-	runCtx := context.Background()
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
 
 	err := sensor.Start(runCtx)
 	if err != nil {
@@ -146,7 +148,8 @@ func TestSensor_Start_WithInvalidProbe(t *testing.T) {
 	}
 
 	sensor := NewSensor(addDataPoint, mockProvider, baseLogger)
-	runCtx := context.Background()
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
 
 	// Start should not fail even if probe creation fails
 	err := sensor.Start(runCtx)
@@ -216,7 +219,8 @@ func TestSensor_OnConfigChanged(t *testing.T) {
 	}
 
 	sensor := NewSensor(addDataPoint, mockProvider, baseLogger)
-	runCtx := context.Background()
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
 
 	// Start sensor - registers config change callback
 	err := sensor.Start(runCtx)
@@ -271,7 +275,8 @@ func TestSensor_Shutdown_WithProbes(t *testing.T) {
 	}
 
 	sensor := NewSensor(addDataPoint, mockProvider, baseLogger)
-	runCtx := context.Background()
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
 
 	// Start with multiple probes
 	err := sensor.Start(runCtx)
@@ -344,7 +349,8 @@ func TestSensor_MultipleProbes_DifferentTypes(t *testing.T) {
 	}
 
 	sensor := NewSensor(addDataPoint, mockProvider, baseLogger)
-	runCtx := context.Background()
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
 
 	err := sensor.Start(runCtx)
 	if err != nil {
@@ -492,7 +498,9 @@ func TestSensor_SyncConfiguration_ConcurrentConfigEvents(t *testing.T) {
 	}
 
 	s := NewSensor(addDataPoint, mockProvider, baseLogger).(*sensor)
-	if err := s.Start(context.Background()); err != nil {
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
+	if err := s.Start(runCtx); err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
 
@@ -662,7 +670,8 @@ func TestSensor_Start_DisabledProbeIsNotStarted(t *testing.T) {
 	addDataPoint := func(data []datapoint.DataPoint, router data_store.StrategyRouter) error { return nil }
 
 	s := NewSensor(addDataPoint, mockProvider, baseLogger)
-	runCtx := context.Background()
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
 	if err := s.Start(runCtx); err != nil {
 		t.Fatalf("Start: %v", err)
 	}

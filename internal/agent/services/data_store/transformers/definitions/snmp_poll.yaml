@@ -114,6 +114,32 @@ metrics:
       instance: snmp.target
       reason: reason
 
+  - name: "snmp_poll_identity_collisions"
+    channel: "snmp_identity_collisions"
+    display_name: "SNMP {instance} Identity Collisions"
+    unit: "#"
+    category: "status"
+    description: "Sweeps since the agent started in which this target resolved to a device id another target of the same agent holds for a different device (other sysName or chassis MAC)"
+    otel:
+      name: senhub.snmp.identity.collisions
+      unit: "{sweep}"
+      type: counter
+    tag_to_attribute:
+      instance: snmp.target
+
+  - name: "snmp_poll_engine_id_mac_mismatch"
+    channel: "snmp_engine_id_mac_mismatch"
+    display_name: "SNMP {instance} Engine ID MAC Mismatch"
+    unit: "#"
+    category: "status"
+    description: "1 when the last topology sweep read an snmpEngineID that embeds a MAC other than the LLDP chassis MAC (engine id set by configuration or kept across a stack master change), 0 otherwise or when either is unreadable"
+    otel:
+      name: senhub.snmp.engine_id.mac_mismatch
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      instance: snmp.target
+
   - name: "snmp_poll_discovery_seeds"
     channel: "snmp_discovery_seeds_{source}"
     display_name: "SNMP {instance} Discovery Seeds {source}"

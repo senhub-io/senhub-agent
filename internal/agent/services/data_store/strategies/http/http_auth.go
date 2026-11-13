@@ -32,6 +32,9 @@ type AuthenticationManager struct {
 	adminMu     sync.RWMutex
 	adminKey    string
 	agentConfig configuration.AgentConfiguration
+	// pathKeyNotice warns once per process: a script polling the
+	// administration API would otherwise repeat the same line forever.
+	pathKeyNotice sync.Once
 }
 
 // NewAuthenticationManager creates a new authentication manager. An
@@ -88,16 +91,74 @@ func (a *AuthenticationManager) SetAdminKey(key string) {
 // Unauthorized, and its absence is what a PRTG-only installation wants.
 func (a *AuthenticationManager) AdminEnabled() bool { return a.currentAdminKey() != "" }
 
+// resolve authenticates the key segment of the URL. The placeholder
+// segment asks for an out-of-band administration credential (Bearer
+// header or console cookie); anything else is the legacy key-in-path form,
+// kept because PRTG and Nagios sensors are configured with it. The key
+// returned is the one the caller may put back into pages and redirects,
+// so the placeholder is returned as is and never replaced by the secret.
+func (a *AuthenticationManager) resolve(r *http.Request, admin bool) (string, int) {
+	key := mux.Vars(r)["agentkey"]
+
+	if key == SessionKeyPlaceholder {
+		if status := a.authorizeSession(r); status != http.StatusOK {
+			return "", status
+		}
+		return key, http.StatusOK
+	}
+
+	if admin {
+		if key == "" || !a.ValidateAdminKey(key) {
+			a.logger.Warn().
+				Str("provided_key_prefix", keyPrefixForLog(key)).
+				Str("path", pathForLog(r.URL.Path, key)).
+				Msg("Administration request without the administration key")
+			return "", http.StatusUnauthorized
+		}
+	} else {
+		if key == "" {
+			a.logger.Warn().Msg("Missing agent key in request")
+			return "", http.StatusUnauthorized
+		}
+		if !a.ValidateAgentKey(key) {
+			// Log only a short prefix: a typo'd REAL key is the common case, and the
+			// full value must not land in shared logs.
+			a.logger.Warn().
+				Str("provided_key_prefix", keyPrefixForLog(key)).
+				Msg("Invalid agent key provided")
+			return key, http.StatusUnauthorized
+		}
+	}
+
+	if a.ValidateAdminKey(key) {
+		a.logger.Debug().Msg("Administration key presented in the URL path")
+		// /web/<admin-key>/ is how a console session starts; only the API
+		// form is a caller that should move to the Authorization header.
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			a.pathKeyNotice.Do(func() {
+				a.logger.Warn().
+					Str("path", pathForLog(r.URL.Path, key)).
+					Msg("The administration key in an /api/ URL path is deprecated: send it as Authorization: Bearer <admin key> to /api/_/... instead")
+			})
+		}
+	}
+	return key, http.StatusOK
+}
+
+func (a *AuthenticationManager) deny(w http.ResponseWriter, status int) {
+	if status == http.StatusForbidden {
+		http.Error(w, "Forbidden", status)
+		return
+	}
+	http.Error(w, "Unauthorized", http.StatusUnauthorized)
+}
+
 // AuthenticateAdmin is AuthenticateAndExtract for the administration
 // surface: it answers 401 unless the administration key was given.
 func (a *AuthenticationManager) AuthenticateAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
-	key := mux.Vars(r)["agentkey"]
-	if key == "" || !a.ValidateAdminKey(key) {
-		a.logger.Warn().
-			Str("provided_key_prefix", keyPrefixForLog(key)).
-			Str("path", pathForLog(r.URL.Path, key)).
-			Msg("Administration request without the administration key")
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	key, status := a.resolve(r, true)
+	if status != http.StatusOK {
+		a.deny(w, status)
 		return "", false
 	}
 	return key, true
@@ -105,24 +166,8 @@ func (a *AuthenticationManager) AuthenticateAdmin(w http.ResponseWriter, r *http
 
 // AuthenticateRequest extracts the agent key from the request and validates it
 func (a *AuthenticationManager) AuthenticateRequest(r *http.Request) (string, bool) {
-	vars := mux.Vars(r)
-	agentKey := vars["agentkey"]
-
-	if agentKey == "" {
-		a.logger.Warn().Msg("Missing agent key in request")
-		return "", false
-	}
-
-	if !a.ValidateAgentKey(agentKey) {
-		// Log only a short prefix: a typo'd REAL key is the common case, and the
-		// full value must not land in shared logs.
-		a.logger.Warn().
-			Str("provided_key_prefix", keyPrefixForLog(agentKey)).
-			Msg("Invalid agent key provided")
-		return agentKey, false
-	}
-
-	return agentKey, true
+	key, status := a.resolve(r, false)
+	return key, status == http.StatusOK
 }
 
 // RequireAuthentication is a middleware that enforces authentication for HTTP handlers
@@ -141,13 +186,12 @@ func (a *AuthenticationManager) RequireAuthentication(next http.HandlerFunc) htt
 // AuthenticateAndExtract authenticates the request and extracts the agent key
 // Returns the agent key and a boolean indicating success
 func (a *AuthenticationManager) AuthenticateAndExtract(w http.ResponseWriter, r *http.Request) (string, bool) {
-	agentKey, authenticated := a.AuthenticateRequest(r)
-	if !authenticated {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	key, status := a.resolve(r, false)
+	if status != http.StatusOK {
+		a.deny(w, status)
 		return "", false
 	}
-
-	return agentKey, true
+	return key, true
 }
 
 // GetAgentKey returns the configured agent key

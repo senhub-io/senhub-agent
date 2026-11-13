@@ -207,7 +207,7 @@ func buildFailoverMetricExporter(ctx context.Context, cfg Config, log *logger.Mo
 		}
 		exps = append(exps, e)
 	}
-	return &failoverMetricExporter{core: newFailoverCore(eps, defaultFailoverCooldown, log), exps: exps}, nil
+	return &failoverMetricExporter{core: newFailoverCore(eps, cfg.FailoverCooldown, log), exps: exps}, nil
 }
 
 // buildFailoverLogExporter builds one log exporter per endpoint and wraps
@@ -227,5 +227,5 @@ func buildFailoverLogExporter(ctx context.Context, cfg Config, log *logger.Modul
 		}
 		exps = append(exps, e)
 	}
-	return &failoverLogExporter{core: newFailoverCore(eps, defaultFailoverCooldown, log), exps: exps}, nil
+	return &failoverLogExporter{core: newFailoverCore(eps, cfg.FailoverCooldown, log), exps: exps}, nil
 }

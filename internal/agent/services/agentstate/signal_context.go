@@ -30,6 +30,10 @@ type SignalContext struct {
 	// sink lifts them to the Resource; kept here so a non-OTLP sink can
 	// read the same source of truth instead of re-discovering it.
 	GlobalTags map[string]string
+
+	// LogRedactOffProbes holds the probe instance names that opted out of
+	// log masking (log_redact: false). Absent means masked.
+	LogRedactOffProbes map[string]struct{}
 }
 
 // signalCtx holds the current SignalContext snapshot. Copy-on-write: the
@@ -62,4 +66,18 @@ func customTagsForProbe(probeName string) map[string]string {
 // does not leak across test cases.
 func resetSignalContextForTest() {
 	signalCtx.Store(nil)
+}
+
+// logRedactionDisabled reports whether the named probe instance opted out
+// of log masking.
+func logRedactionDisabled(probeName string) bool {
+	if probeName == "" {
+		return false
+	}
+	c := signalCtx.Load()
+	if c == nil {
+		return false
+	}
+	_, off := c.LogRedactOffProbes[probeName]
+	return off
 }

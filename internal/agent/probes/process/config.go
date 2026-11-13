@@ -3,8 +3,9 @@ package process
 import (
 	"fmt"
 	"regexp"
-	"senhub-agent.go/internal/agent/probes/types"
 	"time"
+
+	"senhub-agent.go/internal/agent/probes/types"
 )
 
 // config holds the validated process probe configuration.
@@ -19,6 +20,13 @@ type config struct {
 	topBy string
 	// aggregate emits one extra rolled-up datapoint per distinct process name.
 	aggregate bool
+	// perPID keeps the per-process series under top_n. Every series then
+	// carries the process id and creation time, so the series set grows
+	// with each process that enters the top.
+	perPID bool
+	// includeKernelThreads keeps Linux kernel threads in the report.
+	// Off by default: their names scale with CPUs, disks and IRQ lines.
+	includeKernelThreads bool
 	// interval between collection cycles.
 	interval time.Duration
 }
@@ -39,6 +47,10 @@ func parseConfig(raw map[string]interface{}) (config, error) {
 
 	if v, ok := types.IntParam(raw, "interval"); ok && v > 0 {
 		cfg.interval = time.Duration(v) * time.Second
+	}
+
+	if v, ok := raw["include_kernel_threads"].(bool); ok {
+		cfg.includeKernelThreads = v
 	}
 
 	if filter, ok := raw["filter"].(map[string]interface{}); ok {
@@ -69,12 +81,27 @@ func parseConfig(raw map[string]interface{}) (config, error) {
 		}
 	}
 
+	if det, ok := raw["detail"].(map[string]interface{}); ok {
+		if v, ok := det["per_pid"].(bool); ok {
+			cfg.perPID = v
+		}
+	}
+
 	return cfg, nil
 }
 
+// topByName reports whether top_n ranks process names and emits the
+// per-name roll-up, the stable view, rather than per-process series.
+func (c config) topByName() bool {
+	return c.topN > 0 && !c.perPID
+}
+
 // detailed reports whether the per-process series are emitted. The
-// operator has either named what to watch, or bounded the sample with
-// top_n. An unfiltered view is every process on the machine, and the
+// operator has named what to watch, or bounded the sample with top_n and
+// asked for per-process series with detail.per_pid. Under top_n alone the
+// top is ranked by process name and reported as the roll-up: the members
+// of a top change as processes start, so series keyed on the process id
+// never stop appearing. An unfiltered view is every process on the machine, and the
 // identity of those series carries the process id, so it grows by one
 // set per process start and never shrinks: measured at about four and a
 // half thousand series on an ordinary machine, growing by fifty a
@@ -83,5 +110,8 @@ func parseConfig(raw map[string]interface{}) (config, error) {
 // It is the rule the entity source already followed, for the same
 // reason, on the other rail.
 func (c config) detailed() bool {
-	return c.byName != nil || c.byUser != "" || c.topN > 0
+	if c.topN > 0 {
+		return c.perPID
+	}
+	return c.byName != nil || c.byUser != ""
 }

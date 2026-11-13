@@ -143,7 +143,7 @@ func TestTheSourcesOwnValueWins(t *testing.T) {
 func TestAnApplicationLabelStaysOnTheHost(t *testing.T) {
 	svc := map[string]any{"service.instance.id": "vmalert"}
 	db := map[string]any{"db.id": "pg"}
-	local := map[string]any{"host.id": "sha001"}
+	local := map[string]any{"host.id": "host-01"}
 	obs := Observation{
 		Entities: []Entity{
 			{Type: "service.instance", ID: svc},
@@ -154,7 +154,7 @@ func TestAnApplicationLabelStaysOnTheHost(t *testing.T) {
 			{Type: "runs_on", FromType: "db", FromID: db, ToType: "host", ToID: local},
 		},
 	}
-	out := inheritHostGovernance(obs, "sha001", map[string]any{
+	out := inheritHostGovernance(obs, "host-01", map[string]any{
 		"entity.label.app":    "opspilot",
 		"entity.owner.team":   "sre",
 		"service.criticality": "critical",

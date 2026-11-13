@@ -25,6 +25,7 @@ import (
 	"senhub-agent.go/internal/agent/probes/hostservice"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/subcollect"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -113,6 +114,7 @@ type WinServicesProbe struct {
 	config       WinServicesProbeConfig
 	moduleLogger *logger.ModuleLogger
 	collect      collectFunc
+	serviceReads subcollect.Tracker
 
 	entitySource *winServicesEntitySource
 	getHostID    hostIDFunc
@@ -138,10 +140,12 @@ func NewWinServicesProbe(config map[string]interface{}, baseLogger *logger.Logge
 		BaseProbe:    &types.BaseProbe{},
 		config:       parsed,
 		moduleLogger: moduleLogger,
-		collect:      collectServices,
 		entitySource: newEntitySource(),
 		getHostID:    defaultHostID,
 		getHostName:  defaultHostName,
+	}
+	probe.collect = func(selected []string) ([]serviceState, error) {
+		return collectServices(selected, probe.moduleLogger, &probe.serviceReads)
 	}
 	probe.SetProbeType(ProbeType)
 	probe.SetEntitySource(probe.entitySource)

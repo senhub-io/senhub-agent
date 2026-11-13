@@ -88,7 +88,7 @@ func TestCatalogEntryOffPlatform(t *testing.T) {
 // that secret is in the store: the form only ever showed it as "Stored"
 // and does not re-send it.
 func TestProbeUpdateKeepsWorkingWhenARequiredSecretIsStored(t *testing.T) {
-	spec.Register(spec.Probe{Type: "pgtest", DisplayName: "PG test", Params: []spec.ParamSpec{
+	registerTestSpec(spec.Probe{Type: "pgtest", DisplayName: "PG test", Params: []spec.ParamSpec{
 		{Key: "host", Kind: spec.KindString, Required: true},
 		{Key: "password", Kind: spec.KindString, Required: true, Secret: true},
 		{Key: "interval", Kind: spec.KindInt},
@@ -137,7 +137,7 @@ func TestProbeUpdateKeepsWorkingWhenARequiredSecretIsStored(t *testing.T) {
 // missing password on the shipped probes, and the form never resends a
 // stored one.
 func TestProbeUpdateGivesTheProbeCheckerTheStoredValues(t *testing.T) {
-	spec.Register(spec.Probe{Type: "pgcheck", DisplayName: "PG check", Params: []spec.ParamSpec{
+	registerTestSpec(spec.Probe{Type: "pgcheck", DisplayName: "PG check", Params: []spec.ParamSpec{
 		{Key: "host", Kind: spec.KindString, Required: true},
 		{Key: "password", Kind: spec.KindString, Required: true, Secret: true},
 		{Key: "interval", Kind: spec.KindInt},
@@ -174,7 +174,7 @@ func TestProbeUpdateGivesTheProbeCheckerTheStoredValues(t *testing.T) {
 // is a params-only edit and must not restart a probe the operator
 // switched off.
 func TestProbeUpdateKeepsADisabledProbeDisabled(t *testing.T) {
-	spec.Register(spec.Probe{Type: "offtest", DisplayName: "Off test", Params: []spec.ParamSpec{
+	registerTestSpec(spec.Probe{Type: "offtest", DisplayName: "Off test", Params: []spec.ParamSpec{
 		{Key: "host", Kind: spec.KindString, Required: true},
 	}})
 	router, dir := newOutputsTestRouter(t)

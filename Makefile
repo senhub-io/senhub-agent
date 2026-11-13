@@ -233,6 +233,8 @@ package-linux: build-linux ## Create ZIP packages for Linux
 #
 #   make packages EDITION=oss                    senhub-agent-oss, built from
 #                                                this repository's binaries
+#   make packages EDITION=oss BINARY_DIR=<dir>  senhub-agent-oss, from given
+#                                                OSS binaries (no rebuild)
 #   make packages EDITION=full BINARY_DIR=<dir>  senhub-agent, from the binaries
 #                                                the enterprise build supplies
 #                                                (<dir>/linux-amd64/senhub-agent,
@@ -269,7 +271,7 @@ endif
 package-version: ## Print the package form of VERSION (0.6.2-beta.1 -> 0.6.2~beta.1)
 	@echo $(PKG_VERSION)
 
-packages: $(if $(filter oss,$(EDITION)),build-linux) ## Build the .deb and .rpm of one EDITION (oss|full), amd64 and arm64, into dist/packages/
+packages: $(if $(and $(filter oss,$(EDITION)),$(filter $(DIST_DIR),$(BINARY_DIR))),build-linux) ## Build the .deb and .rpm of one EDITION (oss|full), amd64 and arm64, into dist/packages/
 	@test -n "$(PKG_NAME)" || { echo "$(RED)EDITION must be oss or full$(NC)"; exit 1; }
 	@echo "$(GREEN)📦 Building $(PKG_NAME) .deb/.rpm packages (version $(VERSION), SOURCE_DATE_EPOCH $(SOURCE_DATE_EPOCH))...$(NC)"
 	@mkdir -p $(PACKAGES_DIR)/stage
@@ -419,9 +421,29 @@ docs-params: ## Regenerate the parameter tables of the probe pages from their sc
 	@echo "Done. Review the diff before committing."
 	@echo "Commercial probe pages are generated from senhub-agent-enterprise; see the comment above this target."
 
-# Database probes (mysql, postgresql) moved to senhub-agent-enterprise
-# with the OSS split; their integration tier runs there. See the
-# senhub-agent-enterprise Makefile (`make test-database`).
+probesdk-api: ## Regenerate the committed snapshot of the probesdk API (probesdk/api.txt)
+	@echo "Regenerating the probesdk API snapshot..."
+	@UPDATE_GOLDEN=1 go test ./probesdk/ -run TestAPISnapshot -count=1
+	@echo "Done. Review the diff before committing: the enterprise repository builds against this surface."
+
+# Pinned: the promtool shipped in this image is what the rules are validated with.
+PROMTOOL_IMAGE ?= prom/prometheus:v2.55.1
+
+check-alerts: ## Validate the vmalert starter rules with promtool (needs docker)
+	@command -v docker >/dev/null || { echo "docker is required"; exit 1; }
+	@for f in packs/alerts/vmalert/*.rules.yml; do \
+		out=$$(docker run --rm -i --entrypoint promtool $(PROMTOOL_IMAGE) check rules /dev/stdin < $$f 2>&1) \
+			&& echo "ok   $$f: $$(echo "$$out" | grep -o '[0-9]* rules found')" \
+			|| { echo "FAIL $$f"; echo "$$out"; exit 1; }; \
+	done
+
+test-mysql: ## Run the mysql probe integration suite against throwaway MySQL and MariaDB containers (needs docker; MYSQL_IMAGES selects the images)
+	@bash internal/agent/probes/mysql/testdata/run-integration.sh
+
+test-postgresql: ## Run the postgresql probe integration suite against a throwaway PostgreSQL container (needs docker; POSTGRESQL_IMAGE selects the release)
+	@bash internal/agent/probes/postgresql/testdata/run-integration.sh
+
+test-database: test-mysql test-postgresql ## Run every database probe integration suite (mysql, postgresql)
 
 # Boot smoke tests — build the agent binary, exec it against shipped
 # example configs to catch bring-up regressions (linker errors, config
@@ -554,4 +576,4 @@ help: ## Affiche cette aide
 	@echo "$(YELLOW)🛠️  Outils:$(NC)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -E '(install-tools|help)' | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
-.PHONY: all build helm-lint build-windows verify-windows-version build-linux build-darwin package package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics test-oracle test-zabbix-import help package-version test-release-manifest
+.PHONY: all build helm-lint build-windows verify-windows-version build-linux build-darwin package package-windows package-windows-msi package-linux packages package-darwin run test test-race benchmark coverage lint lint-fix security install-tools pre-commit quality-check release clean watch create-dist docs-params docs-metrics probesdk-api check-alerts test-oracle test-mysql test-postgresql test-database test-zabbix-import help package-version test-release-manifest

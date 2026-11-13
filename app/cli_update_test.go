@@ -123,6 +123,16 @@ func TestParseUpdateCommand(t *testing.T) {
 		}
 	})
 
+	t.Run("version honours no-refresh-unit", func(t *testing.T) {
+		got, _, err := parseUpdateCommand([]string{"0.4.1", "--no-refresh-unit"})
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		if !got.NoRefreshUnit {
+			t.Error("NoRefreshUnit = false, want true (--no-refresh-unit must be honoured)")
+		}
+	})
+
 	t.Run("version honours registry-url", func(t *testing.T) {
 		got, _, err := parseUpdateCommand([]string{"0.4.1", "--registry-url", "http://test"})
 		if err != nil {

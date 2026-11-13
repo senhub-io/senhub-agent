@@ -93,9 +93,12 @@ func TestFileTail_UnreadableFileIsAProbeErrorUntilItBecomesReadable(t *testing.T
 	if got := logs.count("configured path is readable again"); got != 1 {
 		t.Fatalf("recovery logged %d times, want 1", got)
 	}
-	appendLines(t, file, newFileLines(5)...)
-	if got := waitEmitted(p, 5, 30*time.Second); got != 5 {
-		t.Fatalf("emitted %d of 5 lines once readable", got)
+	ready := awaitTailWatching(t, p, file)
+	lines := newFileLines(5)
+	appendLines(t, file, lines...)
+	want := ready + uint64(len(lines))
+	if got := waitEmitted(p, want, 30*time.Second); got != want {
+		t.Fatalf("emitted %d of %d lines once readable", got, want)
 	}
 }
 

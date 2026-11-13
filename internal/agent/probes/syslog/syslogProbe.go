@@ -166,7 +166,7 @@ func (p *SyslogProbe) OnStart(quitChannel chan struct{}) error {
 	handler := syslog.NewChannelHandler(channel)
 
 	server := syslog.NewServer()
-	server.SetFormat(syslog.Automatic)
+	server.SetFormat(&safeFormat{})
 	server.SetHandler(handler)
 
 	address := fmt.Sprintf("%s:%d", p.config.BindAddress, p.config.Port)
@@ -214,11 +214,25 @@ func (p *SyslogProbe) OnShutdown(ctx context.Context) error {
 }
 
 func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
-	facility, _ := types.IntParam(logParts, "facility")
-	severity, _ := types.IntParam(logParts, "severity")
+	facility, facilityOK := types.IntParam(logParts, "facility")
+	severity, severityOK := types.IntParam(logParts, "severity")
+	if !severityOK {
+		// A message the parser could not read carries no severity; the
+		// zero value would read as emergency, the highest level.
+		severity = -1
+	}
 	hostname, _ := logParts["hostname"].(string)
 	client, _ := logParts["client"].(string)
-	priority, _ := types.IntParam(logParts, "priority")
+	if hostname == "" {
+		// go-syslog applies this fallback only to its own format values,
+		// not to safeFormat.
+		if i := strings.Index(client, ":"); i > 1 {
+			hostname = client[:i]
+		} else {
+			hostname = client
+		}
+	}
+	priority, priorityOK := types.IntParam(logParts, "priority")
 	timestamp, _ := logParts["timestamp"].(time.Time)
 
 	// The server is configured with syslog.Automatic format
@@ -237,6 +251,10 @@ func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
 		if v, ok := logParts["message"].(string); ok {
 			content = v
 		}
+	}
+	if !severityOK && strings.TrimSpace(content) == "" {
+		// An empty line between TCP frames: nothing was sent.
+		return
 	}
 	tag, _ := logParts["tag"].(string)
 	if tag != "" {
@@ -267,6 +285,15 @@ func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
 		"syslog.appname":       tag,
 		"syslog.client":        client,
 	}
+	if !facilityOK {
+		delete(attributes, "syslog.facility")
+	}
+	if !severityOK {
+		delete(attributes, "syslog.severity_code")
+	}
+	if !priorityOK {
+		delete(attributes, "syslog.priority")
+	}
 	if tag == "" {
 		if hdr, ok := parseBareHeader(content, time.Now()); ok {
 			// No PRI was sent: the facility and priority above are the
@@ -279,7 +306,9 @@ func (p *SyslogProbe) processLogMessage(logParts map[string]interface{}) {
 			if cef, ok := cefSeverity(content); ok {
 				severity = cef
 			}
-			attributes["syslog.severity_code"] = fmt.Sprintf("%d", severity)
+			if severity >= 0 {
+				attributes["syslog.severity_code"] = fmt.Sprintf("%d", severity)
+			}
 		}
 	}
 

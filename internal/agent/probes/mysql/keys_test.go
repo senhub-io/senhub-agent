@@ -1,19 +1,26 @@
 package mysql
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"sort"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"testing"
 
+	gomysql "github.com/go-sql-driver/mysql"
+	"github.com/rs/zerolog"
+
 	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/data_store"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 type fakeMySQLConn struct {
@@ -21,6 +28,8 @@ type fakeMySQLConn struct {
 	status  map[string]string
 	vars    map[string]string
 	uuid    string
+	uuidErr error
+	sizeErr error
 }
 
 func (c *fakeMySQLConn) Ping(ctx context.Context) error            { return c.pingErr }
@@ -35,10 +44,16 @@ func (c *fakeMySQLConn) QueryContext(ctx context.Context, query string, _ []driv
 	case variablesQuery:
 		return newKVRows(c.vars), nil
 	case serverUUIDQuery:
+		if c.uuidErr != nil {
+			return nil, c.uuidErr
+		}
 		return newSingleStringRows(c.uuid), nil
 	case replicaStatusQuery, replicaStatusFallback, replicaCountQuery, replicaCountFallback:
 		return &fakeRows{cols: []string{}}, nil
 	case totalSizeQuery, tableCountQuery:
+		if c.sizeErr != nil {
+			return nil, c.sizeErr
+		}
 		return newSingleValueRows(100.0), nil
 	default:
 		return nil, fmt.Errorf("unexpected query %q", query)
@@ -247,5 +262,97 @@ func TestCollectFailedConnectionUsesFallbackIDAndClassifies(t *testing.T) {
 		if got := tagValue(dp, "db.instance.id"); got != "" {
 			t.Errorf("%s: db.instance.id = %q before any entity, want none", dp.Name, got)
 		}
+	}
+}
+
+func TestCollectUUIDReadFailureDoesNotPinIdentity(t *testing.T) {
+	conn := &fakeMySQLConn{
+		uuidErr: errors.New("connection reset"),
+		status:  fakeStatusMap(),
+		vars:    fakeVarsMap(),
+	}
+	p := newProbeWithFakeDB(t, conn)
+
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if p.entitySrc.isIDPinned() {
+		t.Fatal("a failed @@server_uuid read must not pin an identity")
+	}
+	if p.uuidFetched {
+		t.Fatal("a failed read must be retried on the next cycle")
+	}
+
+	conn.uuidErr = nil
+	conn.uuid = "uuid-123"
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if got := p.entitySrc.instanceID(); got != "mysql:uuid-123" {
+		t.Errorf("identity after recovery = %q, want mysql:uuid-123", got)
+	}
+}
+
+func TestCollectPersistentUUIDFailurePinsFallback(t *testing.T) {
+	conn := &fakeMySQLConn{
+		uuidErr: errors.New("connection reset"),
+		status:  fakeStatusMap(),
+		vars:    fakeVarsMap(),
+	}
+	p := newProbeWithFakeDB(t, conn)
+
+	for i := 1; i < maxUUIDFailures; i++ {
+		if _, err := p.Collect(); err != nil {
+			t.Fatalf("Collect %d: %v", i, err)
+		}
+		if p.entitySrc.isIDPinned() {
+			t.Fatalf("identity pinned after %d failures, want unpinned before %d", i, maxUUIDFailures)
+		}
+	}
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if !p.entitySrc.isIDPinned() || !p.uuidFetched {
+		t.Fatalf("after %d failed reads the host:port identity must be pinned", maxUUIDFailures)
+	}
+}
+
+func TestCollectUnknownUUIDVariablePinsFallback(t *testing.T) {
+	conn := &fakeMySQLConn{
+		uuidErr: &gomysql.MySQLError{Number: 1193, Message: "Unknown system variable 'server_uuid'"},
+		status:  fakeStatusMap(),
+		vars:    fakeVarsMap(),
+	}
+	p := newProbeWithFakeDB(t, conn)
+
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if !p.entitySrc.isIDPinned() || !p.uuidFetched {
+		t.Fatal("a server without @@server_uuid must pin the host:port identity")
+	}
+}
+
+func TestCollectStorageQueryFailureIsLogged(t *testing.T) {
+	conn := &fakeMySQLConn{
+		uuid:    "uuid-123",
+		sizeErr: errors.New("access denied"),
+		status:  fakeStatusMap(),
+		vars:    fakeVarsMap(),
+	}
+	p := newProbeWithFakeDB(t, conn)
+	var buf bytes.Buffer
+	base := zerolog.New(&buf)
+	p.moduleLogger = logger.NewModuleLogger(&base, "probe.mysql")
+
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if findPoint(points, "senhub.db.database.size") != nil {
+		t.Error("size metric must be absent when its query fails")
+	}
+	if !strings.Contains(buf.String(), "mysql storage query failed") {
+		t.Errorf("expected a storage warning, got %q", buf.String())
 	}
 }

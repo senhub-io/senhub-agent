@@ -313,3 +313,35 @@ func TestDeleteReason_CacheSourceDropsAsAgedOut(t *testing.T) {
 		})
 	}
 }
+
+// excludedFake is a source whose configuration stops reporting an entity it
+// still observes, such as a route its probe filters.
+type excludedFake struct{ fakeSource }
+
+func (*excludedFake) DepartureReason(Entity) string { return ReasonExcludedByConfig }
+
+// An entity the configuration stops reporting must not read as having ended.
+func TestDeleteReason_ConfigExcludesIt_ExcludedByConfig(t *testing.T) {
+	src := &excludedFake{fakeSource{obs: monitoredDB(), ok: true}}
+	unregister := RegisterSource(src)
+	defer unregister()
+
+	var mu sync.Mutex
+	var got []Event
+	tr := NewTracker(func(ev Event) { mu.Lock(); got = append(got, ev); mu.Unlock() }, 0)
+	d := newReasonDetector()
+	t0 := time.Unix(1780272000, 0).UTC()
+
+	d.reconcile(tr, t0)
+	src.set(Observation{}, true)
+	got = nil
+	d.reconcile(tr, t0.Add(time.Minute))
+
+	del, ok := deletesByType(got)["db"]
+	if !ok {
+		t.Fatalf("no delete for the entity; got %d events", len(got))
+	}
+	if del.DeleteReason != ReasonExcludedByConfig {
+		t.Errorf("DeleteReason = %q, want %q", del.DeleteReason, ReasonExcludedByConfig)
+	}
+}

@@ -36,6 +36,7 @@ func TestCollectKeysAndCheckResultSuccess(t *testing.T) {
 			"by_name": regexp.QuoteMeta(processName),
 			"top_n":   5,
 		},
+		"detail": map[string]interface{}{"per_pid": true},
 		"aggregate": map[string]interface{}{
 			"enabled": false,
 		},

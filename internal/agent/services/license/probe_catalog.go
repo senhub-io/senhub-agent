@@ -43,6 +43,11 @@ var paidProbes = map[string]bool{
 	// The same subscription's jobs: the verdict, the duration and the
 	// output of each execution, read once it has finished.
 	"azure_container_app_jobs": true,
+	// Azure resources found through Resource Graph and their Azure Monitor
+	// metrics; Log Analytics queries as metrics; the Entra ID tenant.
+	"azure_monitor":   true,
+	"azure_log_query": true,
+	"entra_id":        true,
 	// Active / synthetic checks.
 	"ping_gateway": true,
 	"ping_webapp":  true,

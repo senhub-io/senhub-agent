@@ -151,13 +151,22 @@ func (p *PulsarProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
-// Collect checks broker readiness, then scrapes the /metrics endpoint
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
+func (p *PulsarProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext checks broker readiness, then scrapes the /metrics endpoint
 // for the tracked subset of broker-level metrics. A failing broker is
 // a measurement (senhub.pulsar.up = 0), never a collection error —
 // the pipeline always receives a datapoint set.
-func (p *PulsarProbe) Collect() ([]data_store.DataPoint, error) {
+func (p *PulsarProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
-	up, readyCheck := p.checkReady()
+	up, readyCheck := p.checkReady(ctx)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("pulsar collection interrupted: %w", ctxErr)
+	}
 	p.entitySrc.setReachable(up)
 
 	baseTags := []tags.Tag{
@@ -179,7 +188,10 @@ func (p *PulsarProbe) Collect() ([]data_store.DataPoint, error) {
 
 	checkResult := readyCheck
 	if up {
-		scraped, err, scrapedCheck := p.scrapeMetrics(now, baseTags)
+		scraped, err, scrapedCheck := p.scrapeMetrics(ctx, now, baseTags)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("pulsar collection interrupted: %w", ctxErr)
+		}
 		if err != nil {
 			checkResult = scrapedCheck
 			p.moduleLogger.Warn().
@@ -211,9 +223,13 @@ func (p *PulsarProbe) Collect() ([]data_store.DataPoint, error) {
 // checkReady performs GET <endpoint>/admin/v2/brokers/ready. It returns true
 // when the broker responds with HTTP 200, and the classified check result for
 // this readiness attempt.
-func (p *PulsarProbe) checkReady() (bool, dbcommon.CheckResult) {
+func (p *PulsarProbe) checkReady(ctx context.Context) (bool, dbcommon.CheckResult) {
 	url := p.config.Endpoint + "/admin/v2/brokers/ready"
-	resp, err := p.client.Get(url) // #nosec G107 - endpoint is operator-configured
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return false, dbcommon.ClassifyError(fmt.Errorf("building request for %s: %w", url, err))
+	}
+	resp, err := p.client.Do(req) // #nosec G107 - endpoint is operator-configured
 	if err != nil {
 		p.moduleLogger.Warn().
 			Err(err).
@@ -236,9 +252,13 @@ func (p *PulsarProbe) checkReady() (bool, dbcommon.CheckResult) {
 // PRTG/Prom/OTLP consumers filter by namespace or topic when Pulsar
 // annotates its broker-level aggregates.
 // The third return is the classified check result for this scrape attempt.
-func (p *PulsarProbe) scrapeMetrics(ts time.Time, baseTags []tags.Tag) ([]data_store.DataPoint, error, dbcommon.CheckResult) {
+func (p *PulsarProbe) scrapeMetrics(ctx context.Context, ts time.Time, baseTags []tags.Tag) ([]data_store.DataPoint, error, dbcommon.CheckResult) {
 	url := p.config.Endpoint + "/metrics"
-	resp, err := p.client.Get(url) // #nosec G107 - endpoint is operator-configured
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("building request for %s: %w", url, err), dbcommon.ClassifyError(err)
+	}
+	resp, err := p.client.Do(req) // #nosec G107 - endpoint is operator-configured
 	if err != nil {
 		return nil, fmt.Errorf("fetching %s: %w", url, err), dbcommon.ClassifyError(err)
 	}

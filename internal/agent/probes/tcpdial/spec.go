@@ -11,6 +11,7 @@ func init() {
 			{Key: "targets", Kind: probes.KindStringList, Required: true, Group: "targets", Description: "host:port pairs to dial", Example: "10.0.0.10:443, dc01.lan:389"},
 			{Key: "timeout", Kind: probes.KindInt, Default: 5, Group: "collection", Description: "Connect budget in seconds per target"},
 			{Key: "interval", Kind: probes.KindInt, Default: 60, Group: "collection", Description: "Seconds between cycles"},
+			{Key: "mode", Kind: probes.KindString, Default: "auto", Group: "collection", Description: "auto: read the TCP table for a target on this host and dial a remote one; dial: always connect; local: always read the TCP table"},
 		},
 	})
 }

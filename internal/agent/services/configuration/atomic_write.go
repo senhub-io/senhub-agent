@@ -20,6 +20,17 @@ import (
 // than os.WriteFile so an OOM-kill or power loss cannot brick the agent's
 // boot-critical YAML.
 func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	return atomicWriteFileOwned(path, data, perm, nil)
+}
+
+// fileOwner is the uid and gid a written file is given.
+type fileOwner struct{ uid, gid int }
+
+// atomicWriteFileOwned is atomicWriteFile that, when owner is set, gives the
+// temp file that owner and perm through its open descriptor before the rename,
+// so no path is ever chowned: a writer of the directory cannot swap a symlink
+// in and have root chown its target.
+func atomicWriteFileOwned(path string, data []byte, perm os.FileMode, owner *fileOwner) error {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
@@ -37,6 +48,16 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 		_ = tmp.Close()
 		return fmt.Errorf("writing temp file for %s: %w", path, err)
 	}
+	if owner != nil {
+		if err := tmp.Chown(owner.uid, owner.gid); err != nil {
+			_ = tmp.Close()
+			return fmt.Errorf("setting the owner of the temp file for %s: %w", path, err)
+		}
+		if err := tmp.Chmod(perm); err != nil {
+			_ = tmp.Close()
+			return fmt.Errorf("setting mode on temp file for %s: %w", path, err)
+		}
+	}
 	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("syncing temp file for %s: %w", path, err)
@@ -51,8 +72,12 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 		return fmt.Errorf("renaming temp file to %s: %w", path, err)
 	}
 	removeTmp = false
-	if err := fsown.AlignToDir(path); err != nil {
-		return err
+	// An explicit owner was set on the descriptor; aligning to the directory
+	// would undo it (a root-owned dir would take the service group away).
+	if owner == nil {
+		if err := fsown.AlignToDir(path); err != nil {
+			return err
+		}
 	}
 
 	// fsync the directory so the rename entry is durable; best-effort — a
@@ -108,7 +133,7 @@ func rewriteFile(path string, edit func(data []byte) ([]byte, error)) (bool, err
 		if !bytes.Equal(fresh, data) {
 			continue
 		}
-		if err := atomicWriteFile(path, out, fileModeOr(path, 0o600)); err != nil {
+		if err := atomicWriteFileOwned(path, out, fileModeOr(path, 0o600), existingOwner(path)); err != nil {
 			return false, err
 		}
 		return true, nil

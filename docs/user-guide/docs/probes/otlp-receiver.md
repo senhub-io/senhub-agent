@@ -37,11 +37,11 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:3640669e5c3ba5ee3fd21ef9e697fc92a743fc7555522b8cc8f09429a4d910e8 -->
+<!-- sha256:391e6f05041b488c8b0aaeb267282a6a8e0244258968564259f3165d68d2c8b9 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
-| `protocol` | In practice | `grpc` | Listener transport: OTLP/gRPC or OTLP/HTTP protobuf. One of `grpc`, `http` |
+| `protocol` | In practice | `grpc` | Listener transport: OTLP/gRPC, or OTLP/HTTP with a protobuf or JSON body. One of `grpc`, `http` |
 | `address` | In practice | - | Listen address (host:port), or unix:/path for a Unix domain socket whose senders are known to be on this machine; 127.0.0.1:4317 for grpc and 127.0.0.1:4318 for http when empty, so remote senders need an explicit address. Example: `0.0.0.0:4317` |
 | `port` | No | - | Replaces only the port part of the address |
 | `http_path` | No | `/v1/metrics` | Route the HTTP receiver serves metrics on; logs and traces keep /v1/logs and /v1/traces; ignored for grpc |
@@ -185,6 +185,16 @@ Run two instances to serve both protocols at once:
   no export strategy, `unmapped` for a metric with an unrecognized data type).
   A rising `dropped{reason="no_sink"}` means a sender is pushing logs/traces the
   agent has nowhere to relay to.
+- **Refused requests.** `senhub_agent_otlp_receiver_refused_total` counts the
+  OTLP/HTTP requests the receiver answered with an error, by `signal` and
+  `reason`: `bad_body` (400), `too_large` (413), `media_type` and `encoding`
+  (415), `rate_limited` (429), `method` (405), `unauthorized` and `forbidden`.
+  Each refusal is also logged at Warn with its status, reason and the client
+  address, at most once a minute per signal and reason; the next line says how
+  many were left out (`suppressed`). No body, header or query string is logged.
+- **Encodings.** OTLP/HTTP accepts `application/x-protobuf` and
+  `application/json` (the OTLP JSON encoding), with or without parameters such
+  as `; charset=utf-8`, and answers in the encoding of the request.
 - **Join coverage.** `senhub_agent_otlp_receiver_received_total` counts
   the records relayed and
   `senhub_agent_otlp_receiver_received_without_host_id_total` those that

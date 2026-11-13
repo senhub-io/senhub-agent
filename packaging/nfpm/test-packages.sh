@@ -267,7 +267,7 @@ run_lint() {
 run_versions() {
     echo "== versions"
     local v list="" pv rc=0 img dev devlist
-    for v in 0.6.2-beta.1 0.6.2-beta.2 0.6.2-beta.10 0.6.2 0.6.3-beta.1; do
+    for v in 0.6.2-beta.1 0.6.2-beta.2 0.6.2-beta.10 0.6.2-rc.1 0.6.2-rc.2 0.6.2-rc.10 0.6.2 0.6.3-beta.1; do
         pv=$(make --no-print-directory package-version VERSION="$v")
         list="$list $pv-1"
     done

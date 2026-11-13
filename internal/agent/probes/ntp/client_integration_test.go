@@ -3,6 +3,7 @@
 package ntp
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -18,7 +19,7 @@ import (
 func TestQueryAgainstARealServer(t *testing.T) {
 	const server = "time.google.com"
 
-	s, err := query(server, 5*time.Second)
+	s, err := query(context.Background(), server, 5*time.Second)
 	if err != nil {
 		t.Fatalf("querying %s: %v (outbound UDP 123 open?)", server, err)
 	}

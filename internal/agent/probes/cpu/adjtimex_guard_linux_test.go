@@ -57,7 +57,7 @@ func TestAdjtimexSurvivable(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			called := false
-			err := adjtimexSurvivable(writeStatus(t, tt.seccomp), func() error {
+			err := adjtimexSurvivable(writeStatus(t, tt.seccomp), func() bool { return false }, func() error {
 				called = true
 				return tt.child()
 			})

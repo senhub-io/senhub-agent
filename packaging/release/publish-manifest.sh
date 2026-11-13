@@ -36,10 +36,12 @@ CHANNEL=$(jq -er '.channel' "$MANIFEST") || die "manifest has no channel"
 [ "$(jq -r '.schema_version' "$MANIFEST")" = 1 ] || die "unsupported schema_version"
 case "$CHANNEL" in stable|beta) ;; *) die "bad channel: $CHANNEL" ;; esac
 
-# Orders versions the way semver does: a release outranks its own betas,
-# betas are ordered by their number.
-SEMVER_KEY='def key: capture("^(?<a>[0-9]+)\\.(?<b>[0-9]+)\\.(?<c>[0-9]+)(-beta\\.(?<n>[0-9]+))?$")
-  | [(.a|tonumber), (.b|tonumber), (.c|tonumber), (if .n then 0 else 1 end), ((.n // "0")|tonumber)];'
+# Orders versions the way semver does: a release outranks its own
+# pre-releases, an rc outranks a beta, and pre-releases are ordered by number.
+SEMVER_KEY='def key: capture("^(?<a>[0-9]+)\\.(?<b>[0-9]+)\\.(?<c>[0-9]+)(-(?<pre>beta|rc)\\.(?<n>[0-9]+))?$")
+  | [(.a|tonumber), (.b|tonumber), (.c|tonumber),
+     (if .pre == "beta" then 0 elif .pre == "rc" then 1 else 2 end),
+     ((.n // "0")|tonumber)];'
 
 REL="$SITE/releases"
 mkdir -p "$REL/$VERSION" "$REL/$CHANNEL"

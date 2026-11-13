@@ -163,3 +163,31 @@ func TestCollect_EnrichesProbeTags(t *testing.T) {
 		}
 	}
 }
+
+func TestCollect_UnknownCountsAreNotPublishedAsZero(t *testing.T) {
+	probe, err := NewOSUpdatesProbe(map[string]interface{}{}, newTestLogger())
+	if err != nil {
+		t.Fatalf("NewOSUpdatesProbe: %v", err)
+	}
+	p := probe.(*OSUpdatesProbe)
+	p.collector = stubCollector{status: updatesStatus{
+		pending: 3, packageManager: "dnf",
+		pendingSecurityUnknown: true, rebootRequiredUnknown: true,
+	}}
+
+	points, err := p.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	byName := pointsByName(points)
+	for _, name := range []string{"senhub.os.updates.pending.security", "senhub.os.updates.reboot_required"} {
+		if _, ok := byName[name]; ok {
+			t.Errorf("%s published although the backend could not answer", name)
+		}
+	}
+	for _, name := range []string{"senhub.os.updates.up", "senhub.os.updates.pending"} {
+		if _, ok := byName[name]; !ok {
+			t.Errorf("%s missing", name)
+		}
+	}
+}

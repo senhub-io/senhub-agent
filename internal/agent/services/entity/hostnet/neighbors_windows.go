@@ -24,7 +24,9 @@ func platformNeighbors() ([]hostNeighbor, error) {
 	if table == nil {
 		return nil, nil
 	}
-	defer procFreeMibTable.Call(uintptr(unsafe.Pointer(table)))
+	defer func() {
+		_, _, _ = procFreeMibTable.Call(uintptr(unsafe.Pointer(table)))
+	}()
 
 	n := *(*uint32)(unsafe.Pointer(table))
 	size := ipnetTableHeaderSize + int(n)*ipnetRowSize

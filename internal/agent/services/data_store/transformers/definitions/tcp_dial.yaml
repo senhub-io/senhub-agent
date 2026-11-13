@@ -5,6 +5,7 @@ host_level: false
 multi_instance_labels: ["target"]
 
 # Free active-check probe (#159): measured TCP connect per host:port.
+# Local targets are read from the TCP table instead of dialed.
 
 metrics:
   - name: "senhub.tcpdial.up"
@@ -62,3 +63,50 @@ metrics:
       type: gauge
     tag_to_attribute:
       target: tcpdial.target
+
+  - name: "senhub.tcp.listener.up"
+    channel: "tcp_listener_up"
+    display_name: "TCP {target} Listener Up"
+    unit: "#"
+    category: "availability"
+    description: "1 when a socket is in LISTEN on the local port, read from the TCP table"
+    otel:
+      name: senhub.tcp.listener.up
+      unit: "{status}"
+      type: gauge
+    tag_to_attribute:
+      target: tcpdial.target
+      server.port: server.port
+      network.transport: network.transport
+      process.executable.name: process.executable.name
+
+  - name: "senhub.tcp.listener.connections"
+    channel: "tcp_listener_connections"
+    display_name: "TCP {target} Listener Connections"
+    unit: "{connection}"
+    category: "availability"
+    description: "ESTABLISHED sockets on the local port, read from the TCP table"
+    otel:
+      name: senhub.tcp.listener.connections
+      unit: "{connection}"
+      type: gauge
+    tag_to_attribute:
+      target: tcpdial.target
+      server.port: server.port
+      network.transport: network.transport
+      network.connection.state: network.connection.state
+
+  - name: "senhub.tcp.listener.peers"
+    channel: "tcp_listener_peers"
+    display_name: "TCP {target} Listener Peers"
+    unit: "{peer}"
+    category: "availability"
+    description: "Distinct remote IPs with an ESTABLISHED socket on the local port"
+    otel:
+      name: senhub.tcp.listener.peers
+      unit: "{peer}"
+      type: gauge
+    tag_to_attribute:
+      target: tcpdial.target
+      server.port: server.port
+      network.transport: network.transport

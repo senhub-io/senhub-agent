@@ -2,6 +2,7 @@ package statuschan
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/extension"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/status"
 )
@@ -204,5 +206,74 @@ func TestShutdownIsBoundedWhenCloseHangs(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("Shutdown waited on a listener Close that never returns")
+	}
+}
+
+func TestSnapshotCarriesWhatExtensionsPublished(t *testing.T) {
+	extension.ResetForTest()
+	t.Cleanup(extension.ResetForTest)
+	svc := status.NewStatusService(logger.NewLogger(&cliArgs.ParsedArgs{}), "1", "c")
+	if st := Snapshot(svc); st.Extensions != nil {
+		t.Fatalf("nothing published, snapshot carries %+v", st.Extensions)
+	}
+	extension.SetStatus("sample", map[string]any{"connected": true})
+	st := Snapshot(svc)
+	body, err := json.Marshal(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back status.SystemStatus
+	if err := json.Unmarshal(body, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.Extensions["sample"]["connected"] != true {
+		t.Fatalf("the published status did not survive the channel: %s", body)
+	}
+}
+
+func TestShutdownIsBoundedWithoutACallerDeadline(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	svc := New(logger.NewLogger(&cliArgs.ParsedArgs{}), filepath.Join(t.TempDir(), "agent.yaml"), "9.9.9", "abcdef123456")
+	svc.shutdownCap = 200 * time.Millisecond
+	svc.listener = stuckListener{release: release}
+	svc.loopExited = make(chan struct{})
+
+	done := make(chan struct{})
+	go func() {
+		_ = svc.Shutdown(context.Background())
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Shutdown with context.Background() waited on a listener Close that never returns")
+	}
+}
+
+func TestShutdownHonoursALongerCallerDeadline(t *testing.T) {
+	release := make(chan struct{})
+	svc := New(logger.NewLogger(&cliArgs.ParsedArgs{}), filepath.Join(t.TempDir(), "agent.yaml"), "9.9.9", "abcdef123456")
+	svc.shutdownCap = 50 * time.Millisecond
+	svc.listener = stuckListener{release: release}
+	svc.loopExited = make(chan struct{})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 600*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	done := make(chan struct{})
+	go func() {
+		_ = svc.Shutdown(ctx)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		close(release)
+		t.Fatal("Shutdown waited on a listener Close that never returns")
+	}
+	close(release)
+	if elapsed := time.Since(start); elapsed < 400*time.Millisecond {
+		t.Fatalf("Shutdown returned after %v, the caller deadline was cut short by the cap", elapsed)
 	}
 }

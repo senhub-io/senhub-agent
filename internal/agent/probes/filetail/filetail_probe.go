@@ -86,6 +86,10 @@ type FileTailProbe struct {
 	// log rail — the conduit's own throughput self-metric, surfaced through
 	// Collect so it flows to the metric sinks like any other probe (#701).
 	emitted atomic.Uint64
+
+	// fileEmitted counts, per followed file, the records published from it.
+	// The probe-wide total hides a silent file behind a busy one.
+	fileEmitted sync.Map // path -> *atomic.Uint64
 }
 
 // NewFileTailProbe constructs the probe. Validation of paths and the
@@ -113,6 +117,33 @@ func NewFileTailProbe(config map[string]interface{}, baseLogger *logger.Logger) 
 	}
 	p.SetProbeType(ProbeType)
 	return p, nil
+}
+
+// warnAboutConfig logs what config check would warn about. It runs at start,
+// not at construction: the poller names the probe after constructing it, and a
+// warning that does not say which probe it is about cannot be acted on.
+func (p *FileTailProbe) warnAboutConfig() {
+	if w := logparse.MultilineWarning(p.config.Multiline); w != "" {
+		p.warn().Msg(w)
+	}
+	p.warnProtectedHomePaths()
+}
+
+// warnProtectedHomePaths names the systemd drop-in when a configured path
+// sits where the packaged unit's ProtectHome hides it. Nothing else says
+// why such a path stays empty.
+func (p *FileTailProbe) warnProtectedHomePaths() {
+	if runtime.GOOS != "linux" {
+		return
+	}
+	for _, configured := range p.config.Paths {
+		dir, hidden := HiddenByProtectHome(configured)
+		if !hidden {
+			continue
+		}
+		p.warn().Str("path", configured).Str("hidden_dir", dir).
+			Msg("Path is under a directory the systemd unit hides with ProtectHome; if the agent runs as a service, " + ProtectHomeFix)
+	}
 }
 
 // GetTargetStrategies is intentionally NOT overridden: the tailed log
@@ -149,20 +180,27 @@ func (p *FileTailProbe) Collect() ([]data_store.DataPoint, error) {
 
 func (p *FileTailProbe) tailPositionPoints(now time.Time) []data_store.DataPoint {
 	type position struct {
-		path   string
-		offset int64
+		path    string
+		offset  int64
+		emitted uint64
 	}
+	// The counter is read under the lock that guards its eviction: read
+	// after it, a counter dropped in between would be created again for a
+	// path no longer followed.
 	p.mu.Lock()
 	positions := make([]position, 0, len(p.tailing))
 	for path, ts := range p.tailing {
-		positions = append(positions, position{path: path, offset: ts.offset.Load()})
+		positions = append(positions, position{path: path, offset: ts.offset.Load(), emitted: p.fileEmittedCounter(path).Load()})
 	}
 	p.mu.Unlock()
 	sort.Slice(positions, func(i, j int) bool { return positions[i].path < positions[j].path })
 
-	points := make([]data_store.DataPoint, 0, 2*len(positions))
+	points := make([]data_store.DataPoint, 0, 3*len(positions))
 	for _, pos := range positions {
 		pathTags := []tags.Tag{{Key: "log.file.path", Value: pos.path}}
+		points = append(points, data_store.DataPoint{
+			Name: "senhub.filetail.file_records_emitted", Value: float64(pos.emitted), Timestamp: now, Tags: pathTags,
+		})
 		points = append(points, data_store.DataPoint{
 			Name: "senhub.filetail.read_offset", Value: float64(pos.offset), Timestamp: now, Tags: pathTags,
 		})
@@ -247,6 +285,7 @@ func (p *FileTailProbe) OnStart(quitChannel chan struct{}) error {
 		return fmt.Errorf("filetail: bookmark init: %w", err)
 	}
 	p.bookmarks = bm
+	p.warnAboutConfig()
 
 	p.info().
 		Strs("paths", p.config.Paths).
@@ -313,14 +352,81 @@ func (p *FileTailProbe) rescanLoop() {
 	defer p.wg.Done()
 	ticker := time.NewTicker(globRescanInterval)
 	defer ticker.Stop()
+	var rotationC <-chan time.Time
+	if rotationCheckInterval > 0 {
+		rotation := time.NewTicker(rotationCheckInterval)
+		defer rotation.Stop()
+		rotationC = rotation.C
+	}
 	for {
 		select {
 		case <-p.quit:
 			return
 		case <-ticker.C:
 			p.scanAndTail()
+		case <-rotationC:
+			p.restartRotatedTails()
 		}
 	}
+}
+
+// rotationCheckInterval is how often, on Windows, the probe checks that each
+// path still names the file its tail reads. The polling watcher there can
+// miss a rename made during its first interval and go on reading the old
+// file; without this check the stall grace of the full rescan applies and
+// the new file waits tens of seconds. Elsewhere the library sees renames
+// itself, and a second reader of rotation would race its reopen.
+var rotationCheckInterval = func() time.Duration {
+	if runtime.GOOS == "windows" {
+		return time.Second
+	}
+	return 0
+}()
+
+// restartRotatedTails restarts, from the first byte of the new file, every
+// tail whose path has named another file on two checks in a row. Two looks
+// leave the library the time to report a reopen it is making itself.
+func (p *FileTailProbe) restartRotatedTails() {
+	type candidate struct {
+		file string
+		ts   *tailState
+	}
+	var due []candidate
+	p.mu.Lock()
+	for file, ts := range p.tailing {
+		moved := !ts.stillOnPath(file) && pathExists(file)
+		ts.mu.Lock()
+		switch {
+		case !moved:
+			ts.movedSeen = false
+		case !ts.movedSeen:
+			ts.movedSeen = true
+		default:
+			due = append(due, candidate{file, ts})
+		}
+		ts.mu.Unlock()
+	}
+	p.mu.Unlock()
+	for _, c := range due {
+		p.restartStalledTail(c.file, c.ts, "the path names a different file than the one being read", false)
+	}
+}
+
+func pathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// statIdentity stats path and fixes the file's identity at once. On Windows
+// Go reads the identity of a file stat'd by path lazily, by reopening the
+// path at the first os.SameFile: a rotation made before that comparison
+// would make this stat name the new file, and the rotation would go unseen.
+func statIdentity(path string) (os.FileInfo, error) {
+	fi, err := os.Stat(path)
+	if err == nil {
+		os.SameFile(fi, fi)
+	}
+	return fi, err
 }
 
 // scanAndTail expands every configured path glob and starts a tail for
@@ -420,7 +526,7 @@ func (p *FileTailProbe) startTail(file string) error {
 		return nil
 	}
 
-	fi, err := os.Stat(file)
+	fi, err := statIdentity(file)
 	if err != nil {
 		p.mu.Unlock()
 		if os.IsNotExist(err) {
@@ -430,17 +536,13 @@ func (p *FileTailProbe) startTail(file string) error {
 	}
 	size := fi.Size()
 	opened := fi
-	handle, err := tail.OpenFile(file)
+	handle, err := tail.OpenFile(file) //nolint:staticcheck // no replacement in nxadm/tail v1.4.11; os.Open lacks the Windows delete-sharing that rotation relies on
 	if err != nil {
 		p.mu.Unlock()
 		if os.IsNotExist(err) {
 			return nil
 		}
 		return fmt.Errorf("%s: %w", describePathError(err), err)
-	}
-	if !drainsRotatedFile {
-		closeQuietly(handle)
-		handle = nil
 	}
 	fp := fingerprint(file, DefaultFingerprintLength)
 	stored, hasStored := p.bookmarks.Get(file)
@@ -475,8 +577,9 @@ func (p *FileTailProbe) startTail(file string) error {
 		p.warn().Err(err).Str("file", file).Msg("failed to start tail")
 		return fmt.Errorf("failed to start tail: %w", err)
 	}
-	ts := &tailState{t: t, opened: opened, handle: handle, headFP: fp}
+	ts := &tailState{t: t, opened: opened, handle: handle, headFP: fp, done: make(chan struct{})}
 	ts.offset.Store(offset)
+	ts.committed.Store(offset)
 	p.tailing[file] = ts
 	p.wg.Add(1)
 	p.mu.Unlock()
@@ -488,9 +591,28 @@ func (p *FileTailProbe) startTail(file string) error {
 		p.warn().Err(err).Str("file", file).Msg("persisting bookmark failed")
 	}
 
+	p.resumeInsidePEMBlock(file, offset)
 	go p.consume(file, ts, offset, fp, reopened)
 	p.verifyStartedTail(file, ts)
 	return nil
+}
+
+// resumeInsidePEMBlock keeps masking a private key the file was in the
+// middle of when reading starts at offset: the masking state of a key
+// split over records lives in memory, so a restart of the agent between
+// its BEGIN and END lines would otherwise send the rest of it in clear.
+func (p *FileTailProbe) resumeInsidePEMBlock(file string, offset int64) {
+	open, err := pemBlockOpenBefore(file, offset)
+	if err != nil {
+		p.warn().Err(err).Str("file", file).Msg("could not check for a private key block before the resume offset")
+		return
+	}
+	if !open {
+		return
+	}
+	agentstate.ResumePEMBlock(p.GetName(), map[string]string{"log.file.path": file})
+	p.info().Str("file", file).Int64("offset", offset).
+		Msg("Resuming inside a private key block: the lines that follow are masked up to its END line")
 }
 
 // startupVerifyDelay spaces the two looks verifyStartedTail takes at a new
@@ -541,10 +663,18 @@ func (p *FileTailProbe) isStopped() bool {
 type tailState struct {
 	t      *tail.Tail
 	offset atomic.Int64
+	// committed is the offset after the last line whose record has been
+	// published. It trails offset while a multiline record is held: the
+	// bookmark points before the held lines, so a crash or a restart reads
+	// them again rather than losing them.
+	committed atomic.Int64
 
 	mu            sync.Mutex
 	opened        os.FileInfo
 	mismatchSince time.Time
+	// movedSeen is set by a rotation check that found another file at the
+	// path; a second check that finds it again restarts the tail.
+	movedSeen     bool
 	checkedOffset int64
 
 	superseded atomic.Bool
@@ -559,6 +689,9 @@ type tailState struct {
 	// headFP is the fingerprint of the first bytes of the file as read, or
 	// "" while the file is shorter than the fingerprint window.
 	headFP string
+
+	// done is closed when the consume goroutine for this tail has returned.
+	done chan struct{}
 }
 
 func (ts *tailState) setHead(fp string) {
@@ -573,16 +706,34 @@ func closeQuietly(f *os.File) {
 	}
 }
 
-// drainsRotatedFile is false on Windows: refusing a rename onto a file the
-// probe still holds open would stop the application from rotating its own
-// log, which the probe must never do. There a rotated file is left at once.
-var drainsRotatedFile = runtime.GOOS != "windows"
-
 // retiredGrace is how long the handle on a rotated file stays open after
 // the library has moved on. A writer keeps its old descriptor until it is
 // told to reopen (logrotate's postrotate signal), which comes after the
 // library has already left the file.
 const retiredGrace = 30 * time.Second
+
+// windowsRetiredGrace bounds the same handle on Windows. A file held open,
+// even with FILE_SHARE_DELETE, makes a later rename onto its name fail
+// there: an application that rotates app.log to app.log.old on every
+// rotation would be refused if the probe still held the previous
+// app.log.old. The application's own rotation must never be refused, so
+// the end of the rotated file is read for a short time and the handle then
+// released. One second covers the writes made just before the rename and
+// is far below the interval between two rotations of a real log.
+const windowsRetiredGrace = time.Second
+
+// windowsRetiredIdle closes the handle earlier than windowsRetiredGrace
+// once the rotated file has stopped growing for this long.
+const windowsRetiredIdle = retiredPollInterval
+
+// retiredWindow returns how long a rotated file stays open and, when
+// non-zero, how long without growth releases it sooner.
+func retiredWindow(goos string) (grace, idle time.Duration) {
+	if goos == "windows" {
+		return windowsRetiredGrace, windowsRetiredIdle
+	}
+	return retiredGrace, 0
+}
 
 // retiredPollInterval spaces the looks at rotated files still in their grace.
 const retiredPollInterval = 250 * time.Millisecond
@@ -592,6 +743,10 @@ type retiredFile struct {
 	f      *os.File
 	offset int64
 	until  time.Time
+	// idle, when non-zero, releases the file once it has not grown for that
+	// long; lastGrowth is when it last did.
+	idle       time.Duration
+	lastGrowth time.Time
 }
 
 // drainFrom returns the complete lines of f from offset to its current end,
@@ -618,7 +773,7 @@ func drainFrom(f *os.File, offset int64) ([]string, int64, error) {
 
 // markOpened records the file now at path as the one the tail reads.
 func (ts *tailState) markOpened(path string) {
-	fi, err := os.Stat(path)
+	fi, err := statIdentity(path)
 	if err != nil {
 		return
 	}
@@ -634,7 +789,7 @@ func (ts *tailState) markOpened(path string) {
 // would pair the new file with the offset or hash reached in the old one,
 // and a resume at that offset skips or replays the start of the new file.
 func (ts *tailState) restartedAtStart(path string) string {
-	fi, err := os.Stat(path)
+	fi, err := statIdentity(path)
 	fp := ""
 	if err == nil {
 		fp = fingerprint(path, DefaultFingerprintLength)
@@ -736,6 +891,11 @@ func (p *FileTailProbe) restartStalledTails() {
 	}
 }
 
+// consumeExitTimeout bounds how long a restart waits for the replaced
+// tail's reader to hand over its last lines. A read blocked on a hung
+// mount never returns; the restart then goes ahead and may replay them.
+var consumeExitTimeout = 5 * time.Second
+
 func (p *FileTailProbe) restartStalledTail(file string, ts *tailState, reason string, resume bool) {
 	// A rotation can land between the look that asked for a resume and
 	// here; the offset belongs to the file that was read, not to the one
@@ -758,9 +918,21 @@ func (p *FileTailProbe) restartStalledTail(file string, ts *tailState, reason st
 		Msg("tail does not follow its file; restarting it")
 
 	ts.t.Kill(nil)
+	// The library can still hand over lines it had read when it was killed,
+	// and the replaced reader publishes them: the offset is taken once that
+	// reader has returned, or the new tail starts before them and sends
+	// them again.
+	timer := time.NewTimer(consumeExitTimeout)
+	select {
+	case <-ts.done:
+		timer.Stop()
+	case <-timer.C:
+		p.warn().Str("file", file).Dur("waited", consumeExitTimeout).
+			Msg("the replaced tail did not stop in time; lines it still hands over may be read twice")
+	}
 	entry := bookmarkEntry{}
 	if resume {
-		entry = bookmarkEntry{Offset: ts.offset.Load(), Fingerprint: fingerprint(file, DefaultFingerprintLength)}
+		entry = bookmarkEntry{Offset: ts.committed.Load(), Fingerprint: fingerprint(file, DefaultFingerprintLength)}
 	}
 	if err := p.bookmarks.Set(file, entry); err != nil {
 		p.warn().Err(err).Str("file", file).Msg("persisting bookmark failed")
@@ -820,6 +992,7 @@ func (r *reopenSignal) send(ev reopenEvent) {
 func (p *FileTailProbe) consume(file string, ts *tailState, startOffset int64, fp string, reopened <-chan reopenEvent) {
 	t := ts.t
 	defer p.wg.Done()
+	defer close(ts.done)
 	var retired []*retiredFile
 	defer func() {
 		closeQuietly(ts.handle)
@@ -835,6 +1008,10 @@ func (p *FileTailProbe) consume(file string, ts *tailState, startOffset int64, f
 	lastOffset := startOffset
 
 	persist := func() {
+		// Once superseded, the tail that replaced this one owns the bookmark.
+		if ts.superseded.Load() {
+			return
+		}
 		// A file below the fingerprint window has none yet. Once the offset
 		// shows the window was read, take it, provided the path still holds
 		// at least that many bytes.
@@ -844,15 +1021,48 @@ func (p *FileTailProbe) consume(file string, ts *tailState, startOffset int64, f
 				ts.setHead(fp)
 			}
 		}
-		if err := p.bookmarks.Set(file, bookmarkEntry{Offset: lastOffset, Fingerprint: fp}); err != nil {
+		if err := p.bookmarks.Set(file, bookmarkEntry{Offset: ts.committed.Load(), Fingerprint: fp}); err != nil {
 			p.warn().Err(err).Str("file", file).Msg("persisting bookmark failed")
 		}
 	}
 
-	feed := func(text string, readTime time.Time) {
-		for _, logical := range asm.Append(strings.TrimSuffix(text, "\r")) {
+	// idle sends a record in progress once the file has been quiet for
+	// the flush timeout: without it the last message of a quiet file
+	// waited for the next one, possibly days, or for the agent to stop.
+	flushTimeout := p.config.Multiline.FlushTimeout
+	var idle *time.Timer
+	var idleC <-chan time.Time
+	armIdle := func() {
+		if flushTimeout <= 0 {
+			return
+		}
+		if !asm.Pending() {
+			if idle != nil {
+				idle.Stop()
+			}
+			idleC = nil
+			return
+		}
+		if idle == nil {
+			idle = time.NewTimer(flushTimeout)
+		} else {
+			idle.Reset(flushTimeout)
+		}
+		idleC = idle.C
+	}
+	defer func() {
+		if idle != nil {
+			idle.Stop()
+		}
+	}()
+
+	feed := func(text string, readTime time.Time) int {
+		records := asm.Append(strings.TrimSuffix(text, "\r"))
+		for _, logical := range records {
 			p.publish(p.config.Parser, logical, readTime, probeName, file)
 		}
+		armIdle()
+		return len(records)
 	}
 
 	// pollRetired reads what writers still holding a rotated file appended
@@ -869,7 +1079,10 @@ func (p *FileTailProbe) consume(file string, ts *tailState, startOffset int64, f
 			for _, l := range lines {
 				feed(l, now)
 			}
-			if now.After(r.until) || err != nil {
+			if len(lines) > 0 {
+				r.lastGrowth = now
+			}
+			if now.After(r.until) || err != nil || (r.idle > 0 && now.Sub(r.lastGrowth) >= r.idle) {
 				closeQuietly(r.f)
 				continue
 			}
@@ -912,7 +1125,9 @@ read:
 					p.debug().Str("file", file).Int("lines", len(lines)).Msg("drained lines written to the rotated file")
 				}
 				if ts.handle != nil {
-					retired = append(retired, &retiredFile{f: ts.handle, offset: off, until: time.Now().Add(retiredGrace)})
+					grace, idle := retiredWindow(runtime.GOOS)
+					started := time.Now()
+					retired = append(retired, &retiredFile{f: ts.handle, offset: off, until: started.Add(grace), idle: idle, lastGrowth: started})
 					ts.handle = nil
 				}
 				continue
@@ -927,9 +1142,8 @@ read:
 				p.publish(p.config.Parser, logical, time.Now(), probeName, file)
 			}
 			lastOffset = 0
-			if !drainsRotatedFile {
-				// No drain handle to renew.
-			} else if h, err := tail.OpenFile(file); err == nil {
+			ts.committed.Store(0)
+			if h, err := tail.OpenFile(file); err == nil { //nolint:staticcheck // no replacement in nxadm/tail v1.4.11; os.Open lacks the Windows delete-sharing that rotation relies on
 				closeQuietly(ts.handle)
 				ts.handle = h
 			} else {
@@ -943,6 +1157,14 @@ read:
 			continue
 		case <-retiredTicker.C:
 			pollRetired()
+			continue
+		case <-idleC:
+			idleC = nil
+			for _, logical := range asm.Flush() {
+				p.publish(p.config.Parser, logical, time.Now(), probeName, file)
+			}
+			ts.committed.Store(lastOffset)
+			dirty = true
 			continue
 		case <-ticker.C:
 			if dirty {
@@ -974,11 +1196,12 @@ read:
 				p.publish(p.config.Parser, logical, time.Now(), probeName, file)
 			}
 			lastOffset = 0
+			ts.committed.Store(0)
 			fp = ts.restartedAtStart(file)
 			persist()
 			lastFlush = time.Now()
-			dirty = false
 		}
+		before := lastOffset
 		lastOffset = line.SeekInfo.Offset
 		ts.offset.Store(lastOffset)
 		dirty = true
@@ -991,7 +1214,14 @@ read:
 		// nxadm/tail splits on "\n" and keeps a trailing "\r" on Windows
 		// CRLF files; strip it so bodies/attributes are clean and parsers
 		// behave identically across platforms.
-		feed(line.Text, readTime)
+		emitted := feed(line.Text, readTime)
+		switch {
+		case !asm.Pending():
+			ts.committed.Store(lastOffset)
+		case emitted > 0:
+			// This line opened the record now held.
+			ts.committed.Store(before)
+		}
 
 		if time.Since(lastFlush) >= bookmarkFlushInterval {
 			persist()
@@ -1002,8 +1232,11 @@ read:
 
 	// Channel closed (tail stopped): flush any pending multiline record
 	// and persist the final offset.
-	for _, logical := range asm.Flush() {
-		p.publish(p.config.Parser, logical, time.Now(), probeName, file)
+	if held := asm.Flush(); len(held) > 0 {
+		for _, logical := range held {
+			p.publish(p.config.Parser, logical, time.Now(), probeName, file)
+		}
+		ts.committed.Store(lastOffset)
 	}
 	cause := t.Wait()
 	if ts.superseded.Load() {
@@ -1024,6 +1257,7 @@ func (p *FileTailProbe) forgetDeadTail(file string, ts *tailState, cause error) 
 		return
 	}
 	delete(p.tailing, file)
+	p.fileEmitted.Delete(file)
 	p.warn().Err(cause).Str("file", file).Msg("tail ended; retrying on next rescan")
 }
 
@@ -1040,6 +1274,17 @@ func (p *FileTailProbe) publish(pc ParserConfig, line string, readTime time.Time
 	rec.TargetStrategies = p.LogTargets()
 	agentstate.PublishLog(rec)
 	p.emitted.Add(1)
+	if file != "" {
+		p.fileEmittedCounter(file).Add(1)
+	}
+}
+
+func (p *FileTailProbe) fileEmittedCounter(file string) *atomic.Uint64 {
+	if c, ok := p.fileEmitted.Load(file); ok {
+		return c.(*atomic.Uint64)
+	}
+	c, _ := p.fileEmitted.LoadOrStore(file, new(atomic.Uint64))
+	return c.(*atomic.Uint64)
 }
 
 // hasGlobMeta reports whether a path pattern contains glob

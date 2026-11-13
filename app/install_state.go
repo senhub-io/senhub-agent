@@ -13,6 +13,7 @@ import (
 	"github.com/kardianos/service"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/cliexit"
 )
 
 // installState is what `install` finds on the machine before it touches
@@ -174,10 +175,14 @@ type installRun struct {
 	out        io.Writer
 	configPath string
 	written    []string
+	// okIfUnchanged turns the Unchanged exit into OK, for a deployment
+	// tool (GPO, SCCM, Intune) that replays install and reads any
+	// non-zero code as a failure.
+	okIfUnchanged bool
 }
 
-func newInstallRun(jsonMode bool, configPath string) *installRun {
-	run := &installRun{json: jsonMode, out: os.Stdout, configPath: configPath}
+func newInstallRun(jsonMode, okIfUnchanged bool, configPath string) *installRun {
+	run := &installRun{json: jsonMode, out: os.Stdout, configPath: configPath, okIfUnchanged: okIfUnchanged}
 	if jsonMode {
 		os.Stdout = os.Stderr
 	}
@@ -185,6 +190,14 @@ func newInstallRun(jsonMode bool, configPath string) *installRun {
 }
 
 func (r *installRun) add(paths ...string) { r.written = append(r.written, paths...) }
+
+// unchanged ends a run that found nothing to do.
+func (r *installRun) unchanged() int {
+	if r.okIfUnchanged {
+		return r.finish(cliexit.OK, nil)
+	}
+	return r.finish(cliexit.Unchanged, nil)
+}
 
 // finish prints the document for code (when --json was given) and returns
 // code.

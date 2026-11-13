@@ -18,7 +18,7 @@ import (
 	"senhub-agent.go/internal/agent/services/common"
 )
 
-var testHost = hostStamp{id: "6a6d1121-4a85-4e64-a222-746f7bc9c04c", name: "sha901"}
+var testHost = hostStamp{id: "6a6d1121-4a85-4e64-a222-746f7bc9c04c", name: "node-01"}
 
 func resourceWith(kv ...string) *resourcepb.Resource {
 	r := &resourcepb.Resource{}
@@ -47,7 +47,7 @@ func TestTheSenderHostIsStatedOnlyWhenItIsKnown(t *testing.T) {
 		{"remote sender is never stamped", originRemote, resourceWith("service.name", "intake"), "", ""},
 		// A pod name beside a machine id would give one record two
 		// contradicting identities: the set is all or nothing.
-		{"a partial host set is left alone", originUDS, resourceWith("host.name", "squash-ima-lmlqv"), "", "squash-ima-lmlqv"},
+		{"a partial host set is left alone", originUDS, resourceWith("host.name", "app-7d9f8-lmlqv"), "", "app-7d9f8-lmlqv"},
 		{"the sender's own id wins", originUDS, resourceWith("host.id", "abc"), "abc", ""},
 		// A loopback peer that is itself a relay is not the origin.
 		{"a relaying proxy on loopback", originTCPLoopback, resourceWith("telemetry.relay.host.id", "x"), "", ""},

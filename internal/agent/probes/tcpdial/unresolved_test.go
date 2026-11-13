@@ -1,6 +1,7 @@
 package tcpdial
 
 import (
+	"context"
 	"net"
 	"syscall"
 	"testing"
@@ -38,7 +39,7 @@ func TestUnresolvedLocalTarget(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			p := newEntityTestProbe(t, "agent-1", tc.target)
-			p.dial = func(target string) dialResult {
+			p.dial = func(_ context.Context, target string) dialResult {
 				return dialResult{target: target, up: tc.err == nil, err: tc.err}
 			}
 			points, err := p.Collect()

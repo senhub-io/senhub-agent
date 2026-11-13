@@ -3,7 +3,11 @@ package secret
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
+
+	"senhub-agent.go/internal/agent/services/instanceid"
 )
 
 // The registry holds the single active Provider for the process, plus the
@@ -38,6 +42,64 @@ func SetProvider(p Provider) {
 	mu.Lock()
 	provider = p
 	mu.Unlock()
+}
+
+var storeDir string
+
+// StoreDir returns the directory InitRegistry chose for the age key and
+// store (the configuration directory, or the agent state directory when the
+// configuration directory is read-only).
+func StoreDir() string {
+	mu.RLock()
+	defer mu.RUnlock()
+	return storeDir
+}
+
+func setStoreDir(dir string) {
+	mu.Lock()
+	storeDir = dir
+	mu.Unlock()
+}
+
+// dirWritable mirrors configuration.ConfigDirWritable without importing that
+// package (which would be an import cycle).
+func dirWritable(dir string) bool {
+	f, err := os.CreateTemp(dir, ".senhub-write-check-*")
+	if err != nil {
+		return false
+	}
+	name := f.Name()
+	_ = f.Close()
+	_ = os.Remove(name)
+	return true
+}
+
+// ageStorePaths resolves the age key/store pair shared by every InitRegistry
+// implementation. An existing key in the configuration directory wins, then an
+// existing key in the state directory, then a writable configuration
+// directory, and finally the state directory.
+func ageStorePaths(configDir string) (keyPath, storePath string, err error) {
+	configKey := filepath.Join(configDir, "agent-secret.key")
+	configStore := filepath.Join(configDir, "secrets.age")
+	if fileExists(configKey) {
+		return configKey, configStore, nil
+	}
+
+	stateDir := instanceid.OwnStateDir()
+	stateKey := filepath.Join(stateDir, "agent-secret.key")
+	stateStore := filepath.Join(stateDir, "secrets.age")
+	if fileExists(stateKey) {
+		return stateKey, stateStore, nil
+	}
+
+	if dirWritable(configDir) {
+		return configKey, configStore, nil
+	}
+
+	if err := os.MkdirAll(stateDir, 0700); err != nil {
+		return "", "", err
+	}
+	return stateKey, stateStore, nil
 }
 
 // ActiveProvider returns the installed provider, or nil when no secret backend
@@ -118,4 +180,9 @@ func Resolve(name, dflt string, hasDefault bool) (string, error) {
 		return "", fmt.Errorf("resolving ${secret:%s}: %w", name, err)
 	}
 	return v, nil
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }

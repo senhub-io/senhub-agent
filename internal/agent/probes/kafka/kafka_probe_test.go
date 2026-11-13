@@ -1,10 +1,13 @@
 package kafka
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/IBM/sarama"
+	"github.com/rs/zerolog"
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	probeTypes "senhub-agent.go/internal/agent/probes/types"
@@ -318,6 +321,44 @@ func TestCollect_UpZeroOnAdminError(t *testing.T) {
 	up := pointsBy(pts, "senhub.kafka.up")
 	if len(up) != 1 || up[0].Value != 0 {
 		t.Errorf("expected senhub.kafka.up=0 on admin error, got %+v", up)
+	}
+}
+
+func TestDownClusterWarnsOncePerOutage(t *testing.T) {
+	adm := &fakeAdmin{topics: map[string]sarama.TopicDetail{}, groups: map[string]string{}}
+	cli := &fakeClient{brokers: []string{"b1:9092"}}
+	p := newTestProbe(t, adm, cli, probeConfig{
+		Brokers:         []string{"localhost:9092"},
+		ProtocolVersion: "2.0.0",
+		Interval:        60 * time.Second,
+		Timeout:         10 * time.Second,
+	})
+	var buf bytes.Buffer
+	base := zerolog.New(&buf).Level(zerolog.DebugLevel)
+	p.moduleLogger = logger.NewModuleLogger(&base, "probe.kafka")
+
+	p.newAdmin = func(_ []string, _ *sarama.Config) (sarama.ClusterAdmin, error) {
+		return nil, sarama.ErrUnknown
+	}
+	for i := 0; i < 10; i++ {
+		pts, err := p.Collect()
+		if err != nil {
+			t.Fatalf("Collect() returned unexpected error: %v", err)
+		}
+		if up := pointsBy(pts, "senhub.kafka.up"); len(up) != 1 || up[0].Value != 0 {
+			t.Fatalf("expected senhub.kafka.up=0 while down, got %+v", up)
+		}
+	}
+	p.newAdmin = func(_ []string, _ *sarama.Config) (sarama.ClusterAdmin, error) { return adm, nil }
+	if _, err := p.Collect(); err != nil {
+		t.Fatalf("Collect() returned unexpected error: %v", err)
+	}
+
+	if got := strings.Count(buf.String(), `"level":"warn"`); got != 1 {
+		t.Errorf("%d warnings over 10 failed cycles, want 1\n%s", got, buf.String())
+	}
+	if got := strings.Count(buf.String(), `"level":"info"`); got != 1 {
+		t.Errorf("%d recovery lines, want 1\n%s", got, buf.String())
 	}
 }
 

@@ -1,11 +1,16 @@
 package ntp
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/rs/zerolog"
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -104,7 +109,7 @@ func TestCollectStateIsOneHotPerOutcome(t *testing.T) {
 				"servers": []interface{}{"ntp.example.org"},
 				"samples": 1,
 			})
-			p.query = func(string, time.Duration) (sample, error) {
+			p.query = func(context.Context, string, time.Duration) (sample, error) {
 				return sample{offset: 12 * time.Millisecond, roundTrip: 4 * time.Millisecond, stratum: 2}, tc.err
 			}
 
@@ -136,7 +141,7 @@ func TestCollectEmitsMeasurementsOnlyOnSuccess(t *testing.T) {
 	}
 
 	p := newTestProbe(t, map[string]interface{}{"servers": []interface{}{"ntp.example.org"}, "samples": 1})
-	p.query = func(string, time.Duration) (sample, error) {
+	p.query = func(context.Context, string, time.Duration) (sample, error) {
 		return sample{offset: -250 * time.Millisecond, roundTrip: 8 * time.Millisecond, stratum: 3}, nil
 	}
 	points, _ := p.Collect()
@@ -149,7 +154,7 @@ func TestCollectEmitsMeasurementsOnlyOnSuccess(t *testing.T) {
 
 	// A failed exchange must publish no measurement at all: a zero offset is
 	// indistinguishable from a perfectly synchronised clock.
-	p.query = func(string, time.Duration) (sample, error) { return sample{}, errUnsynchronised }
+	p.query = func(context.Context, string, time.Duration) (sample, error) { return sample{}, errUnsynchronised }
 	points, _ = p.Collect()
 	for _, pt := range points {
 		for _, name := range measured {
@@ -168,12 +173,12 @@ func TestMeasureStopsAfterARefusal(t *testing.T) {
 		"samples": 8,
 	})
 	calls := 0
-	p.query = func(string, time.Duration) (sample, error) {
+	p.query = func(context.Context, string, time.Duration) (sample, error) {
 		calls++
 		return sample{}, fmt.Errorf("%w: RATE", errRefused)
 	}
 
-	if res := p.measure("ntp.example.org"); !errors.Is(res.err, errRefused) {
+	if res := p.measure(context.Background(), "ntp.example.org"); !errors.Is(res.err, errRefused) {
 		t.Fatalf("err = %v, want errRefused", res.err)
 	}
 	if calls != 1 {
@@ -189,7 +194,7 @@ func TestMeasureSurvivesPartialLoss(t *testing.T) {
 		"samples": 4,
 	})
 	calls := 0
-	p.query = func(string, time.Duration) (sample, error) {
+	p.query = func(context.Context, string, time.Duration) (sample, error) {
 		calls++
 		if calls%2 == 1 {
 			return sample{}, fmt.Errorf("%w: timeout", errUnreachable)
@@ -197,7 +202,7 @@ func TestMeasureSurvivesPartialLoss(t *testing.T) {
 		return sample{offset: time.Duration(calls) * time.Millisecond, roundTrip: time.Duration(calls) * time.Millisecond}, nil
 	}
 
-	res := p.measure("ntp.example.org")
+	res := p.measure(context.Background(), "ntp.example.org")
 	if res.err != nil {
 		t.Fatalf("two lost packets out of four must still yield a measurement, got %v", res.err)
 	}
@@ -215,7 +220,7 @@ func TestCollectTagsEverySeriesWithItsServer(t *testing.T) {
 
 	var mu sync.Mutex
 	seen := map[string]bool{}
-	p.query = func(server string, _ time.Duration) (sample, error) {
+	p.query = func(_ context.Context, server string, _ time.Duration) (sample, error) {
 		mu.Lock()
 		seen[server] = true
 		mu.Unlock()
@@ -243,5 +248,29 @@ func TestCollectTagsEverySeriesWithItsServer(t *testing.T) {
 	}
 	if len(offsets) != 2 {
 		t.Errorf("offset series carry %d distinct server tags, want 2", len(offsets))
+	}
+}
+
+func TestUnreachableServerWarnsOncePerOutage(t *testing.T) {
+	var buf bytes.Buffer
+	base := zerolog.New(&buf).Level(zerolog.DebugLevel)
+	p := newTestProbe(t, map[string]interface{}{"servers": []interface{}{"ntp.example.org"}, "samples": 1})
+	p.moduleLogger = logger.NewModuleLogger(&base, "probe.ntp")
+
+	p.query = func(context.Context, string, time.Duration) (sample, error) { return sample{}, errUnreachable }
+	for i := 0; i < 10; i++ {
+		points, _ := p.Collect()
+		if got := value(t, points, "senhub.ntp.up", ""); got != 0 {
+			t.Fatalf("senhub.ntp.up = %v while the server is down, want 0", got)
+		}
+	}
+	p.query = func(context.Context, string, time.Duration) (sample, error) { return sample{stratum: 2}, nil }
+	p.Collect()
+
+	if got := strings.Count(buf.String(), `"level":"warn"`); got != 1 {
+		t.Errorf("%d warnings over 10 failed cycles, want 1\n%s", got, buf.String())
+	}
+	if got := strings.Count(buf.String(), `"level":"info"`); got != 1 {
+		t.Errorf("%d recovery lines, want 1\n%s", got, buf.String())
 	}
 }

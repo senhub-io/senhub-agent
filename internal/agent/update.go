@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"sort"
 
@@ -18,22 +19,35 @@ import (
 type UpdateOption func(*updateOptions)
 
 type updateOptions struct {
-	afterInstall func(newBinary string) (string, error)
+	afterInstall func(newBinary string, requested bool) (string, error)
+	refreshUnit  func(newBinary string) (string, error)
 	restart      func() (string, error)
 }
 
 // AfterInstall registers a hook run once the new binary is on disk and
 // before the operator-facing summary is printed. It receives the path the
 // new binary was written to and returns an extra path it reconciled, or
-// "" when it had nothing to do.
+// "" when it had nothing to do. requested reports that the operator named
+// the version on the command line rather than asking for "latest".
 //
 // The caller in app uses it to propagate the new binary to the
 // systemd-managed service copy: only that package knows about units, and
 // it cannot be called from here (app imports this package, not the
 // reverse). A failing hook fails the command — an update that left the
 // service on the old binary did not do what the operator asked (#723).
-func AfterInstall(hook func(newBinary string) (string, error)) UpdateOption {
+func AfterInstall(hook func(newBinary string, requested bool) (string, error)) UpdateOption {
 	return func(o *updateOptions) { o.afterInstall = hook }
+}
+
+// RefreshUnit registers the hook that brings the installed systemd unit up
+// to date with the new binary before the service restarts. An agent
+// upgraded with the binary alone otherwise kept the unit it was installed
+// with, and an older unit can forbid what the new binary does. It returns a
+// line to print when it changed the unit, "" when there was nothing to do.
+// Its failure is a warning, never a stop: the binary is installed and the
+// service restarts on the unit it has.
+func RefreshUnit(hook func(newBinary string) (string, error)) UpdateOption {
+	return func(o *updateOptions) { o.refreshUnit = hook }
 }
 
 // RestartService registers the hook that restarts the installed service
@@ -58,12 +72,16 @@ func UpdateAgent(args *cliArgs.ParsedArgs, opts ...UpdateOption) {
 		opt(&options)
 	}
 
+	// Read include_beta from config file
+	includeBeta := readIncludeBetaFromConfig(args.ConfigPath)
+
 	updater := auto_update.NewAutoUpdate(auto_update.AutoUpdateConfig{
 		Logger: log,
 		DryRun: args.DryRun,
 		// This is the operator running `sudo senhub-agent update`, the only
 		// path allowed to install the binary on Linux (#794).
 		OperatorDriven: true,
+		IncludeBeta:    includeBeta,
 	})
 
 	if args.WantedVersion != "list" {
@@ -78,9 +96,6 @@ func UpdateAgent(args *cliArgs.ParsedArgs, opts ...UpdateOption) {
 			}
 		}
 	}
-
-	// Read include_beta from config file
-	includeBeta := readIncludeBetaFromConfig(args.ConfigPath)
 
 	// Also include beta if explicitly requesting a beta version
 	if args.WantedVersion != "" && auto_update.IsBetaVersion(args.WantedVersion) {
@@ -114,6 +129,7 @@ func listVersions(updater auto_update.AutoUpdate, includeBeta bool, log *logger.
 		log.Error().Err(err).Msg("Failed to fetch versions")
 		os.Exit(cliexit.Failure)
 	}
+	stable = auto_update.DedupeVersions(stable)
 
 	// Fetch beta only if enabled
 	var beta []auto_update.VersionMetadata
@@ -122,6 +138,7 @@ func listVersions(updater auto_update.AutoUpdate, includeBeta bool, log *logger.
 		if err != nil {
 			log.Debug().Err(err).Msg("Failed to fetch beta versions")
 		}
+		beta = auto_update.DedupeVersions(beta)
 	}
 
 	// Sort stable versions
@@ -131,9 +148,6 @@ func listVersions(updater auto_update.AutoUpdate, includeBeta bool, log *logger.
 
 	fmt.Println("  Stable releases:")
 	for _, v := range stable {
-		if v.Name == "latest" {
-			continue
-		}
 		marker := "  "
 		if v.Version == cliArgs.Version {
 			marker = "* "
@@ -148,7 +162,7 @@ func listVersions(updater auto_update.AutoUpdate, includeBeta bool, log *logger.
 	}
 	var betaOnly []auto_update.VersionMetadata
 	for _, v := range beta {
-		if !stableSet[v.Version] && v.Name != "latest" {
+		if !stableSet[v.Version] {
 			betaOnly = append(betaOnly, v)
 		}
 	}
@@ -198,11 +212,16 @@ func installVersion(updater auto_update.AutoUpdate, args *cliArgs.ParsedArgs, lo
 	// propagate the still-current binary either.
 	reconciled := ""
 	if options.afterInstall != nil && !args.DryRun {
-		reconciled, err = options.afterInstall(self)
+		reconciled, err = options.afterInstall(self, auto_update.IsExactVersion(args.WantedVersion))
 		if err != nil {
 			log.Error().Err(err).Msg("Updating the systemd-managed service binary failed")
 			os.Exit(cliexit.Failure)
 		}
+	}
+
+	unitLine, unitFailed := "", false
+	if (updated || reconciled != "") && !args.DryRun && !args.NoRefreshUnit && options.refreshUnit != nil {
+		unitLine, unitFailed = refreshUnitStep(options.refreshUnit, self, log)
 	}
 
 	restarted := ""
@@ -218,21 +237,75 @@ func installVersion(updater auto_update.AutoUpdate, args *cliArgs.ParsedArgs, lo
 		restartLine = restarted
 	}
 
-	switch {
-	case updated && reconciled != "":
-		fmt.Println("Update installed:")
-		fmt.Printf("  %s (CLI)\n", self)
-		fmt.Printf("  %s (systemd service)\n", reconciled)
-		fmt.Println(restartLine)
-	case updated:
-		fmt.Printf("Update installed: %s\n", self)
-		fmt.Println(restartLine)
-	case reconciled != "":
-		fmt.Printf("Already up to date; the systemd service binary was stale and has been refreshed:\n  %s\n", reconciled)
-		fmt.Println(restartLine)
-	default:
-		fmt.Println("Already up to date.")
+	wanted := args.WantedVersion
+	if r, ok := updater.(interface{ ResolvedVersion() string }); ok && r.ResolvedVersion() != "" {
+		wanted = r.ResolvedVersion()
 	}
+	writeUpdateSummary(os.Stdout, updateSummary{
+		dryRun:      args.DryRun,
+		updated:     updated,
+		self:        self,
+		reconciled:  reconciled,
+		restartLine: restartLine,
+		unitLine:    unitLine,
+		current:     cliArgs.Version,
+		wanted:      wanted,
+	})
+	if unitFailed {
+		os.Exit(cliexit.Warning)
+	}
+}
+
+type updateSummary struct {
+	dryRun      bool
+	updated     bool
+	self        string
+	reconciled  string
+	restartLine string
+	unitLine    string
+	current     string
+	wanted      string
+}
+
+func writeUpdateSummary(w io.Writer, s updateSummary) {
+	if s.dryRun {
+		if s.updated {
+			fmt.Fprintf(w, "Dry run: would install %s over %s; no change made.\n", s.wanted, s.current)
+		} else {
+			fmt.Fprintf(w, "Dry run: nothing to install over %s; no change made.\n", s.current)
+		}
+		return
+	}
+	switch {
+	case s.updated && s.reconciled != "":
+		fmt.Fprintln(w, "Update installed:")
+		fmt.Fprintf(w, "  %s (CLI)\n", s.self)
+		fmt.Fprintf(w, "  %s (systemd service)\n", s.reconciled)
+		fmt.Fprintln(w, s.restartLine)
+	case s.updated:
+		fmt.Fprintf(w, "Update installed: %s\n", s.self)
+		fmt.Fprintln(w, s.restartLine)
+	case s.reconciled != "":
+		fmt.Fprintf(w, "Already up to date; the systemd service binary was stale and has been refreshed:\n  %s\n", s.reconciled)
+		fmt.Fprintln(w, s.restartLine)
+	default:
+		fmt.Fprintln(w, "Already up to date.")
+	}
+	if s.unitLine != "" {
+		fmt.Fprintln(w, s.unitLine)
+	}
+}
+
+// refreshUnitStep runs the unit refresh and returns the line to print and
+// whether it failed. A failure is logged and reported, and the update goes
+// on: leaving the service stopped would be worse than an older unit.
+func refreshUnitStep(hook func(newBinary string) (string, error), newBinary string, log *logger.Logger) (string, bool) {
+	line, err := hook(newBinary)
+	if err != nil {
+		log.Warn().Err(err).Msg("The systemd unit could not be refreshed; the service keeps its current unit. Run 'refresh-unit' to retry")
+		return "The systemd unit was not refreshed: " + err.Error(), true
+	}
+	return line, false
 }
 
 func checkAndPrompt(updater auto_update.AutoUpdate, includeBeta bool, log *logger.Logger) {

@@ -303,10 +303,17 @@ func checkConfiguration(d doctorDeps, cfg doctorConfig, st statusResult) []docto
 	if c := consoleModeCheck(cfg); c != nil {
 		out = append(out, *c)
 	}
+	out = append(out, extensionChecks(cfg, st)...)
 	return out
 }
 
 func configCheckChecks(d doctorDeps, cfg doctorConfig) []doctorCheck {
+	if d.defaultMissing {
+		// No flag, no registered service, no file at the default place: the
+		// agent is not shown failing for a file nobody said was there.
+		return []doctorCheck{warnCheck(sectionConfiguration, "config.check",
+			fmt.Sprintf("no configuration found: looked at %s", d.configPath), "pass --config-path with the location of agent.yaml")}
+	}
 	fix := fmt.Sprintf("%s --config-path %s", doctorConfigHint, d.configPath)
 	text, outcome, err := d.configCheck(d.configPath)
 	if err != nil {

@@ -44,6 +44,9 @@ type SystemStatus struct {
 	// configuration watch, in which case an edit needs a restart to
 	// apply. Same reason as above: the daemon knows, the CLI does not.
 	ConfigWatch *ConfigWatch `json:"config_watch,omitempty"`
+	// Extensions is what each running extension published, keyed by
+	// extension name; doctor hands it back to the extension.
+	Extensions map[string]map[string]any `json:"extensions,omitempty"`
 }
 
 // ConfigWatch says why the running agent is not watching its

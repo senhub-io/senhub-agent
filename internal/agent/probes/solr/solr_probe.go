@@ -10,6 +10,7 @@ package solr
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -137,26 +138,39 @@ type solrCoresResponse struct {
 	Status map[string]json.RawMessage `json:"status"`
 }
 
-// Collect fetches metrics from Solr's admin APIs and returns datapoints.
-// An unreachable Solr emits senhub.solr.up=0 and returns nil (not an error).
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
 func (p *SolrProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext fetches metrics from Solr's admin APIs and returns
+// datapoints. An unreachable Solr emits senhub.solr.up=0 and returns nil
+// (not an error); a cycle whose parent context ends returns that error.
+func (p *SolrProbe) CollectContext(parent context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
-	points := p.collect(now)
+	points, err := p.collect(parent, now)
+	if err != nil {
+		return nil, err
+	}
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
-func (p *SolrProbe) collect(now time.Time) []data_store.DataPoint {
-	ctx, cancel := context.WithTimeout(context.Background(), p.config.Timeout)
+func (p *SolrProbe) collect(parent context.Context, now time.Time) ([]data_store.DataPoint, error) {
+	ctx, cancel := context.WithTimeout(parent, p.config.Timeout)
 	defer cancel()
 
 	metricsResp, err := p.fetchMetrics(ctx)
+	if parentErr := parent.Err(); parentErr != nil {
+		return nil, fmt.Errorf("solr collection interrupted: %w", parentErr)
+	}
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Str("endpoint", p.config.Endpoint).Msg("solr metrics fetch failed")
 		p.entitySrc.setReachable(false, "")
 		return []data_store.DataPoint{
 			{Name: "senhub.solr.up", Value: 0, Timestamp: now, Tags: p.baseTags("overview")},
 			p.checkResultPoint(now, err),
-		}
+		}, nil
 	}
 	p.entitySrc.setReachable(true, "")
 	p.entitySrc.tryPinClusterIDOrHostPort(ctx)
@@ -180,8 +194,12 @@ func (p *SolrProbe) collect(now time.Time) []data_store.DataPoint {
 		points = append(points, p.buildCorePoints(metricsResp, coresResp, now)...)
 	}
 
+	if parentErr := parent.Err(); parentErr != nil {
+		return nil, fmt.Errorf("solr collection interrupted: %w", parentErr)
+	}
+
 	points = append(points, p.checkResultPoint(now, nil))
-	return points
+	return points, nil
 }
 
 // fetchMetrics calls GET /admin/metrics?wt=json&group=all and returns the parsed response.
@@ -264,7 +282,8 @@ func checkResultValue(err error) float64 {
 	if err == nil {
 		return float64(dbcommon.CheckOK)
 	}
-	if httpErr, ok := err.(*solrHTTPError); ok {
+	var httpErr *solrHTTPError
+	if errors.As(err, &httpErr) {
 		return float64(dbcommon.ClassifyHTTPStatus(httpErr.code))
 	}
 	return float64(dbcommon.ClassifyError(err))

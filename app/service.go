@@ -2,6 +2,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -62,6 +63,28 @@ func removeService(s serviceRemover, args *cliArgs.ParsedArgs, out, errOut io.Wr
 // printed where the operator is looking. Saying "your commercial
 // agreement" without naming a document is how a customer ends up unable
 // to find one.
+// confirmUninstall asks the operator to confirm the destructive cleanup.
+// A non-terminal stdin is an error, not a "no": an automation must not
+// read a removal that did not happen as success.
+func confirmUninstall(in *os.File, out, errOut io.Writer) (proceed bool, code int) {
+	fmt.Fprintln(out, "Uninstall will remove the whole agent configuration directory — agent.yaml,")
+	fmt.Fprintln(out, "probes.d/, strategies.d/ AND the sealed secret store, which holds the agent")
+	fmt.Fprintln(out, "key and every credential the agent sealed (database, BMC, API tokens).")
+	fmt.Fprintln(out, "That is irreversible: sealed values cannot be recovered afterwards.")
+	fmt.Fprintln(out, "The certs/ directory and log files/directories are removed too.")
+	fmt.Fprint(out, "Proceed? [y/N] ")
+	ok, interactive := confirmFrom(in, errOut, "--yes")
+	if ok {
+		return true, cliexit.OK
+	}
+	if !interactive {
+		fmt.Fprintln(errOut, "Error: confirmation required: rerun with --yes; nothing was removed.")
+		return false, cliexit.Failure
+	}
+	fmt.Fprintln(out, "Uninstall cancelled; nothing was removed.")
+	return false, cliexit.OK
+}
+
 func printLicenseNotice() {
 	fmt.Println()
 	fmt.Println("Licenses: the SenHub Agent core is open source under Apache 2.0")
@@ -141,10 +164,15 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 
 	// A second install on a machine that already is in the requested state
 	// changes nothing: no binary copy, no unit write, no configuration
-	// touch. It says so and exits with the Unchanged code.
+	// touch. It says so and exits with the Unchanged code, or OK under
+	// --ok-if-unchanged.
 	var state installState
-	run := newInstallRun(command == "install" && hasArg(jsonFlag), configPath)
+	run := newInstallRun(command == "install" && hasArg(jsonFlag), hasArg(okIfUnchangedFlag), configPath)
 	if command == "install" {
+		if msg := existingServiceConflict(registeredServiceImagePath(), executablePath, hostMsiManaged()); msg != "" {
+			fmt.Fprintln(os.Stderr, msg)
+			os.Exit(run.finish(cliexit.Failure, errors.New("a senhub-agent service from another install is already registered")))
+		}
 		probe, probeErr := service.New(&program{done: make(chan bool, 1), args: args}, svcConfig)
 		if probeErr == nil {
 			state = detectInstallState(probe, configPath, installProbes{
@@ -154,8 +182,12 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			})
 			if state.alreadyDone() {
 				fmt.Printf("The service is already installed and the configuration is present at %s; nothing to do.\n", configPath)
-				fmt.Println("To change the installed unit use 'refresh-unit' (Linux); to change the binary use 'update'.")
-				os.Exit(run.finish(cliexit.Unchanged, nil))
+				if runtime.GOOS == "linux" {
+					fmt.Println("To change the installed unit use 'refresh-unit'; to change the binary use 'update'.")
+				} else {
+					fmt.Println("To change the binary use 'update'.")
+				}
+				os.Exit(run.unchanged())
 			}
 		}
 	}
@@ -313,16 +345,13 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		// abort) must leave monitoring exactly as it was — running, config
 		// and certs and logs intact. Stopping first and prompting after
 		// left the service DOWN on a cancelled uninstall; --yes skips the
-		// prompt for unattended removal.
+		// prompt for unattended removal. Without a terminal and without
+		// --yes the command fails instead of looking like a user's "no".
 		if !args.Yes {
-			fmt.Println("Uninstall will remove the whole agent configuration directory — agent.yaml,")
-			fmt.Println("probes.d/, strategies.d/ AND the sealed secret store, which holds the agent")
-			fmt.Println("key and every credential the agent sealed (database, BMC, API tokens).")
-			fmt.Println("That is irreversible: sealed values cannot be recovered afterwards.")
-			fmt.Println("The certs/ directory and log files/directories are removed too.")
-			fmt.Print("Proceed? [y/N] ")
-			if !readYesConfirmation() {
-				fmt.Println("Uninstall cancelled; nothing was removed.")
+			if proceed, code := confirmUninstall(os.Stdin, os.Stdout, os.Stderr); !proceed {
+				if code != cliexit.OK {
+					os.Exit(code)
+				}
 				return
 			}
 		}
