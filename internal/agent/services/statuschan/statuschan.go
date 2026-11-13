@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/extension"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/status"
 )
@@ -35,6 +36,8 @@ const (
 	writeTimeout = 2 * time.Second
 	dialTimeout  = 2 * time.Second
 	readLimit    = 4 << 20
+
+	defaultShutdownCap = 5 * time.Second
 )
 
 // Service serves the status channel for the lifetime of the agent.
@@ -46,6 +49,8 @@ type Service struct {
 	listener   net.Listener
 	boundPath  string
 	loopExited chan struct{}
+
+	shutdownCap time.Duration
 }
 
 // New builds the service. configPath locates the configuration file, the
@@ -56,6 +61,8 @@ func New(baseLogger *logger.Logger, configPath, version, commit string) *Service
 		logger: logger.NewModuleLogger(baseLogger, "statuschan"),
 		paths:  candidatePaths(configPath),
 		build:  func() status.SystemStatus { return Snapshot(statusService) },
+
+		shutdownCap: defaultShutdownCap,
 	}
 }
 
@@ -94,7 +101,13 @@ func (s *Service) Shutdown(ctx context.Context) error {
 	// listener routine goes back to waiting for a close that was already
 	// sent (go-winio v0.6.2 pipe.go makeConnectedServerPipe). Seen hanging
 	// the test package on the Windows runner; the agent's own shutdown
-	// would hang the same way. Close runs aside, bounded by ctx.
+	// would hang the same way. Close runs aside, bounded by ctx and, for a
+	// caller that gave no deadline, by shutdownCap.
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.shutdownCap)
+		defer cancel()
+	}
 	closed := make(chan struct{})
 	go func() {
 		_ = ln.Close()
@@ -193,6 +206,7 @@ func Snapshot(svc *status.StatusService) status.SystemStatus {
 		st.StrategyFailures = append(st.StrategyFailures, status.StrategyFailure{Strategy: name, Reason: f.Reason, Detail: f.Detail})
 	}
 	sort.Slice(st.StrategyFailures, func(i, j int) bool { return st.StrategyFailures[i].Strategy < st.StrategyFailures[j].Strategy })
+	st.Extensions = extension.Statuses()
 	if w := agentstate.GetConfigWatchDisabled(); w != nil {
 		st.ConfigWatch = &status.ConfigWatch{Reason: w.Reason, Detail: w.Detail}
 	}

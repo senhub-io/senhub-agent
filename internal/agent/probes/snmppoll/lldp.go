@@ -247,13 +247,19 @@ func localPortOf(rowKey string) string {
 // NOT anchor on LLDP: the polled device's id comes from its serial / engine
 // id read over SNMP, so it is stable even when LLDP is disabled.
 type deviceIdentity struct {
-	Serial     string // entPhysicalSerialNum of the *single* chassis (empty for a stack)
-	VendorPEN  string // IANA enterprise number from sysObjectID — namespaces Serial
-	EngineID   []byte // snmpEngineID — globally unique (RFC 3411) + stack-scoped fallback
-	ChassisMAC []byte // LLDP chassis-id, only when its subtype is MAC
-	SysName    string // sysName / lldpRemSysName
-	MgmtIP     string // the polled target address (mutable — last resort)
-	Services   int    // sysServices bitmask — descriptive device.role (router/switch)
+	Serial string // entPhysicalSerialNum of the *single* chassis (empty for a stack)
+	// ChassisSerials is every chassis row's serial (one per stack member),
+	// trimmed, byte-sorted, deduplicated. Descriptive only.
+	ChassisSerials []string
+	// identityComplete is true when every walk the id is built from
+	// answered: a sweep missing one may have resolved a lower rung.
+	identityComplete bool
+	VendorPEN        string // IANA enterprise number from sysObjectID — namespaces Serial
+	EngineID         []byte // snmpEngineID — configurable (and seen copied), so it ranks after the chassis MAC
+	ChassisMAC       []byte // LLDP lldpLocChassisId / remote chassis-id, only when its subtype is MAC
+	SysName          string // sysName / lldpRemSysName
+	MgmtIP           string // the polled target address (mutable — last resort)
+	Services         int    // sysServices bitmask — descriptive device.role (router/switch)
 
 	// Descriptive-only (never identity): hardware nameplate of the single
 	// chassis (ENTITY-MIB) and the device's sysDescr line.
@@ -263,24 +269,29 @@ type deviceIdentity struct {
 	HwFirmware string // entPhysicalFirmwareRev of the chassis
 }
 
-// resolveDeviceID produces the single network.device.id with the Toise-frozen
-// precedence serial > engine > mac > name > mgmt. The chosen value is
-// canonicalized so two observers of the same device derive byte-identical ids.
-// Everything not chosen (raw chassis-id, sysName, mgmt IP, serial, vendor)
-// belongs in descriptive attributes, never as a second identity key.
+// resolveDeviceID produces the single network.device.id with the precedence
+// serial (with PEN) > chassis MAC > engine > name > mgmt. The chassis MAC is
+// factory-assigned and survives configuration copies; the engine id is
+// configurable and has been seen duplicated on distinct devices. A chassis-id
+// that is not a usable unicast MAC (all zero, broadcast, multicast, not six
+// bytes) is never an id: two neighbours announcing 00:00:00:00:00:00 would
+// merge. A stack with no single chassis
+// serial uses its stack chassis MAC when LLDP exposes it, else the engine id.
+// The chosen value is canonicalized so two observers of the same device derive
+// byte-identical ids. Everything not chosen (raw chassis-id, sysName, mgmt IP,
+// serial, vendor) belongs in descriptive attributes, never as a second identity key.
 func resolveDeviceID(id deviceIdentity) string {
 	switch {
 	// Serial is vendor-scoped (unique per vendor, not globally), so it is a
 	// usable identity ONLY when namespaced by the vendor's IANA enterprise
 	// number (from sysObjectID). Without a PEN — or for a stack, where the
-	// reader leaves Serial empty — fall through to engine, which RFC 3411
-	// makes globally unique and stack-scoped on its own.
+	// reader leaves Serial empty — fall through to the chassis MAC.
 	case strings.TrimSpace(id.Serial) != "" && strings.TrimSpace(id.VendorPEN) != "":
 		return "serial:" + strings.TrimSpace(id.VendorPEN) + ":" + strings.TrimSpace(id.Serial)
+	case usableChassisMAC(id.ChassisMAC):
+		return "mac:" + macHex(id.ChassisMAC)
 	case len(id.EngineID) > 0:
 		return "engine:" + hex.EncodeToString(id.EngineID)
-	case len(id.ChassisMAC) > 0:
-		return "mac:" + macHex(id.ChassisMAC)
 	case strings.TrimSpace(id.SysName) != "":
 		return "name:" + strings.TrimSpace(id.SysName)
 	case strings.TrimSpace(id.MgmtIP) != "":
@@ -288,6 +299,28 @@ func resolveDeviceID(id deviceIdentity) string {
 	default:
 		return ""
 	}
+}
+
+// usableChassisMAC reports whether b is a usable LLDP chassis MAC for identity:
+// exactly 6 bytes, not all zero, not all 0xff, and not a multicast or group
+// address (low bit of the first byte set).
+func usableChassisMAC(b []byte) bool {
+	if len(b) != 6 {
+		return false
+	}
+	var allZero, allFF = true, true
+	for _, v := range b {
+		if v != 0 {
+			allZero = false
+		}
+		if v != 0xff {
+			allFF = false
+		}
+	}
+	if allZero || allFF {
+		return false
+	}
+	return b[0]&1 == 0
 }
 
 // neighborIdentity maps an LLDP-discovered neighbour (LLDP data only — the

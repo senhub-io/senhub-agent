@@ -3,6 +3,7 @@
 package auto_update
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,8 +12,10 @@ import (
 	"testing"
 
 	"aead.dev/minisign"
+	"github.com/rs/zerolog"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 // msiFixtureBody returns a body comfortably above minMSISize so the size guards
@@ -245,5 +248,51 @@ func TestApplyMsiUpdate_RejectsTooSmall(t *testing.T) {
 	}
 	if launched {
 		t.Error("launched on an undersized body")
+	}
+}
+
+// TestApplyMsiUpdate_LogsTheVerifiedSignatureBeforeLaunch pins the evidence an
+// operator reads: the MSI path says the signature was verified, as the archive
+// path does, and says it before msiexec is launched; a tampered MSI never
+// gets that line.
+func TestApplyMsiUpdate_LogsTheVerifiedSignatureBeforeLaunch(t *testing.T) {
+	t.Setenv("ProgramData", t.TempDir())
+	agentstate.ResetUpdateRejectedForTest()
+	t.Cleanup(agentstate.ResetUpdateRejectedForTest)
+
+	priv := withSigningKey(t)
+	body := msiFixtureBody()
+	srv := serveMSI(body, minisign.Sign(priv, body), true)
+	defer srv.Close()
+
+	var buf bytes.Buffer
+	zlog := zerolog.New(&buf)
+	au := newSigningTestUpdater(t, srv)
+	au.logger = logger.NewModuleLogger((*logger.Logger)(&zlog), "service.auto_update.test")
+	var atLaunch string
+	au.launchInstaller = func(string, string) error {
+		atLaunch = buf.String()
+		return nil
+	}
+	if err := au.applyMsiUpdate(srv.URL+"/dl/agent.msi", "9.9.9"); err != nil {
+		t.Fatalf("applyMsiUpdate: %v", err)
+	}
+	if !strings.Contains(atLaunch, "Update MSI signature verified") {
+		t.Fatalf("no signature-verified line before launch:\n%s", atLaunch)
+	}
+
+	tampered := append([]byte{}, body...)
+	tampered[0] ^= 0xff
+	bad := serveMSI(tampered, minisign.Sign(priv, body), true)
+	defer bad.Close()
+	buf.Reset()
+	au2 := newSigningTestUpdater(t, bad)
+	au2.logger = logger.NewModuleLogger((*logger.Logger)(&zlog), "service.auto_update.test")
+	au2.launchInstaller = func(string, string) error { t.Fatal("tampered MSI launched"); return nil }
+	if err := au2.applyMsiUpdate(bad.URL+"/dl/agent.msi", "9.9.9"); err == nil {
+		t.Fatal("tampered MSI accepted")
+	}
+	if strings.Contains(buf.String(), "signature verified") {
+		t.Fatalf("a tampered MSI logged a verified signature:\n%s", buf.String())
 	}
 }

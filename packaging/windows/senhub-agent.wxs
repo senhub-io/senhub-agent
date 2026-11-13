@@ -623,6 +623,16 @@
                        Type="string"
                        Value="$(Version)" />
         <!--
+          Lock the data folder to SYSTEM and Administrators (protected, so
+          the stock %ProgramData% ACL granting BUILTIN\Users read access is
+          not inherited). It holds the admin key, the sealed secret store and
+          the licence. The agent re-applies the same DACL at start
+          (internal/agent/services/datadir), which also repairs upgrades.
+        -->
+        <CreateFolder>
+          <PermissionEx Sddl="D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)" />
+        </CreateFolder>
+        <!--
           Three purge rows, processed together by Wix4RemoveFoldersEx. Each
           Property is ALWAYS non-empty (see the set-property actions above):
           the real folder when it should be purged, else a never-existing

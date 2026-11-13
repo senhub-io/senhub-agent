@@ -1,6 +1,7 @@
 package clickhouse
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -219,7 +220,7 @@ func TestCollect_RefusalCarriesTheServerReason(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClickHouseProbe: %v", err)
 	}
-	_, err = p.(*ClickHouseProbe).fetchSystemRows()
+	_, err = p.(*ClickHouseProbe).fetchSystemRows(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "Authentication failed") {
 		t.Fatalf("error = %v, want the server's reason", err)
 	}

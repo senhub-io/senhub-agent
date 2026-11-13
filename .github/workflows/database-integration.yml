@@ -1,0 +1,35 @@
+name: Database-integration
+on:
+  pull_request:
+    branches: [master, 'integ/**']
+    paths:
+      - 'internal/agent/probes/mysql/**'
+      - 'internal/agent/probes/postgresql/**'
+      - 'internal/agent/probes/dbcommon/**'
+      - '.github/workflows/database-integration.yml'
+      - 'Makefile'
+  workflow_dispatch:
+  schedule:
+    # Weekly, Monday 04:17 UTC: a new upstream image release can break a
+    # probe with no change in this repository.
+    - cron: '17 4 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  database-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+      - name: Probe integration suites against live databases
+        run: make test-database

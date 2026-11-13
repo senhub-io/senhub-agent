@@ -31,7 +31,9 @@ xpKWcsyzFCvMC+Pz/tS1C0aOtl4yZl7/k7wKX6mYKRPgM2LbXuNxA7gonECLDl5j
 ojgktHLdogXsO8cHYmo4/+MCAwEAAQ==
 -----END PUBLIC KEY-----`
 
-// GetDefaultValidator returns a validator configured with the embedded SenHub public key
+// GetDefaultValidator returns a validator that trusts the embedded root
+// key. Platform signing keys are not embedded: they are reached through
+// the root-signed delegation each licence carries.
 func GetDefaultValidator(gracePeriodDays int) (*JWTValidator, error) {
 	return NewJWTValidator(SenHubPublicKey, gracePeriodDays)
 }

@@ -86,6 +86,24 @@ alone does not show it.
 | `k8s.resourcequota.hard` / `.used` | 1 | The pair is the point: a quota at 99 % is why a deployment will not scale, and neither number alone says so |
 | `k8s.hpa.current_replicas` / `.max_replicas` | 1 | An autoscaler pinned at max is the cluster refusing to grow, invisible from the workload's own replica counts |
 
+## Nodes on the map
+
+Each node is published as two entities, joined by a `same_as` relation:
+
+- the **host** (`host.id` is the node's machine-id, written as a dashed
+  UUID so that it matches the host entity of an agent running on that
+  node) carries the machine facts: name, operating system, architecture;
+- the **`k8s.node`** (`k8s.node.uid`) carries the node's role in the
+  cluster: kubelet version, container runtime, whether it is
+  unschedulable, and the Ready, MemoryPressure, DiskPressure and
+  PIDPressure conditions as `true`, `false` or `unknown`.
+
+The host half is published only when the node reports a machine-id; the
+`k8s.node` is published whenever the node has a UID. Entities reach a
+consumer through the [OTLP output](../otlp.md) only, and the
+`entities` block must be enabled there, see
+[Topology](../topology.md).
+
 ## Cluster Events
 
 Events ride the **log rail**, not the metric rail: they are timestamped

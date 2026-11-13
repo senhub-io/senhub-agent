@@ -151,19 +151,19 @@ func TestEnumerate_SkipsLoopbackInterfaceAndKeepsUsableIPs(t *testing.T) {
 	}
 }
 
-func TestOperStateFromFlags(t *testing.T) {
-	if got := operStateFromFlags([]string{"up", "broadcast"}); got != "up" {
+func TestAdminStateFromFlags(t *testing.T) {
+	if got := adminStateFromFlags([]string{"up", "broadcast"}); got != "up" {
 		t.Errorf("flags with up = %q, want up", got)
 	}
-	if got := operStateFromFlags([]string{"broadcast", "multicast"}); got != "down" {
+	if got := adminStateFromFlags([]string{"broadcast", "multicast"}); got != "down" {
 		t.Errorf("flags without up = %q, want down", got)
 	}
 }
 
 func TestBuildObservation_OperStateAttribute(t *testing.T) {
 	ias := []ifaceAddrs{
-		{Name: "eth0", IPs: []string{"10.0.0.5"}, OperState: "up"},
-		{Name: "eth1", IPs: []string{"10.0.0.6"}}, // no oper state → omitted
+		{Name: "eth0", IPs: []string{"10.0.0.5"}, OperState: "up", AdminState: "up"},
+		{Name: "eth1", IPs: []string{"10.0.0.6"}, AdminState: "down"}, // no oper state → omitted
 	}
 	obs := buildObservation("h-1", ias)
 
@@ -171,16 +171,22 @@ func TestBuildObservation_OperStateAttribute(t *testing.T) {
 	if eth0.Attributes[attrKeyOperState] != "up" {
 		t.Errorf("eth0 oper_state = %v, want up", eth0.Attributes[attrKeyOperState])
 	}
+	if eth0.Attributes[attrKeyAdminState] != "up" {
+		t.Errorf("eth0 admin_state = %v, want up", eth0.Attributes[attrKeyAdminState])
+	}
 	eth1, _ := entityByID(obs, entityTypeNetworkInterface, idKeyInterfaceName, "eth1")
 	if _, present := eth1.Attributes[attrKeyOperState]; present {
 		t.Errorf("eth1 must omit oper_state when unknown: %+v", eth1.Attributes)
+	}
+	if eth1.Attributes[attrKeyAdminState] != "down" {
+		t.Errorf("eth1 admin_state = %v, want down (flags known)", eth1.Attributes[attrKeyAdminState])
 	}
 }
 
 func TestEnumerate_AttachesMetadataAndEmitsIPLess(t *testing.T) {
 	s := New(func() string { return "h-1" })
 	s.link = func(name string, flags []string) linkMeta {
-		return linkMeta{OperState: "down", Type: "physical", Duplex: "full", Speed: 1_000_000_000}
+		return linkMeta{OperState: "down", AdminState: "up", Type: "physical", Duplex: "full", Speed: 1_000_000_000}
 	}
 	s.interfaces = func() (gnet.InterfaceStatList, error) {
 		return gnet.InterfaceStatList{
@@ -197,7 +203,7 @@ func TestEnumerate_AttachesMetadataAndEmitsIPLess(t *testing.T) {
 		t.Fatalf("both NICs must be emitted incl. the IP-less one: %+v", ias)
 	}
 	if ias[0].MAC != "AA-BB-CC-DD-EE-FF" || ias[0].MTU != 1500 || ias[0].OperState != "down" ||
-		ias[0].Type != "physical" || ias[0].Duplex != "full" || ias[0].Speed != 1_000_000_000 {
+		ias[0].AdminState != "up" || ias[0].Type != "physical" || ias[0].Duplex != "full" || ias[0].Speed != 1_000_000_000 {
 		t.Errorf("eth0 metadata wrong: %+v", ias[0])
 	}
 	if ias[1].Name != "eth9" || len(ias[1].IPs) != 0 {
@@ -252,8 +258,8 @@ func TestEnumerate_DropsIPLessVirtual(t *testing.T) {
 func TestBuildObservation_AT13AttributesAndIPLess(t *testing.T) {
 	ias := []ifaceAddrs{
 		{Name: "eth0", IPs: []string{"10.0.0.5"}, MAC: "aa:bb:cc:dd:ee:ff", MTU: 1500,
-			OperState: "up", Type: "physical", Duplex: "full", Speed: 1_000_000_000},
-		{Name: "eth9", OperState: "down", Type: "virtual"}, // no IP
+			OperState: "up", AdminState: "up", Type: "physical", Duplex: "full", Speed: 1_000_000_000},
+		{Name: "eth9", OperState: "down", AdminState: "down", Type: "virtual"}, // no IP
 	}
 	obs := buildObservation("h-1", ias)
 
@@ -266,7 +272,7 @@ func TestBuildObservation_AT13AttributesAndIPLess(t *testing.T) {
 	eth0, _ := entityByID(obs, entityTypeNetworkInterface, idKeyInterfaceName, "eth0")
 	a := eth0.Attributes
 	if a[attrKeyMAC] != "aa:bb:cc:dd:ee:ff" || a[attrKeyMTU] != int64(1500) ||
-		a[attrKeyOperState] != "up" || a[attrKeyType] != "physical" ||
+		a[attrKeyOperState] != "up" || a[attrKeyAdminState] != "up" || a[attrKeyType] != "physical" ||
 		a[attrKeyDuplex] != "full" || a[attrKeySpeed] != int64(1_000_000_000) {
 		t.Errorf("eth0 AT13 attributes wrong: %v", a)
 	}

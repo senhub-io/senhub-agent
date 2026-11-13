@@ -118,6 +118,8 @@ SENHUB_PROBE_CA_BOOKMARK_PATH=/var/lib/senhub-agent/ca.bookmark
 
 Each instance keeps its own `bookmark_path`, under the agent's state directory, which should be a volume.
 
+The jobs of the same subscription are then followed too, by an added `jobs` probe on the same identity and resource groups; `SENHUB_PROBE_JOBS_TYPE=none` turns it off. See [Azure Container App Jobs](azure_container_app_jobs.md#followed-by-default-with-a-discovery-of-the-applications).
+
 A `${env:...}` written inside one of these values is not expanded, and `SENHUB_PROBE_CA_CLIENT_SECRET=${env:AZ_SECRET}` would reach the probe as that literal text. To share one credential between probes, give each the same `..._CLIENT_SECRET_FILE`, or declare the probes in `SENHUB_PROBES`, where `${env:AZ_SECRET}` is resolved; see [the environment rule](../configuration.md#no-env-inside-a-value). The variables overlay the probes of the files and of `SENHUB_PROBES`, key by key, and win.
 
 # Configuration Parameters

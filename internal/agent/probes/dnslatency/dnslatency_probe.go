@@ -39,7 +39,7 @@ type lookupResult struct {
 	err      error
 }
 
-type lookupFunc func(name, resolver string) lookupResult
+type lookupFunc func(ctx context.Context, name, resolver string) lookupResult
 
 type DNSLatencyProbe struct {
 	*types.BaseProbe
@@ -157,10 +157,16 @@ func (p *DNSLatencyProbe) OnStart(quitChannel chan struct{}) error {
 
 func (p *DNSLatencyProbe) OnShutdown(ctx context.Context) error { return nil }
 
-// Collect resolves every (name, resolver) pair with bounded
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
+func (p *DNSLatencyProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext resolves every (name, resolver) pair with bounded
 // parallelism. A failing lookup is a measurement (up=0), never a
 // collection error.
-func (p *DNSLatencyProbe) Collect() ([]data_store.DataPoint, error) {
+func (p *DNSLatencyProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 
 	resolvers := p.config.Resolvers
@@ -189,11 +195,17 @@ func (p *DNSLatencyProbe) Collect() ([]data_store.DataPoint, error) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			results[i] = p.lookup(pr.name, pr.resolver)
+			results[i] = p.lookup(ctx, pr.name, pr.resolver)
 		}(i, pr)
 	}
 	wg.Wait()
 
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("dns_latency collection interrupted: %w", ctxErr)
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("dns_latency collection interrupted: %w", ctxErr)
+	}
 	var points []data_store.DataPoint
 	for _, res := range results {
 		points = append(points, p.buildDatapoints(res, now)...)
@@ -238,7 +250,7 @@ func (p *DNSLatencyProbe) buildDatapoints(res lookupResult, ts time.Time) []data
 }
 
 // lookupOnce is the production lookupFunc: one measured resolution.
-func (p *DNSLatencyProbe) lookupOnce(name, resolver string) lookupResult {
+func (p *DNSLatencyProbe) lookupOnce(ctx context.Context, name, resolver string) lookupResult {
 	res := lookupResult{name: name, resolver: resolver}
 
 	r := net.DefaultResolver
@@ -252,11 +264,36 @@ func (p *DNSLatencyProbe) lookupOnce(name, resolver string) lookupResult {
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), p.config.Timeout)
+	lookupCtx, cancel := context.WithTimeout(ctx, p.config.Timeout)
 	defer cancel()
 
+	// The Go resolver reads the answer under a deadline and does not watch
+	// the context, so the lookup runs aside and is abandoned when the
+	// context ends; its own deadline bounds the abandoned goroutine.
+	type answer struct {
+		addrs []string
+		err   error
+	}
+	answered := make(chan answer, 1)
 	start := time.Now()
-	addrs, err := r.LookupHost(ctx, name)
+	go func() {
+		addrs, err := r.LookupHost(lookupCtx, name)
+		answered <- answer{addrs, err}
+	}()
+	var addrs []string
+	var err error
+	select {
+	case a := <-answered:
+		addrs, err = a.addrs, a.err
+	case <-lookupCtx.Done():
+		if ctx.Err() != nil {
+			err = ctx.Err()
+			break
+		}
+		// Only the lookup's own timeout ended: the resolver reports it too.
+		a := <-answered
+		addrs, err = a.addrs, a.err
+	}
 	res.duration = time.Since(start)
 	if err != nil {
 		res.err = fmt.Errorf("resolving %s via %s: %w", name, resolver, withQueriedServer(err, resolver))

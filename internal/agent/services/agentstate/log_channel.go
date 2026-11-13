@@ -197,6 +197,7 @@ func UnsubscribeLogs(ch <-chan LogRecord) {
 // than freezing on the oldest backlog.
 func PublishLog(rec LogRecord) {
 	rec.Attributes = enrichLogAttributes(rec.Attributes, rec.ProducerProbeName)
+	rec = redactLogRecord(rec)
 	logCh.mu.RLock()
 	subs := logCh.subs
 	logCh.mu.RUnlock()
@@ -293,4 +294,5 @@ func resetLogChannelForTest() {
 	logCh.subs = nil
 	logCh.dropped.Store(0)
 	logCh.mu.Unlock()
+	resetLogRedactionForTest()
 }

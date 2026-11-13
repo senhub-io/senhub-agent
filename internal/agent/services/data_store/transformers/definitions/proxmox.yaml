@@ -2,7 +2,7 @@ probe_name: "proxmox"
 friendly_name: "Proxmox VE"
 version: "1.0.0"
 host_level: false
-multi_instance_labels: ["proxmox.node", "proxmox.vmid", "proxmox.vm.name", "proxmox.storage"]
+multi_instance_labels: ["proxmox.node", "proxmox.vmid", "proxmox.vm.name", "proxmox.storage", "proxmox.task.type"]
 
 # Proxmox VE cluster monitoring via the REST API (FREE tier).
 # Covers nodes, QEMU virtual machines, LXC containers, and storage pools.
@@ -237,6 +237,299 @@ metrics:
       proxmox.storage: proxmox.storage
       proxmox.node: proxmox.node
 
+  # ── Disk and ZFS health (needs Sys.Audit on /nodes/{node})  ──
+
+  - name: "hw.physical_disk.status"
+    channel: "disk_{hw.id}_status_{hw.state}"
+    multi_instance_labels: ["hw.id", "hw.name", "hw.state"]
+    display_name: "Proxmox Disk {hw.name} Status {hw.state}"
+    unit: "#"
+    category: "health"
+    description: "SMART state of the physical disk, one series per hw.state (ok, degraded, failed, predicted_failure): 1 for the current state, 0 for the others. PVE PASSED or OK maps to ok, FAILED to failed; a disk with no SMART verdict emits nothing. hw.id is the disk serial number, or the device path when PVE reports no serial"
+    otel:
+      name: hw.physical_disk.status
+      unit: "1"
+      type: updowncounter
+      attributes:
+        hw.type: physical_disk
+    tag_to_attribute:
+      proxmox.node: proxmox.node
+      hw.id: hw.id
+      hw.name: hw.name
+      hw.model: hw.model
+      hw.serial_number: hw.serial_number
+      hw.physical_disk.type: hw.physical_disk.type
+      hw.state: hw.state
+
+  - name: "hw.physical_disk.endurance_utilization"
+    channel: "disk_{hw.id}_endurance_{hw.physical_disk.state}"
+    multi_instance_labels: ["hw.id", "hw.name", "hw.physical_disk.state"]
+    display_name: "Proxmox Disk {hw.name} Life Remaining"
+    unit: "#"
+    category: "health"
+    description: "Fraction of the SSD life remaining (1 new, 0 worn out), the PVE wearout percentage divided by 100 and not inverted; absent when PVE reports N/A"
+    otel:
+      name: hw.physical_disk.endurance_utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        hw.type: physical_disk
+    tag_to_attribute:
+      proxmox.node: proxmox.node
+      hw.id: hw.id
+      hw.name: hw.name
+      hw.model: hw.model
+      hw.serial_number: hw.serial_number
+      hw.physical_disk.type: hw.physical_disk.type
+      hw.physical_disk.state: hw.physical_disk.state
+
+  - name: "hw.logical_disk.status"
+    channel: "zfs_{hw.id}_status_{hw.state}"
+    multi_instance_labels: ["hw.id", "hw.state"]
+    display_name: "Proxmox ZFS Pool {hw.id} Status {hw.state}"
+    unit: "#"
+    category: "health"
+    description: "State of the ZFS pool, one series per hw.state (ok, degraded, failed): 1 for the current state, 0 for the others. ONLINE maps to ok, DEGRADED to degraded, and FAULTED, UNAVAIL, REMOVED, SUSPENDED and OFFLINE to failed"
+    otel:
+      name: hw.logical_disk.status
+      unit: "1"
+      type: updowncounter
+      attributes:
+        hw.type: logical_disk
+    tag_to_attribute:
+      proxmox.node: proxmox.node
+      hw.id: hw.id
+      hw.state: hw.state
+
+  - name: "hw.logical_disk.limit"
+    channel: "zfs_{hw.id}_size"
+    multi_instance_labels: ["hw.id"]
+    display_name: "Proxmox ZFS Pool {hw.id} Size"
+    unit: "B"
+    category: "storage"
+    description: "Total size of the ZFS pool"
+    otel:
+      name: hw.logical_disk.limit
+      unit: "By"
+      type: updowncounter
+      attributes:
+        hw.type: logical_disk
+    tag_to_attribute:
+      proxmox.node: proxmox.node
+      hw.id: hw.id
+
+  - name: "hw.logical_disk.usage"
+    channel: "zfs_{hw.id}_usage_{hw.logical_disk.state}"
+    multi_instance_labels: ["hw.id", "hw.logical_disk.state"]
+    display_name: "Proxmox ZFS Pool {hw.id} Bytes {hw.logical_disk.state}"
+    unit: "B"
+    category: "storage"
+    description: "Bytes of the ZFS pool allocated (used) and free"
+    otel:
+      name: hw.logical_disk.usage
+      unit: "By"
+      type: updowncounter
+      attributes:
+        hw.type: logical_disk
+    tag_to_attribute:
+      proxmox.node: proxmox.node
+      hw.id: hw.id
+      hw.logical_disk.state: hw.logical_disk.state
+
+  - name: "hw.logical_disk.utilization"
+    channel: "zfs_{hw.id}_utilization"
+    multi_instance_labels: ["hw.id"]
+    display_name: "Proxmox ZFS Pool {hw.id} Utilization"
+    unit: "#"
+    category: "storage"
+    description: "Fraction of the ZFS pool allocated (used over size, 0 to 1)"
+    otel:
+      name: hw.logical_disk.utilization
+      unit: "1"
+      type: gauge
+      attributes:
+        hw.type: logical_disk
+    tag_to_attribute:
+      proxmox.node: proxmox.node
+      hw.id: hw.id
+
+  - name: "proxmox.zfs.pool.fragmentation"
+    channel: "zfs_{hw.id}_frag"
+    multi_instance_labels: ["hw.id"]
+    display_name: "Proxmox ZFS Pool {hw.id} Fragmentation"
+    unit: "#"
+    category: "storage"
+    description: "Fragmentation of the ZFS pool free space as a ratio (0 to 1), the PVE percentage divided by 100"
+    otel:
+      name: proxmox.zfs.pool.fragmentation
+      unit: "1"
+      type: gauge
+    tag_to_attribute:
+      proxmox.node: proxmox.node
+      hw.id: hw.id
+
+  # ── Backups and storage availability ──
+
+  - name: "proxmox.vm.backup.age"
+    channel: "vm_{proxmox.vmid}_backup_age"
+    display_name: "Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Last Backup Age"
+    unit: "s"
+    category: "backup"
+    description: "Seconds since the last successful backup of the VM or container, from the newest of its vzdump task history and the backup archives listed on the node storages; absent when no backup is known"
+    otel:
+      name: proxmox.vm.backup.age
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      proxmox.vmid: proxmox.vmid
+      proxmox.vm.name: proxmox.vm.name
+      proxmox.vm.type: proxmox.vm.type
+      proxmox.node: proxmox.node
+
+  - name: "proxmox.vm.backup.status"
+    channel: "vm_{proxmox.vmid}_backup_status_{proxmox.vm.backup.state}"
+    multi_instance_labels: ["proxmox.vm.backup.state"]
+    display_name: "Proxmox VM {proxmox.vm.name} ({proxmox.vmid}) Last Backup {proxmox.vm.backup.state}"
+    unit: "#"
+    category: "backup"
+    description: "Outcome of the last finished vzdump task naming this guest, one series per proxmox.vm.backup.state (ok, failed): 1 for the current state, 0 for the other. Warnings count as ok; absent when no such task is in the history (a scheduled job covering several guests names none)"
+    otel:
+      name: proxmox.vm.backup.status
+      unit: "1"
+      type: updowncounter
+    tag_to_attribute:
+      proxmox.vmid: proxmox.vmid
+      proxmox.vm.name: proxmox.vm.name
+      proxmox.vm.type: proxmox.vm.type
+      proxmox.node: proxmox.node
+      proxmox.vm.backup.state: proxmox.vm.backup.state
+
+  - name: "proxmox.storage.status"
+    channel: "storage_{proxmox.storage}_status_{proxmox.storage.state}"
+    multi_instance_labels: ["proxmox.storage.state"]
+    display_name: "Proxmox Storage {proxmox.storage} {proxmox.storage.state}"
+    unit: "#"
+    category: "storage"
+    description: "Availability of the storage from the node, one series per proxmox.storage.state (active, inactive): 1 for the current state, 0 for the other. An unreachable PBS or NFS storage is inactive"
+    otel:
+      name: proxmox.storage.status
+      unit: "1"
+      type: updowncounter
+    tag_to_attribute:
+      proxmox.storage: proxmox.storage
+      proxmox.node: proxmox.node
+      proxmox.storage.state: proxmox.storage.state
+
+  - name: "proxmox.vm.backup.unprotected.count"
+    channel: "backup_unprotected"
+    display_name: "Proxmox Guests Without Backup"
+    unit: "#"
+    category: "backup"
+    description: "Guests covered by no enabled backup job of /cluster/backup: a job with all set covers every guest except its exclude list, otherwise its vmid list and its pool members; a disabled job covers nothing"
+    otel:
+      name: proxmox.vm.backup.unprotected.count
+      unit: "{vm}"
+      type: gauge
+
+  - name: "proxmox.backup.job.count"
+    channel: "backup_jobs"
+    display_name: "Proxmox Backup Jobs"
+    unit: "#"
+    category: "backup"
+    description: "Number of enabled backup jobs in /cluster/backup"
+    otel:
+      name: proxmox.backup.job.count
+      unit: "{job}"
+      type: gauge
+
+  # ── Failed tasks ──
+
+  - name: "proxmox.task.count"
+    channel: "tasks_failed_{proxmox.task.type}"
+    multi_instance_labels: ["proxmox.task.state"]
+    display_name: "Proxmox Failed Tasks {proxmox.task.type}"
+    unit: "#"
+    category: "tasks"
+    description: "Tasks of this type that ended with a status other than OK since the previous collection (the first cycle counts the last interval only), per node; each one is also published as an ERROR log record carrying the tail of its task log"
+    otel:
+      name: proxmox.task.count
+      unit: "{task}"
+      type: gauge
+    tag_to_attribute:
+      proxmox.node: proxmox.node
+      proxmox.task.type: proxmox.task.type
+      proxmox.task.state: proxmox.task.state
+
+  # ── High availability ──
+
+  - name: "proxmox.ha.resource.status"
+    channel: "ha_{proxmox.ha.resource}_status_{proxmox.ha.resource.state}"
+    multi_instance_labels: ["proxmox.ha.resource", "proxmox.ha.resource.state"]
+    display_name: "Proxmox HA Resource {proxmox.ha.resource} {proxmox.ha.resource.state}"
+    unit: "#"
+    category: "ha"
+    description: "State of an HA-managed guest from /cluster/ha/status/current, one series per proxmox.ha.resource.state (started, stopped, disabled, ignored, error, fence, freeze, migrate, relocate, recovery, request_stop): 1 for the current state, 0 for the others. A resource in a state PVE does not document produces nothing; absent when HA is not configured"
+    otel:
+      name: proxmox.ha.resource.status
+      unit: "1"
+      type: updowncounter
+    tag_to_attribute:
+      proxmox.ha.resource: proxmox.ha.resource
+      proxmox.vmid: proxmox.vmid
+      proxmox.node: proxmox.node
+      proxmox.ha.resource.state: proxmox.ha.resource.state
+
+  - name: "proxmox.ha.quorum.status"
+    channel: "ha_quorum_{proxmox.ha.quorum.state}"
+    multi_instance_labels: ["proxmox.ha.quorum.state"]
+    display_name: "Proxmox HA Quorum {proxmox.ha.quorum.state}"
+    unit: "#"
+    category: "ha"
+    description: "Cluster quorum as reported by /cluster/ha/status/current, one series per proxmox.ha.quorum.state (ok, lost): 1 for the current state, 0 for the other"
+    otel:
+      name: proxmox.ha.quorum.status
+      unit: "1"
+      type: updowncounter
+    tag_to_attribute:
+      proxmox.ha.quorum.state: proxmox.ha.quorum.state
+
+  # ── Replication ──
+
+  - name: "proxmox.replication.job.status"
+    channel: "replication_{proxmox.replication.job}_status_{proxmox.replication.job.state}"
+    multi_instance_labels: ["proxmox.replication.job", "proxmox.replication.job.state"]
+    display_name: "Proxmox Replication Job {proxmox.replication.job} {proxmox.replication.job.state}"
+    unit: "#"
+    category: "replication"
+    description: "Outcome of a storage replication job of the node, one series per proxmox.replication.job.state (ok, failed): failed when the job has a non-zero fail count or an error, 1 for the current state, 0 for the other. Absent when no replication is configured"
+    otel:
+      name: proxmox.replication.job.status
+      unit: "1"
+      type: updowncounter
+    tag_to_attribute:
+      proxmox.node: proxmox.node
+      proxmox.replication.job: proxmox.replication.job
+      proxmox.vmid: proxmox.vmid
+      proxmox.replication.target: proxmox.replication.target
+      proxmox.replication.job.state: proxmox.replication.job.state
+
+  - name: "proxmox.replication.job.age"
+    channel: "replication_{proxmox.replication.job}_age"
+    multi_instance_labels: ["proxmox.replication.job"]
+    display_name: "Proxmox Replication Job {proxmox.replication.job} Last Sync Age"
+    unit: "s"
+    category: "replication"
+    description: "Seconds since the last successful synchronisation of the replication job; absent when the job has never synced"
+    otel:
+      name: proxmox.replication.job.age
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      proxmox.node: proxmox.node
+      proxmox.replication.job: proxmox.replication.job
+      proxmox.vmid: proxmox.vmid
+      proxmox.replication.target: proxmox.replication.target
+
   - name: "senhub.probe.check.result"
     channel: "check_result"
     display_name: "Check Result"
@@ -264,6 +557,36 @@ tag_metadata:
   proxmox.storage:
     type: resource
     label: "Storage Pool"
+  proxmox.disk:
+    type: resource
+    label: "Disk"
+  proxmox.disk.type:
+    type: category
+    label: "Disk Type"
+  proxmox.disk.model:
+    type: category
+    label: "Disk Model"
+  proxmox.disk.serial:
+    type: category
+    label: "Disk Serial"
+  proxmox.zfs.pool:
+    type: resource
+    label: "ZFS Pool"
+  proxmox.health:
+    type: category
+    label: "Reported State"
+  proxmox.task.type:
+    type: resource
+    label: "Task Type"
+  proxmox.ha.resource:
+    type: resource
+    label: "HA Resource"
+  proxmox.replication.job:
+    type: resource
+    label: "Replication Job"
+  proxmox.replication.target:
+    type: category
+    label: "Replication Target"
   metric_type:
     type: category
     label: "Metric Type"

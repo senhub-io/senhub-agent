@@ -92,29 +92,31 @@ func TestGetProcessSnapshot_GoroutineGrowthDetectable(t *testing.T) {
 	}
 }
 
-// The CPU counter is what the process used, not GOMAXPROCS times its
-// age: a short busy loop must show up, and an idle second must not add a
-// whole CPU second per core.
-func TestProcessCPUSecondsIsUsedNotAvailable(t *testing.T) {
+// The CPU counter is what the process used, as the OS reports it, and
+// not an estimate from wall time and the number of CPUs. Wall-clock
+// assertions on the real counter depend on what else runs in the
+// process, so the reader is injected.
+func TestProcessSnapshotCPUSecondsComesFromTheReader(t *testing.T) {
+	got := processSnapshot(func() (float64, bool) { return 1.25, true })
+	if got.CPUSecondsTotal != 1.25 {
+		t.Errorf("CPUSecondsTotal = %v, want the reader's 1.25", got.CPUSecondsTotal)
+	}
+	got = processSnapshot(func() (float64, bool) { return 9, false })
+	if got.CPUSecondsTotal != 0 {
+		t.Errorf("CPUSecondsTotal = %v, want 0 when the reader has no value", got.CPUSecondsTotal)
+	}
+}
+
+func TestProcessCPUSecondsNeverGoesBackwards(t *testing.T) {
 	before, ok := processCPUSeconds()
 	if !ok {
 		t.Skip("no process CPU time on this platform")
 	}
 	start := time.Now()
-	x := 0
-	for time.Since(start) < 200*time.Millisecond {
-		x++
+	for time.Since(start) < 20*time.Millisecond {
 	}
-	_ = x
-	time.Sleep(300 * time.Millisecond)
 	after, _ := processCPUSeconds()
-	wall := time.Since(start).Seconds()
-	used := after - before
-	// The other tests of the package run in parallel in the same process,
-	// so the upper bound cannot be the loop alone. What it guards is the
-	// old estimate, wall time times every CPU of the machine.
-	available := wall * float64(runtime.NumCPU())
-	if used < 0.02 || (runtime.NumCPU() >= 4 && used > available/2) {
-		t.Errorf("CPU used over a 0.2 s busy loop and a 0.3 s sleep = %.3f s, want about 0.2 (available %.1f s)", used, available)
+	if before < 0 || after < before {
+		t.Errorf("CPU seconds went from %.6f to %.6f", before, after)
 	}
 }

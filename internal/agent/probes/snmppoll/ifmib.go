@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/entity/operstate"
 	"senhub-agent.go/internal/agent/services/snmpcore"
 )
 
@@ -38,23 +39,38 @@ type ifaceRow struct {
 	Mtu        int64  // ifMtu (octets); 0 when unread
 	IfType     int    // IANAifType; 0 when unread
 	Duplex     int    // dot3StatsDuplexStatus (1=unknown,2=half,3=full); 0 when unread
+
+	// Read only when an interface selection is configured.
+	Descr       string // ifDescr
+	AdminStatus int    // ifAdminStatus raw enum; 0 when unread
 }
 
 // collectInterfaces walks the interface name/status/speed columns. ifName is
 // the only required walk (it carries the identity); status and speed are
 // best-effort so a device that omits ifXTable speed still yields named ports.
-func collectInterfaces(client snmpClient) ([]ifaceRow, error) {
+// The second result names the optional walks that failed, for the caller to
+// log.
+func collectInterfaces(client snmpClient) ([]ifaceRow, []string, error) {
 	nameBinds, err := client.WalkRaw(ifName)
 	if err != nil {
-		return nil, fmt.Errorf("ifName walk: %w", err)
+		return nil, nil, fmt.Errorf("ifName walk: %w", err)
 	}
-	speedBinds, _ := client.WalkRaw(ifHighSpeed)
-	operBinds, _ := client.WalkRaw(ifOperStatus)
-	typeBinds, _ := client.WalkRaw(ifType)
-	mtuBinds, _ := client.WalkRaw(ifMtu)
-	macBinds, _ := client.WalkRaw(ifPhysAddr)
-	duplexBinds, _ := client.WalkRaw(dot3Duplex)
-	return parseInterfaces(nameBinds, speedBinds, operBinds, typeBinds, mtuBinds, macBinds, duplexBinds), nil
+	var skipped []string
+	optional := func(name, oid string) []snmpRawBind {
+		binds, err := client.WalkRaw(oid)
+		if err != nil {
+			skipped = append(skipped, fmt.Sprintf("%s: %v", name, err))
+			return nil
+		}
+		return binds
+	}
+	speedBinds := optional("ifHighSpeed", ifHighSpeed)
+	operBinds := optional("ifOperStatus", ifOperStatus)
+	typeBinds := optional("ifType", ifType)
+	mtuBinds := optional("ifMtu", ifMtu)
+	macBinds := optional("ifPhysAddress", ifPhysAddr)
+	duplexBinds := optional("dot3StatsDuplexStatus", dot3Duplex)
+	return parseInterfaces(nameBinds, speedBinds, operBinds, typeBinds, mtuBinds, macBinds, duplexBinds), skipped, nil
 }
 
 func parseInterfaces(nameBinds, speedBinds, operBinds, typeBinds, mtuBinds, macBinds, duplexBinds []snmpRawBind) []ifaceRow {
@@ -139,23 +155,12 @@ func parseInterfaces(nameBinds, speedBinds, operBinds, typeBinds, mtuBinds, macB
 }
 
 // operStateName maps the IF-MIB ifOperStatus enum to the oper_state state-key
-// value (frozen casing, Toise #87). notPresent is filtered upstream (the
-// interface is not emitted), so it has no name here.
-func operStateName(v int) string {
-	switch v {
-	case ifOperUp:
-		return "up"
-	case ifOperDown:
-		return "down"
-	case ifOperTesting:
-		return "testing"
-	case ifOperDormant:
-		return "dormant"
-	case ifOperLowerLayerDown:
-		return "lowerLayerDown"
-	default:
-		return "unknown"
-	}
+// value via the shared operstate table. ok=false means the raw value is
+// outside the closed vocabulary, so the caller must OMIT the attribute
+// (absence is distinct from "unknown"). notPresent is still filtered
+// upstream (the interface is not emitted), but the table knows it.
+func operStateName(v int) (string, bool) {
+	return operstate.FromIFMIB(v)
 }
 
 // macString formats ifPhysAddress octets in the canonical MAC form

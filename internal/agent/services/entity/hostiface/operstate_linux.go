@@ -6,16 +6,20 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"senhub-agent.go/internal/agent/services/entity/operstate"
 )
 
 // readSysLink reads the interface's descriptive metadata from sysfs: the
-// carrier oper_state plus the AT13 type/duplex/speed. Missing/unreadable fields
-// are left empty/zero so the caller omits them (and falls back to the IFF_UP
-// flag for oper_state).
+// operational state plus the AT13 type/duplex/speed. A missing/unreadable or
+// out-of-vocabulary operstate leaves OperState empty so the caller omits the
+// attribute (absence is distinct from "unknown"); there is no fallback to the
+// IFF_UP flag here — the administrative state is reported separately.
 func readSysLink(name string) linkMeta {
 	base := "/sys/class/net/" + name + "/"
+	oper, _ := operstate.FromLinuxSysfs(readTrim(base + "operstate"))
 	return linkMeta{
-		OperState: normOperstate(readTrim(base + "operstate")),
+		OperState: oper,
 		Duplex:    normDuplex(readTrim(base + "duplex")),
 		Speed:     parseSpeedMbit(readTrim(base + "speed")),
 		Type:      ifaceType(name),
@@ -28,17 +32,6 @@ func readTrim(path string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(b))
-}
-
-func normOperstate(v string) string {
-	switch v {
-	case "up":
-		return "up"
-	case "down", "lowerlayerdown", "dormant":
-		return "down"
-	default: // unknown, notpresent, testing, empty → defer to flags
-		return ""
-	}
 }
 
 func normDuplex(v string) string {

@@ -1,12 +1,13 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
-	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/cliexit"
 )
 
@@ -54,9 +55,10 @@ type doctorSummary struct {
 
 type doctorReport struct {
 	jsonHeader
-	ConfigPath string        `json:"config_path"`
-	Summary    doctorSummary `json:"summary"`
-	Checks     []doctorCheck `json:"checks"`
+	ConfigPath   string        `json:"config_path"`
+	ConfigOrigin string        `json:"config_origin"`
+	Summary      doctorSummary `json:"summary"`
+	Checks       []doctorCheck `json:"checks"`
 }
 
 func okCheck(section, id, msg string) doctorCheck {
@@ -122,8 +124,8 @@ func runDoctorChecks(d doctorDeps) []doctorCheck {
 	return checks
 }
 
-func renderDoctorText(out io.Writer, configPath string, checks []doctorCheck) {
-	fmt.Fprintf(out, "Diagnosing the agent (configuration: %s)\n", configPath)
+func renderDoctorText(out io.Writer, configPath, configOrigin string, checks []doctorCheck) {
+	fmt.Fprintf(out, "Diagnosing the agent (configuration: %s, from %s)\n", configPath, configOrigin)
 	for _, sec := range doctorSections {
 		var rows []doctorCheck
 		for _, c := range checks {
@@ -154,25 +156,32 @@ func runDoctor(args []string, out io.Writer) int {
 	if err != nil {
 		return reportFailure(doctorCommand, jsonMode, out, fmt.Errorf("doctor: %w", err))
 	}
-	resolved, err := cliArgs.GetAbsoluteConfigPath(configPath)
+	resolved, origin, err := resolveCLIConfigPath(configPath)
 	if err != nil {
 		return reportFailure(doctorCommand, jsonMode, out, fmt.Errorf("doctor: resolving the config path: %w", err))
 	}
-	return executeDoctor(newDoctorDeps(resolved), jsonMode, out)
+	d := newDoctorDeps(resolved)
+	if origin == originDefault {
+		if _, statErr := os.Stat(resolved); errors.Is(statErr, os.ErrNotExist) {
+			d.defaultMissing = true
+		}
+	}
+	return executeDoctor(d, origin, jsonMode, out)
 }
 
-func executeDoctor(d doctorDeps, jsonMode bool, out io.Writer) int {
+func executeDoctor(d doctorDeps, configOrigin string, jsonMode bool, out io.Writer) int {
 	checks := runDoctorChecks(d)
 	code := doctorExitCode(checks)
 	if !jsonMode {
-		renderDoctorText(out, d.configPath, checks)
+		renderDoctorText(out, d.configPath, configOrigin, checks)
 		return code
 	}
 	report := doctorReport{
-		jsonHeader: newJSONHeader(doctorCommand, code),
-		ConfigPath: d.configPath,
-		Summary:    summarize(checks),
-		Checks:     checks,
+		jsonHeader:   newJSONHeader(doctorCommand, code),
+		ConfigPath:   d.configPath,
+		ConfigOrigin: configOrigin,
+		Summary:      summarize(checks),
+		Checks:       checks,
 	}
 	if report.Checks == nil {
 		report.Checks = []doctorCheck{}

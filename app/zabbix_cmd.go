@@ -176,7 +176,10 @@ func runZabbixCommand() {
 			os.Exit(cliexit.Failure)
 		}
 		if out == "" {
-			os.Stdout.Write(body)
+			if _, err := os.Stdout.Write(body); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %s: %v\n", p, err)
+				os.Exit(cliexit.Failure)
+			}
 			continue
 		}
 		path := filepath.Join(out, fmt.Sprintf("senhub-%s%s-%s.yaml", p, platformSuffix(opts.Platform), exp.ZabbixExport.Version))

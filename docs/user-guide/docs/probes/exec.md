@@ -50,8 +50,12 @@ output contracts are supported:
 
 <!-- schema:params:end -->
 
+`timeout` bounds one run of the command. The probe-level `collect_timeout` (see [Configuration](../configuration.md)) bounds the whole collection; the shorter of the two ends the command and all its children.
+
 `env` entries are added on top of the agent's own environment, which the
 program inherits.
+
+A command still running when the agent stops is ended the same way as on a timeout, with all its children (a job object on Windows). On Windows the job also ends any process the command leaves running after it exits: a monitoring command must not leave a daemon behind. Start a long-running process as a service of its own, not from `exec`. Known limit: on Windows, a process the command starts within the first instant, before the command is placed in its job, is not tracked and can survive.
 
 ## Nagios contract
 

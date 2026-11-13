@@ -287,6 +287,14 @@ ping_gateway vs ping_webapp: same metric name, but ping_gateway does **not** emi
 **Primary source:** nothing in OTel applies directly (`http.client.*` is histogram-oriented over one-shot requests; our model is continuous, with averages)
 **Secondary source:** [blackbox_exporter](https://github.com/prometheus/blackbox_exporter/blob/master/prober/http.go) — `probe_http_duration_seconds{phase=…}` with phases `resolve, connect, tls, processing, transfer`
 
+#### 4.6.0 `senhub.probe.check.result`
+
+| Senhub metric | Unit | Type | Attributes |
+|---|---|---|---|
+| `senhub.probe.check.result` | `{status}` | Gauge | none beyond the probe's resource attributes |
+
+Why the last check of a probe failed: 0 ok, 1 target down, 2 auth denied, 3 timeout, 4 TLS error, 5 config error, 6 protocol error, 7 permission denied. Emitted by the database, application and active-check probes; every one of them declares it in its definition file. The PRTG "Check Result" channel is a view of this series and is off unless `prtg.check_result_channel` is set; the series itself always goes out over OTLP.
+
 #### 4.6.1 The `senhub.probe.http.*` extension
 
 | Senhub metric | Unit | Type | Attributes |
@@ -1248,6 +1256,7 @@ The tailed lines ride the logs signal only (requires `storage[otlp].signals.logs
 | Metric | Type | Unit | Attributes | Notes |
 |---|---|---|---|---|
 | `senhub.filetail.records_emitted` | counter | `{record}` | — | cumulative records published to the log rail (Prometheus `senhub_filetail_records_emitted_total`) |
+| `senhub.filetail.file_records_emitted` | counter | `{record}` | `log.file.path` | records published from that file since the probe started; a file whose size grows while this stays flat sends nothing |
 | `senhub.filetail.read_offset` | gauge | `By` | `log.file.path` | byte offset the tail has read up to (Prometheus `senhub_filetail_read_offset_bytes`) |
 | `senhub.filetail.file_size` | gauge | `By` | `log.file.path` | file size from `os.Stat` at collection time; omitted when the stat fails (Prometheus `senhub_filetail_file_size_bytes`) |
 
@@ -2385,6 +2394,28 @@ relaying-agent identity marker, **deferred** for want of a standard key
 > Note: *exemplars* (a trace_id on datapoints) are the native OTel metric→trace
 > mechanism; not applicable here, since the agent's metrics are
 > collected outside any active trace context). Out of scope.
+
+## 6quinquies. Agent self-metrics: probe scheduling
+
+Four metrics describe how the scheduler runs the probes. They belong to the
+agent (`senhub.agent.*`, no reserved OpenTelemetry namespace) and the `probe`
+attribute is the probe **type**, so cardinality is bounded by the registry.
+
+| Name | Type | Unit | Attributes | Meaning |
+|---|---|---|---|---|
+| `senhub.agent.collect.in_flight` | gauge | `{collection}` | none | Collections running at this instant. |
+| `senhub.agent.collect.lag` | gauge | `s` | `probe_name`, `probe_type` | Maximum of the actual start of a collection minus its planned start, over the window since the previous read by the same reader (Prometheus scrape, OTLP push). Each reader has its own window, so one reader's read does not reset another's; a reader's first window starts at the process start. 0 for a probe with no collection in the window. |
+| `senhub.agent.collect.overruns` | counter | `{collection}` | `probe_name`, `probe_type` | A collection that ran past its interval, whether or not it reached its deadline. Such a collection is not cut at the interval and not run twice: the next ticks are skipped until it returns. Ticks skipped on purpose by the failure backoff are not counted. |
+| `senhub.agent.probe.first_collection.delay` | gauge | `s` | `probe_name`, `probe_type` | Time from the process start to the end of the probe's first collection. Recorded once per process and per probe instance, then emitted unchanged. |
+
+The first collection of each probe waits for a stable offset (FNV-1a 64 of the
+probe id modulo `min(interval, 30 s)`), so `first_collection.delay` includes
+that offset. The planned start of the first collection is the end of that wait;
+the planned start of a later one is the tick time.
+
+Prometheus names: `senhub_agent_collect_in_flight`,
+`senhub_agent_collect_lag_seconds`, `senhub_agent_collect_overruns_total`,
+`senhub_agent_probe_first_collection_delay_seconds`.
 
 ## 7. Versioning
 

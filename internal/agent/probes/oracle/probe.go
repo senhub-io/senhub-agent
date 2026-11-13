@@ -110,12 +110,21 @@ func (p *oracleProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
-// Collect runs one cycle. A connection or query failure is a measurement
-// (senhub.db.up=0), never a collection error — the outage stays
-// observable, mirroring the always-emit-up contract of the DB probes.
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
 func (p *oracleProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext runs one cycle. A connection or query failure is a
+// measurement (senhub.db.up=0), never a collection error — the outage stays
+// observable, mirroring the always-emit-up contract of the DB probes. A cycle
+// whose parent context ends returns its error and publishes nothing: the
+// database did not go down, and a cycle cut midway would report up=1 with the
+// families it had not reached missing.
+func (p *oracleProbe) CollectContext(parent context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
-	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	ctx, cancel := context.WithTimeout(parent, queryTimeout)
 	defer cancel()
 
 	var points []data_store.DataPoint
@@ -126,6 +135,9 @@ func (p *oracleProbe) Collect() ([]data_store.DataPoint, error) {
 		up = 0
 		checkErr = errors.New("oracle database handle is nil")
 	} else if err := p.db.PingContext(ctx); err != nil {
+		if parentErr := parent.Err(); parentErr != nil {
+			return nil, fmt.Errorf("oracle collection interrupted: %w", parentErr)
+		}
 		up = 0
 		checkErr = err
 		p.moduleLogger.Warn().Err(err).Str("instance", p.instance).Msg("oracle ping failed")
@@ -133,12 +145,19 @@ func (p *oracleProbe) Collect() ([]data_store.DataPoint, error) {
 	points = append(points, p.point("senhub.db.up", up, now, metricTypeOverview, nil))
 
 	if up == 1 {
-		p.entitySource.setVersion(p.queryVersion(ctx))
+		version := p.queryVersion(ctx)
+		if parentErr := parent.Err(); parentErr != nil {
+			return nil, fmt.Errorf("oracle collection interrupted: %w", parentErr)
+		}
+		p.entitySource.setVersion(version)
 		points = append(points, p.collectSessions(ctx, now)...)
 		points = append(points, p.collectSysstat(ctx, now)...)
 		points = append(points, p.collectMemory(ctx, now)...)
 		points = append(points, p.collectTablespaces(ctx, now)...)
 		points = append(points, p.collectWaitClasses(ctx, now)...)
+		if parentErr := parent.Err(); parentErr != nil {
+			return nil, fmt.Errorf("oracle collection interrupted: %w", parentErr)
+		}
 	}
 
 	points = append(points, p.point(dbcommon.CheckResultMetric, float64(dbcommon.ClassifyError(checkErr)), now, metricTypeStatus, nil))

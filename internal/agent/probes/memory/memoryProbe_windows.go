@@ -131,7 +131,9 @@ func newMemoryCollector(config map[string]interface{}, baseLogger *logger.Logger
 	}
 
 	if err := collector.initializeCounters(); err != nil {
-		collector.Close()
+		if cErr := collector.Close(); cErr != nil {
+			moduleLogger.Warn().Err(cErr).Msg("closing memory collector after failed construction")
+		}
 		return nil, err
 	}
 
@@ -141,7 +143,9 @@ func newMemoryCollector(config map[string]interface{}, baseLogger *logger.Logger
 	// (#590). Collect primes the query again before reading values.
 	if err := query.Collect(); err != nil {
 		if !errors.Is(err, pdh.ErrNoData) {
-			collector.Close()
+			if cErr := collector.Close(); cErr != nil {
+				moduleLogger.Warn().Err(cErr).Msg("closing memory collector after failed construction")
+			}
 			return nil, fmt.Errorf("failed initial collection: %w", err)
 		}
 		moduleLogger.Warn().Err(err).Msg("No PDH sample available at construction, deferring priming to first collection")

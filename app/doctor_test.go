@@ -146,7 +146,7 @@ func TestDoctorJSONShape(t *testing.T) {
 	d.status = func() statusResult { return statusResult{serviceState: "stopped", notRunning: true} }
 
 	var out bytes.Buffer
-	code := executeDoctor(d, true, &out)
+	code := executeDoctor(d, "--config-path", true, &out)
 
 	var doc struct {
 		Schema   string        `json:"schema"`
@@ -182,7 +182,7 @@ func TestDoctorJSONShape(t *testing.T) {
 
 func TestDoctorTextOutputGroupsBySection(t *testing.T) {
 	var out bytes.Buffer
-	executeDoctor(healthyDoctorDeps(), false, &out)
+	executeDoctor(healthyDoctorDeps(), "--config-path", false, &out)
 	text := out.String()
 	last := -1
 	for _, title := range []string{"Install", "Configuration", "Outputs", "Probes", "Host"} {

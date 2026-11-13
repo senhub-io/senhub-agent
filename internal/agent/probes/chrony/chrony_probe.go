@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/subcollect"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/data_store"
@@ -64,6 +65,7 @@ type ChronyProbe struct {
 	moduleLogger *logger.ModuleLogger
 	run          runFunc
 	entitySrc    *chronyEntitySource
+	trackingRead subcollect.Tracker
 }
 
 // NewChronyProbe constructs the probe. All config defaults are applied
@@ -125,9 +127,15 @@ func (p *ChronyProbe) Collect() ([]data_store.DataPoint, error) {
 	res := p.run()
 
 	if res.err != nil {
-		p.moduleLogger.Warn().Err(res.err).Msg("chronyc tracking failed")
+		// A host without chrony is a deployment choice, not a defect.
+		level := subcollect.Warn
+		if reasonOf(res.err) == reasonNotInstalled {
+			level = subcollect.Debug
+		}
+		p.trackingRead.Failed(p.moduleLogger, level, "tracking", res.err, "chronyc tracking failed")
 		p.entitySrc.setReachable(false, "", hostID)
 	} else {
+		p.trackingRead.Succeeded(p.moduleLogger, "tracking", "chronyc tracking readable again")
 		p.entitySrc.setReachable(true, "", hostID)
 	}
 

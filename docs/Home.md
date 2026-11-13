@@ -25,8 +25,8 @@ SenHub Agent is a cross-platform monitoring agent that collects metrics and even
 ## Documentation Structure
 
 ### For Users
-- **[Installation](./user-guide/INSTALLATION.md)** - Detailed installation instructions
-- **[Configuration](./user-guide/CONFIGURATION.md)** - Configuration overview
+- **[Installation](./user-guide/docs/installation.md)** - Detailed installation instructions
+- **[Configuration](./user-guide/docs/configuration.md)** - Configuration overview
 
 ### For Administrators
 - **[HTTPS Configuration](./admin-guide/HTTPS-CONFIGURATION.md)** - TLS/SSL setup
@@ -43,12 +43,12 @@ SenHub Agent is a cross-platform monitoring agent that collects metrics and even
 - **[Redfish Probe](./probes/redfish/)** - Server hardware monitoring
 - **[Citrix Probe](./probes/citrix/)** - CVAD monitoring
 - **[System Probes](./probes/system/)** - CPU, memory, disk, network
-- **[Network Probes](./probes/network/)** - Gateway and webapp monitoring
-- **[Event Probes](./probes/events/)** - Syslog and Windows events
+- **[Network Probes](./probes/ping_gateway/README.md)** - Gateway and webapp monitoring
+- **[Event Probes](./probes/syslog/)** - Syslog and Windows events
 
 ### Release Information
 - **[Release Notes](./releases/)** - Version history and changelogs
-- **[Latest Release](./releases/0.1.70-beta.md)** - Current beta version
+- **[Latest Release](./user-guide/docs/whats-new/index.md)** - Current beta version
 
 ## Quick Start
 

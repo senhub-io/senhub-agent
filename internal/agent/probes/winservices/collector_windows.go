@@ -3,6 +3,7 @@
 package winservices
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"syscall"
@@ -10,6 +11,9 @@ import (
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc/mgr"
+
+	"senhub-agent.go/internal/agent/probes/subcollect"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 const serviceConfigTriggerInfo = 8
@@ -54,8 +58,10 @@ func openServiceReadOnly(m *mgr.Mgr, name string) (*mgr.Service, error) {
 // selected services. An empty selection enumerates every service the SCM
 // reports. A service that cannot be opened or queried is skipped (best
 // effort) rather than failing the whole cycle — a single ACL-restricted
-// service must not blind the operator to the rest.
-func collectServices(selected []string) ([]serviceState, error) {
+// service must not blind the operator to the rest. Each skip is logged on the
+// transition through reads, a Warn for a service the operator named and a
+// Debug when the whole SCM was enumerated.
+func collectServices(selected []string, log *logger.ModuleLogger, reads *subcollect.Tracker) ([]serviceState, error) {
 	m, err := connectReadOnly()
 	if err != nil {
 		return nil, fmt.Errorf("connecting to service control manager: %w", err)
@@ -75,14 +81,23 @@ func collectServices(selected []string) ([]serviceState, error) {
 	for _, name := range names {
 		s, err := openServiceReadOnly(m, name)
 		if err != nil {
-			// Selected-but-absent or access-denied: skip silently; the
-			// missing row is itself the signal (no datapoint emitted).
+			// Selected-but-absent or access-denied: the missing row is
+			// itself the signal (no datapoint emitted). A name the operator
+			// typed deserves a Warn unless it simply does not exist, which
+			// reportMissing already says.
+			level := subcollect.Warn
+			if len(selected) == 0 || errors.Is(err, windows.ERROR_SERVICE_DOES_NOT_EXIST) {
+				level = subcollect.Debug
+			}
+			reads.Failed(log, level, name, err, "winservices: service cannot be opened, no datapoint emitted")
 			continue
 		}
 		status, qerr := s.Query()
 		startType := -1
 		startDelayed := false
-		if cfg, cerr := s.Config(); cerr == nil {
+		if cfg, cerr := s.Config(); cerr != nil {
+			log.Debug().Err(cerr).Str("service", name).Msg("winservices: start type unreadable, left unset")
+		} else {
 			startType = int(cfg.StartType)
 			startDelayed = cfg.DelayedAutoStart
 			if startType == int(mgr.StartAutomatic) && cfg.DelayedAutoStart {
@@ -97,8 +112,14 @@ func collectServices(selected []string) ([]serviceState, error) {
 
 		_ = s.Close()
 		if qerr != nil {
+			level := subcollect.Warn
+			if len(selected) == 0 {
+				level = subcollect.Debug
+			}
+			reads.Failed(log, level, name, qerr, "winservices: service status query failed, no datapoint emitted")
 			continue
 		}
+		reads.Succeeded(log, name, "winservices: service readable again")
 		out = append(out, serviceState{
 			name:         name,
 			state:        int(status.State),

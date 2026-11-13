@@ -52,23 +52,26 @@ type logDirState struct {
 // doctorDeps is everything doctor reads from the machine, so each
 // section can be exercised with fakes.
 type doctorDeps struct {
-	configPath    string
-	now           func() time.Time
-	cliVersion    string
-	logDir        string
-	configCheck   func(path string) (string, checkOutcome, error)
-	loadConfig    func(path string) (configuration.LocalConfigurationData, error)
-	status        func() statusResult
-	httpListen    func(path string) (scheme, bind string, port int)
-	portFree      func(bind string, port int) error
-	secretStore   func(configDir string) (secretReport, error)
-	licenseExpiry func(token string) (tier string, expires time.Time, err error)
-	outputTest    func(ctx context.Context, outputType string, params map[string]interface{}, agentKey string, port int) []otlp.ConnectionStep
-	freePercent   func(path string) (float64, error)
-	install       installProbe
-	serviceEnv    func() serviceEnvReport
-	unsetEnv      func(configPath string) []configuration.EnvReference
-	rolledBack    func() (*auto_update.RolledBackRecord, error)
+	// defaultMissing is true when no path was given and none was found: the
+	// default file is absent and no registered service names another.
+	defaultMissing bool
+	configPath     string
+	now            func() time.Time
+	cliVersion     string
+	logDir         string
+	configCheck    func(path string) (string, checkOutcome, error)
+	loadConfig     func(path string) (configuration.LocalConfigurationData, error)
+	status         func() statusResult
+	httpListen     func(path string) (scheme, bind string, port int)
+	portFree       func(bind string, port int) error
+	secretStore    func(configDir string) (secretReport, error)
+	licenseExpiry  func(token string) (tier string, expires time.Time, err error)
+	outputTest     func(ctx context.Context, outputType string, params map[string]interface{}, agentKey string, port int) []otlp.ConnectionStep
+	freePercent    func(path string) (float64, error)
+	install        installProbe
+	serviceEnv     func() serviceEnvReport
+	unsetEnv       func(configPath string) []configuration.EnvReference
+	rolledBack     func() (*auto_update.RolledBackRecord, error)
 }
 
 // secretReport is what `secret status` says, or that no store exists.

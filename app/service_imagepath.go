@@ -25,24 +25,9 @@ func migrateImagePathValue(imagePath string) (string, bool) {
 		return imagePath, false
 	}
 
-	var exe, rest string
-	if strings.HasPrefix(trimmed, `"`) {
-		end := strings.Index(trimmed[1:], `"`)
-		if end < 0 {
-			return imagePath, false // malformed; do not touch
-		}
-		exe = trimmed[:end+2]
-		rest = strings.TrimSpace(trimmed[end+2:])
-	} else {
-		// Unquoted: the executable token ends at the first space after
-		// the .exe suffix (paths with spaces are always quoted by the
-		// installer; an unquoted spaced path is unparseable anyway).
-		idx := strings.Index(strings.ToLower(trimmed), ".exe")
-		if idx < 0 {
-			return imagePath, false
-		}
-		exe = trimmed[:idx+4]
-		rest = strings.TrimSpace(trimmed[idx+4:])
+	exe, rest, ok := splitImagePath(trimmed)
+	if !ok {
+		return imagePath, false
 	}
 
 	first := rest
@@ -70,4 +55,25 @@ func isKnownSubcommand(token string) bool {
 		return true
 	}
 	return false
+}
+
+// splitImagePath separates a service ImagePath into the executable token,
+// quotes kept as registered, and the arguments after it. ok is false when
+// the executable cannot be told apart.
+func splitImagePath(trimmed string) (exe, rest string, ok bool) {
+	if strings.HasPrefix(trimmed, `"`) {
+		end := strings.Index(trimmed[1:], `"`)
+		if end < 0 {
+			return "", "", false // malformed; do not touch
+		}
+		return trimmed[:end+2], strings.TrimSpace(trimmed[end+2:]), true
+	}
+	// Unquoted: the executable token ends at the first space after
+	// the .exe suffix (paths with spaces are always quoted by the
+	// installer; an unquoted spaced path is unparseable anyway).
+	idx := strings.Index(strings.ToLower(trimmed), ".exe")
+	if idx < 0 {
+		return "", "", false
+	}
+	return trimmed[:idx+4], strings.TrimSpace(trimmed[idx+4:]), true
 }

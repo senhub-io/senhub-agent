@@ -276,6 +276,8 @@ func (p *TomcatProbe) Collect() ([]data_store.DataPoint, error) {
 		if v := parseTomcatVersion(info); v != "" {
 			entityAttrs = map[string]any{"service.version": v}
 		}
+	} else {
+		p.moduleLogger.Debug().Err(verr).Msg("tomcat: could not read serverInfo, service.version left unset")
 	}
 	p.entitySrc.SetUp(true, entityAttrs)
 	points = append(points, data_store.DataPoint{
@@ -352,17 +354,26 @@ func (p *TomcatProbe) collectThreadPool(ctx context.Context, now time.Time) []da
 
 		current, err := p.client.readInt64(ctx, mbean, "currentThreadCount")
 		if err != nil {
+			p.moduleLogger.Debug().Err(err).Str("connector", connector).Msg("tomcat: connector thread pool not readable")
 			continue
 		}
-		busy, _ := p.client.readInt64(ctx, mbean, "currentThreadsBusy")
-		max, _ := p.client.readInt64(ctx, mbean, "maxThreads")
+		busy, busyErr := p.client.readInt64(ctx, mbean, "currentThreadsBusy")
+		max, maxErr := p.client.readInt64(ctx, mbean, "maxThreads")
 
 		threadTags := []tags.Tag{connTag, {Key: "metric_type", Value: "threads"}}
 		points = append(points,
 			data_store.DataPoint{Name: "tomcat.threads.current", Value: float64(current), Timestamp: now, Tags: threadTags},
-			data_store.DataPoint{Name: "tomcat.threads.busy", Value: float64(busy), Timestamp: now, Tags: threadTags},
-			data_store.DataPoint{Name: "tomcat.threads.max", Value: float64(max), Timestamp: now, Tags: threadTags},
 		)
+		if busyErr != nil {
+			p.moduleLogger.Debug().Err(busyErr).Str("connector", connector).Msg("tomcat: skipping threads.busy, read failed")
+		} else {
+			points = append(points, data_store.DataPoint{Name: "tomcat.threads.busy", Value: float64(busy), Timestamp: now, Tags: threadTags})
+		}
+		if maxErr != nil {
+			p.moduleLogger.Debug().Err(maxErr).Str("connector", connector).Msg("tomcat: skipping threads.max, read failed")
+		} else {
+			points = append(points, data_store.DataPoint{Name: "tomcat.threads.max", Value: float64(max), Timestamp: now, Tags: threadTags})
+		}
 	}
 	return points
 }
@@ -471,6 +482,7 @@ func (p *TomcatProbe) collectGC(ctx context.Context, now time.Time) []data_store
 
 		count, err := p.client.readInt64(ctx, mbean, "CollectionCount")
 		if err != nil {
+			p.moduleLogger.Debug().Err(err).Str("collector", collector).Msg("tomcat: garbage collector not readable")
 			continue
 		}
 		elapsed, _ := p.client.readInt64(ctx, mbean, "CollectionTime")
@@ -488,6 +500,7 @@ func (p *TomcatProbe) collectGC(ctx context.Context, now time.Time) []data_store
 func (p *TomcatProbe) collectThreading(ctx context.Context, now time.Time) []data_store.DataPoint {
 	threadCount, err := p.client.readInt64(ctx, "java.lang:type=Threading", "ThreadCount")
 	if err != nil {
+		p.moduleLogger.Debug().Err(err).Msg("tomcat: could not read ThreadCount")
 		return nil
 	}
 

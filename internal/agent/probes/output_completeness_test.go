@@ -55,7 +55,7 @@ func TestHostProbeOutput_EveryMetricHasDefinition(t *testing.T) {
 				// (e.g. PDH_NO_DATA on headless Windows CI runners
 				// with no network counters), not a name drift — there
 				// is no collector to validate. Real-hardware coverage
-				// comes from runtime validation on bbcloud.
+				// comes from runtime validation on a Windows recette host.
 				t.Skipf("constructing %s probe not possible in this environment: %v", probeName, err)
 			}
 			points, err := probe.Collect()
@@ -71,7 +71,7 @@ func TestHostProbeOutput_EveryMetricHasDefinition(t *testing.T) {
 					// environment (headless Windows runner with no network
 					// activity) — the same environment limitation as a
 					// construct failure, not a name drift. Real-hardware
-					// coverage comes from runtime validation on bbcloud.
+					// coverage comes from runtime validation on a Windows recette host.
 					t.Skipf("%s Collect has no PDH sample in this environment: %v", probeName, err)
 				}
 				t.Fatalf("%s Collect: %v", probeName, err)

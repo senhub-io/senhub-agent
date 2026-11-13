@@ -65,6 +65,10 @@ type AutoUpdateConfig struct {
 	// replace the binary on Linux; the in-process periodic checker inside the
 	// daemon must not (#794).
 	OperatorDriven bool
+	// IncludeBeta is the channel "latest" resolves on when there is no
+	// ConfigSource to read it from: the update CLI reads it from the
+	// configuration file itself.
+	IncludeBeta bool
 }
 
 type autoUpdate struct {
@@ -72,11 +76,15 @@ type autoUpdate struct {
 	logger       *logger.ModuleLogger
 	httpClient   *http.Client
 	scheduler    *periodic_scheduler.PeriodicScheduler
+	includeBeta  bool
 	// runCtx is the lifecycle context Start received, kept so a
 	// scheduler recreated on an interval change stays attached to the
 	// agent's cancellation root.
 	runCtx context.Context
 	dryRun bool
+	// resolved is the concrete version the last Update call resolved, read by
+	// the update CLI to say what it installed or would install.
+	resolved string
 	// targetPath is the executable to replace; empty means the running
 	// one. Set by tests so an update never lands on the test binary.
 	targetPath string
@@ -137,6 +145,7 @@ func NewAutoUpdate(config AutoUpdateConfig) AutoUpdate {
 		dryRun:       config.DryRun,
 
 		operatorDriven: config.OperatorDriven,
+		includeBeta:    config.IncludeBeta,
 	}
 }
 
@@ -226,16 +235,30 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) (b
 	// before we decide, so PeriodicalCheckForUpdate reads a value set (or not) by
 	// this same cycle.
 	a.msiUpgradeLaunched.Store(false)
+	a.resolved = ""
 
 	var registry string
 	if len(registryUrl) > 0 {
 		registry = registryUrl[0]
 	}
 
-	expectedVersion := a.getExpectedVersion(
-		expectedVersionStr,
-		a.GetRegistryUrl(registry),
-	)
+	var expectedVersion string
+	if a.operatorDriven {
+		resolved, err := a.resolveVersion(
+			expectedVersionStr,
+			a.GetRegistryUrl(registry),
+		)
+		if err != nil {
+			return false, err
+		}
+		expectedVersion = resolved
+	} else {
+		expectedVersion = a.getExpectedVersion(
+			expectedVersionStr,
+			a.GetRegistryUrl(registry),
+		)
+	}
+	a.resolved = expectedVersion
 
 	currentVersionStr := cliArgs.Version
 	if expectedVersion == "" || expectedVersion == cliArgs.Version {
@@ -246,10 +269,16 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) (b
 	// Auto-update used to fire on any version-string mismatch — including
 	// downgrades. An agent running a beta would silently revert to the
 	// latest prod when the update server's "latest" alias resolved to a
-	// release older than the running beta. shouldUpdateTo enforces
-	// strict-greater-than per semver, with pre-release ordering honoured.
-	ok, err := shouldUpdateTo(currentVersionStr, expectedVersion)
+	// release older than the running beta. The daemon and `update latest`
+	// keep strict-greater-than per semver, with pre-release ordering
+	// honoured; a version the operator names on the command line is
+	// installed even when older, except on an MSI install.
+	operatorExplicit := a.operatorDriven && IsExactVersion(expectedVersionStr)
+	proceed, downgrade, err := decideUpdate(currentVersionStr, expectedVersion, operatorExplicit, isMsiManaged())
 	if err != nil {
+		if operatorExplicit {
+			return false, err
+		}
 		a.logger.Warn().
 			Str("current_version", currentVersionStr).
 			Str("expected_version", expectedVersion).
@@ -257,12 +286,18 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) (b
 			Msg("Auto-update skipped: cannot parse version for comparison")
 		return false, nil
 	}
-	if !ok {
+	if !proceed {
 		a.logger.Debug().
 			Str("current_version", currentVersionStr).
 			Str("expected_version", expectedVersion).
 			Msg("Auto-update skipped: expected version is not newer than current")
 		return false, nil
+	}
+	if downgrade {
+		a.logger.Info().
+			Str("current_version", currentVersionStr).
+			Str("expected_version", expectedVersion).
+			Msg("Installing an older version on the operator's request")
 	}
 
 	a.logger.Info().
@@ -282,6 +317,9 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) (b
 		// it would 404 to an HTML landing page and surface as an hourly
 		// "signature verification failed". Skip it and stay put (M4).
 		if IsBetaVersion(expectedVersion) {
+			if a.operatorDriven {
+				return false, fmt.Errorf("%s is a beta release, and beta releases are not published as MSI; this MSI-managed install stays on %s", expectedVersion, currentVersionStr)
+			}
 			if a.betaMsiWarned.CompareAndSwap(false, true) {
 				a.logger.Warn().
 					Str("expected_version", expectedVersion).
@@ -364,6 +402,10 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) (b
 
 	return true, nil
 }
+
+// ResolvedVersion returns the version the last Update call resolved its
+// request to, or "" before any call.
+func (a *autoUpdate) ResolvedVersion() string { return a.resolved }
 
 // GetMsiUrl builds the download URL of the per-version MSI installer, alongside
 // the ZIP path. The filename matches what the windows-msi workflow publishes
@@ -456,7 +498,11 @@ func (a *autoUpdate) doUpdate(downloadURL, toVersion string) error {
 	if err != nil {
 		return fmt.Errorf("opening update archive as zip: %w", err)
 	}
-	defer zr.Close()
+	defer func() {
+		if cErr := zr.Close(); cErr != nil {
+			a.logger.Warn().Err(cErr).Str("archive", archivePath).Msg("Failed to close update archive")
+		}
+	}()
 
 	// The archive ships exactly one entry: the agent binary. On
 	// Windows it's named `senhub-agent.exe`; everywhere else
@@ -693,6 +739,10 @@ func (a *autoUpdate) fetchSignature(signatureURL string) ([]byte, error) {
 }
 
 func (a *autoUpdate) PeriodicalCheckForUpdate() error {
+	if Paused() {
+		a.logger.Debug().Msg("Update check skipped: paused by an extension")
+		return nil
+	}
 	expectedVersion := a.configSource.GetConfiguration().Agent.Version
 	registryUrl := a.configSource.GetConfiguration().Agent.RegistryUrl
 
@@ -773,12 +823,15 @@ func (a *autoUpdate) getExpectedVersionFromConfig() string {
 	return a.getExpectedVersion(expectedVersion, registryUrl)
 }
 
-func (a *autoUpdate) getExpectedVersion(expectedVersionStr string, registryUrl string) string {
+// resolveVersion resolves the version the agent should move to. Unlike
+// getExpectedVersion it reports failures as errors, so the operator CLI can
+// fail loudly instead of silently staying on the current version.
+func (a *autoUpdate) resolveVersion(expectedVersionStr string, registryUrl string) (string, error) {
 	currentVersionStr := cliArgs.Version
 	registryUrl = a.GetRegistryUrl(registryUrl)
 
 	if expectedVersionStr == "" {
-		return currentVersionStr
+		return currentVersionStr, nil
 	}
 
 	// Handle "latest" alias: fetch the highest version from the registry.
@@ -786,10 +839,10 @@ func (a *autoUpdate) getExpectedVersion(expectedVersionStr string, registryUrl s
 	// newer beta (e.g. 0.4.2-beta) wins over the latest stable; otherwise
 	// only stable releases are resolved (#591).
 	if expectedVersionStr == "latest" {
-		// configSource is nil when the CLI 'update latest' path constructs the
-		// updater without one (internal/agent/update.go). Fall back to
-		// stable-only rather than dereferencing nil and panicking (m10).
-		includeBeta := false
+		// The CLI passes the channel through AutoUpdateConfig.IncludeBeta
+		// (internal/agent/update.go); the daemon reads it from its
+		// configuration via the configSource override below.
+		includeBeta := a.includeBeta
 		if a.configSource != nil {
 			includeBeta = a.configSource.GetConfiguration().Agent.IncludeBeta
 		}
@@ -801,18 +854,18 @@ func (a *autoUpdate) getExpectedVersion(expectedVersionStr string, registryUrl s
 			versions, err := FetchAllVersions(a.httpClient, registryUrl, true, a.logger)
 			if err != nil {
 				a.logger.Warn().Err(err).Msg("Failed to fetch latest version from registry, skipping update")
-				return currentVersionStr
+				return "", fmt.Errorf("cannot reach the update registry %s: %w", registryUrl, err)
 			}
 			latest := GetLatestVersion(versions)
 			if latest == nil {
 				a.logger.Warn().Msg("No versions found in registry")
-				return currentVersionStr
+				return "", fmt.Errorf("no release found in the update registry %s", registryUrl)
 			}
 			a.logger.Info().
 				Str("latest_version", latest.Version).
 				Bool("include_beta", true).
 				Msg("Resolved 'latest' to version")
-			return latest.Version
+			return latest.Version, nil
 		}
 
 		bestMatch, err := FetchBestMatchingVersion(
@@ -822,17 +875,27 @@ func (a *autoUpdate) getExpectedVersion(expectedVersionStr string, registryUrl s
 		)
 		if err != nil {
 			a.logger.Warn().Err(err).Msg("Failed to fetch latest version from registry, skipping update")
-			return currentVersionStr
+			return "", fmt.Errorf("cannot reach the update registry %s: %w", registryUrl, err)
 		}
 		if bestMatch == nil {
 			a.logger.Warn().Msg("No versions found in registry")
-			return currentVersionStr
+			return "", fmt.Errorf("no release found in the update registry %s", registryUrl)
 		}
 		a.logger.Info().
 			Str("latest_version", bestMatch.Version).
 			Bool("include_beta", false).
 			Msg("Resolved 'latest' to version")
-		return bestMatch.Version
+		return bestMatch.Version, nil
+	}
+
+	// The request must parse as a version, a beta, or a constraint before any
+	// registry metadata is fetched: an unreadable request never reaches the
+	// network.
+	_, versionErr := version.NewVersion(expectedVersionStr)
+	isBeta := IsBetaVersion(expectedVersionStr)
+	_, constraintErr := version.NewConstraint(expectedVersionStr)
+	if versionErr != nil && !isBeta && constraintErr != nil {
+		return "", fmt.Errorf("not a valid version: %s", expectedVersionStr)
 	}
 
 	// In case expected version is an exact match, try to get its metadata
@@ -852,15 +915,18 @@ func (a *autoUpdate) getExpectedVersion(expectedVersionStr string, registryUrl s
 		a.logger.Debug().
 			Str("resolved_version", expectedVersionMetadata.Version).
 			Msg("Exact version match found in registry")
-		return expectedVersionMetadata.Version
+		return expectedVersionMetadata.Version, nil
 	}
 
 	// Special handling for beta versions which don't parse as constraints
-	if IsBetaVersion(expectedVersionStr) {
+	if isBeta {
 		a.logger.Info().
 			Str("expected_version", expectedVersionStr).
 			Msg("Detected beta version as target")
-		return expectedVersionStr
+		if a.operatorDriven {
+			return "", fmt.Errorf("cannot fetch version %s from the update registry %s: %w", expectedVersionStr, registryUrl, err)
+		}
+		return expectedVersionStr, nil
 	}
 
 	constraint, err := version.NewConstraint(expectedVersionStr)
@@ -870,9 +936,7 @@ func (a *autoUpdate) getExpectedVersion(expectedVersionStr string, registryUrl s
 			Err(err).
 			Msg("Failed to parse version constraint")
 
-		// Unable to parse version constraint
-		// Assume no update required
-		return currentVersionStr
+		return "", fmt.Errorf("not a valid version: %s", expectedVersionStr)
 	}
 
 	currentVersion, err := version.NewVersion(currentVersionStr)
@@ -881,11 +945,11 @@ func (a *autoUpdate) getExpectedVersion(expectedVersionStr string, registryUrl s
 			Str("current_version", currentVersionStr).
 			Err(err).
 			Msg("Failed to parse current version")
-		return currentVersionStr
+		return "", fmt.Errorf("cannot parse the running version %s: %w", currentVersionStr, err)
 	}
 
 	if constraint.Check(currentVersion) {
-		return currentVersionStr
+		return currentVersionStr, nil
 	}
 
 	a.logger.Info().
@@ -902,13 +966,25 @@ func (a *autoUpdate) getExpectedVersion(expectedVersionStr string, registryUrl s
 		a.logger.Error().
 			Err(err).
 			Msg("Failed to fetch best matching version")
-		return currentVersionStr
+		return "", fmt.Errorf("cannot reach the update registry %s: %w", registryUrl, err)
 	}
 
 	if metadata == nil {
-		return currentVersionStr
+		return "", fmt.Errorf("version %s not found in the update registry %s", expectedVersionStr, registryUrl)
 	}
-	return metadata.Version
+	return metadata.Version, nil
+}
+
+// getExpectedVersion resolves the version the agent should move to for the
+// daemon's periodic check. The daemon keeps running its version when nothing
+// resolves; the operator CLI gets the error instead (see Update).
+func (a *autoUpdate) getExpectedVersion(expectedVersionStr string, registryUrl string) string {
+	resolved, err := a.resolveVersion(expectedVersionStr, registryUrl)
+	if err != nil {
+		a.logger.Warn().Err(err).Str("expected_version", expectedVersionStr).Msg("Update skipped: the expected version could not be resolved")
+		return cliArgs.Version
+	}
+	return resolved
 }
 
 // getBinaryNameForOptions returns the asset filename to download for

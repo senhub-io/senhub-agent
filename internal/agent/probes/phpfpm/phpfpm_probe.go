@@ -157,16 +157,28 @@ func (p *phpFPMProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
-// Collect fetches the PHP-FPM status page and builds datapoints.
-// The "up" gauge is always emitted even when the endpoint is unreachable.
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
 func (p *phpFPMProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext fetches the PHP-FPM status page and builds datapoints.
+// The "up" gauge is always emitted even when the endpoint is unreachable.
+func (p *phpFPMProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
-	points, _ := p.collect(now)
+	points, _ := p.collect(ctx, now)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("phpfpm collection interrupted: %w", ctxErr)
+	}
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
 }
 
-func (p *phpFPMProbe) collect(now time.Time) ([]data_store.DataPoint, error) {
-	status, fetchErr := p.fetchStatus()
+func (p *phpFPMProbe) collect(ctx context.Context, now time.Time) ([]data_store.DataPoint, error) {
+	status, fetchErr := p.fetchStatus(ctx)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("phpfpm collection interrupted: %w", ctxErr)
+	}
 	result := dbcommon.CheckOK
 	if fetchErr != nil {
 		var httpErr *httpStatusError
@@ -244,7 +256,7 @@ func endpointHostPort(endpoint string) (string, int) {
 
 // fetchStatus performs the HTTP GET to the status endpoint and
 // unmarshals the JSON response.
-func (p *phpFPMProbe) fetchStatus() (*fpmStatus, error) {
+func (p *phpFPMProbe) fetchStatus(ctx context.Context) (*fpmStatus, error) {
 	url := p.cfg.Endpoint
 	// Append ?json unless the caller already included it.
 	if !strings.Contains(url, "json") {
@@ -255,7 +267,11 @@ func (p *phpFPMProbe) fetchStatus() (*fpmStatus, error) {
 		}
 	}
 
-	resp, err := p.client.Get(url) // #nosec G107 - URL is operator-configured
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("building request for %s: %w", url, err)
+	}
+	resp, err := p.client.Do(req) // #nosec G107 - URL is operator-configured
 	if err != nil {
 		return nil, fmt.Errorf("GET %s: %w", url, err)
 	}

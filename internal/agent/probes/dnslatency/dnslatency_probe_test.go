@@ -1,6 +1,7 @@
 package dnslatency
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -42,7 +43,7 @@ func TestCollect_PairFanout(t *testing.T) {
 		"names":     []interface{}{"ok.example", "broken.example"},
 		"resolvers": []interface{}{"192.0.2.1:53", "192.0.2.2:53"},
 	})
-	p.lookup = func(name, resolver string) lookupResult {
+	p.lookup = func(_ context.Context, name, resolver string) lookupResult {
 		if name == "broken.example" {
 			return lookupResult{name: name, resolver: resolver, err: errors.New("SERVFAIL")}
 		}

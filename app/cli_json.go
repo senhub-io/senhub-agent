@@ -14,6 +14,11 @@ import (
 // object on stdout.
 const jsonFlag = "--json"
 
+// okIfUnchangedFlag turns the Unchanged exit (3) of config init and
+// install into OK, for an installer that reads any non-zero code as a
+// failure.
+const okIfUnchangedFlag = "--ok-if-unchanged"
+
 // schemaID names the JSON document a command prints. The version suffix
 // moves only when a field is removed or changes meaning; adding a field
 // keeps v1.

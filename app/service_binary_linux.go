@@ -36,12 +36,12 @@ func installedServiceBinary() string {
 // (running unprivileged) could never self-update again — the #377/#571
 // failure mode, silently reintroduced by the very command meant to fix
 // the skew.
-func syncServiceBinary(newBinary string) (string, error) {
+func syncServiceBinary(newBinary string, requested bool) (string, error) {
 	unit, err := os.ReadFile(loadedUnitPath())
 	if err != nil {
 		return "", nil
 	}
-	return reconcileServiceBinary(string(unit), newBinary, binaryFS{
+	return reconcileServiceBinary(string(unit), newBinary, requested, binaryFS{
 		stat:  os.Stat,
 		copy:  copyExecutable,
 		chown: chownToUser,

@@ -13,6 +13,7 @@ import (
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/configuration/secret"
+	"senhub-agent.go/internal/agent/services/status"
 	"senhub-agent.go/internal/cliexit"
 )
 
@@ -368,7 +369,14 @@ func TestStatusJSONStoppedService(t *testing.T) {
 	}
 }
 
+// noStatusChannel stands for a host with no agent behind the local
+// channel, whatever else runs on the machine running the tests.
+func noStatusChannel(string) (*status.SystemStatus, error) {
+	return nil, errors.New("no status channel")
+}
+
 func TestStatusJSONRunningWithoutDaemon(t *testing.T) {
+	withStatusChannel(t, noStatusChannel)
 	args := &cliArgs.ParsedArgs{ConfigPath: filepath.Join(t.TempDir(), "absent.yaml")}
 	var out bytes.Buffer
 	code := runStatus(fakeService{state: service.StatusRunning}, args, true, &out)
@@ -392,6 +400,7 @@ func TestStatusJSONRunningWithoutDaemon(t *testing.T) {
 }
 
 func TestStatusJSONNoServiceManager(t *testing.T) {
+	withStatusChannel(t, noStatusChannel)
 	args := &cliArgs.ParsedArgs{ConfigPath: filepath.Join(t.TempDir(), "absent.yaml")}
 	var out bytes.Buffer
 	code := runStatus(fakeService{err: errors.New("no init system")}, args, true, &out)

@@ -176,10 +176,16 @@ func (p *unifiProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
-// Collect runs one cycle: login, fetch the three endpoints, build the
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
+func (p *unifiProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext runs one cycle: login, fetch the three endpoints, build the
 // metric set. A login or fetch failure surfaces as senhub.unifi.up=0,
 // not a collection error.
-func (p *unifiProbe) Collect() ([]data_store.DataPoint, error) {
+func (p *unifiProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 
 	var points []data_store.DataPoint
@@ -197,36 +203,51 @@ func (p *unifiProbe) Collect() ([]data_store.DataPoint, error) {
 		return p.BaseProbe.EnrichDataPointsWithProbeName(pts, p.GetName())
 	}
 
-	if err := p.login(); err != nil {
+	if err := p.login(ctx); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("unifi collection interrupted: %w", ctxErr)
+		}
 		p.moduleLogger.Warn().Err(err).Str("endpoint", p.cfg.Endpoint).Msg("unifi login failed")
 		p.entitySource.markReachable(false)
 		baseTags, controllerTags := p.collectionTags()
 		return emitUp(0, err, baseTags, controllerTags), nil
 	}
 
-	health, err := p.fetchHealth()
+	health, err := p.fetchHealth(ctx)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("unifi collection interrupted: %w", ctxErr)
+		}
 		p.moduleLogger.Warn().Err(err).Msg("unifi health fetch failed")
 		p.entitySource.markReachable(false)
 		baseTags, controllerTags := p.collectionTags()
 		return emitUp(0, err, baseTags, controllerTags), nil
 	}
-	devices, err := p.fetchDevices()
+	devices, err := p.fetchDevices(ctx)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("unifi collection interrupted: %w", ctxErr)
+		}
 		p.moduleLogger.Warn().Err(err).Msg("unifi device fetch failed")
 		p.entitySource.markReachable(false)
 		baseTags, controllerTags := p.collectionTags()
 		return emitUp(0, err, baseTags, controllerTags), nil
 	}
-	clients, err := p.fetchClients()
+	clients, err := p.fetchClients(ctx)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("unifi collection interrupted: %w", ctxErr)
+		}
 		p.moduleLogger.Warn().Err(err).Msg("unifi client fetch failed")
 		p.entitySource.markReachable(false)
 		baseTags, controllerTags := p.collectionTags()
 		return emitUp(0, err, baseTags, controllerTags), nil
 	}
 
-	p.resolveControllerIdentity()
+	p.resolveControllerIdentity(ctx)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("unifi collection interrupted: %w", ctxErr)
+	}
 	p.entitySource.markReachable(true)
 	baseTags, controllerTags := p.collectionTags()
 	points = append(points, p.buildNetworkPoints(health, controllerTags, now)...)
@@ -275,14 +296,17 @@ type sysinfoEnvelope struct {
 // A failure is not an error of the cycle: the entity then falls back to the
 // host-scoped form for a local controller, or is not emitted for a remote one,
 // and that is explained once.
-func (p *unifiProbe) resolveControllerIdentity() {
+func (p *unifiProbe) resolveControllerIdentity(ctx context.Context) {
 	var env sysinfoEnvelope
-	err := p.getJSON(p.sitePath("/stat/sysinfo"), &env)
+	err := p.getJSON(ctx, p.sitePath("/stat/sysinfo"), &env)
 	if err == nil && len(env.Data) > 0 && env.Data[0].ControllerID != "" {
 		p.entitySource.setControllerID(env.Data[0].ControllerID)
 		return
 	}
 	if err != nil {
+		if ctx.Err() != nil {
+			return
+		}
 		p.moduleLogger.Debug().Err(err).Msg("unifi controller UUID not readable")
 	}
 	p.identityOnce.Do(func() {
@@ -295,7 +319,7 @@ func (p *unifiProbe) resolveControllerIdentity() {
 }
 
 // login posts credentials and lets the cookie jar capture the session.
-func (p *unifiProbe) login() error {
+func (p *unifiProbe) login(ctx context.Context) error {
 	body, err := json.Marshal(map[string]string{
 		"username": p.cfg.Username,
 		"password": p.cfg.Password,
@@ -303,7 +327,7 @@ func (p *unifiProbe) login() error {
 	if err != nil {
 		return fmt.Errorf("encoding login body: %w", err)
 	}
-	req, err := http.NewRequest(http.MethodPost, p.cfg.Endpoint+"/api/login", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.cfg.Endpoint+"/api/login", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("building login request: %w", err)
 	}
@@ -321,8 +345,8 @@ func (p *unifiProbe) login() error {
 
 // getJSON issues an authenticated GET and decodes the controller's
 // {"data": [...]} envelope into out.
-func (p *unifiProbe) getJSON(path string, out interface{}) error {
-	req, err := http.NewRequest(http.MethodGet, p.cfg.Endpoint+path, nil)
+func (p *unifiProbe) getJSON(ctx context.Context, path string, out interface{}) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.cfg.Endpoint+path, nil)
 	if err != nil {
 		return fmt.Errorf("building request %s: %w", path, err)
 	}
@@ -353,9 +377,9 @@ type healthEnvelope struct {
 	} `json:"data"`
 }
 
-func (p *unifiProbe) fetchHealth() (healthEnvelope, error) {
+func (p *unifiProbe) fetchHealth(ctx context.Context) (healthEnvelope, error) {
 	var env healthEnvelope
-	err := p.getJSON(p.sitePath("/stat/health"), &env)
+	err := p.getJSON(ctx, p.sitePath("/stat/health"), &env)
 	return env, err
 }
 
@@ -380,9 +404,9 @@ type deviceRow struct {
 	} `json:"system-stats"`
 }
 
-func (p *unifiProbe) fetchDevices() (deviceEnvelope, error) {
+func (p *unifiProbe) fetchDevices(ctx context.Context) (deviceEnvelope, error) {
 	var env deviceEnvelope
-	err := p.getJSON(p.sitePath("/stat/device"), &env)
+	err := p.getJSON(ctx, p.sitePath("/stat/device"), &env)
 	return env, err
 }
 
@@ -393,9 +417,9 @@ type clientEnvelope struct {
 	} `json:"data"`
 }
 
-func (p *unifiProbe) fetchClients() (clientEnvelope, error) {
+func (p *unifiProbe) fetchClients(ctx context.Context) (clientEnvelope, error) {
 	var env clientEnvelope
-	err := p.getJSON(p.sitePath("/stat/sta"), &env)
+	err := p.getJSON(ctx, p.sitePath("/stat/sta"), &env)
 	return env, err
 }
 

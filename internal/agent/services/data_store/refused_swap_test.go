@@ -17,6 +17,11 @@ import (
 // output until a restart, although the previous configuration worked.
 func TestARefusedConfigurationKeepsThePreviousOutputRunning(t *testing.T) {
 	built := []*MockStrategy{}
+	t.Cleanup(func() {
+		factoriesMu.Lock()
+		delete(factories, "swaptest")
+		factoriesMu.Unlock()
+	})
 	RegisterStrategy("swaptest", func(params configuration.StorageConfigParams, _ StrategyDeps) (SyncStrategy, error) {
 		if params["broken"] == true {
 			return nil, errors.New("reading 'tls.psk_file': permission denied")

@@ -10,16 +10,22 @@ import (
 )
 
 // waitBookmarkOnDisk polls the bookmark file, as a crash would leave it,
-// until the entry of file satisfies ok.
+// until the entry of file satisfies ok. A read that fails is retried: on
+// Windows, opening the file while the probe replaces it fails with a sharing
+// violation for that instant.
 func waitBookmarkOnDisk(t *testing.T, bookmarkPath, file string, ok func(bookmarkEntry) bool, within time.Duration) bookmarkEntry {
 	t.Helper()
 	var last bookmarkEntry
+	var lastErr error
 	deadline := time.Now().Add(within)
 	for time.Now().Before(deadline) {
 		store, err := newBookmark(bookmarkPath)
 		if err != nil {
-			t.Fatal(err)
+			lastErr = err
+			time.Sleep(20 * time.Millisecond)
+			continue
 		}
+		lastErr = nil
 		if e, found := store.Get(file); found {
 			last = e
 			if ok(e) {
@@ -27,6 +33,9 @@ func waitBookmarkOnDisk(t *testing.T, bookmarkPath, file string, ok func(bookmar
 			}
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+	if lastErr != nil {
+		t.Fatalf("bookmark of %s unreadable after %v: %v", file, within, lastErr)
 	}
 	t.Fatalf("bookmark of %s on disk = %+v after %v, never reached the expected state", file, last, within)
 	return last
@@ -91,11 +100,16 @@ func TestFileTail_ReopenAfterRotationBookmarksTheNewFileStart(t *testing.T) {
 			}
 
 			first := startFileTail(t, cfg)
+			// The tail must be watching the idle file before it is
+			// rotated; a few readiness lines are the price of knowing.
+			ready := awaitTailWatching(t, first, file)
+			info, err := os.Stat(file)
+			if err != nil {
+				t.Fatal(err)
+			}
 			waitBookmarkOnDisk(t, bookmarkPath, file, func(e bookmarkEntry) bool {
-				return e.Offset == int64(len(old))
+				return e.Offset == info.Size()
 			}, 30*time.Second)
-			// Let the watch settle on the idle file before rotating it.
-			time.Sleep(200 * time.Millisecond)
 
 			tc.rotate(t, file)
 			waitBookmarkOnDisk(t, bookmarkPath, file, func(e bookmarkEntry) bool {
@@ -103,8 +117,8 @@ func TestFileTail_ReopenAfterRotationBookmarksTheNewFileStart(t *testing.T) {
 			}, 30*time.Second)
 
 			stopFileTail(t, first)
-			if got := first.emitted.Load(); got != 0 {
-				t.Fatalf("first run emitted %d records, want 0: nothing was written", got)
+			if got := first.emitted.Load(); got != ready {
+				t.Fatalf("first run emitted %d records, want the %d readiness lines only", got, ready)
 			}
 
 			// Written while the agent is down, as a busy log does between a

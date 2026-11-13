@@ -21,7 +21,7 @@ func TestNewDebugLogShipper(t *testing.T) {
 		{
 			name: "Valid configuration",
 			config: &Config{
-				Endpoint:      "http://example.com/logs",
+				Endpoint:      "https://example.com/logs",
 				BufferSize:    100,
 				FlushInterval: 10 * time.Second,
 			},
@@ -38,7 +38,7 @@ func TestNewDebugLogShipper(t *testing.T) {
 		{
 			name: "Zero buffer size uses default",
 			config: &Config{
-				Endpoint:      "http://example.com/logs",
+				Endpoint:      "https://example.com/logs",
 				BufferSize:    0,
 				FlushInterval: 10 * time.Second,
 			},
@@ -47,7 +47,7 @@ func TestNewDebugLogShipper(t *testing.T) {
 		{
 			name: "Zero flush interval uses default",
 			config: &Config{
-				Endpoint:      "http://example.com/logs",
+				Endpoint:      "https://example.com/logs",
 				BufferSize:    100,
 				FlushInterval: 0,
 			},
@@ -217,5 +217,44 @@ func TestDebugLogShipper_Close(t *testing.T) {
 	_, err = shipper.Write([]byte(`{"level":"debug","message":"test log after close"}`))
 	if !errors.Is(err, ErrShipperClosed) {
 		t.Errorf("Write() after Close() error = %v, expected ErrShipperClosed", err)
+	}
+}
+
+func TestNewDebugLogShipper_EndpointScheme(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint string
+		wantErr  error
+	}{
+		{"https remote", "https://logs.example.com:9428", nil},
+		{"http remote refused", "http://logs.example.com:9428", ErrInsecureEndpoint},
+		{"http loopback ip", "http://127.0.0.1:9428", nil},
+		{"http localhost", "http://localhost:9428", nil},
+		{"http ipv6 loopback", "http://[::1]:9428", nil},
+		{"http private address refused", "http://10.0.0.5:9428", ErrInsecureEndpoint},
+		{"unsupported scheme", "ftp://logs.example.com", ErrInvalidEndpoint},
+		{"no scheme", "logs.example.com:9428", ErrInvalidEndpoint},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shipper, err := NewDebugLogShipper(&Config{Endpoint: tt.endpoint})
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("error = %v, want %v", err, tt.wantErr)
+			}
+			if err == nil {
+				shipper.Close()
+			}
+		})
+	}
+}
+
+func TestNewDebugLogShipper_NoBearerRequired(t *testing.T) {
+	shipper, err := NewDebugLogShipper(&Config{Endpoint: "https://logs.example.com"})
+	if err != nil {
+		t.Fatalf("shipper without credentials refused: %v", err)
+	}
+	defer shipper.Close()
+	if _, ok := shipper.headers["Authorization"]; ok {
+		t.Error("no Authorization header expected when none is configured")
 	}
 }

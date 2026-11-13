@@ -1220,7 +1220,4 @@ curl -o /dev/null https://www.example.com
 ## Related Documentation
 
 - [Load WebApp Probe README](./README.md) - Configuration and quick start
-- [Web Application Monitoring Guide](../../guides/web-monitoring.md) - Comprehensive web monitoring
-- [Performance Optimization](../../guides/performance-optimization.md) - Optimization strategies
 - [Troubleshooting Guide](../../troubleshooting/) - Common issues and solutions
-- [Alert Configuration Guide](../../guides/alerting.md) - Setting up alerts and notifications

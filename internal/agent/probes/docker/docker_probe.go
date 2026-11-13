@@ -198,6 +198,9 @@ func NewDockerProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	}
 	p.SetProbeType(ProbeType)
 	p.cgroups = newCgroupReader("")
+	p.cgroups.onSkip = func(path string, err error) {
+		moduleLogger.Debug().Err(err).Str("file", path).Msg("docker: optional cgroup file not read")
+	}
 	// Containers are distinct entities, not host-local: declare the real
 	// source so the poller registers it on Start.
 	p.SetEntitySource(p.entitySrc)
@@ -307,9 +310,20 @@ func (p *dockerProbe) OnShutdown(ctx context.Context) error {
 // Engine API. A container that is stopped or disappears between list and stats
 // emits senhub.docker.up=0 without resource metrics — never a collection error.
 func (p *dockerProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext is Collect under the poller's context. A cycle whose
+// context ends returns its error and publishes nothing: an interrupted
+// list would otherwise read as an unreachable socket and fall back to
+// cgroups, and the entity cache would lose containers it had not reached.
+func (p *dockerProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 
-	containers, socketOK, listErr := p.listContainers()
+	containers, socketOK, listErr := p.listContainers(ctx)
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("docker collection interrupted: %w", err)
+	}
 	checkErr := listErr
 	if listErr != nil || !socketOK {
 		// The socket is unreachable. On a hardened non-root install that is the
@@ -343,11 +357,14 @@ func (p *dockerProbe) Collect() ([]data_store.DataPoint, error) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			stats, err := p.fetchStats(c.ID)
+			stats, err := p.fetchStats(ctx, c.ID)
 			results[i] = statsResult{container: c, stats: stats, err: err}
 		}(i, c)
 	}
 	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("docker collection interrupted: %w", err)
+	}
 
 	// Update entity cache from the live container list (no extra API call needed).
 	p.entitySrc.update(containers)
@@ -363,8 +380,12 @@ func (p *dockerProbe) Collect() ([]data_store.DataPoint, error) {
 // listContainers calls GET /containers/json?all=true. Returns ok=false when
 // the socket dial itself fails (engine not running); a non-2xx status or a
 // JSON error is a real error.
-func (p *dockerProbe) listContainers() ([]containerListItem, bool, error) {
-	resp, err := p.client.Get(p.api.URL(p.client, "/containers/json?all=true"))
+func (p *dockerProbe) listContainers(ctx context.Context) ([]containerListItem, bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.api.URL(ctx, p.client, "/containers/json?all=true"), nil)
+	if err != nil {
+		return nil, true, fmt.Errorf("building containers/json request: %w", err)
+	}
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return nil, false, err
 	}
@@ -392,8 +413,12 @@ func (p *dockerProbe) listContainers() ([]containerListItem, bool, error) {
 // fetchStats calls GET /containers/{id}/stats?stream=false. Returns nil when
 // the container has stopped (HTTP 409) or disappeared (HTTP 404) — both cases
 // are normal race conditions in a dynamic environment.
-func (p *dockerProbe) fetchStats(id string) (*containerStats, error) {
-	resp, err := p.client.Get(p.api.URL(p.client, "/containers/"+id+"/stats?stream=false"))
+func (p *dockerProbe) fetchStats(ctx context.Context, id string) (*containerStats, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.api.URL(ctx, p.client, "/containers/"+id+"/stats?stream=false"), nil)
+	if err != nil {
+		return nil, fmt.Errorf("building stats request for container %s: %w", id, err)
+	}
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return nil, err
 	}

@@ -65,7 +65,7 @@ func TestListenerProbeHealthFollowsTheListener(t *testing.T) {
 
 	// Listener alive: a no-op cycle reports healthy, as before.
 	probe.health = nil
-	if err := poller.collect(); err != nil {
+	if err := poller.collect(context.Background()); err != nil {
 		t.Fatalf("collect: %v", err)
 	}
 	if _, healthy := agentstate.GetProbeCounts(); healthy != 1 {
@@ -74,7 +74,7 @@ func TestListenerProbeHealthFollowsTheListener(t *testing.T) {
 
 	// Listener dead: the SAME no-op Collect must now report unhealthy.
 	probe.health = errors.New("socket closed")
-	if err := poller.collect(); err != nil {
+	if err := poller.collect(context.Background()); err != nil {
 		t.Fatalf("collect: %v", err)
 	}
 	if _, healthy := agentstate.GetProbeCounts(); healthy != 0 {
@@ -83,7 +83,7 @@ func TestListenerProbeHealthFollowsTheListener(t *testing.T) {
 
 	// And it recovers when the listener comes back.
 	probe.health = nil
-	if err := poller.collect(); err != nil {
+	if err := poller.collect(context.Background()); err != nil {
 		t.Fatalf("collect: %v", err)
 	}
 	if _, healthy := agentstate.GetProbeCounts(); healthy != 1 {
@@ -136,7 +136,7 @@ func TestIdentityTagsAreGuaranteedCentrally(t *testing.T) {
 		},
 	}
 
-	if err := poller.collect(); err != nil {
+	if err := poller.collect(context.Background()); err != nil {
 		t.Fatalf("collect: %v", err)
 	}
 
@@ -177,7 +177,7 @@ func TestIdentityTagsAreNotDuplicated(t *testing.T) {
 		},
 	}
 
-	if err := poller.collect(); err != nil {
+	if err := poller.collect(context.Background()); err != nil {
 		t.Fatalf("collect: %v", err)
 	}
 

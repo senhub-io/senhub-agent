@@ -178,12 +178,19 @@ func (p *WildflyProbe) tags(metricType string, extra ...tags.Tag) []tags.Tag {
 	return t
 }
 
-// Collect gathers all metrics in one cycle. A connection failure is
-// recorded as senhub.wildfly.up=0 but never returned as an error —
-// the framework must keep scheduling even when the server is down.
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
 func (p *WildflyProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext gathers all metrics in one cycle. A connection failure is
+// recorded as senhub.wildfly.up=0 but never returned as an error —
+// the framework must keep scheduling even when the server is down. A cycle
+// whose parent context ends returns that error instead.
+func (p *WildflyProbe) CollectContext(parent context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
-	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
+	ctx, cancel := context.WithTimeout(parent, p.cfg.Timeout)
 	defer cancel()
 
 	var points []data_store.DataPoint
@@ -191,6 +198,9 @@ func (p *WildflyProbe) Collect() ([]data_store.DataPoint, error) {
 	up := float64(0)
 	var collectErr error
 	if err := p.collectAll(ctx, now, &points); err != nil {
+		if parentErr := parent.Err(); parentErr != nil {
+			return nil, fmt.Errorf("wildfly collection interrupted: %w", parentErr)
+		}
 		collectErr = err
 		p.moduleLogger.Warn().
 			Err(err).
@@ -198,6 +208,9 @@ func (p *WildflyProbe) Collect() ([]data_store.DataPoint, error) {
 			Msg("wildfly collect failed")
 		p.entitySrc.setReachable(false, "")
 	} else {
+		if ctxErr := parent.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("wildfly collection interrupted: %w", ctxErr)
+		}
 		up = 1
 		p.entitySrc.setReachable(true, "")
 	}

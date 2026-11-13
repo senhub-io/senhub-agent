@@ -147,7 +147,7 @@ func TestExportInParallel_PropagatesFirstError(t *testing.T) {
 		return nil
 	}
 	total, err := exportInParallel(context.Background(), parts,
-		resource.NewSchemaless(), "", time.Now(), time.Now(), export, 4)
+		resource.NewSchemaless(), "", time.Now(), time.Now(), export, 4, nil)
 	if err == nil || !errors.Is(err, want) {
 		t.Errorf("err=%v, want wrapped %v", err, want)
 	}
@@ -182,7 +182,7 @@ func TestExportInParallel_RespectsConcurrencyBound(t *testing.T) {
 		return nil
 	}
 	_, err := exportInParallel(context.Background(), parts,
-		resource.NewSchemaless(), "", time.Now(), time.Now(), export, concurrency)
+		resource.NewSchemaless(), "", time.Now(), time.Now(), export, concurrency, nil)
 	if err != nil {
 		t.Fatalf("err=%v", err)
 	}

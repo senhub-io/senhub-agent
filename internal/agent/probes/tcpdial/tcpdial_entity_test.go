@@ -1,6 +1,7 @@
 package tcpdial
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -16,7 +17,7 @@ func newEntityTestProbe(t *testing.T, agentID string, targets ...string) *TCPDia
 	p := newTestProbe(t, targets...)
 	p.hostID = "host-1"
 	p.entitySrc.getAgentID = func() string { return agentID }
-	p.dial = func(target string) dialResult {
+	p.dial = func(_ context.Context, target string) dialResult {
 		return dialResult{target: target, up: true, duration: time.Millisecond}
 	}
 	return p
@@ -189,7 +190,7 @@ func TestEntitySourceAgentIDEmptySkipsRelations(t *testing.T) {
 
 func TestCheckResultRefusedConnection(t *testing.T) {
 	p := newEntityTestProbe(t, "agent-1", "8.8.8.8:443")
-	p.dial = func(target string) dialResult {
+	p.dial = func(_ context.Context, target string) dialResult {
 		return dialResult{target: target, err: fmt.Errorf("connection refused")}
 	}
 

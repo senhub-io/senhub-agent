@@ -91,6 +91,7 @@ func TestCollect_CurrentHost(t *testing.T) {
 		"filter": map[string]interface{}{
 			"top_n": 5,
 		},
+		"detail": map[string]interface{}{"per_pid": true},
 	})
 	if err != nil {
 		t.Fatalf("parseConfig: %v", err)

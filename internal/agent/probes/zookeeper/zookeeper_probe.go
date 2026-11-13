@@ -41,8 +41,8 @@ type ZookeeperProbe struct {
 	*types.BaseProbe
 	cfg          probeConfig
 	moduleLogger *logger.ModuleLogger
-	// dial is injectable for tests; matches net.DialTimeout signature.
-	dial func(network, address string, timeout time.Duration) (net.Conn, error)
+	// dial is injectable for tests; defaults to a context-aware net.Dialer.
+	dial func(ctx context.Context, network, address string, timeout time.Duration) (net.Conn, error)
 
 	entityObs entityObserver
 }
@@ -51,12 +51,13 @@ type ZookeeperProbe struct {
 // parsed key=value map. ZooKeeper 3.5+ requires the conf command to be
 // explicitly listed in zookeeper.4lw.commands.whitelist (or *). Parsing is
 // lenient: only "key=value" lines are retained; anything else is skipped.
-func (p *ZookeeperProbe) fetchConf(address string) (map[string]string, error) {
-	conn, err := p.dial("tcp", address, p.cfg.Timeout)
+func (p *ZookeeperProbe) fetchConf(ctx context.Context, address string) (map[string]string, error) {
+	conn, stop, err := p.dialConn(ctx, address)
 	if err != nil {
-		return nil, fmt.Errorf("connecting to %s: %w", address, err)
+		return nil, err
 	}
 	defer conn.Close()
+	defer stop()
 
 	if err := conn.SetDeadline(time.Now().Add(p.cfg.Timeout)); err != nil {
 		return nil, fmt.Errorf("setting deadline: %w", err)
@@ -83,6 +84,21 @@ func (p *ZookeeperProbe) fetchConf(address string) (map[string]string, error) {
 		return nil, fmt.Errorf("reading conf response: %w", err)
 	}
 	return kv, nil
+}
+
+// dialConn dials the node and arranges for the end of ctx to close the
+// connection, which releases a blocked read or write.
+func (p *ZookeeperProbe) dialConn(ctx context.Context, address string) (net.Conn, func() bool, error) {
+	conn, err := p.dial(ctx, "tcp", address, p.cfg.Timeout)
+	if err != nil {
+		return nil, nil, fmt.Errorf("connecting to %s: %w", address, err)
+	}
+	stop := context.AfterFunc(ctx, func() {
+		if err := conn.Close(); err != nil {
+			p.moduleLogger.Warn().Err(err).Str("address", address).Msg("zookeeper connection close on cancellation failed")
+		}
+	})
+	return conn, stop, nil
 }
 
 // NewZookeeperProbe constructs the probe from the free-form YAML params block.
@@ -116,7 +132,9 @@ func NewZookeeperProbe(config map[string]interface{}, baseLogger *logger.Logger)
 		BaseProbe:    &types.BaseProbe{},
 		cfg:          cfg,
 		moduleLogger: moduleLogger,
-		dial:         net.DialTimeout,
+		dial: func(ctx context.Context, network, address string, timeout time.Duration) (net.Conn, error) {
+			return (&net.Dialer{Timeout: timeout}).DialContext(ctx, network, address)
+		},
 	}
 	p.SetProbeType(ProbeType)
 
@@ -204,16 +222,25 @@ func (p *ZookeeperProbe) addBaseTags(pts []data_store.DataPoint) []data_store.Da
 	return pts
 }
 
-// Collect sends "mntr" to the ZooKeeper node and parses the response.
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
+func (p *ZookeeperProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext sends "mntr" to the ZooKeeper node and parses the response.
 // A connection failure emits senhub.zookeeper.up=0 and returns nil —
 // the probe is never in error from the scheduler's perspective; an
 // unreachable node is a measured fact.
-func (p *ZookeeperProbe) Collect() ([]data_store.DataPoint, error) {
+func (p *ZookeeperProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 	address := fmt.Sprintf("%s:%d", p.cfg.Host, p.cfg.Port)
 
-	kv, err := p.fetchMntr(address)
+	kv, err := p.fetchMntr(ctx, address)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("zookeeper collection interrupted: %w", ctxErr)
+		}
 		p.moduleLogger.Warn().Err(err).Str("address", address).Msg("zookeeper mntr failed")
 		p.entityObs.setUp("", false, "")
 		pts := []data_store.DataPoint{p.upPoint(0, now)}
@@ -229,7 +256,10 @@ func (p *ZookeeperProbe) Collect() ([]data_store.DataPoint, error) {
 	// setUp falls back to the host-derived id when serverID is empty.
 	serverID := ""
 	if p.entityObs.needsPin() {
-		serverID = p.resolveServerID(address)
+		serverID = p.resolveServerID(ctx, address)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("zookeeper collection interrupted: %w", ctxErr)
+		}
 	}
 
 	p.entityObs.setUp(serverID, true, version)
@@ -240,8 +270,8 @@ func (p *ZookeeperProbe) Collect() ([]data_store.DataPoint, error) {
 
 // resolveServerID fetches the ZooKeeper "conf" output and extracts the
 // "serverId" field. Returns "zookeeper:<n>" on success, "" on any failure.
-func (p *ZookeeperProbe) resolveServerID(address string) string {
-	conf, err := p.fetchConf(address)
+func (p *ZookeeperProbe) resolveServerID(ctx context.Context, address string) string {
+	conf, err := p.fetchConf(ctx, address)
 	if err != nil {
 		p.moduleLogger.Debug().Err(err).Str("address", address).Msg("zookeeper conf unavailable; using fallback id")
 		return ""
@@ -259,12 +289,13 @@ func (p *ZookeeperProbe) resolveServerID(address string) string {
 
 // fetchMntr dials the ZooKeeper node, sends "mntr\n", and returns the
 // parsed key→value map.
-func (p *ZookeeperProbe) fetchMntr(address string) (map[string]string, error) {
-	conn, err := p.dial("tcp", address, p.cfg.Timeout)
+func (p *ZookeeperProbe) fetchMntr(ctx context.Context, address string) (map[string]string, error) {
+	conn, stop, err := p.dialConn(ctx, address)
 	if err != nil {
-		return nil, fmt.Errorf("connecting to %s: %w", address, err)
+		return nil, err
 	}
 	defer conn.Close()
+	defer stop()
 
 	if err := conn.SetDeadline(time.Now().Add(p.cfg.Timeout)); err != nil {
 		return nil, fmt.Errorf("setting deadline: %w", err)
@@ -372,7 +403,7 @@ func (p *ZookeeperProbe) upPoint(v float64, ts time.Time) data_store.DataPoint {
 }
 
 func parseFloat(s string) (float64, error) {
-	v, err := strconv.ParseFloat(strings.TrimSpace(s), 32)
+	v, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
 	if err != nil {
 		return 0, err
 	}

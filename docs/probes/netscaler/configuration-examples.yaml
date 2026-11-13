@@ -69,10 +69,10 @@ probes:
 #     type: netscaler
 #     params:
 #       # Primary node (agent connects here first)
-#       base_url: "https://10.0.208.7"
+#       base_url: "https://192.0.2.11"
 #
 #       # Secondary node (agent fails over here if primary is down or demoted)
-#       secondary_url: "https://10.0.208.6"
+#       secondary_url: "https://192.0.2.10"
 #
 #       username: "monitoring-user"
 #       password: ${secret:netscaler-ha-paris.password}   # auto-sealed on install

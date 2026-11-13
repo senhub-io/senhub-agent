@@ -52,9 +52,10 @@ PROBLEMS=0
 problem() { printf '  FAIL  %s\n' "$1"; PROBLEMS=$((PROBLEMS + 1)); }
 ok()      { printf '  ok    %s\n' "$1"; }
 
-# A beta carries no installer: the MSI round runs on production tags only.
+# A beta or release candidate carries no installer: the MSI round runs on
+# production tags only.
 EXPECT_MSI=1
-case "$TAG" in *-beta|*-beta.*) EXPECT_MSI=0 ;; esac
+case "$TAG" in *-beta|*-beta.*|*-rc|*-rc.*) EXPECT_MSI=0 ;; esac
 
 echo "Verifying $REPO@$TAG"
 echo
