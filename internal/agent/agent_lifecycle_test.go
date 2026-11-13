@@ -222,10 +222,11 @@ func (b *budgetedFake) Shutdown(ctx context.Context) error {
 }
 
 // TestServiceSetIncludesUpdaterOnlyWhenEnabled pins the one conditional
-// in the bring-up set. An updater wired in when auto-update is off runs
-// version checks nobody asked for; one left out when it is on silently
-// disables the feature. It also pins the position: Shutdown walks the
-// set in reverse, so the order here IS the teardown order.
+// in the bring-up set: an updater, when there is one, is started. The
+// agent now always builds one (each cycle reads auto_update.enabled), so
+// the nil case only covers a stripped-down agent. It also pins the
+// position: Shutdown walks the set in reverse, so the order here IS the
+// teardown order.
 //
 // This is the orchestration the audit found untested (#297) — it used to
 // be an inline loop inside Start with no way to observe the set without

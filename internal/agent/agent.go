@@ -190,12 +190,11 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 
 	var updater auto_update.AutoUpdate
 	autoUpdateConfig := localConfiguration.GetAutoUpdateConfig()
+	// The service is always created: auto_update.enabled can be flipped at
+	// runtime and every cycle re-reads the current setting, so gating
+	// creation on the startup value would require a restart to take effect.
 	if autoUpdateConfig.Enabled {
-		logger.Info().
-			Str("url", autoUpdateConfig.URL).
-			Bool("enabled", autoUpdateConfig.Enabled).
-			Msg("Auto-update enabled")
-
+		logger.Info().Str("url", autoUpdateConfig.URL).Bool("enabled", autoUpdateConfig.Enabled).Msg("Auto-update enabled")
 		// Fail loud, not silent: under the hardened non-root unit a
 		// root-owned binary can never be replaced in place, so every
 		// hourly cycle would fail at write time with a permission error
@@ -203,15 +202,10 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		if warn := auto_update.CheckBinaryReplaceable(); warn != "" {
 			logger.Warn().Msg(warn)
 		}
-
-		updater = auto_update.NewAutoUpdate(auto_update.AutoUpdateConfig{
-			ConfigSource: localConfiguration,
-			Logger:       logger,
-			DryRun:       false,
-		})
 	} else {
 		logger.Info().Msg("Auto-update disabled")
 	}
+	updater = auto_update.NewAutoUpdate(auto_update.AutoUpdateConfig{ConfigSource: localConfiguration, Logger: logger, DryRun: false})
 
 	extensions := extensionhost.Services(extensionhost.Deps{
 		Logger:    logger,
