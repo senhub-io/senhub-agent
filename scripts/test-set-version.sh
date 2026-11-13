@@ -38,11 +38,13 @@ done
 
 # A pin with nothing after the version must not accept a longer version.
 open_pin=$(grep -v '^#' "$root/scripts/version-pins.tsv" | awk -F'\t' '$2 ~ /@V@$/ {print $1; exit}')
-if [ -n "$open_pin" ]; then
-  sed -i.bak "s/${target//./\\.}/${target}0/" "$work/$open_pin" && rm -f "$work/$open_pin.bak"
-  if "$work/scripts/check-version-consistency.sh" --root "$work" >/dev/null 2>&1; then
-    echo "FAIL: $open_pin pinned at ${target}0 passed for $target" >&2
-    exit 1
-  fi
+if [ -z "$open_pin" ]; then
+  echo "FAIL: no pin ends with @V@; the bound on the exact match is untested" >&2
+  exit 1
+fi
+sed -i.bak "s/${target//./\\.}/${target}0/" "$work/$open_pin" && rm -f "$work/$open_pin.bak"
+if "$work/scripts/check-version-consistency.sh" --root "$work" >/dev/null 2>&1; then
+  echo "FAIL: $open_pin pinned at ${target}0 passed for $target" >&2
+  exit 1
 fi
 echo "set-version: OK"

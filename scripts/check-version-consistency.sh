@@ -54,7 +54,7 @@ while IFS=$'\t' read -r file pattern; do
   any="${prefix}${generic}${suffix}"
   exact="${prefix}${escaped}${suffix}"
   # With nothing after @V@, 0.6.4 must not pass for 0.6.40 or 0.6.4-beta.2.
-  [ -n "$suffix" ] || exact="${exact}([^0-9A-Za-z.+-]|$)"
+  [ -n "$suffix" ] || exact="${exact}([^0-9A-Za-z.+-]|\.([^0-9]|$)|$)"
 
   hits=$(grep -nE -- "$any" "$target" || true)
   if [ -z "$hits" ]; then
