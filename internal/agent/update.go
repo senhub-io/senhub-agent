@@ -204,6 +204,20 @@ func installVersion(updater auto_update.AutoUpdate, args *cliArgs.ParsedArgs, lo
 		os.Exit(cliexit.Failure)
 	}
 
+	// The service updates itself on Windows; holding the shared lock keeps
+	// its cycle from swapping the binary under this install. It is released
+	// when this process exits, os.Exit included.
+	if !args.DryRun {
+		release, lockErr := takeInstallLock(func() (func(), error) {
+			return auto_update.AcquireUpdateLock(instanceid.OwnStateDir())
+		}, log)
+		if lockErr != nil {
+			log.Error().Err(lockErr).Msg("Update not started")
+			os.Exit(cliexit.Failure)
+		}
+		defer release()
+	}
+
 	updated, err := updater.Update(args.WantedVersion, args.UpdateRegistryUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("Update failed")

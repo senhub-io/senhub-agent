@@ -3,6 +3,7 @@ package auto_update
 import (
 	"archive/zip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -92,6 +93,8 @@ type autoUpdate struct {
 	// rerunCycle records a check that arrived during a cycle, so a reload
 	// is not lost until the next scheduled tick.
 	rerunCycle atomic.Bool
+	// acquireUpdateLock replaces the cross-process update lock in tests.
+	acquireUpdateLock func() (func(), error)
 	// targetPath is the executable to replace; empty means the running
 	// one. Set by tests so an update never lands on the test binary.
 	targetPath string
@@ -782,7 +785,25 @@ func (a *autoUpdate) PeriodicalCheckForUpdate() error {
 	}
 }
 
+func (a *autoUpdate) updateLock() (func(), error) {
+	if a.acquireUpdateLock != nil {
+		return a.acquireUpdateLock()
+	}
+	return AcquireUpdateLock(a.rollbackEnvFor("").stateDir)
+}
+
 func (a *autoUpdate) checkForUpdateOnce() error {
+	release, err := a.updateLock()
+	if err != nil {
+		if errors.Is(err, ErrUpdateInProgress) {
+			a.logger.Info().Msg("Update check skipped: an update started by an operator is in progress")
+			return nil
+		}
+		a.logger.Warn().Err(err).Msg("Could not take the update lock; checking without it")
+		release = func() {}
+	}
+	defer release()
+
 	expectedVersion := a.configSource.GetConfiguration().Agent.Version
 	registryUrl := a.configSource.GetConfiguration().Agent.RegistryUrl
 
