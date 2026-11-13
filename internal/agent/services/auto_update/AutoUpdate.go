@@ -129,6 +129,9 @@ type autoUpdate struct {
 	// otherwise invisible: if a later cycle still wants that same version, the
 	// install did not take — surface it instead of silently re-staging (m8).
 	lastMsiAttempt atomic.Pointer[msiAttempt]
+	// enabled remembers auto_update.enabled so a change made while the
+	// agent runs is logged once.
+	enabled enabledState
 }
 
 // msiAttempt is the record of a launched MSI upgrade used to detect a
@@ -185,7 +188,9 @@ func (a *autoUpdate) createScheduler() {
 
 func (a *autoUpdate) Start(ctx context.Context) error {
 	a.runCtx = ctx
+	a.noteEnabled(a.configSource.GetConfiguration().Agent.UpdateEnabled)
 	a.configSource.OnConfigChanged(a.onConfigChange)
+	setResumeHook(a.checkAfterResume)
 
 	a.createScheduler()
 	if err := (*a.scheduler).Start(ctx); err != nil {
@@ -199,6 +204,7 @@ func (a *autoUpdate) Start(ctx context.Context) error {
 }
 
 func (a *autoUpdate) Shutdown(ctx context.Context) error {
+	setResumeHook(nil)
 	if a.scheduler == nil {
 		return nil
 	}
@@ -212,6 +218,7 @@ func (a *autoUpdate) Shutdown(ctx context.Context) error {
 }
 
 func (a *autoUpdate) onConfigChange(string) {
+	a.noteEnabled(a.configSource.GetConfiguration().Agent.UpdateEnabled)
 	if err := a.PeriodicalCheckForUpdate(); err != nil {
 		a.logger.Error().
 			Err(err).
