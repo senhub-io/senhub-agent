@@ -33,6 +33,8 @@ An installation that still uses the legacy monolithic `agent-config.yaml` holds 
 | `endpoints` | none | Enabled endpoint types (`prtg`, `nagios`, `prometheus`, `web`). There is no default: an endpoint answers only when it is listed. The installer writes `["prtg", "web", "nagios", "prometheus"]` |
 | `admin_key` | generated | Administration key. It opens the web console, the configuration API, the log levels, the cache clear and the profiler; these routes are not served at all when it is absent. The installer writes one, and an older installation without it gets one generated on its first start. It is not the agent key: the agent key only reads metrics |
 
+| `console` | `read_only: false`, `allow_exec: true` | What the console and its API may change. `read_only: true` refuses every write; `allow_exec: false` refuses the exec probe and program paths. Set in the file only: neither the console nor the API can edit this block. See [Locking the console](web-interface.md#locking-the-console) |
+
 To change the port or other parameters, edit `strategies.d/00-http.yaml`. The change is applied automatically without restarting the service.
 
 ## HTTPS Mode

@@ -23,6 +23,7 @@ import (
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
+	httpstrategy "senhub-agent.go/internal/agent/services/data_store/strategies/http"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
 	"senhub-agent.go/internal/agent/services/entitydetect"
 	"senhub-agent.go/internal/agent/services/governance"
@@ -680,7 +681,19 @@ func checkConfig(configPath string) checkOutcome {
 					continue
 				}
 			}
+			if s.Name != "http" {
+				fmt.Printf("  [OK]   Storage: %s\n", s.Name)
+				continue
+			}
+			policy, perr := httpstrategy.ParseConsolePolicy(s.Params)
+			if perr != nil {
+				fmt.Printf("  [ERROR] Storage %q: %v\n", s.Name, perr)
+				fmt.Println("          The agent runs with this file, but its console stays read-only until the block is fixed.")
+				errorCount++
+				continue
+			}
 			fmt.Printf("  [OK]   Storage: %s\n", s.Name)
+			fmt.Printf("  [INFO] Console mode: %s (%s)\n", policy.Mode(), policy.Describe())
 		}
 		reportEntityEmission(config.Entities, config.Storage)
 	}

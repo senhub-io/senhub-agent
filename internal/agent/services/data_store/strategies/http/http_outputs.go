@@ -15,6 +15,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"senhub-agent.go/internal/agent/cliArgs"
+	"senhub-agent.go/internal/agent/probes/spec"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/outputspec"
@@ -250,6 +251,9 @@ func (h *HTTPSyncStrategy) handleOutputCreate(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
+	if !pinConsolePolicy(w, req.Type, req.Params, nil) {
+		return
+	}
 	spec, ok := h.checkOutputWrite(w, req, nil)
 	if !ok {
 		return
@@ -294,6 +298,15 @@ func (h *HTTPSyncStrategy) handleOutputUpdate(w http.ResponseWriter, r *http.Req
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	if !pinConsolePolicy(w, name, req.Params, stored) {
+		return
+	}
+	if ospec, has := outputspec.For(name); has {
+		if err := credentialsStayWithDestination(ospec.Params, ospec.SecretPaths(), stored, req.Params); err != nil {
+			writeJSONError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 	spec, ok := h.checkOutputWrite(w, req, stored)
 	if !ok {
@@ -410,10 +423,17 @@ func (h *HTTPSyncStrategy) handleOutputTest(w http.ResponseWriter, r *http.Reque
 	if configPath := h.agentConfig.GetConfigPath(); configPath != "" {
 		if existing, err := configuration.StrategyFragmentParams(configPath, req.Type); err == nil && existing != nil {
 			var secretPaths []string
+			var params []spec.ParamSpec
 			if ospec, has := outputspec.For(req.Type); has {
 				secretPaths = ospec.SecretPaths()
+				params = ospec.Params
 			}
-			req.Params = configuration.KeepStoredValues(existing, req.Params, secretPaths)
+			merged, err := withStoredCredentials(params, secretPaths, existing, req.Params)
+			if err != nil {
+				writeJSONError(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			req.Params = merged
 		}
 	}
 	configuration.DropNilValues(req.Params)
