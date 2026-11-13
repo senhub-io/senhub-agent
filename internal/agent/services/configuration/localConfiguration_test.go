@@ -334,6 +334,9 @@ probes:
 		if rc.Agent.Version != "latest" {
 			t.Errorf("Agent.Version = %q, want \"latest\" (empty target makes the updater a no-op, #567)", rc.Agent.Version)
 		}
+		if !rc.Agent.UpdateEnabled {
+			t.Error("Agent.UpdateEnabled = false, want true when auto_update is enabled")
+		}
 	})
 
 	t.Run("explicit version is honoured (pin)", func(t *testing.T) {

@@ -116,6 +116,9 @@ func (p ProbeConfig) IsEnabled() bool {
 type AgentConfig struct {
 	RegistryUrl string `json:"registry_url"`
 	Version     string `json:"version"`
+	// UpdateEnabled mirrors auto_update.enabled as it is now, so a check
+	// scheduled before the operator turned updates off does nothing.
+	UpdateEnabled bool `json:"update_enabled"`
 	// IncludeBeta mirrors the local auto_update.include_beta flag so the
 	// active updater's "latest" resolution can consider the beta channel.
 	IncludeBeta       bool   `json:"include_beta"`

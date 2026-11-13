@@ -703,6 +703,13 @@ func (a *autoUpdate) PeriodicalCheckForUpdate() error {
 		a.logger.Debug().Msg("Update check skipped: paused by an extension")
 		return nil
 	}
+	// auto_update.enabled can be turned off while the agent runs: the
+	// updater started with it on keeps its scheduler, so every check reads
+	// the setting in force.
+	if !a.configSource.GetConfiguration().Agent.UpdateEnabled {
+		a.logger.Debug().Msg("Update check skipped: auto_update is disabled")
+		return nil
+	}
 	expectedVersion := a.configSource.GetConfiguration().Agent.Version
 	registryUrl := a.configSource.GetConfiguration().Agent.RegistryUrl
 

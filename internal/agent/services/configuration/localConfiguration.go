@@ -361,6 +361,7 @@ func (lc *LocalConfiguration) GetConfiguration() ConfigurationData {
 		Agent: AgentConfig{
 			RegistryUrl:       autoUpdate.URL,
 			Version:           updateVersion,
+			UpdateEnabled:     autoUpdate.Enabled,
 			IncludeBeta:       autoUpdate.IncludeBeta,
 			License:           lc.snapshot().Agent.License,
 			AuthenticationKey: lc.snapshot().Agent.Key,

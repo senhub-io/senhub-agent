@@ -2,6 +2,8 @@ package auto_update
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -755,5 +757,50 @@ func TestAutoUpdate_ResolvedVersionNamesTheConcreteRelease(t *testing.T) {
 	}
 	if got := au.ResolvedVersion(); got != "1.1.0" {
 		t.Fatalf("ResolvedVersion = %q, want %q", got, "1.1.0")
+	}
+}
+
+// Turning auto_update off while the agent runs stops the checks: the
+// scheduler keeps running, so each check reads the setting in force and
+// reaches no registry.
+func TestPeriodicalCheckForUpdate_DisabledAtRuntimeContactsNothing(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	au := &autoUpdate{
+		configSource: newMockConfiguration("", `{"agent": {"update_enabled": false, "version": "latest", "registry_url": "`+srv.URL+`"}}`),
+		logger:       createTestModuleLogger(),
+		httpClient:   httpretry.NewDefaultClient(),
+	}
+	if err := au.PeriodicalCheckForUpdate(); err != nil {
+		t.Fatalf("a disabled check must not fail: %v", err)
+	}
+	if hits != 0 {
+		t.Fatalf("a disabled check contacted the registry %d time(s)", hits)
+	}
+}
+
+// The same check with auto_update on does reach the registry: the gate
+// above is not a check that never runs.
+func TestPeriodicalCheckForUpdate_EnabledContactsTheRegistry(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	au := &autoUpdate{
+		configSource: newMockConfiguration("", `{"agent": {"update_enabled": true, "version": "latest", "registry_url": "`+srv.URL+`"}}`),
+		logger:       createTestModuleLogger(),
+		httpClient:   httpretry.NewDefaultClient(),
+	}
+	au.PeriodicalCheckForUpdate() //nolint:errcheck // the stub registry answers 404; only the contact counts
+	if hits == 0 {
+		t.Fatal("an enabled check must contact the registry")
 	}
 }
