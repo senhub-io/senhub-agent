@@ -323,6 +323,7 @@ func (a *APIManager) HandleInfoSystem(w http.ResponseWriter, r *http.Request) {
 	commit := versionInfo.Commit
 
 	hostname := common.CanonicalHostName()
+	console := a.strategy.configManager.Console()
 	response := SystemInfoResponse{
 		Status:     "running",
 		Hostname:   hostname,
@@ -337,9 +338,9 @@ func (a *APIManager) HandleInfoSystem(w http.ResponseWriter, r *http.Request) {
 		Uptime:     systemHealth.Uptime,
 		Health:     systemHealth.Health,
 		Console: ConsoleInfo{
-			ReadOnly:  a.strategy.configManager.Console().ReadOnly,
-			AllowExec: a.strategy.configManager.Console().ExecAllowed(),
-			Mode:      a.strategy.configManager.Console().Mode(),
+			ReadOnly:  console.ReadOnly,
+			AllowExec: console.ExecAllowed(),
+			Mode:      console.Mode(),
 		},
 		StrategyFailures: strategyFailureList(),
 		OutputsFailing:   outputsFailing(),

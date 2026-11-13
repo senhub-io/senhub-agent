@@ -240,6 +240,17 @@ func TestNoExecConsoleRefusesPrograms(t *testing.T) {
 	if code, _ := doJSON(t, router, "PUT", base+"/config/probes/iac", map[string]interface{}{"type": "ctl_tool", "params": map[string]interface{}{"host": "b", "tool_path": "/opt/other"}}); code != 403 {
 		t.Errorf("update changing the stored path: %d, want 403", code)
 	}
+
+	// A stored reference and the value it resolves to are the same path.
+	t.Setenv("CONSOLE_TEST_TOOL", "/opt/tool")
+	if _, err := configuration.CreateProbeFragment(filepath.Join(dir, "agent.yaml"), configuration.ProbeConfig{
+		Name: "ref", Type: "ctl_tool", Params: map[string]interface{}{"host": "a", "tool_path": "${env:CONSOLE_TEST_TOOL}"},
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if code, resp := doJSON(t, router, "PUT", base+"/config/probes/ref", map[string]interface{}{"type": "ctl_tool", "params": map[string]interface{}{"host": "b", "tool_path": "/opt/tool"}}); code != 200 {
+		t.Errorf("update sending the resolved form of the stored path: %d %v", code, resp)
+	}
 }
 
 func TestNoExecConsoleDoesNotRunDescribedPrograms(t *testing.T) {
@@ -510,6 +521,14 @@ func TestReadOnlyConsoleRefusesTestsThatConnect(t *testing.T) {
 		"probe": "ctl_plain", "config": map[string]interface{}{"host": "a"}, "validation": "connectivity",
 	}); code != 403 {
 		t.Errorf("connectivity validation: %d %v, want 403", code, resp)
+	}
+	preview := map[string]interface{}{"probe": "ctl_plain", "config": map[string]interface{}{"host": "a"}, "validation": "connectivity"}
+	if code, resp := doJSON(t, router, "POST", base+"/config/preview", preview); code != 403 {
+		t.Errorf("connectivity preview: %d %v, want 403", code, resp)
+	}
+	delete(preview, "validation")
+	if code, resp := doJSON(t, router, "POST", base+"/config/preview", preview); code == 403 {
+		t.Errorf("schema preview stays open: %d %v", code, resp)
 	}
 	if code, resp := doJSON(t, router, "POST", base+"/config/outputs/validate", otlpTestBody(sink.endpoint(), nil)); code != 200 || resp["valid"] != true {
 		t.Errorf("outputs/validate dials nothing and stays open: %d %v", code, resp)

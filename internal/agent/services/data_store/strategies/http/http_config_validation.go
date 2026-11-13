@@ -667,6 +667,9 @@ func (cm *ConfigurationManager) HandleUniversalConfigPreview(w http.ResponseWrit
 			Str("probe", req.Probe).
 			Msg("Preview mode: forcing validation to schema-only for performance")
 	}
+	if !cm.admitProbeRun(w, &req) {
+		return
+	}
 
 	// Validate the configuration
 	response, err := cm.ValidateUniversalConfig(r.Context(), &req)

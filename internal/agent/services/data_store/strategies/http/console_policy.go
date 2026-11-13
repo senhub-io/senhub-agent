@@ -156,7 +156,7 @@ func (p ConsolePolicy) execRefusal(ps spec.Probe, params, stored map[string]inte
 		if value == "" || value == def {
 			continue
 		}
-		if kept, _ := lookupPath(stored, path).(string); kept == value {
+		if resolvedText(lookupPath(stored, path)) == resolvedText(value) {
 			continue
 		}
 		return fmt.Sprintf("%s: the console cannot set %s, which names a program the agent would run", why, path)
