@@ -21,7 +21,7 @@ target=9.8.7
   || { echo "FAIL: pins disagree after set-version" >&2; exit 1; }
 
 changed=$(cd "$root" && git ls-files -co --exclude-standard | while read -r f; do cmp -s "$f" "$work/$f" || echo "$f"; done | sort)
-expected=$( (echo VERSION; cut -f1 "$root/scripts/version-pins.tsv" | grep -v '^#' | grep -v '^$') | sort -u)
+expected=$( (echo VERSION; echo scripts/version-pins.tsv; cut -f1 "$root/scripts/version-pins.tsv" | grep -v '^#' | grep -v '^$') | sort -u)
 if [ "$changed" != "$expected" ]; then
   echo "FAIL: set-version touched the wrong files" >&2
   diff <(echo "$expected") <(echo "$changed") >&2 || true
