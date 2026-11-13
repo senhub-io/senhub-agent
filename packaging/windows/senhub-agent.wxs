@@ -143,6 +143,11 @@
     <!-- Desktop shortcut to the web console (1 = create, the default;
          DESKTOP_SHORTCUT=0 on the command line skips it). -->
     <Property Id="DESKTOP_SHORTCUT" Value="1" Secure="yes" />
+    <!-- Automatic updates of an MSI install (1 = on, the default: the
+         agent applies each new signed MSI itself; AUTO_UPDATE=0 leaves
+         the version to Intune, SCCM or another management tool). Read
+         on first install only, like the other properties. -->
+    <Property Id="AUTO_UPDATE" Value="1" Secure="yes" />
     <!-- Open the web console when the wizard finishes (guided install
          only: the launch is wired to the finish page's button). -->
     <Property Id="OPEN_CONSOLE" Value="1" Secure="yes" />
@@ -222,7 +227,7 @@
       what Return="check" needs.
     -->
     <SetProperty Id="SeedConfig"
-                 Value="&quot;[INSTALLFOLDER]senhub-agent.exe&quot; config init --config-path &quot;[CommonAppDataFolder]SenHub\agent.yaml&quot; --license &quot;[LICENSE_KEY]&quot; --tags &quot;[TAGS]&quot; --otlp-endpoint &quot;[OTLP_ENDPOINT]&quot; --zabbix-server &quot;[ZABBIX_SERVER]&quot; --zabbix-host-metadata &quot;[ZABBIX_HOST_METADATA]&quot; --http-port &quot;[HTTP_PORT]&quot; --license-file &quot;[LICENSE_FILE]&quot; --ok-if-unchanged"
+                 Value="&quot;[INSTALLFOLDER]senhub-agent.exe&quot; config init --config-path &quot;[CommonAppDataFolder]SenHub\agent.yaml&quot; --license &quot;[LICENSE_KEY]&quot; --tags &quot;[TAGS]&quot; --otlp-endpoint &quot;[OTLP_ENDPOINT]&quot; --zabbix-server &quot;[ZABBIX_SERVER]&quot; --zabbix-host-metadata &quot;[ZABBIX_HOST_METADATA]&quot; --http-port &quot;[HTTP_PORT]&quot; --license-file &quot;[LICENSE_FILE]&quot; --auto-update &quot;[AUTO_UPDATE]&quot; --ok-if-unchanged"
                  Before="SeedConfig"
                  Sequence="execute"
                  Condition="NOT Installed" />

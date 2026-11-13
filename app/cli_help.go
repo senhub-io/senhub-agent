@@ -45,7 +45,7 @@ const configUsageText = `Usage: agent config <subcommand> [options]
 Subcommands:
     config init [opts]    Create the default offline configuration if none
                           exists (idempotent). Accepts --config-path,
-                          --http-port <n>, --license <jwt>, --tags k=v,...,
+                          --http-port <n>, --auto-update 1|0, --license <jwt>, --tags k=v,...,
                           --otlp-endpoint, --zabbix-server host:port,
                           --zabbix-host-metadata, --json, --ok-if-unchanged;
                           refuses a port already in use; exits 3 when the
@@ -71,7 +71,7 @@ var configSubUsageText = map[string]string{
 	"init": `Usage: agent config init [opts]
 
 Create the default offline configuration if none exists (idempotent).
-Accepts --config-path, --http-port <n>, --license <jwt>, --tags k=v,...,
+Accepts --config-path, --http-port <n>, --auto-update 1|0, --license <jwt>, --tags k=v,...,
 --otlp-endpoint, --zabbix-server host:port, --zabbix-host-metadata,
 --json, --ok-if-unchanged; refuses a port already in use; exits 3 when
 the configuration was already there.
