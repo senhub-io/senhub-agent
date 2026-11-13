@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -85,6 +86,12 @@ type autoUpdate struct {
 	// resolved is the concrete version the last Update call resolved, read by
 	// the update CLI to say what it installed or would install.
 	resolved string
+	// cycleMu keeps the scheduler and a configuration reload from running two
+	// update cycles at once: both would download and swap the binary.
+	cycleMu sync.Mutex
+	// rerunCycle records a check that arrived during a cycle, so a reload
+	// is not lost until the next scheduled tick.
+	rerunCycle atomic.Bool
 	// targetPath is the executable to replace; empty means the running
 	// one. Set by tests so an update never lands on the test binary.
 	targetPath string
@@ -752,6 +759,30 @@ func (a *autoUpdate) PeriodicalCheckForUpdate() error {
 		a.logger.Debug().Msg("Update check skipped: paused by an extension")
 		return nil
 	}
+	// Raise the flag before trying the lock: a holder that has just let go
+	// either sees it or has already released the lock this call then takes.
+	a.rerunCycle.Store(true)
+	if !a.cycleMu.TryLock() {
+		a.logger.Debug().Msg("Update check deferred: another update cycle is running; it will run again when done")
+		return nil
+	}
+	for {
+		a.rerunCycle.Store(false)
+		err := a.checkForUpdateOnce()
+		if a.rerunCycle.Load() {
+			continue
+		}
+		a.cycleMu.Unlock()
+		// A check deferred between the load above and the unlock would
+		// otherwise be lost: take the lock back for it unless another
+		// caller already holds it and will run the check itself.
+		if !a.rerunCycle.Load() || !a.cycleMu.TryLock() {
+			return err
+		}
+	}
+}
+
+func (a *autoUpdate) checkForUpdateOnce() error {
 	expectedVersion := a.configSource.GetConfiguration().Agent.Version
 	registryUrl := a.configSource.GetConfiguration().Agent.RegistryUrl
 
