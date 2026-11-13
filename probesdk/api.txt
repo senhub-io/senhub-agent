@@ -9,6 +9,7 @@ func RegisterCommand(c senhub-agent.go/app.ExtraCommand)
 == senhub-agent.go/probesdk/cliargs (package cliArgs) ==
 alias ParsedArgs = senhub-agent.go/internal/agent/cliArgs.ParsedArgs
   field AuthenticationKey string
+  field AutoUpdate *bool
   field CertFile string
   field CommitHash string
   field ConfigPath string
