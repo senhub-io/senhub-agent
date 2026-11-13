@@ -41,7 +41,7 @@ for args in "--set" "--set ''" "--root"; do
 done
 
 # A pin with nothing after the version must not accept a longer version.
-open_pin=$(grep -v '^#' "$root/scripts/version-pins.tsv" | awk -F'\t' '$2 ~ /@V@$/ {print $1; exit}')
+open_pin=$(grep -v '^#' "$root/scripts/version-pins.tsv" | awk -F'\t' '{ sub(/\r$/, "") } $2 ~ /@V@$/ {print $1; exit}')
 if [ -z "$open_pin" ]; then
   echo "FAIL: no pin ends with @V@; the bound on the exact match is untested" >&2
   exit 1
