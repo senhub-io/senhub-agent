@@ -20,8 +20,9 @@ target=9.8.7
 "$work/scripts/check-version-consistency.sh" --root "$work" >/dev/null \
   || { echo "FAIL: pins disagree after set-version" >&2; exit 1; }
 
-changed=$(cd "$root" && git ls-files -co --exclude-standard | while read -r f; do cmp -s "$f" "$work/$f" || echo "$f"; done | sort)
-expected=$( (echo VERSION; echo scripts/version-pins.tsv; cut -f1 "$root/scripts/version-pins.tsv" | grep -v '^#' | grep -v '^$') | sort -u)
+# The pin list itself was rewritten to CRLF above, or already was on Windows.
+changed=$(cd "$root" && git ls-files -co --exclude-standard | grep -vx scripts/version-pins.tsv | while read -r f; do cmp -s "$f" "$work/$f" || echo "$f"; done | sort)
+expected=$( (echo VERSION; cut -f1 "$root/scripts/version-pins.tsv" | grep -v '^#' | grep -v '^$') | sort -u)
 if [ "$changed" != "$expected" ]; then
   echo "FAIL: set-version touched the wrong files" >&2
   diff <(echo "$expected") <(echo "$changed") >&2 || true
