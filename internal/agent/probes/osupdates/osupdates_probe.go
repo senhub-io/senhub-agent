@@ -70,6 +70,11 @@ type updatesStatus struct {
 	// answered": a backend that cannot enumerate must not report zero.
 	installed      int
 	installedKnown bool
+	// pendingSecurityUnknown and rebootRequiredUnknown mark a count the
+	// backend could not produce this cycle; the zero in the field above is
+	// then a placeholder and must not be published.
+	pendingSecurityUnknown bool
+	rebootRequiredUnknown  bool
 }
 
 // updatesCollector is the per-platform backend seam. The platform
@@ -143,16 +148,23 @@ func (p *OSUpdatesProbe) Collect() ([]data_store.DataPoint, error) {
 			tags.Tag{Key: "package_manager", Value: status.packageManager})
 	}
 
-	rebootValue := float64(0)
-	if status.rebootRequired {
-		rebootValue = 1
-	}
-
 	points := []data_store.DataPoint{
 		{Name: "senhub.os.updates.up", Value: 1, Timestamp: now, Tags: pointTags},
 		{Name: "senhub.os.updates.pending", Value: float64(status.pending), Timestamp: now, Tags: pointTags},
-		{Name: "senhub.os.updates.pending.security", Value: float64(status.pendingSecurity), Timestamp: now, Tags: pointTags},
-		{Name: "senhub.os.updates.reboot_required", Value: rebootValue, Timestamp: now, Tags: pointTags},
+	}
+	if !status.pendingSecurityUnknown {
+		points = append(points, data_store.DataPoint{
+			Name: "senhub.os.updates.pending.security", Value: float64(status.pendingSecurity), Timestamp: now, Tags: pointTags,
+		})
+	}
+	if !status.rebootRequiredUnknown {
+		rebootValue := float64(0)
+		if status.rebootRequired {
+			rebootValue = 1
+		}
+		points = append(points, data_store.DataPoint{
+			Name: "senhub.os.updates.reboot_required", Value: rebootValue, Timestamp: now, Tags: pointTags,
+		})
 	}
 	if status.installedKnown {
 		points = append(points, data_store.DataPoint{

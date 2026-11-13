@@ -29,12 +29,13 @@ Which commands use which codes:
 | `config init` | | invalid value, port in use, nothing written | configuration already present |
 | `config set` | | unknown key, invalid value | the key already holds the value |
 | `install` | | any error | service installed and enabled, unit as `install` writes it, configuration present, binary current |
+| `update` | the binary is installed and the service restarted, but the systemd unit could not be refreshed | the binary could not be installed, or the service does not run it | |
 
 Any other command exits `0` on success and `2` on failure. Before this contract, failures exited `1`; a script that tests only for a non-zero code is unaffected, one that compares with `1` must now compare with `2`.
 
 `install` also takes `--json` (`status`, `exit_code`, `changed`, `config_path`, `written`); its progress text then goes to stderr. A service that is installed but whose unit drifted, or that no longer starts at boot, is not "unchanged": `install` rewrites the unit and enables the service, exits `0`, and restarts nothing (restart the service to apply a changed unit). A unit owned by the `.deb`/`.rpm` package is never rewritten; the package manager updates it. On Windows the service registration and the single binary are the state.
 
-A command that exits `3` has written nothing: no file is rewritten, and its modification time is unchanged. A script that provisions a machine can run `config init`, `config set` and `install` again and treat `0` and `3` as success.
+A command that exits `3` has written nothing: no file is rewritten, and its modification time is unchanged. A script that provisions a machine can run `config init`, `config set` and `install` again and treat `0` and `3` as success. For a tool that reads any code other than `0` as a failure (a GPO startup script, an SCCM or Intune script), `config init` and `install` take `--ok-if-unchanged`: they exit `0` instead of `3`, still write nothing and still print that there was nothing to do. A real conflict keeps its own code: `install` exits `2` when a `senhub-agent` service from the MSI or from another folder is already registered.
 
 ## JSON output
 
@@ -76,7 +77,8 @@ senhub-agent config set http.port 9080 --json; echo "exit $?"
 | Command | Description |
 |---------|-------------|
 | `install` | Install as system service. On a machine where the service is already installed, the configuration is present and (Linux) the system binary is the one running, it changes nothing and exits `3` |
-| `uninstall` | Remove the system service and delete the configuration directory, including the sealed secret store and the agent key. Irreversible; prompts first |
+| `install --ok-if-unchanged` | Same, but exits `0` instead of `3` when there is nothing to do |
+| `uninstall` | Remove the system service and delete the configuration directory, including the sealed secret store and the agent key. Irreversible; prompts first. Without a terminal and without `--yes`, it removes nothing, prints `confirmation required: rerun with --yes` and exits `2` |
 | `uninstall --yes` | Same, without confirmation |
 | `refresh-unit` | Linux: bring the installed systemd unit up to date with the one embedded in this binary |
 | `refresh-unit --yes` | Same, without confirmation |
@@ -304,6 +306,7 @@ Checks performed:
 - License validity and agent binding
 - Probe types against the registry
 - Required probe parameters (endpoint, credentials)
+- Keys nothing reads, each a warning (exit `1`) because the agent starts and ignores them: a key of a probe entry outside `params`, a key inside `params`, a key of a storage strategy, and a key inside the `prtg`, `prometheus` or `tls` block of the `http` output
 - Storage strategy names
 
 Fragments under `probes.d/` and `strategies.d/` are covered when a multi-file layout is present.
@@ -359,7 +362,7 @@ A secret value is never passed on the command line — it would leak through the
 | `secret set <name>` | Store or replace a secret (hidden prompt, stdin, or `--from-file <path>`) |
 | `secret get <name>` | Print a secret value to stdout (a deliberate reveal) |
 | `secret list` | List secret names (never values) |
-| `secret rm <name>` | Delete a secret (prompts to confirm; `--yes` to skip) |
+| `secret rm <name>` | Delete a secret (prompts to confirm; `--yes` or `-y` to skip). A piped `y` is accepted (`echo y \| senhub-agent secret rm <name>`). When the answer is not `y`, or there is no input at all, nothing is removed and the command prints a message on stderr and exits non-zero. In a Windows scheduled task started without redirected input, Windows provides a hidden console and the prompt waits: pass `--yes` |
 | `secret status` | Show the active backend and store location (`--json` for a JSON object) |
 | `secret migrate` | Move inline plaintext secrets from the config into the store (`--wire-unit` also wires the systemd-creds drop-in) |
 | `secret wire-unit` | Regenerate the systemd unit credential drop-in (Linux/systemd-creds only) |
@@ -434,17 +437,20 @@ Lists all stable versions. If `auto_update.include_beta: true` is set in the con
 
 ```bash
 sudo /usr/local/bin/senhub-agent update 0.6.0
-sudo /usr/local/bin/senhub-agent update 0.6.0 --dry-run
+sudo /usr/local/bin/senhub-agent update 0.6.5 --dry-run
 sudo /usr/local/bin/senhub-agent update 0.6.0 --registry-url https://releases.example.com
 ```
 
-Downloads and installs the specified version. On Linux, when the systemd service is running, it is then restarted and the command checks that the new process runs the binary just installed, printing the version it runs; if it does not, the command fails. Updating replaces the binary and needs the same privileges as the service commands. On Windows, the MSI restarts the service itself.
+Downloads and installs the specified version. On Linux, when the unit was written by `install`, the new binary then brings it up to date (as `refresh-unit --yes` would, keeping the `User=`, `ExecStart` and your drop-ins under `senhub-agent.service.d/`) and systemd is reloaded. A unit owned by the `.deb`/`.rpm` package is left to the package. If the refresh fails, the update goes on, the service restarts on its current unit, and the command exits `1` with the reason. When the systemd service is running, it is then restarted and the command checks that the new process runs the binary just installed, printing the version it runs; if it does not, the command fails. Updating replaces the binary and needs the same privileges as the service commands. On Windows, the MSI restarts the service itself; on a ZIP install, a running `senhub-agent` service is stopped and started again through the service manager, with the same check that it now runs the binary just installed.
+
+`update <version>` installs the version you name, an older one included; on an MSI-managed Windows install it refuses an older version (`<version> is older than the installed <running>; an MSI install cannot be downgraded in place: uninstall it, then install the <version> MSI`). Only an exact version can go backwards: `update latest` and a constraint such as `>=0.6` never install an older release. `update latest` resolves on the channel `auto_update.include_beta` sets. The command exits `2` with a message, and installs nothing, when the version is not one (`not a valid version: <version>`), when the update registry does not have it (`version <version> not found in the update registry <url>`), or when the registry cannot be reached (`cannot reach the update registry <url>: <reason>`). `Already up to date.` and exit `0` mean the version asked for is the running one. With `--dry-run` the command prints `Dry run: would install <version> over <running>; no change made.` or `Dry run: nothing to install over <running>; no change made.`, and exits `0`.
 
 | Flag | Description |
 |------|-------------|
-| `--dry-run`, `-d` | Do not install; print the version that would be installed |
+| `--dry-run`, `-d` | Do not install; print the version that would be installed over the running one. Nothing is downloaded or changed |
 | `--registry-url URL` | Release registry to download from, instead of the built-in one |
 | `--no-restart` | Install the binary and leave the running service as it is, for a script that restarts it itself. Until the service restarts it keeps running the previous version, whatever `senhub-agent version` says: that command reads the file on disk |
+| `--no-refresh-unit` | Leave the systemd unit as it is, for an operator who manages it with their own tooling (Ansible or other). Run `refresh-unit` yourself, or ship the unit, when a version changes it |
 | `--verbose`, `-v` | Enable verbose logging |
 
 ## Zabbix
@@ -564,7 +570,7 @@ sudo /usr/local/bin/senhub-agent license remove
 sudo /usr/local/bin/senhub-agent license remove --force
 ```
 
-Reverts to the free tier: deletes `license.jwt` and clears any inline license. The command prompts for confirmation before writing; pass `--force` (`-f`) to skip the prompt for unattended runs. Restart the agent for the change to take effect.
+Reverts to the free tier: deletes `license.jwt` and clears any inline license. The command prompts for confirmation before writing; pass `--force` (`-f`) to skip the prompt for unattended runs. Without a terminal and without `--force`, the command removes nothing, prints `confirmation required: nothing was removed; rerun with --force` and exits `2`. Restart the agent for the change to take effect.
 
 ## Other
 

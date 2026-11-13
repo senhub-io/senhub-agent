@@ -184,6 +184,7 @@ traffic.
 | `senhub_agent_otlp_receiver_received_total` | counter | Records relayed by the OTLP receiver, by `signal`, `origin` and `service_name` |
 | `senhub_agent_otlp_receiver_received_without_host_id_total` | counter | Relayed records that still had no `host.id` |
 | `senhub_agent_otlp_receiver_dropped_total` | counter | Items the OTLP receiver discarded, by `signal` and `reason` |
+| `senhub_agent_otlp_receiver_refused_total` | counter | OTLP/HTTP requests the OTLP receiver refused, by `signal` and `reason` |
 
 The exposition also carries the counters of the OTLP output
 (`senhub_agent_otlp_*`, at zero when no OTLP output is configured), the

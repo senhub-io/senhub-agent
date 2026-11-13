@@ -57,3 +57,70 @@ func TestFailingExports(t *testing.T) {
 		t.Errorf("only otlp is failing, got %v", got)
 	}
 }
+
+func TestProbeRunStateKeepsItsStartTimeAcrossSyncs(t *testing.T) {
+	SetActiveProbes([]string{"s1"})
+	t.Cleanup(func() { SetActiveProbes(nil) })
+	first := GetProbeRunState("s1").StartedAt
+	if first.IsZero() {
+		t.Fatal("a running probe has no start time")
+	}
+	SetActiveProbes([]string{"s1", "s2"})
+	if got := GetProbeRunState("s1").StartedAt; !got.Equal(first) {
+		t.Errorf("a resync moved the start time of a probe still running: %v -> %v", first, got)
+	}
+	SetActiveProbes([]string{"s2"})
+	if got := GetProbeRunState("s1").StartedAt; !got.IsZero() {
+		t.Errorf("a stopped probe keeps a start time: %v", got)
+	}
+	SetActiveProbes([]string{"s1", "s2"})
+	if got := GetProbeRunState("s1").StartedAt; got.Before(first) || got.IsZero() {
+		t.Errorf("a restarted probe should carry its new start time, got %v", got)
+	}
+}
+
+func TestProbeRunStateReportsEventDriven(t *testing.T) {
+	SetActiveProbes([]string{"ev", "per"})
+	MarkProbeEventDriven("ev")
+	if !GetProbeRunState("ev").EventDriven || GetProbeRunState("per").EventDriven {
+		t.Fatal("only the marked probe must be event-driven")
+	}
+	SetActiveProbes([]string{"per"})
+	SetActiveProbes([]string{"ev"})
+	if GetProbeRunState("ev").EventDriven {
+		t.Error("the mark must be pruned once the probe is no longer active")
+	}
+	SetActiveProbes(nil)
+}
+
+func TestFirstCycleSignalClosesOnFirstCycleWhateverItDelivered(t *testing.T) {
+	SetActiveProbes([]string{"p"})
+	SetActiveProbeNames(map[string]string{"P": "p"})
+	t.Cleanup(func() { SetActiveProbes(nil); SetActiveProbeNames(nil) })
+
+	ch, ok := FirstCycleSignalByName("p")
+	if !ok {
+		t.Fatal("running probe must have a signal")
+	}
+	select {
+	case <-ch:
+		t.Fatal("signal closed before any cycle")
+	default:
+	}
+	RecordProbeCycle("p", 0)
+	select {
+	case <-ch:
+	default:
+		t.Fatal("signal must close on a 0-point first cycle")
+	}
+	RecordProbeCycle("p", 3)
+	late, _ := FirstCycleSignalByName("p")
+	select {
+	case <-late:
+	default:
+		t.Fatal("a signal requested after the first cycle must be closed")
+	}
+	if _, ok := FirstCycleSignalByName("nope"); ok {
+		t.Error("unknown name must not resolve")
+	}
+}

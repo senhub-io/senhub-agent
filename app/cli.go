@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"golang.org/x/term"
+	"io"
 	"os"
 	"os/user"
 	"runtime"
@@ -164,21 +166,25 @@ func fatalf(format string, args ...any) {
 	os.Exit(cliexit.Failure)
 }
 
-// readYesConfirmation reads a single interactive answer from stdin and
-// reports whether it is an affirmative ("y"/"Y"). An empty line — which
-// is what fmt.Scanln returns on EOF or a non-TTY stdin — resolves to
-// false, so a destructive command run non-interactively without a
-// bypass flag aborts (safe default) rather than proceeding.
-func readYesConfirmation() bool {
+// confirmFrom reads the answer from in only when in is a terminal. A
+// script piped into a shell (`bash -s`, a heredoc) is the process's
+// stdin: reading a line there would swallow the script's next command
+// as the answer. A non-terminal stdin therefore reads nothing, says how
+// to confirm without a prompt, and reports interactive == false so the
+// caller can fail loudly instead of looking like a user's "no".
+func confirmFrom(in *os.File, errOut io.Writer, flag string) (ok, interactive bool) {
+	if !term.IsTerminal(int(in.Fd())) {
+		fmt.Fprintf(errOut, "\nstdin is not a terminal, so nothing was read; pass %s to confirm without a prompt.\n", flag)
+		return false, false
+	}
 	var answer string
 	// A scan error (EOF, empty input) leaves answer == "" and
-	// answerIsYes returns false: the caller aborts, which is the safe
-	// outcome for a destructive action.
-	_, _ = fmt.Scanln(&answer)
-	return answerIsYes(answer)
+	// answerIsYes returns false: the caller aborts.
+	_, _ = fmt.Fscanln(in, &answer)
+	return answerIsYes(answer), true
 }
 
-// answerIsYes is the pure decision behind readYesConfirmation: only an
+// answerIsYes is the pure decision behind the confirmation prompts: only an
 // explicit "y"/"Y" (ignoring surrounding whitespace) is affirmative.
 // Empty input — EOF or a non-TTY stdin — is NOT affirmative, so a
 // destructive command aborts by default.
@@ -229,7 +235,10 @@ Check for, list, or install agent updates.
     %s update <version>    Install a specific version (e.g. %s update 0.6.0)
 
 Updating replaces the running binary and requires the same privileges
-as the service commands (root on Linux, administrator on Windows).
+as the service commands (root on Linux, administrator on Windows). On
+Linux it also brings a unit written by 'install' up to date with the new
+binary before restarting the service; --no-refresh-unit leaves the unit
+as it is, and --no-restart leaves the service running.
 `, exe, exe, exe, exe, exe)
 }
 
@@ -284,6 +293,7 @@ func parseUpdateCommand(argv []string) (parsed *cliArgs.ParsedArgs, wantHelp boo
 	base.UpdateRegistryUrl = ua.RegistryUrl
 	base.DryRun = ua.DryRun
 	base.NoRestart = ua.NoRestart
+	base.NoRefreshUnit = ua.NoRefreshUnit
 	if ua.Verbose {
 		base.Verbose = true
 	}
@@ -321,6 +331,9 @@ func stripFlags(argv []string, drop ...string) []string {
 // `agent config check` before sudo'ing into the install would hit
 // the privilege gate.
 func readOnlyCommand(args []string) bool {
+	if len(args) > 2 && helpRequested(args[2:]) {
+		return true
+	}
 	if len(args) <= 1 {
 		return true // showHelp() — informational only
 	}
@@ -453,6 +466,9 @@ func Main() {
 	// Diagnostic subcommands (version, config check, config show) don't
 	// touch the service or its paths, so they stay ungated for usability
 	// (CI smoke checks, contributor onboarding).
+	if interceptHelp(os.Args, os.Stdout) {
+		return
+	}
 	if !readOnlyCommand(os.Args) {
 		if err := checkPrivileges(command); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -558,7 +574,7 @@ func Main() {
 		// copy the unprivileged daemon can replace itself; nothing else
 		// keeps them in sync, so `update` (which runs as root) reconciles
 		// it here (#723).
-		agent.UpdateAgent(parsed, agent.AfterInstall(syncServiceBinary), agent.RestartService(restartServiceAfterUpdate))
+		agent.UpdateAgent(parsed, agent.AfterInstall(syncServiceBinary), agent.RefreshUnit(refreshUnitAfterUpdate), agent.RestartService(restartServiceAfterUpdate))
 		return
 	case "refresh-unit":
 		runRefreshUnit()
@@ -613,8 +629,9 @@ func Main() {
 			serviceArgs = os.Args[2:]
 		}
 		if command == "install" {
-			// --json is a view flag of install, like of status.
-			serviceArgs = stripFlags(serviceArgs, jsonFlag)
+			// --json is a view flag of install, like of status, and
+			// --ok-if-unchanged only changes its exit code.
+			serviceArgs = stripFlags(serviceArgs, jsonFlag, okIfUnchangedFlag)
 		}
 		args := cliArgs.ParseStartArgs(serviceArgs)
 		handleServiceCommand(command, args)
@@ -652,6 +669,9 @@ Service Commands:
                          On Linux the service runs as the dedicated 'senhub' user
                          under a hardened systemd unit. Exits 3 and changes
                          nothing when the service is already installed.
+    install --ok-if-unchanged
+                         Exit 0 instead of 3 when there is nothing to do, for
+                         GPO, SCCM or Intune, which read any other code as a failure
     install --json       Print the outcome as one JSON object (status, exit_code,
                          changed, written)
     install --user USER  Service user for the Linux unit (default: senhub;

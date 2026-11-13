@@ -42,7 +42,8 @@ func restartServiceAfterUpdate() (string, error) {
 			first, _, _ := strings.Cut(string(out), "\n")
 			return first
 		},
-		wait: 30 * time.Second,
-		poll: 500 * time.Millisecond,
+		wait:       30 * time.Second,
+		poll:       500 * time.Millisecond,
+		statusHint: "check 'systemctl status senhub-agent'",
 	}.run()
 }

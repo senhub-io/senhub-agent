@@ -60,13 +60,15 @@ func TestExtractAgentKeyFromConfig_PlainKeyStillWorks(t *testing.T) {
 // a missing required key is an error; an unknown key is a warning, since
 // the agent starts the probe and ignores it (#973).
 func TestValidateProbeParams_UsesDeclaredSchema(t *testing.T) {
-	probes.RegisterProbeSpec(probes.ProbeSpec{
-		Type: "zz-schema-check", DisplayName: "Schema check",
-		Params: []probes.ParamSpec{
-			{Key: "host", Kind: probes.KindString, Required: true},
-			{Key: "mode", Kind: probes.KindString, Enum: []string{"a", "b"}},
-		},
-	})
+	if _, declared := probes.ProbeSpecFor("zz-schema-check"); !declared {
+		probes.RegisterProbeSpec(probes.ProbeSpec{
+			Type: "zz-schema-check", DisplayName: "Schema check",
+			Params: []probes.ParamSpec{
+				{Key: "host", Kind: probes.KindString, Required: true},
+				{Key: "mode", Kind: probes.KindString, Enum: []string{"a", "b"}},
+			},
+		})
+	}
 	if errs, _ := validateProbeParams("p", "zz-schema-check", map[string]interface{}{"host": "h", "mode": "a"}); errs != 0 {
 		t.Errorf("valid params: %d errors, want 0", errs)
 	}

@@ -174,3 +174,47 @@ func bigIntToFloat(bi *big.Int) float64 {
 	f, _ := new(big.Float).SetInt(bi).Float64()
 	return f
 }
+
+// rawGetter is implemented by clients that can GET undecoded scalars.
+type rawGetter interface {
+	GetRaw(oids []string) ([]snmpRawBind, error)
+}
+
+// GetRaw fetches scalars undecoded, as WalkRaw returns them.
+func (c *gosnmpClient) GetRaw(oids []string) ([]snmpRawBind, error) {
+	dotted := make([]string, len(oids))
+	for i, oid := range oids {
+		dotted[i] = "." + oid
+	}
+	packet, err := c.handle.Get(dotted)
+	if err != nil {
+		return nil, fmt.Errorf("snmp get: %w", err)
+	}
+	out := make([]snmpRawBind, 0, len(packet.Variables))
+	for _, pdu := range packet.Variables {
+		out = append(out, snmpRawBind{OID: snmpcore.TrimLeadingDot(pdu.Name), Type: pdu.Type, Value: pdu.Value})
+	}
+	return out, nil
+}
+
+// readScalarRaw reads one identity scalar with a GET, falling back to a walk
+// of its subtree when the client cannot GET or the agent does not answer it.
+// A GETBULK walk from a scalar can run into a later table that answers with
+// an error status (genErr on an ENTITY-MIB column), which the SNMP library
+// turns into an empty walk: the scalar, readable on its own, would be lost.
+func readScalarRaw(client snmpClient, base, oid string) ([]snmpRawBind, error) {
+	if rg, ok := client.(rawGetter); ok {
+		if binds, err := rg.GetRaw([]string{oid}); err == nil && len(binds) == 1 && binds[0].OID == oid && scalarPresent(binds[0].Type) {
+			return binds, nil
+		}
+	}
+	return client.WalkRaw(base)
+}
+
+func scalarPresent(t gosnmp.Asn1BER) bool {
+	switch t {
+	case gosnmp.NoSuchObject, gosnmp.NoSuchInstance, gosnmp.EndOfMibView, gosnmp.Null:
+		return false
+	}
+	return true
+}

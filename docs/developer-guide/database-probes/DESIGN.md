@@ -126,7 +126,7 @@ the structured `tls` block (Postgres expects libpq-style names).
 **MySQL/MariaDB**:
 ```sql
 CREATE USER 'senhub_monitor'@'agent_host' IDENTIFIED BY '...';
-GRANT PROCESS, REPLICATION CLIENT, SELECT ON *.* TO 'senhub_monitor'@'agent_host';
+GRANT PROCESS, REPLICATION CLIENT, REPLICATION SLAVE, SELECT ON *.* TO 'senhub_monitor'@'agent_host';
 -- MariaDB 10.5.8+:
 GRANT SLAVE MONITOR ON *.* TO 'senhub_monitor'@'agent_host';
 FLUSH PRIVILEGES;

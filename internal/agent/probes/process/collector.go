@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	gops "github.com/shirou/gopsutil/v3/process"
@@ -30,7 +31,18 @@ type processSnapshot struct {
 	threads    int32
 	fds        int32 // -1 on Windows / unsupported
 	createTime int64 // Unix ms
+
+	// A reading the OS refused is zero in the field above; these flags keep
+	// that zero from being published as a measurement.
+	cpuUnread     bool
+	memoryUnread  bool
+	threadsUnread bool
 }
+
+// kernelThreadNoticeOnce keeps the "kernel threads skipped" notice to one
+// line per agent process, whatever the number of process probes, instead
+// of one per collection cycle.
+var kernelThreadNoticeOnce sync.Once
 
 // getHostID returns the same host id the entity source uses, or "" when the
 // host identity is not available yet.
@@ -112,15 +124,29 @@ func collectWithBaseTags(ts time.Time, cfg config, log *logger.ModuleLogger, bas
 	}
 
 	snaps := make([]processSnapshot, 0, len(procs))
+	skippedKernelThreads := 0
 	for _, p := range procs {
+		// Kernel threads are dropped before any roll-up or top_n selection,
+		// so they count nowhere: one name per CPU, disk and interrupt line.
+		if !cfg.includeKernelThreads && isKernelThread(p.Pid, "/proc") {
+			skippedKernelThreads++
+			continue
+		}
 		snap, skip := snapshotProcess(p, cfg, log)
 		if skip {
 			continue
 		}
 		snaps = append(snaps, snap)
 	}
+	if skippedKernelThreads > 0 {
+		kernelThreadNoticeOnce.Do(func() {
+			log.Info().Int("skipped", skippedKernelThreads).Msg("Kernel threads not reported; set include_kernel_threads: true to report them")
+		})
+	}
 
-	if cfg.topN > 0 && len(snaps) > cfg.topN {
+	if cfg.topByName() {
+		snaps = topProcessNames(snaps, cfg.topN, cfg.topBy)
+	} else if cfg.topN > 0 && len(snaps) > cfg.topN {
 		snaps = topProcesses(snaps, cfg.topN, cfg.topBy)
 	}
 
@@ -141,45 +167,8 @@ func collectWithBaseTags(ts time.Time, cfg config, log *logger.ModuleLogger, bas
 	// unfiltered view reports instead of the per-process detail, and it
 	// is what the native Zabbix agent reports in every case: a name is
 	// stable where a process id is not.
-	if cfg.aggregate {
-		type rollUp struct {
-			count  int
-			cpu    float64
-			memory uint64
-		}
-		byName := map[string]*rollUp{}
-		for _, snap := range snaps {
-			name := snap.name
-			r, ok := byName[name]
-			if !ok {
-				r = &rollUp{}
-				byName[name] = r
-			}
-			r.count++
-			r.cpu += snap.cpuPct
-			r.memory += snap.rss
-		}
-		for name, r := range byName {
-			aggTags := append([]tags.Tag{}, baseTags...)
-			aggTags = append(aggTags,
-				tags.Tag{Key: "process.name", Value: name},
-			)
-			for _, m := range []struct {
-				name  string
-				value float64
-			}{
-				{"process.count", float64(r.count)},
-				{"process.group.cpu.utilization", r.cpu},
-				{"process.group.memory.usage", float64(r.memory)},
-			} {
-				points = append(points, data_store.DataPoint{
-					Name:      m.name,
-					Timestamp: ts,
-					Value:     m.value,
-					Tags:      aggTags,
-				})
-			}
-		}
+	if cfg.aggregate || cfg.topByName() {
+		points = appendRollUpPoints(points, ts, snaps, baseTags)
 	}
 
 	// The kernel's ceilings on what was just counted. Absent outside
@@ -279,19 +268,29 @@ func snapshotProcess(p *gops.Process, cfg config, log *logger.ModuleLogger) (pro
 		return processSnapshot{}, true
 	}
 
+	var cpuUnread, memoryUnread, threadsUnread bool
+
 	cpuPct, err := p.CPUPercent()
 	if err != nil {
 		log.Debug().Int32("pid", p.Pid).Err(err).Msg("CPUPercent unavailable")
 		cpuPct = 0
+		cpuUnread = true
 	}
 
 	var rss, vms uint64
 	if mem, err := p.MemoryInfo(); err == nil && mem != nil {
 		rss = mem.RSS
 		vms = mem.VMS
+	} else {
+		log.Debug().Int32("pid", p.Pid).Err(err).Msg("MemoryInfo unavailable")
+		memoryUnread = true
 	}
 
-	threads, _ := p.NumThreads()
+	threads, err := p.NumThreads()
+	if err != nil {
+		log.Debug().Int32("pid", p.Pid).Err(err).Msg("NumThreads unavailable")
+		threadsUnread = true
+	}
 
 	fds := int32(-1)
 	if runtime.GOOS != "windows" {
@@ -312,6 +311,10 @@ func snapshotProcess(p *gops.Process, cfg config, log *logger.ModuleLogger) (pro
 		threads:    threads,
 		fds:        fds,
 		createTime: createTime,
+
+		cpuUnread:     cpuUnread,
+		memoryUnread:  memoryUnread,
+		threadsUnread: threadsUnread,
 	}, false
 }
 
@@ -355,36 +358,41 @@ func appendProcessPoints(
 ) []data_store.DataPoint {
 	// process.cpu.utilization — 0-100 percent; the OTel mapper derives
 	// the 0-1 ratio from the "%" unit declared in process.yaml
-	points = append(points, data_store.DataPoint{
-		Name:      "process.cpu.utilization",
-		Timestamp: ts,
-		Value:     float64(snap.cpuPct),
-		Tags:      pt,
-	})
+	if !snap.cpuUnread {
+		points = append(points, data_store.DataPoint{
+			Name:      "process.cpu.utilization",
+			Timestamp: ts,
+			Value:     float64(snap.cpuPct),
+			Tags:      pt,
+		})
+	}
 
-	// process.memory.usage — RSS bytes
-	points = append(points, data_store.DataPoint{
-		Name:      "process.memory.usage",
-		Timestamp: ts,
-		Value:     float64(snap.rss),
-		Tags:      pt,
-	})
-
-	// process.memory.virtual_memory_usage — VMS bytes
-	points = append(points, data_store.DataPoint{
-		Name:      "process.memory.virtual_memory_usage",
-		Timestamp: ts,
-		Value:     float64(snap.vms),
-		Tags:      pt,
-	})
+	// process.memory.usage — RSS bytes, process.memory.virtual_memory_usage — VMS bytes
+	if !snap.memoryUnread {
+		points = append(points,
+			data_store.DataPoint{
+				Name:      "process.memory.usage",
+				Timestamp: ts,
+				Value:     float64(snap.rss),
+				Tags:      pt,
+			},
+			data_store.DataPoint{
+				Name:      "process.memory.virtual_memory_usage",
+				Timestamp: ts,
+				Value:     float64(snap.vms),
+				Tags:      pt,
+			})
+	}
 
 	// process.threads
-	points = append(points, data_store.DataPoint{
-		Name:      "process.threads",
-		Timestamp: ts,
-		Value:     float64(snap.threads),
-		Tags:      pt,
-	})
+	if !snap.threadsUnread {
+		points = append(points, data_store.DataPoint{
+			Name:      "process.threads",
+			Timestamp: ts,
+			Value:     float64(snap.threads),
+			Tags:      pt,
+		})
+	}
 
 	// process.open_file_descriptors — Linux only; skip on Windows (fds == -1)
 	if snap.fds >= 0 {
@@ -423,4 +431,85 @@ func topProcesses(snaps []processSnapshot, n int, by string) []processSnapshot {
 		return snaps[i].cpuPct > snaps[j].cpuPct
 	})
 	return snaps[:n]
+}
+
+// topProcessNames keeps every process of the n process names ranking
+// highest on by, the measure being summed over the processes sharing a
+// name. Ties break on the name so the kept set does not depend on the
+// order the operating system lists processes in.
+func topProcessNames(snaps []processSnapshot, n int, by string) []processSnapshot {
+	score := map[string]float64{}
+	for _, s := range snaps {
+		if by == topByMemory {
+			score[s.name] += float64(s.rss)
+		} else {
+			score[s.name] += float64(s.cpuPct)
+		}
+	}
+	names := make([]string, 0, len(score))
+	for name := range score {
+		names = append(names, name)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		if score[names[i]] != score[names[j]] {
+			return score[names[i]] > score[names[j]]
+		}
+		return names[i] < names[j]
+	})
+	if len(names) > n {
+		names = names[:n]
+	}
+	keep := make(map[string]bool, len(names))
+	for _, name := range names {
+		keep[name] = true
+	}
+	kept := make([]processSnapshot, 0, len(snaps))
+	for _, s := range snaps {
+		if keep[s.name] {
+			kept = append(kept, s)
+		}
+	}
+	return kept
+}
+
+// appendRollUpPoints emits the per-name roll-up: a count, the summed CPU
+// and the summed resident memory of the processes sharing a name. The
+// series identity is the name alone.
+func appendRollUpPoints(points []data_store.DataPoint, ts time.Time, snaps []processSnapshot, baseTags []tags.Tag) []data_store.DataPoint {
+	type rollUp struct {
+		count  int
+		cpu    float64
+		memory uint64
+	}
+	byName := map[string]*rollUp{}
+	for _, snap := range snaps {
+		r, ok := byName[snap.name]
+		if !ok {
+			r = &rollUp{}
+			byName[snap.name] = r
+		}
+		r.count++
+		r.cpu += snap.cpuPct
+		r.memory += snap.rss
+	}
+	for name, r := range byName {
+		aggTags := append([]tags.Tag{}, baseTags...)
+		aggTags = append(aggTags, tags.Tag{Key: "process.name", Value: name})
+		for _, m := range []struct {
+			name  string
+			value float64
+		}{
+			{"process.count", float64(r.count)},
+			{"process.group.cpu.utilization", r.cpu},
+			{"process.group.memory.usage", float64(r.memory)},
+		} {
+			points = append(points, data_store.DataPoint{
+				Name:      m.name,
+				Timestamp: ts,
+				Value:     m.value,
+				Tags:      aggTags,
+			})
+		}
+	}
+	return points
 }

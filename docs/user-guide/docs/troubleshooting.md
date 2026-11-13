@@ -259,6 +259,8 @@ You can enable debug logging for specific modules at runtime via the API. This i
 
 The `debug/logs` and `admin/cache/clear` routes belong to the administration surface: they answer only the administration key, written `{admin-key}` below, and refuse the agent key PRTG or Nagios read with. The administration key is the segment after `/web/` in the address `sudo /usr/local/bin/senhub-agent console --print` prints (on Windows, `senhub-agent.exe console --print` from an elevated prompt).
 
+The examples put the key in the path, which still works but is deprecated: the agent logs a warning the first time. The preferred form sends it as a header and uses `_` in its place: `curl -H "Authorization: Bearer {admin-key}" http://localhost:8080/api/_/debug/logs`.
+
 ```bash
 curl -X POST http://localhost:8080/api/{admin-key}/debug/logs \
   -H "Content-Type: application/json" \

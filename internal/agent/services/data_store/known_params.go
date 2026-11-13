@@ -152,3 +152,44 @@ func ValidateStrategyParams(name string, params configuration.StorageConfigParam
 	}
 	return validate(params)
 }
+
+var knownBlocks = map[string]map[string]map[string]struct{}{}
+
+// RegisterKnownBlockParams declares the keys a strategy reads inside one
+// of its sub-blocks (`prtg:` under `http:`), so a key the block never
+// reads is reported with its full path instead of being dropped.
+func RegisterKnownBlockParams(name, block string, known []string) {
+	set := make(map[string]struct{}, len(known))
+	for _, key := range known {
+		set[key] = struct{}{}
+	}
+	knownParamsMu.Lock()
+	defer knownParamsMu.Unlock()
+	if knownBlocks[name] == nil {
+		knownBlocks[name] = map[string]map[string]struct{}{}
+	}
+	knownBlocks[name][block] = set
+}
+
+// UnreadBlockParamsFor returns the paths (`prtg.typo`) of the keys inside
+// a declared sub-block that the strategy does not read, sorted.
+func UnreadBlockParamsFor(name string, params map[string]interface{}) []string {
+	knownParamsMu.RLock()
+	blocks := knownBlocks[name]
+	knownParamsMu.RUnlock()
+
+	var unread []string
+	for block, known := range blocks {
+		values, ok := params[block].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		for key := range values {
+			if _, isKnown := known[key]; !isKnown {
+				unread = append(unread, block+"."+key)
+			}
+		}
+	}
+	sort.Strings(unread)
+	return unread
+}

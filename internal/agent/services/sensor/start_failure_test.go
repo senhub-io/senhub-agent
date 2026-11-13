@@ -71,6 +71,39 @@ func TestAProbeThatCannotStartIsCountedShownAndRetried(t *testing.T) {
 	}
 }
 
+// A syslog probe bound to an address the host does not own yet (DHCP not
+// answered at boot) fails to start; it counts in the total and not as
+// healthy, stays listed as failed with the reason, and keeps being
+// retried without leaving a half-bound listener behind.
+func TestSyslogOnAnAbsentAddressStaysFailedAndRetried(t *testing.T) {
+	cfg := configuration.ProbeConfig{Name: "syslog-absent", Type: "syslog", Params: map[string]interface{}{
+		"protocol": "udp", "bind_address": "192.0.2.1", "port": 40514,
+	}}
+	provider := &MockConfigProvider{config: configuration.ConfigurationData{Probes: []configuration.ProbeConfig{cfg}}}
+	add := func([]datapoint.DataPoint, data_store.StrategyRouter) error { return nil }
+	s := NewSensor(add, provider, logger.NewLogger(&cliArgs.ParsedArgs{})).(*sensor)
+	s.licenseValidator = &fakeLicenseValidator{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := s.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Shutdown(context.Background()) }()
+
+	id := probes.GenerateProbeId(cfg)
+	for attempt := 0; attempt < 2; attempt++ {
+		total, healthy := agentstate.GetProbeCounts()
+		if total != 1 || healthy != 0 {
+			t.Fatalf("attempt %d: counts = %d total, %d healthy; an unbound listener is configured and not healthy", attempt, total, healthy)
+		}
+		state := agentstate.GetProbeRunState(id)
+		if state.Running || state.Health != "failed" || state.LastError == "" {
+			t.Fatalf("attempt %d: state = %+v, want failed with the reason", attempt, state)
+		}
+		s.retryFailedProbesOnce()
+	}
+}
+
 // A probe type this build does not carry is not a licensing question: on
 // the open-source MSI a veeam probe was reported as "requires a valid
 // license" and "upgrade license to enable", sending the operator to buy

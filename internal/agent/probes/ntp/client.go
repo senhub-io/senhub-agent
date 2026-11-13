@@ -1,6 +1,7 @@
 package ntp
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -64,17 +65,21 @@ type sample struct {
 
 // query performs one NTP exchange with server and returns the resulting sample.
 // server may carry an explicit port; otherwise 123 is used.
-func query(server string, timeout time.Duration) (sample, error) {
+func query(ctx context.Context, server string, timeout time.Duration) (sample, error) {
 	addr := server
 	if _, _, err := net.SplitHostPort(addr); err != nil {
 		addr = net.JoinHostPort(addr, defaultPort)
 	}
 
-	conn, err := net.DialTimeout("udp", addr, timeout)
+	conn, err := (&net.Dialer{Timeout: timeout}).DialContext(ctx, "udp", addr)
 	if err != nil {
 		return sample{}, fmt.Errorf("%w: connecting to %s: %w", errUnreachable, addr, err)
 	}
 	defer func() { _ = conn.Close() }()
+
+	// The end of the cycle's context interrupts the wait for the reply.
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
 
 	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
 		return sample{}, fmt.Errorf("setting deadline for %s: %w", addr, err)

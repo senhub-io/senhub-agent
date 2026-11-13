@@ -197,6 +197,7 @@ func TestServiceBinaryNeedsSync(t *testing.T) {
 		name       string
 		cli        string
 		service    string
+		requested  bool
 		wantSync   bool
 		wantReason string
 	}{
@@ -207,12 +208,14 @@ func TestServiceBinaryNeedsSync(t *testing.T) {
 		{name: "beta older than stable is refreshed", cli: "0.5.4", service: "0.5.4-beta", wantSync: true},
 		{name: "unreadable service version proceeds", cli: "0.5.4", service: "", wantSync: true},
 		{name: "unparseable version proceeds", cli: "0.5.4", service: "not-a-version", wantSync: true},
+		{name: "operator-named downgrade is synced", cli: "0.6.5", service: "0.7.0", requested: true, wantSync: true},
+		{name: "unrequested newer service is refused", cli: "0.6.5", service: "0.7.0", wantSync: false, wantReason: "0.7.0"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, reason := serviceBinaryNeedsSync(tc.cli, tc.service)
+			got, reason := serviceBinaryNeedsSync(tc.cli, tc.service, tc.requested)
 			if got != tc.wantSync {
-				t.Fatalf("serviceBinaryNeedsSync(%q, %q) = %v, want %v", tc.cli, tc.service, got, tc.wantSync)
+				t.Fatalf("serviceBinaryNeedsSync(%q, %q, %v) = %v, want %v", tc.cli, tc.service, tc.requested, got, tc.wantSync)
 			}
 			if tc.wantReason != "" && !strings.Contains(reason, tc.wantReason) {
 				t.Fatalf("reason = %q, want it to mention %q", reason, tc.wantReason)
@@ -255,7 +258,7 @@ func TestReconcileServiceBinary_CopiesAndRestoresOwnership(t *testing.T) {
 	unit := "[Service]\nUser=senhub\nExecStart=" + service + " run\n"
 
 	fs := &recordingFS{}
-	written, err := reconcileServiceBinary(unit, newBinary, fs.ops(), io.Discard)
+	written, err := reconcileServiceBinary(unit, newBinary, false, fs.ops(), io.Discard)
 	if err != nil {
 		t.Fatalf("reconcileServiceBinary() error = %v", err)
 	}
@@ -283,7 +286,7 @@ func TestReconcileServiceBinary_VanishedSourceIsAnError(t *testing.T) {
 	unit := "[Service]\nUser=senhub\nExecStart=" + service + " run\n"
 
 	fs := &recordingFS{}
-	written, err := reconcileServiceBinary(unit, filepath.Join(dir, ".new-release.old"), fs.ops(), io.Discard)
+	written, err := reconcileServiceBinary(unit, filepath.Join(dir, ".new-release.old"), false, fs.ops(), io.Discard)
 
 	if err == nil {
 		t.Fatal("reconcileServiceBinary() error = nil, want an error for a source that is not on disk")
@@ -301,7 +304,7 @@ func TestReconcileServiceBinary_NoUnitTargetIsANoOp(t *testing.T) {
 	newBinary := touch(t, dir, "new-release")
 
 	fs := &recordingFS{}
-	written, err := reconcileServiceBinary("[Unit]\nDescription=x\n", newBinary, fs.ops(), io.Discard)
+	written, err := reconcileServiceBinary("[Unit]\nDescription=x\n", newBinary, false, fs.ops(), io.Discard)
 	if err != nil {
 		t.Fatalf("reconcileServiceBinary() error = %v", err)
 	}
@@ -317,7 +320,7 @@ func TestReconcileServiceBinary_CopyFailureIsReported(t *testing.T) {
 	unit := "[Service]\nUser=senhub\nExecStart=" + service + " run\n"
 
 	fs := &recordingFS{copyErr: os.ErrPermission}
-	if _, err := reconcileServiceBinary(unit, newBinary, fs.ops(), io.Discard); err == nil {
+	if _, err := reconcileServiceBinary(unit, newBinary, false, fs.ops(), io.Discard); err == nil {
 		t.Fatal("reconcileServiceBinary() error = nil, want the copy failure surfaced")
 	}
 	if fs.chownedPath != "" {

@@ -21,10 +21,15 @@ const (
 	relBoundTo                 = "bound_to"
 	relHasInterface            = "has_interface"
 
-	// attrKeyOperState is the interface operational state. It is one of Toise's
-	// stateKeys (ADR 0006: oper_state/admin_state/status), so a link flip on a
-	// host interface classifies as entity.state_changed, not a silent update.
+	// attrKeyOperState is the interface operational state (closed RFC 2863
+	// vocabulary, snake_case). It is one of Toise's stateKeys (ADR 0006:
+	// oper_state/admin_state/status), so a link flip on a host interface
+	// classifies as entity.state_changed, not a silent update.
 	attrKeyOperState = "oper_state"
+	// attrKeyAdminState is the administrative state (up/down) derived from the
+	// IFF_UP flag; it is a state key like oper_state and is set whenever the
+	// flags are known, on every OS.
+	attrKeyAdminState = "admin_state"
 
 	// Descriptive attributes (AT13). Dotted-lowercase casing per the contract.
 	attrKeyMAC    = "mac"
@@ -39,13 +44,15 @@ const (
 )
 
 // linkMeta is the per-interface descriptive metadata the /sys layer resolves
-// (oper_state plus the AT13 type/duplex/speed). MAC and MTU come straight from
-// gopsutil and are not part of this struct.
+// (oper_state plus the AT13 type/duplex/speed) and the flag-derived admin
+// state. MAC and MTU come straight from gopsutil and are not part of this
+// struct.
 type linkMeta struct {
-	OperState string // up/down
-	Type      string // physical/virtual/wireless
-	Duplex    string // full/half/unknown
-	Speed     int64  // bit/s, 0 = unknown
+	OperState  string // closed oper_state vocabulary; "" = unknown → omitted
+	AdminState string // up/down from the IFF_UP flag
+	Type       string // physical/virtual/wireless
+	Duplex     string // full/half/unknown
+	Speed      int64  // bit/s, 0 = unknown
 }
 
 // aggregationInfo carries the Linux LAG membership/aggregate metadata. It is
@@ -64,13 +71,14 @@ type ifaceAddrs struct {
 	IPs  []string
 	// Prefixes holds each IP's prefix length on this interface, when the
 	// OS reported it ("ip/prefix").
-	Prefixes  map[string]int
-	MAC       string
-	MTU       int64
-	OperState string
-	Type      string
-	Duplex    string
-	Speed     int64
+	Prefixes   map[string]int
+	MAC        string
+	MTU        int64
+	OperState  string
+	AdminState string
+	Type       string
+	Duplex     string
+	Speed      int64
 	// Aggregation is set only when platformAggregation returned an entry
 	// for this interface and entity.AggregationEnabled is true.
 	Aggregation *aggregationInfo
@@ -214,6 +222,9 @@ func ifaceAttributes(ia ifaceAddrs) map[string]any {
 	if ia.OperState != "" {
 		attrs[attrKeyOperState] = ia.OperState
 	}
+	if ia.AdminState != "" {
+		attrs[attrKeyAdminState] = ia.AdminState
+	}
 	if ia.MAC != "" {
 		attrs[attrKeyMAC] = ia.MAC
 	}
@@ -309,7 +320,7 @@ func (s *Source) enumerate() ([]ifaceAddrs, error) {
 		out = append(out, ifaceAddrs{
 			Name: ifc.Name, IPs: ips, Prefixes: prefixes,
 			MAC: canonicalMAC(ifc.HardwareAddr), MTU: int64(ifc.MTU),
-			OperState: lm.OperState, Type: lm.Type, Duplex: lm.Duplex, Speed: lm.Speed,
+			OperState: lm.OperState, AdminState: lm.AdminState, Type: lm.Type, Duplex: lm.Duplex, Speed: lm.Speed,
 			Aggregation: agg,
 		})
 	}
@@ -317,21 +328,23 @@ func (s *Source) enumerate() ([]ifaceAddrs, error) {
 }
 
 // resolveLinkMeta returns the interface descriptive metadata: the sysfs-derived
-// fields on Linux (type/duplex/speed and the carrier oper_state), with the
-// administrative IFF_UP flag as the oper_state fallback when sysfs is
-// unavailable (non-Linux, or operstate "unknown").
+// fields on Linux (type/duplex/speed and the operational state) plus the
+// administrative state from the IFF_UP flag, which is known on every OS. When
+// the operational state is not known from sysfs it is left empty (omitted) —
+// there is no administrative fallback into oper_state.
 func resolveLinkMeta(name string, flags []string) linkMeta {
 	lm := readSysLink(name)
-	if lm.OperState == "" {
-		lm.OperState = operStateFromFlags(flags)
-	}
+	lm.AdminState = adminStateFromFlags(flags)
 	return lm
 }
 
-// operStateFromFlags derives up/down from the gopsutil flag set (IFF_UP). This
-// is the administrative state — a coarser signal than the carrier state, used
-// only when the precise sysfs operstate is unavailable.
-func operStateFromFlags(flags []string) string {
+// adminStateFromFlags derives the administrative state (up/down) from the
+// gopsutil flag set (IFF_UP). It is reported as admin_state, a separate
+// attribute from oper_state, and is set whenever the flags are known.
+func adminStateFromFlags(flags []string) string {
+	if len(flags) == 0 {
+		return ""
+	}
 	for _, f := range flags {
 		if f == "up" {
 			return "up"

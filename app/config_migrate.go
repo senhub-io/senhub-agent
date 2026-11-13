@@ -50,7 +50,7 @@ func migrateConfig(configPath string) {
 	fmt.Printf("  [OK] backup written: %s\n", result.BackupPath)
 	fmt.Printf("  [OK] agent.yaml written (globals only)\n")
 	if result.WroteProbes {
-		fmt.Printf("  [OK] probes.d/00-host.yaml written\n")
+		fmt.Printf("  [OK] %d probe file(s) written under probes.d/\n", result.ProbeCount)
 	}
 	if result.StrategyCount > 0 {
 		fmt.Printf("  [OK] %d strategy file(s) written under strategies.d/\n", result.StrategyCount)

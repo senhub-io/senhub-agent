@@ -243,7 +243,9 @@ func TestStartRefusesWhenNoOutputCouldStart(t *testing.T) {
 func TestStartRefusesWhenAPullOutputCannotTakeItsSocket(t *testing.T) {
 	agentstate.ResetStrategyFailuresForTest()
 	t.Cleanup(agentstate.ResetStrategyFailuresForTest)
-	outputspec.Register(outputspec.Output{Type: "pulltest", DisplayName: "Pull test", Mode: outputspec.ModePull})
+	if _, declared := outputspec.For("pulltest"); !declared {
+		outputspec.Register(outputspec.Output{Type: "pulltest", DisplayName: "Pull test", Mode: outputspec.ModePull})
+	}
 	agentstate.RecordStrategyFailure("pulltest", agentstate.StrategyFailureStart, "listen tcp 127.0.0.1:9094: bind: address already in use")
 
 	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})

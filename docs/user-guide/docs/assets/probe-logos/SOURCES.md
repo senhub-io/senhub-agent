@@ -10,7 +10,9 @@ Simple Icons entries are CC0 paths of brand marks.
 | `activemq.svg` | activemq | Apache ActiveMQ | Apache Software Foundation | Project site, official icon artwork (activemq_logo_icon.svg) | https://activemq.apache.org/assets/img/activemq_logo_icon.svg |
 | `ad_hybrid.svg` | ad_hybrid | Microsoft Entra Connect | Microsoft | Azure Architecture Icons pack V24 (02854-icon-service-Entra-Connect.svg) | https://learn.microsoft.com/en-us/azure/architecture/icons/ |
 | `apache.svg` | apache | Apache HTTP Server | Apache Software Foundation | Simple Icons (CC0) | https://cdn.simpleicons.org/apache |
-| `azure_container_apps.svg` | azure_container_apps, azure_container_app_jobs | Microsoft Azure | Microsoft | Iconify collection (logos / devicon family; exact set not recorded) | https://icon-sets.iconify.design/ |
+| `azure_container_apps.svg` | azure_container_apps, azure_container_app_jobs, entra_id | Microsoft Azure | Microsoft | Iconify collection (logos / devicon family; exact set not recorded) | https://icon-sets.iconify.design/ |
+| `azure_log_query.svg` | azure_log_query | Azure Log Analytics Workspaces | Microsoft | Azure Architecture Icons pack V24 (00009-icon-service-Log-Analytics-Workspaces.svg); used under Microsoft's terms of use shipped with the pack, unmodified | https://learn.microsoft.com/en-us/azure/architecture/icons/ |
+| `azure_monitor.svg` | azure_monitor | Azure Monitor | Microsoft | Azure Architecture Icons pack V24 (00001-icon-service-Monitor.svg); used under Microsoft's terms of use shipped with the pack, unmodified | https://learn.microsoft.com/en-us/azure/architecture/icons/ |
 | `cassandra.svg` | cassandra | Apache Cassandra | Apache Software Foundation | Project artwork as redistributed on Wikimedia Commons (Inkscape export; original upload not recorded) | n/a |
 | `ceph.svg` | ceph | Ceph | Ceph Foundation / Linux Foundation | Simple Icons (CC0) | https://cdn.simpleicons.org/ceph |
 | `citrix.svg` | citrix | Citrix | Cloud Software Group | Simple Icons (CC0) | https://cdn.simpleicons.org/citrix |
@@ -94,3 +96,8 @@ Icons glyph (Apache-2.0, https://pictogrammers.com/library/mdi/).
 | `event.svg` | SenHub feature |
 | `chrony.svg` | the chrony project publishes no logo |
 | `ntp.svg` | the only logo on ntp.org is the Network Time Foundation's 121x88 raster, too small and unreadable on a dark theme |
+
+`entra_id` reuses `azure_container_apps.svg` (the Microsoft Azure mark): the
+Azure Architecture Icons pack V24 has no icon named Microsoft Entra ID, only
+icons for individual Entra services, so the page carries the Azure mark until
+the pack does.

@@ -24,7 +24,7 @@ const adjtimexChildEnv = "SENHUB_ADJTIMEX_CHILD"
 const adjtimexChildTimeout = 5 * time.Second
 
 var errAdjtimexForbidden = errors.New("the systemd unit forbids the adjtimex system call and would kill the agent on it " +
-	"(a unit older than this binary); run 'sudo senhub-agent refresh-unit' to read clock synchronisation again")
+	"(a unit older than this binary); run 'sudo /usr/local/bin/senhub-agent refresh-unit' then restart the service to read clock synchronisation again")
 
 // RunAdjtimexChild is the child side of adjtimexSurvivable: when the marker
 // is set it calls adjtimex and exits, and the parent reads how it ended.
@@ -48,11 +48,16 @@ func RunAdjtimexChild() {
 // being killed. A systemd unit's SystemCallFilter or ProtectClock without
 // SystemCallErrorNumber kills the whole process on a filtered call, and an
 // agent upgraded in place keeps the unit it was installed with; the 0.6.3
-// unit filters adjtimex. Under a seccomp filter the call is first made by a
-// child, which inherits the filter, so only the child dies.
-func adjtimexSurvivable(statusPath string, runChild func() error) error {
+// unit filters adjtimex. A unit that reads as killing on adjtimex is
+// believed without a probe, so no child dies and no crash lands in the
+// journal on every start. Otherwise the call is first made by a child,
+// which inherits the filter, so only the child dies.
+func adjtimexSurvivable(statusPath string, unitKills func() bool, runChild func() error) error {
 	if seccompMode(statusPath) == "0" {
 		return nil
+	}
+	if unitKills() {
+		return errAdjtimexForbidden
 	}
 	err := runChild()
 	if err == nil {

@@ -14,7 +14,7 @@ func TestMigrateImagePathValue(t *testing.T) {
 		wantChanged bool
 	}{
 		{
-			name:        "legacy quoted with config-path (the bbcloud case)",
+			name:        "legacy quoted with config-path",
 			in:          `"C:\SenHub\senhub-agent.exe" --config-path C:\SenHub\agent.yaml`,
 			want:        `"C:\SenHub\senhub-agent.exe" run --config-path C:\SenHub\agent.yaml`,
 			wantChanged: true,

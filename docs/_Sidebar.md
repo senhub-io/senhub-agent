@@ -4,13 +4,13 @@
 - [Home](./Home.md)
 
 ## User Guide
-- [Installation](./user-guide/INSTALLATION.md)
-- [Configuration](./user-guide/CONFIGURATION.md)
+- [Installation](./user-guide/docs/installation.md)
+- [Configuration](./user-guide/docs/configuration.md)
 
 ## Admin Guide
 - [HTTPS Configuration](./admin-guide/HTTPS-CONFIGURATION.md)
 - [Universal Configuration API](./admin-guide/UNIVERSAL-CONFIGURATION.md)
-- [Monitoring Integration](./admin-guide/MONITORING-INTEGRATION.md)
+- [Monitoring Integration](./admin-guide/HTTP-STRATEGY.md)
 
 ## Probes
 ### Infrastructure
@@ -24,12 +24,12 @@
 - [Logical Disk](./probes/system/logicaldisk/README.md)
 
 ### Network
-- [Gateway Ping](./probes/network/GATEWAY.md)
-- [WebApp Monitoring](./probes/webapp/README.md)
+- [Gateway Ping](./probes/ping_gateway/README.md)
+- [WebApp Monitoring](./probes/ping_webapp/README.md)
 
 ### Events
-- [Syslog](./probes/events/SYSLOG.md)
-- [Windows Events](./probes/winevents/README.md)
+- [Syslog](./probes/syslog/README.md)
+- [Windows Events](./probes/windows_eventlog/README.md)
 
 ## Developer Guide
 - [Overview](./developer-guide/README.md)
@@ -45,11 +45,10 @@
 
 ## Releases
 - [All Releases](./releases/README.md)
-- [Latest Beta (0.1.66)](./releases/0.1.70-beta.md)
+- [Current release notes](./user-guide/docs/whats-new/index.md)
 
 ## Troubleshooting
-- [Common Issues](./troubleshooting/COMMON-ISSUES.md)
-- [FAQ](./troubleshooting/FAQ.md)
+- [Common Issues](./troubleshooting/TROUBLESHOOTING.md)
 
 ## Presentations
 - [Redfish Client Demo](./presentations/redfish-client-demo.md)

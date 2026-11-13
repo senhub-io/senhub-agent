@@ -197,6 +197,9 @@ type LogsSignal struct {
 	BatchSize    int
 	BatchTimeout time.Duration
 	BufferSize   int // bounded queue; drop-oldest beyond this
+	// MaxExportBytes bounds one export's estimated size; larger batches
+	// are cut between records. 0 selects DefaultLogsMaxExportBytes.
+	MaxExportBytes int
 }
 
 // EntitiesSignal holds entity-event emission knobs. Entity events are
@@ -320,6 +323,10 @@ type Config struct {
 	// it recovers (a per-endpoint cooldown avoids re-probing a dead one
 	// every cycle).
 	FallbackEndpoints []string
+	// FailoverCooldown overrides how long a failed endpoint is skipped;
+	// zero keeps the default. Not read from the configuration file: tests
+	// shorten it so a failover round trip fits in a fraction of a second.
+	FailoverCooldown time.Duration
 	// Protocol selects the OTLP transport: "grpc" (default) or "http",
 	// the two transports defined by the OTel protocol spec. It applies
 	// to all three signals — a per-signal override is not supported
@@ -535,6 +542,8 @@ func defaultConfig() Config {
 			BatchSize:    DefaultLogsBatchSize,
 			BatchTimeout: DefaultLogsBatchTimeout,
 			BufferSize:   DefaultLogsBufferSize,
+
+			MaxExportBytes: DefaultLogsMaxExportBytes,
 		},
 		Entities: EntitiesSignal{
 			Enabled:           false,
@@ -581,19 +590,36 @@ func defaultConfig() Config {
 func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 	cfg := defaultConfig()
 
+	var rootSchemeTLS *bool
 	if v, ok := params["endpoint"].(string); ok && v != "" {
-		cfg.Endpoint = expandEnv(v)
+		v = expandEnv(v)
+		hostPort, schemeTLS, err := splitEndpointScheme(v)
+		if err != nil {
+			return cfg, fmt.Errorf("endpoint: %w", err)
+		}
+		cfg.Endpoint = hostPort
+		rootSchemeTLS = schemeTLS
 	}
 
+	var fallbackSchemes []fallbackEndpointScheme
 	if raw, ok := params["fallback_endpoints"].([]interface{}); ok {
 		for _, item := range raw {
 			s, ok := item.(string)
 			if !ok {
 				return cfg, fmt.Errorf("fallback_endpoints entries must be strings")
 			}
-			if s = expandEnv(strings.TrimSpace(s)); s != "" {
-				cfg.FallbackEndpoints = append(cfg.FallbackEndpoints, s)
+			s = expandEnv(strings.TrimSpace(s))
+			if s == "" {
+				continue
 			}
+			hostPort, schemeTLS, err := splitEndpointScheme(s)
+			if err != nil {
+				return cfg, fmt.Errorf("fallback_endpoints: %w", err)
+			}
+			if schemeTLS != nil {
+				fallbackSchemes = append(fallbackSchemes, fallbackEndpointScheme{entry: s, tls: schemeTLS})
+			}
+			cfg.FallbackEndpoints = append(cfg.FallbackEndpoints, hostPort)
 		}
 	}
 
@@ -733,10 +759,24 @@ func ParseConfig(params configuration.StorageConfigParams) (Config, error) {
 	if err := parseTLS(params["tls"], &cfg.TLS); err != nil {
 		return cfg, fmt.Errorf("tls: %w", err)
 	}
+	if rootSchemeTLS != nil {
+		if tlsEnabledExplicit(params["tls"]) {
+			if *rootSchemeTLS != cfg.TLS.Enabled {
+				return cfg, fmt.Errorf("endpoint scheme implies TLS=%v but tls.enabled is %v; drop the scheme or set tls.enabled: %v", *rootSchemeTLS, cfg.TLS.Enabled, *rootSchemeTLS)
+			}
+		} else {
+			cfg.TLS.Enabled = *rootSchemeTLS
+		}
+	}
+	for _, fallback := range fallbackSchemes {
+		if *fallback.tls != cfg.TLS.Enabled {
+			return cfg, fmt.Errorf("fallback_endpoints entry %q: scheme implies TLS=%v but tls.enabled resolves to %v; drop the scheme or make them agree", fallback.entry, *fallback.tls, cfg.TLS.Enabled)
+		}
+	}
 	if err := parseRetry(params["retry"], &cfg.Retry); err != nil {
 		return cfg, fmt.Errorf("retry: %w", err)
 	}
-	if err := parseSignals(params["signals"], &cfg.Metrics, &cfg.Logs, &cfg.Traces, &cfg.Entities); err != nil {
+	if err := parseSignals(params["signals"], cfg.TLS.Enabled, &cfg.Metrics, &cfg.Logs, &cfg.Traces, &cfg.Entities); err != nil {
 		return cfg, fmt.Errorf("signals: %w", err)
 	}
 	if err := parseRelay(params["relay"], &cfg.Relay); err != nil {
@@ -1053,7 +1093,7 @@ func parseMemoryLimit(raw interface{}, out *MemoryLimitConfig) error {
 	return nil
 }
 
-func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, traces *TracesSignal, entities *EntitiesSignal) error {
+func parseSignals(raw interface{}, rootTLS bool, metrics *MetricsSignal, logs *LogsSignal, traces *TracesSignal, entities *EntitiesSignal) error {
 	m := readStringKeyedMap(raw)
 	if m == nil {
 		return nil
@@ -1078,7 +1118,7 @@ func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, tra
 				return fmt.Errorf("metrics.temporality must be 'cumulative' or 'delta', got %q", v)
 			}
 		}
-		if err := parseSignalTransport("metrics", mm, &metrics.SignalTransport); err != nil {
+		if err := parseSignalTransport("metrics", mm, rootTLS, &metrics.SignalTransport); err != nil {
 			return err
 		}
 	}
@@ -1100,7 +1140,13 @@ func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, tra
 		if v, ok := readInt(lm["buffer_size"]); ok {
 			logs.BufferSize = v
 		}
-		if err := parseSignalTransport("logs", lm, &logs.SignalTransport); err != nil {
+		if v, ok := readInt(lm["max_export_bytes"]); ok {
+			if v < 0 {
+				return fmt.Errorf("logs.max_export_bytes must be >= 0, got %d", v)
+			}
+			logs.MaxExportBytes = v
+		}
+		if err := parseSignalTransport("logs", lm, rootTLS, &logs.SignalTransport); err != nil {
 			return err
 		}
 	}
@@ -1180,7 +1226,7 @@ func parseSignals(raw interface{}, metrics *MetricsSignal, logs *LogsSignal, tra
 		} else if overrides != nil {
 			traces.RelayTenantOverrides = overrides
 		}
-		if err := parseSignalTransport("traces", tm, &traces.SignalTransport); err != nil {
+		if err := parseSignalTransport("traces", tm, rootTLS, &traces.SignalTransport); err != nil {
 			return err
 		}
 	}
@@ -1222,9 +1268,16 @@ func parseTraceTenantOverrides(raw interface{}) ([]TraceTenantOverride, error) {
 // parseSignalTransport reads the optional endpoint/headers/tls fields
 // inside a signals.<name> block and assigns them to the SignalTransport.
 // signalName is used purely for error context.
-func parseSignalTransport(signalName string, m map[string]interface{}, out *SignalTransport) error {
+func parseSignalTransport(signalName string, m map[string]interface{}, rootTLS bool, out *SignalTransport) error {
+	var schemeTLS *bool
 	if v, ok := m["endpoint"].(string); ok && v != "" {
-		out.Endpoint = expandEnv(v)
+		v = expandEnv(v)
+		hostPort, st, err := splitEndpointScheme(v)
+		if err != nil {
+			return fmt.Errorf("%s.endpoint: %w", signalName, err)
+		}
+		out.Endpoint = hostPort
+		schemeTLS = st
 	}
 	if hdrs := readStringMap(m["headers"]); hdrs != nil {
 		out.Headers = expandEnvMap(hdrs)
@@ -1237,7 +1290,18 @@ func parseSignalTransport(signalName string, m map[string]interface{}, out *Sign
 		if err := parseTLS(tlsRaw, &tlsCfg); err != nil {
 			return fmt.Errorf("%s.tls: %w", signalName, err)
 		}
+		if schemeTLS != nil {
+			if tlsEnabledExplicit(tlsRaw) {
+				if *schemeTLS != tlsCfg.Enabled {
+					return fmt.Errorf("%s.endpoint scheme implies TLS=%v but %s.tls.enabled is %v; drop the scheme or set tls.enabled: %v", signalName, *schemeTLS, signalName, tlsCfg.Enabled, *schemeTLS)
+				}
+			} else {
+				tlsCfg.Enabled = *schemeTLS
+			}
+		}
 		out.TLS = &tlsCfg
+	} else if schemeTLS != nil && *schemeTLS != rootTLS {
+		return fmt.Errorf("%s.endpoint scheme implies TLS=%v but the root endpoint resolves to TLS=%v; give the signal its own tls block or make the schemes agree", signalName, *schemeTLS, rootTLS)
 	}
 	return nil
 }

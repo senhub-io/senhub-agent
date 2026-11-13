@@ -35,6 +35,7 @@ func init() {
 					{Key: "batch_size", Kind: spec.KindInt, Default: 1000},
 					{Key: "batch_timeout", Kind: spec.KindDuration, Default: "5s"},
 					{Key: "buffer_size", Kind: spec.KindInt, Default: 10000},
+					{Key: "max_export_bytes", Kind: spec.KindInt, Default: 3145728, Description: "Estimated size cap of one logs export; larger batches are split between records, below the receiver's max message size (4 MiB default)"},
 				}, transport()...)},
 				{Key: "traces", Kind: spec.KindBlock, Description: "Spans relayed from an otlp_receiver probe; nothing to send without one", Fields: append([]spec.ParamSpec{
 					{Key: "enabled", Kind: spec.KindBool, Default: false},

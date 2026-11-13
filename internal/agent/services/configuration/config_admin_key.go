@@ -86,6 +86,33 @@ func EnsureAdminKey(configPath string, log *logger.ModuleLogger) error {
 	return nil
 }
 
+// ensureAdminKeyOrWarn adds the administration key where the directory
+// takes writes, and otherwise warns once, only when the key is missing:
+// a read-only configuration that already carries it needs nothing.
+func ensureAdminKeyOrWarn(configPath string, log *logger.ModuleLogger) {
+	dir := filepath.Dir(configPath)
+	if ConfigDirWritable(dir) {
+		if err := EnsureAdminKey(configPath, log); err != nil {
+			log.Warn().Err(err).Msg("Adding the administration key failed; the console and the configuration API will not answer until one is set")
+		}
+		return
+	}
+	if adminKeyPresent(configPath) {
+		return
+	}
+	warnOnce("admin-key-readonly", dir, func() {
+		log.Warn().Msg("Configuration directory is not writable: no administration key can be added; set admin_key on the http output")
+	})
+}
+
+// adminKeyPresent reports whether the http output carries an
+// administration key, under any form. No http output counts as present:
+// there is nothing to give a key to.
+func adminKeyPresent(configPath string) bool {
+	_, _, httpNode, err := findHTTPOutput(configPath)
+	return err == nil && (httpNode == nil || mappingHas(httpNode, "admin_key"))
+}
+
 // newAdminKey mints the key: a UUID v4, the same shape and the same
 // source of randomness as the agent key, so neither is easier to guess
 // than the other.

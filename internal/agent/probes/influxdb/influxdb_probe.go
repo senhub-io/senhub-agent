@@ -125,10 +125,16 @@ func (p *InfluxDBProbe) OnShutdown(_ context.Context) error {
 	return nil
 }
 
-// Collect scrapes /health, /metrics, and /api/v2/buckets. A failure on
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
+func (p *InfluxDBProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext scrapes /health, /metrics, and /api/v2/buckets. A failure on
 // any individual endpoint is recorded as a metric (up=0 or missing
 // value), never returned as a collection error.
-func (p *InfluxDBProbe) Collect() ([]data_store.DataPoint, error) {
+func (p *InfluxDBProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 	baseTags := []tags.Tag{}
 	if id := p.entitySrc.InstanceID(); id != "" {
@@ -138,7 +144,10 @@ func (p *InfluxDBProbe) Collect() ([]data_store.DataPoint, error) {
 	var points []data_store.DataPoint
 
 	// --- /health ---
-	up, version, statusCode, healthErr := p.checkHealth()
+	up, version, statusCode, healthErr := p.checkHealth(ctx)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("influxdb collection interrupted: %w", ctxErr)
+	}
 	p.entitySrc.setReachable(up, version)
 
 	checkResult := dbcommon.CheckOK
@@ -164,7 +173,10 @@ func (p *InfluxDBProbe) Collect() ([]data_store.DataPoint, error) {
 	})
 
 	// --- /metrics (Prometheus text) ---
-	promMetrics := p.scrapePrometheusMetrics()
+	promMetrics := p.scrapePrometheusMetrics(ctx)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("influxdb collection interrupted: %w", ctxErr)
+	}
 	metricsTags := append(baseTags[:len(baseTags):len(baseTags)], tags.Tag{Key: "metric_type", Value: "performance"})
 
 	promMap := map[string]struct {
@@ -237,7 +249,7 @@ func (p *InfluxDBProbe) Collect() ([]data_store.DataPoint, error) {
 
 	// --- /api/v2/buckets ---
 	if p.cfg.Token != "" {
-		bucketCount, err := p.countBuckets()
+		bucketCount, err := p.countBuckets(ctx)
 		if err != nil {
 			p.moduleLogger.Warn().Err(err).Msg("influxdb: failed to count buckets")
 		} else {
@@ -249,6 +261,10 @@ func (p *InfluxDBProbe) Collect() ([]data_store.DataPoint, error) {
 				Tags:      bucketTags,
 			})
 		}
+	}
+
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("influxdb collection interrupted: %w", ctxErr)
 	}
 
 	checkTags := append(baseTags[:len(baseTags):len(baseTags)], tags.Tag{Key: "metric_type", Value: "status"})
@@ -270,8 +286,8 @@ type healthResponse struct {
 
 // checkHealth calls GET /health and returns (up, version, httpStatus, err).
 // An HTTP status outside 2xx makes the target unreachable for this cycle.
-func (p *InfluxDBProbe) checkHealth() (bool, string, int, error) {
-	req, err := http.NewRequest(http.MethodGet, p.cfg.Endpoint+"/health", nil)
+func (p *InfluxDBProbe) checkHealth(ctx context.Context) (bool, string, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.cfg.Endpoint+"/health", nil)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("influxdb: building health request")
 		return false, "", 0, err
@@ -301,8 +317,8 @@ func (p *InfluxDBProbe) checkHealth() (bool, string, int, error) {
 // scrapePrometheusMetrics calls GET /metrics and returns a map of
 // metric_name → value for the metrics we care about. Label sets are
 // ignored (we take the first occurrence of each bare name).
-func (p *InfluxDBProbe) scrapePrometheusMetrics() map[string]float64 {
-	req, err := http.NewRequest(http.MethodGet, p.cfg.Endpoint+"/metrics", nil)
+func (p *InfluxDBProbe) scrapePrometheusMetrics(ctx context.Context) map[string]float64 {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.cfg.Endpoint+"/metrics", nil)
 	if err != nil {
 		p.moduleLogger.Warn().Err(err).Msg("influxdb: building metrics request")
 		return nil
@@ -371,12 +387,12 @@ type bucketsResponse struct {
 }
 
 // countBuckets calls GET /api/v2/buckets and returns the bucket count.
-func (p *InfluxDBProbe) countBuckets() (int, error) {
+func (p *InfluxDBProbe) countBuckets(ctx context.Context) (int, error) {
 	url := fmt.Sprintf("%s/api/v2/buckets", p.cfg.Endpoint)
 	if p.cfg.Org != "" {
 		url += "?org=" + p.cfg.Org
 	}
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return 0, fmt.Errorf("building buckets request: %w", err)
 	}

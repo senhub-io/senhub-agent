@@ -1,13 +1,24 @@
 package postgresql
 
 import (
+	"bytes"
+	"context"
+	"database/sql"
+	"database/sql/driver"
+	"errors"
+	"io"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/logger"
 )
 
 // TestParseConfig_Defaults exercises the config parser with the minimum
@@ -513,5 +524,116 @@ func TestParseConfig_InstanceName(t *testing.T) {
 func TestProbeType(t *testing.T) {
 	if ProbeType != "postgresql" {
 		t.Errorf("ProbeType: got %q, want %q", ProbeType, "postgresql")
+	}
+}
+
+func TestCollectReplication_RoleReadFailureEmitsNothing(t *testing.T) {
+	db, err := sql.Open("pgx", "postgres://u:p@127.0.0.1:1/postgres")
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("db.Close: %v", err)
+	}
+
+	var buf bytes.Buffer
+	base := zerolog.New(&buf)
+	p := &pgProbe{
+		db:           db,
+		moduleLogger: logger.NewModuleLogger(&base, "probe.postgresql"),
+		entitySrc:    newPgEntitySource(config{Host: "pg.local", Port: 5432}, nil),
+	}
+	p.entitySrc.setRole(dbcommon.RoleReplica)
+
+	var points []data_store.DataPoint
+	p.collectReplication(context.Background(), time.Now(), "pg", &points)
+
+	if len(points) != 0 {
+		t.Errorf("expected no points when the role cannot be read, got %d", len(points))
+	}
+	if p.entitySrc.role != dbcommon.RoleReplica {
+		t.Errorf("last known role must be kept, got %v", p.entitySrc.role)
+	}
+	if !strings.Contains(buf.String(), "replication role unknown") {
+		t.Errorf("expected a warning, got %q", buf.String())
+	}
+}
+
+type badRowsDriver struct{}
+
+func (badRowsDriver) Open(string) (driver.Conn, error) { return badRowsConn{}, nil }
+
+type badRowsConn struct{}
+
+func (badRowsConn) Prepare(string) (driver.Stmt, error) { return nil, errors.New("unsupported") }
+func (badRowsConn) Close() error                        { return nil }
+func (badRowsConn) Begin() (driver.Tx, error)           { return nil, errors.New("unsupported") }
+func (badRowsConn) QueryContext(context.Context, string, []driver.NamedValue) (driver.Rows, error) {
+	return &badRows{}, nil
+}
+
+type badRows struct{ done bool }
+
+func (r *badRows) Columns() []string { return []string{"state", "count"} }
+func (r *badRows) Close() error      { return nil }
+func (r *badRows) Next(dest []driver.Value) error {
+	if r.done {
+		return io.EOF
+	}
+	r.done = true
+	dest[0], dest[1] = "active", "not-a-number"
+	return nil
+}
+
+func TestCollectBackends_ScanFailureIsLogged(t *testing.T) {
+	sql.Register("pg-bad-rows", badRowsDriver{})
+	db, err := sql.Open("pg-bad-rows", "")
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	defer db.Close()
+
+	var buf bytes.Buffer
+	base := zerolog.New(&buf)
+	p := &pgProbe{
+		db:           db,
+		moduleLogger: logger.NewModuleLogger(&base, "probe.postgresql"),
+		entitySrc:    newPgEntitySource(config{Host: "pg.local", Port: 5432}, nil),
+	}
+
+	var points []data_store.DataPoint
+	p.collectBackends(context.Background(), time.Now(), "pg", &points)
+
+	if !strings.Contains(buf.String(), "row scan failed") {
+		t.Errorf("expected a row scan warning, got %q", buf.String())
+	}
+}
+
+func TestCollectLocks_QueryFailureIsLogged(t *testing.T) {
+	db, err := sql.Open("pgx", "postgres://u:p@127.0.0.1:1/postgres")
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("db.Close: %v", err)
+	}
+	var buf bytes.Buffer
+	base := zerolog.New(&buf)
+	p := &pgProbe{
+		db:           db,
+		moduleLogger: logger.NewModuleLogger(&base, "probe.postgresql"),
+		entitySrc:    newPgEntitySource(config{Host: "pg.local", Port: 5432}, nil),
+	}
+
+	var points []data_store.DataPoint
+	p.collectLocks(context.Background(), time.Now(), "pg", &points)
+
+	if len(points) != 0 {
+		t.Errorf("expected no points, got %d", len(points))
+	}
+	for _, q := range []string{"locks_waiting", "long_running_xact"} {
+		if !strings.Contains(buf.String(), q) {
+			t.Errorf("expected a warning for %s, got %q", q, buf.String())
+		}
 	}
 }

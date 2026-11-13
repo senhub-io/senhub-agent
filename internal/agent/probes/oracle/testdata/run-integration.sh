@@ -37,7 +37,7 @@ cleanup() {
   if [ "${ORACLE_KEEP:-0}" = 1 ]; then
     echo "container $name left running on port $port"
   else
-    docker rm -f "$name" >/dev/null 2>&1 || true
+    docker rm -f -v "$name" >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT

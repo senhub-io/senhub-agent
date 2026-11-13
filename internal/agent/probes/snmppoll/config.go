@@ -39,8 +39,17 @@ const (
 	// routes are always kept; the rest are sorted deterministically and cut.
 	defaultMaxRoutes = 500
 
+	// Neighbor table bound: a core switch can learn thousands of MACs.
+	defaultMaxNeighbors = 1000
+
 	// metricUp is 1 when the last poll reached the device, 0 otherwise.
 	metricUp = "senhub.snmp.up"
+	// metricIdentityCollisions counts sweeps whose device id another target
+	// already holds for a visibly different device.
+	metricIdentityCollisions = "snmp_poll_identity_collisions"
+	// metricEngineIDMACMismatch is 1 when the engine id embeds a MAC other
+	// than the chassis MAC.
+	metricEngineIDMACMismatch = "snmp_poll_engine_id_mac_mismatch"
 	// metricPollDuration is the wall-clock seconds the poll cycle took.
 	metricPollDuration = "senhub.snmp.poll.duration"
 )
@@ -86,6 +95,18 @@ type config struct {
 	TopologyInterval time.Duration
 	// MaxRoutes bounds the number of network.route entities emitted per device.
 	MaxRoutes int
+	// IncludeSystemRoutes keeps the routes the default filter leaves out
+	// (reject, blackhole, multicast, loopback, link-local, local host and
+	// broadcast routes).
+	IncludeSystemRoutes bool
+	// Neighbors publishes every MAC a device learned as a network.neighbor.
+	Neighbors bool
+	// MaxNeighbors bounds the number of network.neighbor entities emitted per device.
+	MaxNeighbors int
+
+	// Interfaces narrows the per-interface metric series (nil: every
+	// interface). Topology entities are never narrowed.
+	Interfaces *ifaceSelect
 
 	// MIBs is the ordered list of built-in MIB selectors to poll
 	// (e.g. "mib-2", "if-mib").
@@ -141,12 +162,13 @@ func parseConfig(raw map[string]interface{}) (*config, error) {
 	var errs []string
 
 	cfg := &config{
-		Port:      defaultPort,
-		Community: defaultCommunity,
-		Timeout:   defaultTimeout,
-		Retries:   defaultRetries,
-		Interval:  defaultInterval,
-		MaxRoutes: defaultMaxRoutes,
+		Port:         defaultPort,
+		Community:    defaultCommunity,
+		Timeout:      defaultTimeout,
+		Retries:      defaultRetries,
+		Interval:     defaultInterval,
+		MaxRoutes:    defaultMaxRoutes,
+		MaxNeighbors: defaultMaxNeighbors,
 	}
 
 	if target, _ := raw["target"].(string); strings.TrimSpace(target) != "" {
@@ -199,6 +221,25 @@ func parseConfig(raw map[string]interface{}) (*config, error) {
 		}
 	}
 
+	if _, present := raw["include_system_routes"]; present {
+		if b, ok := types.BoolParam(raw, "include_system_routes"); ok {
+			cfg.IncludeSystemRoutes = b
+		} else {
+			errs = append(errs, "include_system_routes must be true or false")
+		}
+	}
+
+	if v, ok := types.BoolParam(raw, "neighbors"); ok {
+		cfg.Neighbors = v
+	}
+	if v, ok := types.IntParam(raw, "max_neighbors"); ok {
+		if v < 1 {
+			errs = append(errs, "max_neighbors must be at least 1")
+		} else {
+			cfg.MaxNeighbors = v
+		}
+	}
+
 	if d, ok, err := durationParam(raw, "timeout"); err != nil {
 		errs = append(errs, fmt.Sprintf("timeout: %v", err))
 	} else if ok {
@@ -222,6 +263,12 @@ func parseConfig(raw map[string]interface{}) (*config, error) {
 		errs = append(errs, err.Error())
 	}
 	cfg.MIBs = mibs
+
+	sel, err := parseIfaceSelect(raw["interfaces"])
+	if err != nil {
+		errs = append(errs, err.Error())
+	}
+	cfg.Interfaces = sel
 
 	cfg.MibPaths = stringSliceOf(raw["mib_paths"])
 

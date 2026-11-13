@@ -1,0 +1,124 @@
+[Unit]
+Description=SenHub Agent — infrastructure monitoring agent
+Documentation=https://github.com/senhub-io/senhub-agent
+After=network-online.target
+Wants=network-online.target
+# Start-rate limiting lives in [Unit]: systemd parses StartLimitIntervalSec/
+# StartLimitBurst here, ignoring them in [Service] (#577). The window pairs
+# with Restart=always so a crash-looping binary is throttled, not respun
+# forever.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=senhub
+Group=senhub
+# The binary lives at a root-owned system path the daemon cannot write.
+# That is a security property, not tidiness: the daemon runs unprivileged and
+# parses untrusted input (OTLP, SNMP traps, syslog, probe responses), and write
+# access to its own executable is persistence across restarts for whoever
+# compromises it. Updating is a root action — `sudo senhub-agent update` today,
+# apt/dnf/zypper tomorrow. A distro package installs to /usr/bin instead and
+# ships a unit pointing there; /usr/local is reserved for the local admin.
+ExecStart=/usr/local/bin/senhub-agent run --config-path /etc/senhub-agent/agent.yaml
+# always (not on-failure): the agent may exit 0 deliberately and still need
+# to come back — historically to hand off to a self-installed binary (#567),
+# and today for any clean shutdown that is not an operator stopping the unit.
+# An explicit `systemctl stop` is still honoured (no restart).
+Restart=always
+RestartSec=5
+
+# State and runtime directories (created/managed by systemd, 0750).
+StateDirectory=senhub-agent
+LogsDirectory=senhub-agent
+ConfigurationDirectory=senhub-agent
+
+# Hardening — the agent reads host metrics, so it needs broad read
+# access but should not be able to write outside its own directories.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/senhub-agent /var/log/senhub-agent
+
+# Drop every Linux capability by default. The free-tier probes
+# (cpu/memory/logicaldisk/network) read from /proc and /sys and need
+# none. Re-grant only what an enabled probe requires (see below).
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# Kernel and system surfaces the agent reads but must never change. It
+# reports the clock, the hostname and cgroup usage; it has no reason to be
+# able to write any of them.
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+
+# Process-level restrictions. None of these are used by any probe: the agent
+# does not create namespaces, does not need SUID files and does not change
+# its ABI personality.
+#
+# MemoryDenyWriteExecute is deliberately NOT set. The agent itself makes no
+# executable memory, but the setting is inherited by what it launches: the
+# IBM i probe's Java bridge (a JVM needs writable-executable memory for its
+# JIT, and failed with "Error occurred during initialization of VM"), its
+# native runner (text relocations), and any Java or Node.js plugin the exec
+# probe runs.
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+RemoveIPC=true
+UMask=0077
+
+# System calls: the standard service set, on this machine's ABI only.
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+
+# Socket families the agent actually uses: unix (docker/containerd), inet and
+# inet6 (probes, OTLP, receivers), netlink (host network metrics). Notably NOT
+# AF_PACKET — the agent never captures raw frames, and that is the family a
+# compromised monitoring agent would want most.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+# The agent's own directories are the only places it can write. Marking them
+# non-executable means a compromised agent cannot write a payload and then run
+# it — the write access it legitimately needs stops being a foothold.
+NoExecPaths=/var/lib/senhub-agent /var/log/senhub-agent
+
+# Deliberately NOT set, with reasons, so nobody adds them without knowing:
+#
+#   PrivateDevices=true  would hide /dev/sd*, /dev/nvme* and /dev/ipmi0, which
+#                        the smart, nvidia and ipmi probes read. Safe to add on
+#                        a host running none of them.
+#   ProtectProc=invisible / ProcSubset=pid
+#                        would hide other processes' /proc entries, which is
+#                        precisely what the process probe reports on.
+#   IPAddressDeny=any    a monitoring agent talks to arbitrary targets by
+#                        definition; an allow-list here would have to be
+#                        rebuilt every time a probe is added.
+
+# linux_logs reads the systemd journal; the journal is group-readable
+# by systemd-journal, so the agent joins that group instead of running
+# as root. Harmless if linux_logs is not enabled.
+SupplementaryGroups=systemd-journal
+
+# Per-probe elevation — uncomment ONLY the line(s) for a probe you run
+# against a privileged resource. Prefer a high (>1024) port to avoid
+# capabilities entirely (e.g. snmp_trap on 0.0.0.0:16200; otlp_receiver
+# on 4317/4318 needs none).
+#
+#   snmp_trap binding the default UDP/162 (privileged port):
+# CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+# AmbientCapabilities=CAP_NET_BIND_SERVICE
+#
+#   ICMP/ping active checks (raw sockets):
+# CapabilityBoundingSet=CAP_NET_RAW
+# AmbientCapabilities=CAP_NET_RAW
+
+[Install]
+WantedBy=multi-user.target

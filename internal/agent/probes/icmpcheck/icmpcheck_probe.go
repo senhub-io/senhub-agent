@@ -55,7 +55,7 @@ type pingResult struct {
 
 // pingFunc runs one ping round against a target. The production
 // implementation wraps pro-bing; tests substitute their own.
-type pingFunc func(target string) pingResult
+type pingFunc func(ctx context.Context, target string) pingResult
 
 type ICMPCheckProbe struct {
 	*types.BaseProbe
@@ -112,7 +112,7 @@ func NewICMPCheckProbe(config map[string]interface{}, baseLogger *logger.Logger)
 // say. Windows has no unprivileged ICMP datagram sockets. On Linux,
 // datagram ICMP is gated by net.ipv4.ping_group_range, which stock
 // Ubuntu/Debian servers ship DISABLED ("1 0") — even root gets
-// permission denied on SOCK_DGRAM ICMP (#357, found on sha901). Root
+// permission denied on SOCK_DGRAM ICMP (#357, found on an internal host). Root
 // installs (`install --user root`) therefore get privileged raw
 // sockets, the mode that just works. Under the default hardened unit
 // (#223, #280) the daemon is non-root and stays in unprivileged mode;
@@ -195,11 +195,17 @@ func (p *ICMPCheckProbe) OnStart(quitChannel chan struct{}) error {
 
 func (p *ICMPCheckProbe) OnShutdown(ctx context.Context) error { return nil }
 
-// Collect pings every configured target (bounded parallelism) and
+// Collect collects without a cancellation signal; the poller calls
+// CollectContext.
+func (p *ICMPCheckProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext pings every configured target (bounded parallelism) and
 // turns each outcome into datapoints. An unreachable or failing target
 // is a measurement (up=0), never a collection error: the probe's job
 // is to report unreachability, not to be unhealthy because of it.
-func (p *ICMPCheckProbe) Collect() ([]data_store.DataPoint, error) {
+func (p *ICMPCheckProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 	results := make([]pingResult, len(p.config.Targets))
 
@@ -211,11 +217,14 @@ func (p *ICMPCheckProbe) Collect() ([]data_store.DataPoint, error) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			results[i] = p.ping(target)
+			results[i] = p.ping(ctx, target)
 		}(i, target)
 	}
 	wg.Wait()
 
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("icmp_check collection interrupted: %w", ctxErr)
+	}
 	var points []data_store.DataPoint
 	for _, res := range results {
 		identityTags := p.identityTagsForResult(res)
@@ -289,7 +298,7 @@ func (p *ICMPCheckProbe) buildCheckResult(res pingResult, ts time.Time, identity
 }
 
 // pingOnce is the production pingFunc: one pro-bing round per target.
-func (p *ICMPCheckProbe) pingOnce(target string) pingResult {
+func (p *ICMPCheckProbe) pingOnce(ctx context.Context, target string) pingResult {
 	res := pingResult{target: target}
 
 	pinger, err := probing.NewPinger(target)
@@ -303,7 +312,7 @@ func (p *ICMPCheckProbe) pingOnce(target string) pingResult {
 	pinger.Size = p.config.PacketSize
 	pinger.SetPrivileged(p.config.Privileged)
 
-	if err := pinger.Run(); err != nil {
+	if err := pinger.RunWithContext(ctx); err != nil {
 		if !p.config.Privileged && errors.Is(err, os.ErrPermission) {
 			// Datagram ICMP refused: net.ipv4.ping_group_range likely
 			// excludes this process (stock Ubuntu/Debian disable it).

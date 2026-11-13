@@ -99,10 +99,6 @@ func pushMetrics(
 		}
 	}
 
-	if exporthook.HasSeriesObservers() {
-		exporthook.ObserveSeries("otlp", seriesPoints(records), now)
-	}
-
 	// Decide between single-batch and parallel-by-probe paths. Below
 	// SplitBatchThreshold or when maxConcurrent<=1, the goroutine
 	// fan-out is pure overhead — encoding 50 records in one batch is
@@ -112,13 +108,21 @@ func pushMetrics(
 		if err := export(ctx, rm); err != nil {
 			return 0, fmt.Errorf("export: %w", err)
 		}
+		if exporthook.HasSeriesObservers() {
+			exporthook.ObserveSeries("otlp", seriesPoints(records), now)
+		}
 		agentstate.RecordOTLPSubBatchCount(1)
 		return len(records), nil
 	}
 
 	parts := partitionRecordsByProbe(records)
 	agentstate.RecordOTLPSubBatchCount(len(parts))
-	return exportInParallel(ctx, parts, res, scopeVersion, startTime, now, export, maxConcurrent)
+	return exportInParallel(ctx, parts, res, scopeVersion, startTime, now, export, maxConcurrent,
+		func(recs []otelmapper.OtelRecord) {
+			if exporthook.HasSeriesObservers() {
+				exporthook.ObserveSeries("otlp", seriesPoints(recs), now)
+			}
+		})
 }
 
 // seriesPoints views the records as the series they export. The maps are
@@ -157,7 +161,8 @@ func partitionRecordsByProbe(records []otelmapper.OtelRecord) map[string][]otelm
 // are logged via the OTel SDK retry path but not surfaced). A partial
 // failure (3/4 partitions OK) still propagates an error so the strategy
 // logs it and increments the export-errors counter — partial-success
-// is still a degraded state the operator should see.
+// is still a degraded state the operator should see. onExported receives
+// each partition that was exported, from the calling goroutine.
 func exportInParallel(
 	ctx context.Context,
 	parts map[string][]otelmapper.OtelRecord,
@@ -167,9 +172,11 @@ func exportInParallel(
 	now time.Time,
 	export func(context.Context, *metricdata.ResourceMetrics) error,
 	maxConcurrent int,
+	onExported func([]otelmapper.OtelRecord),
 ) (int, error) {
 	type result struct {
 		count int
+		recs  []otelmapper.OtelRecord
 		err   error
 	}
 	results := make(chan result, len(parts))
@@ -188,7 +195,7 @@ func exportInParallel(
 				results <- result{err: fmt.Errorf("export: %w", err)}
 				return
 			}
-			results <- result{count: len(recs)}
+			results <- result{count: len(recs), recs: recs}
 		}()
 	}
 
@@ -198,11 +205,16 @@ func exportInParallel(
 	total := 0
 	var firstErr error
 	for r := range results {
-		if r.err != nil && firstErr == nil {
-			firstErr = r.err
+		if r.err != nil {
+			if firstErr == nil {
+				firstErr = r.err
+			}
 			continue
 		}
 		total += r.count
+		if onExported != nil {
+			onExported(r.recs)
+		}
 	}
 	return total, firstErr
 }

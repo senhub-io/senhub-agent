@@ -164,12 +164,13 @@ func (c *linuxCollector) collectDnf(ctx context.Context, tool string) (updatesSt
 	secOut, err := c.run(ctx, tool, "-q", "updateinfo", "list", "--security")
 	if err != nil {
 		c.logger.Warn().Err(err).Str("tool", tool).
-			Msg("security advisory count unavailable; reporting 0 pending security updates")
+			Msg("security advisory count unavailable; leaving pending.security out")
+		status.pendingSecurityUnknown = true
 	} else {
 		status.pendingSecurity = countAdvisoryLines(string(secOut))
 	}
 
-	status.rebootRequired = c.dnfRebootRequired(ctx)
+	status.rebootRequired, status.rebootRequiredUnknown = c.dnfRebootRequired(ctx)
 	c.countInstalled(ctx, &status, "rpm", "-qa", "--qf", ".\n")
 	return status, nil
 }
@@ -230,19 +231,19 @@ func countAdvisoryLines(out string) int {
 
 // dnfRebootRequired interprets `needs-restarting -r`: exit 0 = no
 // reboot needed, exit 1 = reboot needed. A missing tool or any other
-// outcome is best-effort false.
-func (c *linuxCollector) dnfRebootRequired(ctx context.Context) bool {
+// outcome leaves the answer unknown rather than a reassuring "no".
+func (c *linuxCollector) dnfRebootRequired(ctx context.Context) (required, unknown bool) {
 	if !c.hasCommand("needs-restarting") {
-		c.logger.Debug().Msg("needs-restarting not found; reboot-required flag reported as 0")
-		return false
+		c.logger.Debug().Msg("needs-restarting not found; leaving reboot_required out")
+		return false, true
 	}
 	_, err := c.run(ctx, "needs-restarting", "-r")
 	if err == nil {
-		return false
+		return false, false
 	}
 	if exitCode(err) == 1 {
-		return true
+		return true, false
 	}
-	c.logger.Warn().Err(err).Msg("needs-restarting -r failed; reboot-required flag reported as 0")
-	return false
+	c.logger.Warn().Err(err).Msg("needs-restarting -r failed; leaving reboot_required out")
+	return false, true
 }

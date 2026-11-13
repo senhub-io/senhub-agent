@@ -1,6 +1,7 @@
 package httpcheck
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -292,7 +293,7 @@ func TestCollect_SeamForChassis(t *testing.T) {
 	// The chassis seam stays available for deterministic fan-out tests.
 	p := newTestProbe(t, map[string]interface{}{"targets": []interface{}{"http://a", "http://b"}})
 	var calls atomic.Int32
-	p.check = func(target string) httpResult {
+	p.check = func(_ context.Context, target string) httpResult {
 		calls.Add(1)
 		return httpResult{target: target, up: true, statusCode: 200, tlsDaysLeft: noTLSSentinel}
 	}

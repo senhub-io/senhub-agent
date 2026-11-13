@@ -132,7 +132,7 @@ The NetScaler probe fully supports **High Availability clusters**:
 
 **Tags:**
 - `ha_node_id`: Node ID (0 or 1)
-- `ha_node_ip`: Node IP address (e.g., "10.0.208.7")
+- `ha_node_ip`: Node IP address (e.g., "192.0.2.11")
 - `is_local_node`: "true" for connected node, "false" for remote
 - `connected_to`: Hostname of connected node
 
@@ -185,7 +185,7 @@ The NetScaler probe includes **PRTG Value Lookups** for human-readable status va
 4. Extract `.ovl` files to PRTG Server: `C:\Program Files (x86)\PRTG Network Monitor\lookups\custom\`
 5. Refresh PRTG lookup files (Administration > System Administration > Administrative Tools)
 
-See [PRTG Integration Guide](../../admin-guide/HTTP-STRATEGY.md#prtg-lookups) for details.
+See [PRTG Integration Guide](../../admin-guide/HTTP-STRATEGY.md#prtg-value-lookups) for details.
 
 ## Performance Tuning
 
@@ -338,7 +338,7 @@ See [configuration-examples.yaml](./configuration-examples.yaml) for complete co
 - Application Firewall (AppFW) security events
 - Compression metrics
 
-See [internal roadmap](../../.internal/NETSCALER-ROADMAP.md) for detailed phase planning.
+See internal roadmap for detailed phase planning.
 
 ## References
 

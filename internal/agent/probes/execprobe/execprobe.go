@@ -54,7 +54,7 @@ type execResult struct {
 	err      error // spawn-level failure (not a non-zero exit)
 }
 
-type runFunc func() execResult
+type runFunc func(ctx context.Context) execResult
 
 type ExecProbe struct {
 	*types.BaseProbe
@@ -62,6 +62,13 @@ type ExecProbe struct {
 	moduleLogger *logger.ModuleLogger
 	run          runFunc
 	running      sync.Mutex // concurrent-run guard; TryLock per cycle
+
+	// lifeCtx bounds every run: cancelling it (agent stop) kills the
+	// running command's whole tree through cmd.Cancel.
+	lifeCtx    context.Context
+	lifeCancel context.CancelFunc
+	// treeWarn limits the "no job object" warning to once per probe.
+	treeWarn sync.Once
 }
 
 type execConfig struct {
@@ -94,6 +101,7 @@ func NewExecProbe(config map[string]interface{}, baseLogger *logger.Logger) (typ
 		moduleLogger: moduleLogger,
 	}
 	probe.SetProbeType(ProbeType)
+	probe.lifeCtx, probe.lifeCancel = context.WithCancel(context.Background())
 	probe.run = probe.runOnce
 	return probe, nil
 }
@@ -170,16 +178,50 @@ func (p *ExecProbe) OnStart(quitChannel chan struct{}) error {
 		Str("command", p.config.Command).
 		Str("format", p.config.Format).
 		Msg("Starting exec probe")
+	// The scheduler closes quitChannel as soon as it begins to stop,
+	// before it waits for the in-flight tick: cancel then, so a long
+	// command does not hold the stop budget.
+	go func() {
+		select {
+		case <-quitChannel:
+			p.lifeCancel()
+		case <-p.lifeCtx.Done():
+		}
+	}()
 	return nil
 }
 
-func (p *ExecProbe) OnShutdown(ctx context.Context) error { return nil }
+// OnShutdown ends the running command (and its children) and waits,
+// bounded by ctx, for the in-flight run to return.
+func (p *ExecProbe) OnShutdown(ctx context.Context) error {
+	p.lifeCancel()
+	locked := make(chan struct{})
+	go func() {
+		p.running.Lock()
+		p.running.Unlock() //nolint:staticcheck // barrier only: waits for the in-flight run
+		close(locked)
+	}()
+	select {
+	case <-locked:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("waiting for exec run to end: %w", ctx.Err())
+	}
+}
 
-// Collect runs the configured program once. A failing or non-zero
-// check is a measurement (status reflects it), never a collection
-// error. If the previous run is still going, the cycle is skipped and
-// reported, not stacked.
+// Collect runs the configured program once, with no deadline but the
+// probe's own timeout.
 func (p *ExecProbe) Collect() ([]data_store.DataPoint, error) {
+	return p.CollectContext(context.Background())
+}
+
+// CollectContext runs the configured program once under ctx and the
+// probe's own timeout, whichever ends first. A failing or non-zero
+// check is a measurement (status reflects it), never a collection
+// error; a run cut by ctx is an error wrapping ctx.Err(), because the
+// check did not get to answer. If the previous run is still going, the
+// cycle is skipped and reported, not stacked.
+func (p *ExecProbe) CollectContext(ctx context.Context) ([]data_store.DataPoint, error) {
 	now := time.Now()
 	baseTags := []tags.Tag{{Key: "metric_type", Value: "exec"}}
 
@@ -193,7 +235,10 @@ func (p *ExecProbe) Collect() ([]data_store.DataPoint, error) {
 	}
 	defer p.running.Unlock()
 
-	res := p.run()
+	res := p.run(ctx)
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("exec %s cut before it answered: %w", p.config.Command, err)
+	}
 
 	points := []data_store.DataPoint{
 		{Name: "senhub.exec.duration", Value: res.duration.Seconds() * 1000, Timestamp: now, Tags: baseTags},
@@ -277,15 +322,22 @@ func metricsToDatapoints(metrics []checkMetric, ts time.Time) []data_store.DataP
 }
 
 // runOnce is the production runFunc: one process, hard deadline.
-func (p *ExecProbe) runOnce() execResult {
+func (p *ExecProbe) runOnce(parent context.Context) execResult {
 	res := execResult{}
 
-	ctx, cancel := context.WithTimeout(context.Background(), p.config.Timeout)
+	// The run ends on whichever comes first: the caller's context (the
+	// scheduler's deadline), the probe's own stop, or its own timeout.
+	runCtx, stopRun := context.WithCancel(parent)
+	defer stopRun()
+	defer context.AfterFunc(p.lifeCtx, stopRun)()
+	ctx, cancel := context.WithTimeout(runCtx, p.config.Timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, p.config.Command, p.config.Args...)
 	configureSysProcAttr(cmd)
-	cmd.Cancel = func() error { return killProcessGroup(cmd) }
+	tree := &procTree{}
+	defer tree.close()
+	cmd.Cancel = func() error { return tree.kill(cmd) }
 	// Backstop: if a surviving grandchild still holds the stdout pipe
 	// after the kill, force Wait to return instead of blocking the
 	// collection cycle until that process exits.
@@ -302,10 +354,20 @@ func (p *ExecProbe) runOnce() execResult {
 	cmd.Stderr = &cappedWriter{buf: &stderr, max: maxOutputBytes}
 
 	start := time.Now()
-	err := cmd.Run()
+	err := cmd.Start()
+	if err == nil {
+		if attachErr := tree.attach(cmd); attachErr != nil {
+			p.treeWarn.Do(func() {
+				p.moduleLogger.Warn().Err(attachErr).
+					Str("command", p.config.Command).
+					Msg("exec: cannot track child tree; falling back to taskkill on stop")
+			})
+		}
+		err = cmd.Wait()
+	}
 	res.duration = time.Since(start)
 	res.stdout = stdout.Bytes()
-	res.timedOut = ctx.Err() == context.DeadlineExceeded
+	res.timedOut = errors.Is(ctx.Err(), context.DeadlineExceeded) && parent.Err() == nil && p.lifeCtx.Err() == nil
 
 	var exitErr *exec.ExitError
 	switch {

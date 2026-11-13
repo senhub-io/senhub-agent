@@ -1,6 +1,7 @@
 package varnish
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -93,7 +94,7 @@ func TestCollect_FailedConnection_IdentityKeyAndCheckResult(t *testing.T) {
 		t.Fatal("Collect() returned no datapoints")
 	}
 
-	_, runErr := vp.runVarnishstat()
+	_, runErr := vp.runVarnishstat(context.Background())
 	wantCheck := float64(dbcommon.ClassifyError(runErr))
 
 	var upFound, checkFound bool

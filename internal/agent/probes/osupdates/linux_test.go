@@ -369,3 +369,45 @@ func TestLinuxCollector_AFailingCountDoesNotFailTheCollection(t *testing.T) {
 		t.Errorf("packageManager = %q", status.packageManager)
 	}
 }
+
+func TestLinuxCollector_DnfUnreadableAnswersAreUnknownNotZero(t *testing.T) {
+	env := &fakeEnv{
+		commands: map[string]bool{"dnf": true, "needs-restarting": true},
+		files:    map[string]bool{},
+		outputs: map[string]string{
+			"dnf -q updateinfo list": dnfUpdateinfoGolden,
+		},
+		errs: map[string]error{
+			"dnf -q updateinfo list --security": errors.New("repo unreachable"),
+			"needs-restarting -r":               errors.New("segfault"),
+		},
+	}
+	status, err := env.collector().collect(context.Background())
+	if err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	if !status.pendingSecurityUnknown {
+		t.Error("a failed security advisory query must leave pending.security unknown")
+	}
+	if !status.rebootRequiredUnknown {
+		t.Error("a failed needs-restarting must leave reboot_required unknown")
+	}
+}
+
+func TestLinuxCollector_DnfMissingNeedsRestartingIsUnknown(t *testing.T) {
+	env := &fakeEnv{
+		commands: map[string]bool{"dnf": true},
+		files:    map[string]bool{},
+		outputs: map[string]string{
+			"dnf -q updateinfo list":            "",
+			"dnf -q updateinfo list --security": "",
+		},
+	}
+	status, err := env.collector().collect(context.Background())
+	if err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	if status.pendingSecurityUnknown || !status.rebootRequiredUnknown {
+		t.Errorf("status = %+v, want security known and reboot unknown", status)
+	}
+}

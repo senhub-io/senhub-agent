@@ -145,8 +145,9 @@ func TestAnAdminKeyAddedByAReloadIsServed(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = strategy.Shutdown(context.Background()) })
 
+	noFollow := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	get := func(key string) int {
-		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/web/%s/dashboard", port, key))
+		resp, err := noFollow.Get(fmt.Sprintf("http://127.0.0.1:%d/web/%s/dashboard", port, key))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -159,8 +160,8 @@ func TestAnAdminKeyAddedByAReloadIsServed(t *testing.T) {
 	if err := strategy.UpdateConfiguration(params("new-key")); err != nil {
 		t.Fatalf("reload with a key: %v", err)
 	}
-	if code := get("new-key"); code != http.StatusOK {
-		t.Fatalf("after the reload: %d, want 200", code)
+	if code := get("new-key"); code != http.StatusSeeOther {
+		t.Fatalf("after the reload: %d, want 303 into the cookie session", code)
 	}
 	if err := strategy.UpdateConfiguration(params("rotated")); err != nil {
 		t.Fatal(err)
@@ -168,7 +169,7 @@ func TestAnAdminKeyAddedByAReloadIsServed(t *testing.T) {
 	if code := get("new-key"); code != http.StatusUnauthorized {
 		t.Errorf("old key after rotation: %d, want 401", code)
 	}
-	if code := get("rotated"); code != http.StatusOK {
-		t.Errorf("rotated key: %d, want 200", code)
+	if code := get("rotated"); code != http.StatusSeeOther {
+		t.Errorf("rotated key: %d, want 303", code)
 	}
 }

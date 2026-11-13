@@ -257,10 +257,13 @@ func TestInfoEvents(t *testing.T) {
 
 func TestExplorerRedirectsToTheSensorURLsTab(t *testing.T) {
 	router, _ := newOutputsTestRouter(t)
-	req := httptest.NewRequest("GET", "/web/"+testAdminKey+"/explorer", nil)
+	boot := httptest.NewRecorder()
+	router.ServeHTTP(boot, httptest.NewRequest("GET", "/web/"+testAdminKey+"/explorer", nil))
+	req := httptest.NewRequest("GET", "/web/_/explorer", nil)
+	req.AddCookie(sessionCookieOf(t, boot))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/web/"+testAdminKey+"/outputs/http#urls" {
+	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/web/_/outputs/http#urls" {
 		t.Errorf("want a redirect to the Sensor URLs tab, got %d %s", rec.Code, rec.Header().Get("Location"))
 	}
 }

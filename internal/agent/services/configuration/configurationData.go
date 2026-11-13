@@ -72,6 +72,14 @@ type ProbeConfig struct {
 	// Absent (the default) means every log output receives the records,
 	// which is what every existing configuration does today.
 	LogStrategies []string `json:"log_strategies,omitempty" yaml:"log_strategies,omitempty"`
+	// CollectTimeout replaces the default deadline of one collection of
+	// this probe, shorter or longer: a duration string ("90s") or a number
+	// of seconds. Kept raw so a bad value is reported with its key rather
+	// than lost in decoding; see the probes package for the parsing.
+	CollectTimeout interface{} `json:"collect_timeout,omitempty" yaml:"collect_timeout,omitempty"`
+	// LogRedact turns the masking of secrets in this probe's log records
+	// off when set to false. A pointer so that absent stays "masked".
+	LogRedact *bool `json:"log_redact,omitempty" yaml:"log_redact,omitempty"`
 }
 
 // LogCapableStrategies is the set of outputs that can consume a log
@@ -146,6 +154,9 @@ func IsValidProbeName(name string) bool {
 // agentstate publishes their state under it.
 func (p ProbeConfig) ID() string {
 	input := fmt.Sprintf("%s-%v", p.Name, p.Params)
+	if p.CollectTimeout != nil {
+		input += fmt.Sprintf("-collect_timeout=%v", p.CollectTimeout)
+	}
 	hash := sha256.New()
 	hash.Write([]byte(input))
 	return hex.EncodeToString(hash.Sum(nil))

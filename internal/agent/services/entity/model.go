@@ -68,6 +68,15 @@ const (
 	// identity for it. A third family next to the resource's lifecycle and
 	// the end of observation: nothing happened in the world.
 	ReasonRekeyed = "rekeyed"
+	// ReasonExcludedByConfig: the resource did not change; the producer's
+	// configuration stops REPORTING something it still observes (a filter
+	// whose default leaves it out). Unlike ReasonUnmonitored, where the
+	// configuration removes the OBSERVER. A transition marker: it is given
+	// only for what this process published before excluding it; after a
+	// restart with the exclusion in place the earlier entities expire, and
+	// the producer's own counters (e.g. senhub.routes.filtered) say what is
+	// left out.
+	ReasonExcludedByConfig = "excluded_by_config"
 	// ReasonAgedOut: a cache the source reads forgot the entry (an ARP or
 	// NDP neighbour aged out, a bridge forgot a MAC). Nobody saw the thing
 	// leave; it simply went quiet long enough to be dropped. Not "evicted":
@@ -130,6 +139,8 @@ const (
 	ScopeSNMPLLDP  = "senhub-agent/snmp-lldp"  // reserved: LLDP neighbours are no longer built as devices
 	ScopeSNMPRoute = "senhub-agent/snmp-route" // device routing table (network.route)
 	ScopeSNMPIFMIB = "senhub-agent/snmp-ifmib" // device + IF-MIB ports/addresses
+	ScopeSNMPFDB   = "senhub-agent/snmp-fdb"   // MACs a device learned in its bridge forwarding table (network.neighbor)
+	ScopeSNMPARP   = "senhub-agent/snmp-arp"   // MACs known to a device only from its ARP table (network.neighbor)
 	ScopeHostRoute = "senhub-agent/host-route" // host kernel routing table
 	ScopeHostARP   = "senhub-agent/host-arp"   // host ARP/NDP neighbour inventory
 	ScopeHostSvc   = "senhub-agent/host-svc"   // host listening-service inventory

@@ -146,6 +146,7 @@ func (a *autoUpdate) applyMsiUpdate(msiURL, version string) error {
 		agentstate.IncrementUpdateRejected("signature_invalid")
 		return fmt.Errorf("update REJECTED — verifying MSI signature: %w", err)
 	}
+	a.logger.Info().Str("msi_url", msiURL).Msg("Update MSI signature verified")
 
 	// Stage under an application-owned directory with an unpredictable per-run
 	// name, never the shared temp dir: msiexec re-reads this file from disk while

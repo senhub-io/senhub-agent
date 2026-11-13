@@ -58,7 +58,7 @@ if .draft == true then error("release is a draft") else . end
 | . as $rel
 | ($rel.tag_name | sub("^v"; "")) as $version
 | (if ($version | test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) then "stable"
-   elif ($version | test("^[0-9]+\\.[0-9]+\\.[0-9]+-beta\\.[0-9]+$")) then "beta"
+   elif ($version | test("^[0-9]+\\.[0-9]+\\.[0-9]+-(beta|rc)\\.[0-9]+$")) then "beta"
    else error("unsupported tag: " + $version) end) as $channel
 | (if ($channel == "beta") == ($rel.prerelease == true) then true
    else error("tag " + $version + " and the prerelease flag disagree") end) as $consistent
