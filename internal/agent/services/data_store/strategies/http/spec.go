@@ -21,6 +21,10 @@ func init() {
 				{Key: "key_file", Kind: spec.KindString, Description: "Server key (PEM)"},
 			}},
 			{Key: "admin_key", Kind: spec.KindString, Secret: true, Group: "listen", Description: "Key opening the administration surface: the console, the configuration API, the log levels, the cache and the profiler. Without it none of them is served. It is NOT the key given to PRTG, Nagios or a Prometheus scrape — that one reads and nothing else", Example: "${secret:http.admin_key}"},
+			{Key: "console", Kind: spec.KindBlock, Group: "console", FileOnly: true, Description: "What the console and its API may change on this agent. Set in the file only: neither can edit this block", Fields: []spec.ParamSpec{
+				{Key: "read_only", Kind: spec.KindBool, Default: false, Description: "Refuse every change through the console and the API (probes, outputs, governance, settings, licence, log levels, cache); reading stays open"},
+				{Key: "allow_exec", Kind: spec.KindBool, Default: true, Description: "false refuses any write that makes the agent run a program: the exec probe and the program path of other probes"},
+			}},
 			{Key: "max_cache_size", Kind: spec.KindInt, Group: "cache", Description: "Cap on cached metrics; the oldest are dropped past it"},
 			{Key: "prometheus", Kind: spec.KindBlock, Group: "prometheus", Fields: []spec.ParamSpec{
 				{Key: "include_probe_tags", Kind: spec.KindBool, Default: true, Description: "Emit probe tags as labels"},

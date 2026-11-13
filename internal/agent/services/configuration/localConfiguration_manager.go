@@ -375,8 +375,12 @@ func (lc *LocalConfiguration) createDefaultProbesConfig() []ProbeConfig {
 
 // createDefaultAutoUpdateConfig creates default auto-update configuration
 func (lc *LocalConfiguration) createDefaultAutoUpdateConfig() *AutoUpdateConfig {
+	enabled := false
+	if lc.args != nil && lc.args.AutoUpdate != nil {
+		enabled = *lc.args.AutoUpdate
+	}
 	return &AutoUpdateConfig{
-		Enabled:     false,
+		Enabled:     enabled,
 		IncludeBeta: false,
 		URL:         "https://eu-west-1.intake.senhub.io",
 	}
