@@ -530,8 +530,8 @@ func TestReadOnlyConsoleRefusesTestsThatConnect(t *testing.T) {
 		t.Errorf("connectivity preview: %d %v, want 403", code, resp)
 	}
 	delete(preview, "validation")
-	if code, resp := doJSON(t, router, "POST", base+"/config/preview", preview); code == 403 {
-		t.Errorf("schema preview stays open: %d %v", code, resp)
+	if code, resp := doJSON(t, router, "POST", base+"/config/preview", preview); code != 200 {
+		t.Errorf("schema preview stays open: %d %v, want 200", code, resp)
 	}
 	if code, resp := doJSON(t, router, "POST", base+"/config/outputs/validate", otlpTestBody(sink.endpoint(), nil)); code != 200 || resp["valid"] != true {
 		t.Errorf("outputs/validate dials nothing and stays open: %d %v", code, resp)
