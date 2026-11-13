@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"sort"
 
 	goversion "github.com/hashicorp/go-version"
@@ -11,6 +12,7 @@ import (
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/auto_update"
+	"senhub-agent.go/internal/agent/services/instanceid"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/cliexit"
 )
@@ -21,7 +23,7 @@ type UpdateOption func(*updateOptions)
 type updateOptions struct {
 	afterInstall func(newBinary string, requested bool) (string, error)
 	refreshUnit  func(newBinary string) (string, error)
-	restart      func() (string, error)
+	restart      func(startIfStopped bool) (string, error)
 }
 
 // AfterInstall registers a hook run once the new binary is on disk and
@@ -56,7 +58,10 @@ func RefreshUnit(hook func(newBinary string) (string, error)) UpdateOption {
 // update while every check read the new file on disk (#975). It returns
 // "" when there is no running service to restart; an error means the
 // service did not come back on the new binary, and fails the command.
-func RestartService(hook func() (string, error)) UpdateOption {
+//
+// startIfStopped asks the hook to start a service that is not running: the
+// restore after a failed start needs it, the service having crashed.
+func RestartService(hook func(startIfStopped bool) (string, error)) UpdateOption {
 	return func(o *updateOptions) { o.restart = hook }
 }
 
@@ -226,7 +231,9 @@ func installVersion(updater auto_update.AutoUpdate, args *cliArgs.ParsedArgs, lo
 
 	restarted := ""
 	if (updated || reconciled != "") && !args.DryRun && !args.NoRestart && options.restart != nil {
-		restarted, err = options.restart()
+		// A reconciled service copy that does not start is restored the same
+		// way: the CLI binary it was copied from has its .previous.
+		restarted, err = restartOrRestore(updater, args, log, options, self, updated || reconciled != "")
 		if err != nil {
 			log.Error().Err(err).Msg("The new binary is installed but the service does not run it")
 			os.Exit(cliexit.Failure)
@@ -254,6 +261,49 @@ func installVersion(updater auto_update.AutoUpdate, args *cliArgs.ParsedArgs, lo
 	if unitFailed {
 		os.Exit(cliexit.Warning)
 	}
+}
+
+// restartOrRestore restarts the service after an install. When the restart
+// fails and a new binary was actually put in place, the previous version is
+// restored and restarted instead: the CLI must never leave the host stopped.
+func restartOrRestore(updater auto_update.AutoUpdate, args *cliArgs.ParsedArgs, log *logger.Logger, options updateOptions, self string, updated bool) (string, error) {
+	restarted, err := options.restart(false)
+	if err == nil {
+		return restarted, nil
+	}
+	if !updated {
+		return "", err
+	}
+
+	wanted := args.WantedVersion
+	if r, ok := updater.(interface{ ResolvedVersion() string }); ok && r.ResolvedVersion() != "" {
+		wanted = r.ResolvedVersion()
+	}
+
+	log.Error().Err(err).Msg("The new version did not start; restoring the previous one")
+	restoreLog := logger.NewModuleLogger(log, "service.auto_update")
+	if rerr := auto_update.RestoreAfterFailedStart(instanceid.OwnStateDir(), self, wanted, cliArgs.Version, restoreLog); rerr != nil {
+		hint := "restore " + self + ".previous to " + self + " manually, then restart the service"
+		if runtime.GOOS == "windows" {
+			hint = "reinstall the previous version with: senhub-agent update " + cliArgs.Version
+		}
+		log.Error().Err(rerr).Str("hint", hint).Msg("Could not restore the previous binary; the service stays stopped")
+		os.Exit(cliexit.Failure)
+	}
+	if options.afterInstall != nil {
+		if _, aerr := options.afterInstall(self, true); aerr != nil {
+			log.Error().Err(aerr).Msg("Could not restore the service copy of the previous binary")
+			os.Exit(cliexit.Failure)
+		}
+	}
+	if _, rerr := options.restart(true); rerr != nil {
+		log.Error().Err(rerr).Msg("The previous version did not start either")
+		os.Exit(cliexit.Failure)
+	}
+	log.Error().Str("failed_version", wanted).Str("restored_version", cliArgs.Version).
+		Msg("The update failed to start; the previous version is restored and running")
+	os.Exit(cliexit.Failure)
+	return "", nil
 }
 
 type updateSummary struct {

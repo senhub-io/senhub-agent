@@ -576,6 +576,8 @@ func Main() {
 		// it here (#723).
 		agent.UpdateAgent(parsed, agent.AfterInstall(syncServiceBinary), agent.RefreshUnit(refreshUnitAfterUpdate), agent.RestartService(restartServiceAfterUpdate))
 		return
+	case "update-watch":
+		os.Exit(runUpdateWatch(os.Args[2:]))
 	case "refresh-unit":
 		runRefreshUnit()
 		return
