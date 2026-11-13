@@ -7,18 +7,14 @@
 #   systemctl restart senhub-agent
 #
 # This default runs the free-tier probes (cpu, memory, logicaldisk,
-# network, linux_logs) and exposes a local HTTP endpoint. To push to
-# SenHub cloud, set agent.mode to "online" and provide agent.key /
-# agent.license.
+# network, linux_logs) and exposes a local HTTP endpoint. To push the
+# metrics to a collector, add an OTLP output in strategies.d.
 
 config_version: 2
 
 agent:
-  # Replace with the agent key issued for this host. In offline mode
-  # the key only identifies the host locally.
+  # Replace with the agent key issued for this host.
   key: ""
-  mode: offline
-  generated: false
   # license: ""  # No license = free tier only
 
 auto_update:

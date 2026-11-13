@@ -443,6 +443,16 @@ func checkConfig(configPath string) checkOutcome {
 			warnings++
 		}
 	}
+	// A key inside the agent block that no field reads is dropped by the
+	// loader the same way: a misspelt licence key, or a setting from an
+	// older version that no longer does anything.
+	if unknown, uerr := configuration.FindUnknownAgentKeys(configPath); uerr == nil {
+		for _, k := range unknown {
+			fmt.Printf("  [WARN] %s: key \"agent.%s\" is not read and has no effect (accepted under agent: %s)\n",
+				filepath.Base(configPath), k, strings.Join(configuration.KnownAgentKeys(), ", "))
+			warnings++
+		}
+	}
 
 	// Config version. Validate against the agent's supported range
 	// (MinimumConfigVersion..CurrentConfigVersion) rather than a

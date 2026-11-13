@@ -346,14 +346,6 @@ func (lc *LocalConfiguration) GetConfiguration() ConfigurationData {
 	// Get auto-update configuration
 	autoUpdate := lc.GetAutoUpdateConfig()
 
-	// Convert auto-update interval based on enabled status
-	var updateInterval int
-	if autoUpdate.Enabled {
-		updateInterval = 3600 // 1 hour in seconds
-	} else {
-		updateInterval = 0 // Disabled
-	}
-
 	// The active updater compares against this target; an empty string makes it
 	// conclude "no update required" forever (#567), so an enabled agent with no
 	// explicit pin tracks the newest stable ("latest").
@@ -367,13 +359,13 @@ func (lc *LocalConfiguration) GetConfiguration() ConfigurationData {
 		StorageConfig: lc.snapshot().Storage,
 		Probes:        lc.snapshot().Probes,
 		Agent: AgentConfig{
-			RegistryUrl:         autoUpdate.URL,
-			Version:             updateVersion,
-			UpdateCheckInterval: updateInterval,
-			IncludeBeta:         autoUpdate.IncludeBeta,
-			License:             lc.snapshot().Agent.License,
-			AuthenticationKey:   lc.snapshot().Agent.Key,
-			GlobalTags:          lc.snapshot().Agent.GlobalTags,
+			RegistryUrl:       autoUpdate.URL,
+			Version:           updateVersion,
+			UpdateEnabled:     autoUpdate.Enabled,
+			IncludeBeta:       autoUpdate.IncludeBeta,
+			License:           lc.snapshot().Agent.License,
+			AuthenticationKey: lc.snapshot().Agent.Key,
+			GlobalTags:        lc.snapshot().Agent.GlobalTags,
 		},
 	}
 }
