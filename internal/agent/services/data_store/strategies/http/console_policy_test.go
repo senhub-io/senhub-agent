@@ -251,6 +251,9 @@ func TestNoExecConsoleRefusesPrograms(t *testing.T) {
 	if code, resp := doJSON(t, router, "PUT", base+"/config/probes/ref", map[string]interface{}{"type": "ctl_tool", "params": map[string]interface{}{"host": "b", "tool_path": "/opt/tool"}}); code != 200 {
 		t.Errorf("update sending the resolved form of the stored path: %d %v", code, resp)
 	}
+	if code, _ := doJSON(t, router, "PUT", base+"/config/probes/iac", map[string]interface{}{"type": "ctl_tool", "params": map[string]interface{}{"host": "b", "tool_path": "${env:CONSOLE_TEST_TOOL}"}}); code != 403 {
+		t.Errorf("a reference sent in place of the stored literal path: %d, want 403", code)
+	}
 }
 
 func TestNoExecConsoleDoesNotRunDescribedPrograms(t *testing.T) {

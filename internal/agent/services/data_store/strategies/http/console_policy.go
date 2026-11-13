@@ -156,7 +156,10 @@ func (p ConsolePolicy) execRefusal(ps spec.Probe, params, stored map[string]inte
 		if value == "" || value == def {
 			continue
 		}
-		if resolvedText(lookupPath(stored, path)) == resolvedText(value) {
+		// Only the stored side is resolved: a reference sent by the caller
+		// could name the same program today and another one later.
+		kept := lookupPath(stored, path)
+		if raw, _ := kept.(string); raw == value || (!strings.Contains(value, "$") && resolvedText(kept) == value) {
 			continue
 		}
 		return fmt.Sprintf("%s: the console cannot set %s, which names a program the agent would run", why, path)
