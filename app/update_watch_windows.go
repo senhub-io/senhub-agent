@@ -3,7 +3,6 @@
 package app
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,21 +22,22 @@ import (
 // into a new binary: it rolls back to the .previous binary if the service
 // never comes up.
 func runUpdateWatch(args []string) int {
-	fs := flag.NewFlagSet("update-watch", flag.ContinueOnError)
-	binary := fs.String("binary", "", "target binary path")
-	version := fs.String("version", "", "version that failed to start")
-	from := fs.String("from", "", "version being restored")
-	stateDir := fs.String("state-dir", "", "agent state directory")
-	if err := fs.Parse(args); err != nil || *binary == "" || *version == "" || *from == "" || *stateDir == "" {
+	a, perr := parseUpdateWatchArgs(args)
+	if a.stateDir == "" {
 		return 2
 	}
-	logFile, err := os.OpenFile(filepath.Join(*stateDir, "update-watch.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	logFile, err := os.OpenFile(filepath.Join(a.stateDir, "update-watch.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return 1
 	}
 	defer logFile.Close() //nolint:errcheck // best-effort close
-	logf := func(format string, a ...any) {
-		fmt.Fprintf(logFile, time.Now().Format(time.RFC3339)+" "+format+"\n", a...)
+	logf := func(format string, v ...any) {
+		fmt.Fprintf(logFile, time.Now().Format(time.RFC3339)+" "+format+"\n", v...)
+	}
+	logf("update-watch started binary=%q version=%q from=%q", a.binary, a.version, a.from)
+	if perr != nil {
+		logf("refused: %v", perr)
+		return 2
 	}
 
 	w := updateWatch{
@@ -77,12 +77,12 @@ func runUpdateWatch(args []string) int {
 		},
 		restore: func() error {
 			log := logger.NewModuleLogger(logger.NewLogger(&cliArgs.ParsedArgs{}), "update.watch")
-			return auto_update.RestoreAfterFailedStart(*stateDir, *binary, *version, *from, log)
+			return auto_update.RestoreAfterFailedStart(a.stateDir, a.binary, a.version, a.from, log)
 		},
 		start: func() (string, error) {
 			return restartServiceAfterUpdate(true)
 		},
-		binary: *binary,
+		binary: a.binary,
 		wait:   90 * time.Second,
 		settle: 15 * time.Second,
 		poll:   time.Second,

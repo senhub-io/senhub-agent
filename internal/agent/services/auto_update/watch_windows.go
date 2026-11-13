@@ -3,6 +3,7 @@
 package auto_update
 
 import (
+	"errors"
 	"io"
 	"os"
 	"os/exec"
@@ -23,6 +24,10 @@ func (a *autoUpdate) startFailedStartWatcher(toVersion string) {
 		a.logger.Warn().
 			Err(err).
 			Msg("Could not start the update watcher; a build that fails to start will not be rolled back")
+	}
+	if toVersion == "" {
+		warn(errors.New("no resolved target version"))
+		return
 	}
 	target, err := a.targetBinaryPath()
 	if err != nil {

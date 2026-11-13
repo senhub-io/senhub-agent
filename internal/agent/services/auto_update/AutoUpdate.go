@@ -772,7 +772,7 @@ func (a *autoUpdate) PeriodicalCheckForUpdate() error {
 		// to let the service manager restart into it. The MSI path is handled by
 		// msiexec (it stops and restarts the service), so we must NOT self-exit
 		// there — doing so would race the installer.
-		a.startFailedStartWatcher(expectedVersion)
+		a.startFailedStartWatcher(a.resolved)
 		a.logger.Info().Msg("Exiting to apply update")
 		os.Exit(0)
 	}
