@@ -38,7 +38,7 @@ func (e rollbackEnv) restoreAfterFailedStart(failedVersion string) error {
 	}
 	if err := e.fs.Rename(e.previousPath(), e.binary); err != nil {
 		if rbErr := e.fs.Rename(e.failedPath(), e.binary); rbErr != nil {
-			return fmt.Errorf("restoring the previous binary: %w (putting the failed binary back also failed: %v)", err, rbErr)
+			return fmt.Errorf("restoring the previous binary: %w (putting the failed binary back also failed: %w)", err, rbErr)
 		}
 		return fmt.Errorf("restoring the previous binary: %w", err)
 	}
