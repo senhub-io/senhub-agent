@@ -19,8 +19,9 @@ const windowsServiceName = "senhub-agent"
 // restartServiceAfterUpdate restarts the SCM service after update has
 // installed the new binary. An MSI-managed host is left alone because
 // msiexec restarts the service itself.
-func restartServiceAfterUpdate() (string, error) {
+func restartServiceAfterUpdate(startIfStopped bool) (string, error) {
 	return serviceRestarter{
+		startIfStopped: startIfStopped,
 		installed: func() bool {
 			if hostMsiManaged() {
 				return false
@@ -82,8 +83,10 @@ func restartServiceAfterUpdate() (string, error) {
 				return fmt.Errorf("opening service %s: %w", windowsServiceName, err)
 			}
 			defer s.Close() //nolint:errcheck // best-effort release
-			if _, err := s.Control(svc.Stop); err != nil {
-				return fmt.Errorf("sending stop to %s: %w", windowsServiceName, err)
+			if st, err := s.Query(); err != nil || st.State != svc.Stopped {
+				if _, err := s.Control(svc.Stop); err != nil {
+					return fmt.Errorf("sending stop to %s: %w", windowsServiceName, err)
+				}
 			}
 			deadline := time.Now().Add(30 * time.Second)
 			for {
@@ -128,6 +131,7 @@ func restartServiceAfterUpdate() (string, error) {
 		},
 		wait:       30 * time.Second,
 		poll:       500 * time.Millisecond,
+		settle:     10 * time.Second,
 		statusHint: "check 'Get-Service senhub-agent'",
 	}.run()
 }

@@ -3,6 +3,7 @@ package auto_update
 import (
 	"archive/zip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -83,6 +85,14 @@ type autoUpdate struct {
 	// resolved is the concrete version the last Update call resolved, read by
 	// the update CLI to say what it installed or would install.
 	resolved string
+	// cycleMu keeps the scheduler and a configuration reload from running two
+	// update cycles at once: both would download and swap the binary.
+	cycleMu sync.Mutex
+	// rerunCycle records a check that arrived during a cycle, so a reload
+	// is not lost until the next scheduled tick.
+	rerunCycle atomic.Bool
+	// acquireUpdateLock replaces the cross-process update lock in tests.
+	acquireUpdateLock func() (func(), error)
 	// targetPath is the executable to replace; empty means the running
 	// one. Set by tests so an update never lands on the test binary.
 	targetPath string
@@ -104,6 +114,12 @@ type autoUpdate struct {
 	// betaMsiWarned records that we already warned that an opted-in beta cannot
 	// be delivered as an MSI, so the warning is emitted once, not every cycle.
 	betaMsiWarned atomic.Bool
+	// rollbackSkipWarned records that we already said a rolled-back version is
+	// being skipped, so the hourly cycle does not repeat it.
+	rollbackSkipWarned atomic.Bool
+	// stateDir holds the update markers; empty means the agent's own state
+	// directory. Set by tests.
+	stateDir string
 	// launchInstaller runs the staged MSI. Nil in production (the real msiexec
 	// launch is used); injected by tests to assert applyMsiUpdate orchestration
 	// without spawning a process.
@@ -354,6 +370,30 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) (b
 		return false, err
 	}
 
+	// An operator naming a version on the command line keeps the last word; the
+	// periodic check does not retry a version that failed to boot until a newer
+	// one is released.
+	if !a.operatorDriven {
+		if skip, rec := a.rollbackEnvFor("").skipsVersion(expectedVersion); skip {
+			if a.rollbackSkipWarned.CompareAndSwap(false, true) {
+				a.logger.Warn().
+					Str("skipped_version", expectedVersion).
+					Str("failed_version", rec.FailedVersion).
+					Msg("Auto-update skipped: that version failed to start after an earlier update and was rolled back; waiting for a newer release")
+			}
+			return false, nil
+		}
+		// The binary on disk may already be this version, written by an
+		// "update --no-restart" the service has not restarted into yet;
+		// applying it again would keep it as the "previous" binary.
+		if a.rollbackEnvFor("").stagedAwaitingRestart(expectedVersion) {
+			a.logger.Info().
+				Str("version", expectedVersion).
+				Msg("Auto-update skipped: this version is already installed and waits for a service restart")
+			return false, nil
+		}
+	}
+
 	// Refuse to replace the binary from inside the daemon where the platform
 	// does not allow it. Checked BEFORE the download: there is no point
 	// fetching an artifact we will not install, and an hourly download that
@@ -369,7 +409,7 @@ func (a *autoUpdate) Update(expectedVersionStr string, registryUrl ...string) (b
 		Str("binary_url", binaryUrl).
 		Msg("Downloading binary")
 
-	err = a.doUpdate(binaryUrl)
+	err = a.doUpdate(binaryUrl, expectedVersion)
 	if err != nil {
 		a.logger.Error().
 			Err(err).
@@ -405,7 +445,7 @@ func (a *autoUpdate) GetMsiUrl(registryUrl, version string) (string, error) {
 // 0.2.0+ wraps them in OS-named ZIPs so the file name matches what an
 // operator downloading from the GitHub release would see, and so the
 // release matrix stops shipping duplicate raw + zipped variants.
-func (a *autoUpdate) doUpdate(downloadURL string) error {
+func (a *autoUpdate) doUpdate(downloadURL, toVersion string) error {
 	if a.dryRun {
 		a.logger.Info().Msg("Dry run: Skipping update")
 		return nil
@@ -511,8 +551,25 @@ func (a *autoUpdate) doUpdate(downloadURL string) error {
 	}
 	defer rc.Close()
 
+	env := a.rollbackEnvFor(target)
+	var keepErr error
+	if toVersion != "" {
+		keepErr = env.keepPreviousBinary()
+	}
+	if keepErr != nil {
+		a.logger.Warn().Err(keepErr).Str("binary", target).
+			Msg("Could not keep the current binary for rollback; this update cannot be rolled back automatically")
+	}
+
 	if err := applyBinary(rc, target); err != nil {
 		return fmt.Errorf("failed to apply update: %w", err)
+	}
+
+	if toVersion != "" && keepErr == nil {
+		if err := env.recordSwap(cliArgs.Version, toVersion); err != nil {
+			a.logger.Warn().Err(err).Str("state_dir", env.stateDir).
+				Msg("Could not record the update for rollback; this update will not be rolled back automatically")
+		}
 	}
 
 	a.logger.Info().Msg("Update applied successfully")
@@ -703,6 +760,37 @@ func (a *autoUpdate) PeriodicalCheckForUpdate() error {
 		a.logger.Debug().Msg("Update check skipped: paused by an extension")
 		return nil
 	}
+	// Raise the flag before trying the lock: a holder that has just let go
+	// either sees it or has already released the lock this call then takes.
+	a.rerunCycle.Store(true)
+	if !a.cycleMu.TryLock() {
+		a.logger.Debug().Msg("Update check deferred: another update cycle is running; it will run again when done")
+		return nil
+	}
+	for {
+		a.rerunCycle.Store(false)
+		err := a.checkForUpdateOnce()
+		if a.rerunCycle.Load() {
+			continue
+		}
+		a.cycleMu.Unlock()
+		// A check deferred between the load above and the unlock would
+		// otherwise be lost: take the lock back for it unless another
+		// caller already holds it and will run the check itself.
+		if !a.rerunCycle.Load() || !a.cycleMu.TryLock() {
+			return err
+		}
+	}
+}
+
+func (a *autoUpdate) updateLock() (func(), error) {
+	if a.acquireUpdateLock != nil {
+		return a.acquireUpdateLock()
+	}
+	return AcquireUpdateLock(a.rollbackEnvFor("").stateDir)
+}
+
+func (a *autoUpdate) checkForUpdateOnce() error {
 	// auto_update.enabled can be turned off while the agent runs: the
 	// updater started with it on keeps its scheduler, so every check reads
 	// the setting in force.
@@ -710,6 +798,18 @@ func (a *autoUpdate) PeriodicalCheckForUpdate() error {
 		a.logger.Debug().Msg("Update check skipped: auto_update is disabled")
 		return nil
 	}
+
+	release, err := a.updateLock()
+	if err != nil {
+		if errors.Is(err, ErrUpdateInProgress) {
+			a.logger.Info().Msg("Update check skipped: an update started by an operator is in progress")
+			return nil
+		}
+		a.logger.Warn().Err(err).Msg("Could not take the update lock; checking without it")
+		release = func() {}
+	}
+	defer release()
+
 	expectedVersion := a.configSource.GetConfiguration().Agent.Version
 	registryUrl := a.configSource.GetConfiguration().Agent.RegistryUrl
 
@@ -730,6 +830,7 @@ func (a *autoUpdate) PeriodicalCheckForUpdate() error {
 		// to let the service manager restart into it. The MSI path is handled by
 		// msiexec (it stops and restarts the service), so we must NOT self-exit
 		// there — doing so would race the installer.
+		a.startFailedStartWatcher(a.resolved)
 		a.logger.Info().Msg("Exiting to apply update")
 		os.Exit(0)
 	}

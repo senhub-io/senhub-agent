@@ -17,7 +17,11 @@ type serviceRestarter struct {
 	version    func(exe string) string
 	wait       time.Duration
 	poll       time.Duration
+	settle     time.Duration
 	statusHint string
+	// startIfStopped starts a service that is installed but not running
+	// instead of leaving it alone.
+	startIfStopped bool
 }
 
 // run restarts the service when it is installed and running, waits for a
@@ -25,7 +29,7 @@ type serviceRestarter struct {
 // disk, i.e. the one just installed. "" means there was no running
 // service to restart.
 func (r serviceRestarter) run() (string, error) {
-	if !r.installed() || !r.isActive() {
+	if !r.installed() || (!r.isActive() && !r.startIfStopped) {
 		return "", nil
 	}
 	before := r.mainPID()
@@ -50,6 +54,18 @@ func (r serviceRestarter) run() (string, error) {
 	}
 	if strings.HasSuffix(exe, " (deleted)") {
 		return "", fmt.Errorf("the service restarted but runs a binary that no longer exists (%s)", exe)
+	}
+	if r.settle > 0 {
+		settleDeadline := time.Now().Add(r.settle)
+		for {
+			if !r.isActive() || r.mainPID() != pid {
+				return "", fmt.Errorf("the service stopped within %s of its start; %s", r.settle, r.statusHint)
+			}
+			if time.Now().After(settleDeadline) {
+				break
+			}
+			time.Sleep(r.poll)
+		}
 	}
 	line := "Service restarted"
 	if v := strings.TrimSpace(r.version(exe)); v != "" {
