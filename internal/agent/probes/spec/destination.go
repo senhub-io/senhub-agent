@@ -2,7 +2,7 @@ package spec
 
 import "regexp"
 
-var destinationKey = regexp.MustCompile(`(?i)^(hosts?|hostnames?|urls?|uris?|endpoints?|address(es)?|addr|servers?|targets?|dsn|brokers|nodes|socket(_path)?|connection_string|.*_(url|uri|host|hosts|endpoint|address|addr|server|servers))$`)
+var destinationKey = regexp.MustCompile(`(?i)^(hosts?|hostnames?|urls?|uris?|endpoints?|address(es)?|addr|servers?|targets?|dsn|brokers|nodes|socket(_path)?|connection_string|.*_(urls?|uris?|hosts?|endpoints?|address(es)?|addrs?|servers?))$`)
 
 // DestinationPaths lists the dotted paths of the parameters that say where
 // the agent connects: the ones a credential must not follow when they

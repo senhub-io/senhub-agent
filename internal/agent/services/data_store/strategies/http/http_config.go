@@ -232,9 +232,10 @@ func ValidateParams(params configuration.StorageConfigParams) error {
 		}
 	}
 
-	if _, err := ParseConsolePolicy(params); err != nil {
-		return err
-	}
+	// An unreadable console block is not refused here: refusing it would
+	// drop the reload, or stop the agent at start, and keep or lose the
+	// console with it. The output runs and the console fails closed
+	// (loadConsolePolicy); config check and doctor report the block.
 
 	// Validate bind_address if provided
 	if bindValue, exists := params["bind_address"]; exists {

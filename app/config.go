@@ -681,6 +681,14 @@ func checkConfig(configPath string) checkOutcome {
 					continue
 				}
 			}
+			if s.Name == "http" {
+				if _, perr := httpstrategy.ParseConsolePolicy(s.Params); perr != nil {
+					fmt.Printf("  [ERROR] Storage %q: %v\n", s.Name, perr)
+					fmt.Println("          The agent runs with this file, but its console stays read-only until the block is fixed.")
+					errorCount++
+					continue
+				}
+			}
 			fmt.Printf("  [OK]   Storage: %s\n", s.Name)
 			if s.Name == "http" {
 				policy, _ := httpstrategy.ParseConsolePolicy(s.Params)

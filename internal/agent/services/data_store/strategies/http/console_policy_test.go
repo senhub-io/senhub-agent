@@ -333,8 +333,21 @@ func TestAMalformedConsoleBlockFailsClosed(t *testing.T) {
 	if !cm.Console().ReadOnly {
 		t.Error("an unreadable block must leave the console read-only")
 	}
-	if err := ValidateParams(map[string]interface{}{"console": map[string]interface{}{"read_only": "true"}}); err == nil {
-		t.Error("config check must reject a non-boolean read_only")
+	// The output itself is accepted, so a reload is applied and a start
+	// goes on: refusing it kept the previous console, or stopped the agent.
+	for _, bad := range []map[string]interface{}{
+		{"read_only": "true"},
+		{"read_ony": true},
+	} {
+		params := map[string]interface{}{"console": bad}
+		if err := ValidateParams(params); err != nil {
+			t.Errorf("console %v: the output must still be accepted, got %v", bad, err)
+		}
+		reloaded := NewConfigurationManager(nil, map[string]interface{}{}, testModuleLogger())
+		reloaded.UpdateConfiguration(params)
+		if !reloaded.Console().ReadOnly {
+			t.Errorf("console %v applied by a reload: the console must be read-only", bad)
+		}
 	}
 }
 
