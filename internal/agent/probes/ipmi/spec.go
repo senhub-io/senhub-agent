@@ -19,7 +19,7 @@ func init() {
 				{Key: "include_types", Kind: probes.KindStringList, Description: "Only these sensor types; empty means all", Example: "Temperature, Fan"},
 				{Key: "exclude_names", Kind: probes.KindStringList, Description: "Regular expressions of sensor names to skip"},
 			}},
-			{Key: "ipmitool_path", Kind: probes.KindString, Default: "ipmitool", Group: "advanced", Description: "Path of the ipmitool binary when it is not on the PATH", Example: "/usr/bin/ipmitool"},
+			{Key: "ipmitool_path", Kind: probes.KindString, Executable: true, Default: "ipmitool", Group: "advanced", Description: "Path of the ipmitool binary when it is not on the PATH", Example: "/usr/bin/ipmitool"},
 			{Key: "interval", Kind: probes.KindInt, Default: 60, Group: "collection", Description: "Seconds between collections"},
 			{Key: "exec_timeout", Kind: probes.KindInt, Default: 10, Group: "collection", Description: "Seconds an ipmitool run may take before it is killed"},
 		},

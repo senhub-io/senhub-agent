@@ -21,13 +21,11 @@ import (
 	"github.com/minio/selfupdate"
 	"github.com/ybbus/httpretry"
 	"senhub-agent.go/internal/agent/cliArgs"
-	"senhub-agent.go/internal/agent/configParser"
 	"senhub-agent.go/internal/agent/lifecycle"
 	"senhub-agent.go/internal/agent/periodic_scheduler"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/logger"
-	"senhub-agent.go/internal/agent/validators"
 )
 
 var (
@@ -793,6 +791,14 @@ func (a *autoUpdate) updateLock() (func(), error) {
 }
 
 func (a *autoUpdate) checkForUpdateOnce() error {
+	// auto_update.enabled can be turned off while the agent runs: the
+	// updater started with it on keeps its scheduler, so every check reads
+	// the setting in force.
+	if !a.configSource.GetConfiguration().Agent.UpdateEnabled {
+		a.logger.Debug().Msg("Update check skipped: auto_update is disabled")
+		return nil
+	}
+
 	release, err := a.updateLock()
 	if err != nil {
 		if errors.Is(err, ErrUpdateInProgress) {
@@ -855,27 +861,10 @@ func (a *autoUpdate) GetRegistryUrl(registryUrl string) string {
 	return registryUrl
 }
 
+// GetUpdateCheckInterval is the period of the update check: one hour. The
+// check also runs at start and on every configuration change.
 func (a *autoUpdate) GetUpdateCheckInterval() time.Duration {
-	rawValue := a.configSource.GetConfiguration().Agent.UpdateCheckInterval
-	if rawValue == nil {
-		return DEFAULT_UPDATE_CHECK_INTERVAL
-	}
-	if !validators.IsDuration(rawValue) {
-		a.logger.Error().
-			Interface("update_check_interval", rawValue).
-			Msg("Failed to parse update check interval")
-		return DEFAULT_UPDATE_CHECK_INTERVAL
-	}
-
-	updateCheckInterval, err := configParser.ParseDuration(rawValue)
-	if err != nil {
-		a.logger.Error().
-			Interface("update_check_interval", rawValue).
-			Err(err).
-			Msg("Failed to parse update check interval")
-		return DEFAULT_UPDATE_CHECK_INTERVAL
-	}
-	return updateCheckInterval
+	return DEFAULT_UPDATE_CHECK_INTERVAL
 }
 
 func (a *autoUpdate) getExpectedVersionFromConfig() string {

@@ -17,7 +17,7 @@ func TestCheckForUpdateOnce_OperatorUpdateInProgressContactsNothing(t *testing.T
 	defer srv.Close()
 
 	au := &autoUpdate{
-		configSource: newMockConfiguration("", `{"agent":{"version":"latest","registry_url":"`+srv.URL+`"}}`),
+		configSource: newMockConfiguration("", `{"agent":{"update_enabled":true,"version":"latest","registry_url":"`+srv.URL+`"}}`),
 		logger:       createTestModuleLogger(),
 		httpClient:   srv.Client(),
 		acquireUpdateLock: func() (func(), error) {
@@ -48,7 +48,7 @@ func TestCheckForUpdateOnce_HoldsTheLockForTheCycle(t *testing.T) {
 	defer srv.Close()
 
 	au := &autoUpdate{
-		configSource: newMockConfiguration("", `{"agent":{"version":"latest","registry_url":"`+srv.URL+`"}}`),
+		configSource: newMockConfiguration("", `{"agent":{"update_enabled":true,"version":"latest","registry_url":"`+srv.URL+`"}}`),
 		logger:       createTestModuleLogger(),
 		httpClient:   srv.Client(),
 		acquireUpdateLock: func() (func(), error) {
@@ -79,7 +79,7 @@ func TestCheckForUpdateOnce_LockErrorStillChecks(t *testing.T) {
 	defer srv.Close()
 
 	au := &autoUpdate{
-		configSource: newMockConfiguration("", `{"agent":{"version":"latest","registry_url":"`+srv.URL+`"}}`),
+		configSource: newMockConfiguration("", `{"agent":{"update_enabled":true,"version":"latest","registry_url":"`+srv.URL+`"}}`),
 		logger:       createTestModuleLogger(),
 		httpClient:   srv.Client(),
 		acquireUpdateLock: func() (func(), error) {

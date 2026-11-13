@@ -29,7 +29,7 @@ func TestPeriodicalCheckForUpdate_SecondCycleIsSkippedWhileOneRuns(t *testing.T)
 	})
 
 	au := &autoUpdate{
-		configSource: newMockConfiguration("", `{"agent":{"version":"latest","registry_url":"`+srv.URL+`"}}`),
+		configSource: newMockConfiguration("", `{"agent":{"update_enabled":true,"version":"latest","registry_url":"`+srv.URL+`"}}`),
 		logger:       createTestModuleLogger(),
 		httpClient:   srv.Client(),
 	}
@@ -96,7 +96,7 @@ func TestPeriodicalCheckForUpdate_ReloadDuringACycleRunsAgain(t *testing.T) {
 	})
 
 	au := &autoUpdate{
-		configSource: newMockConfiguration("", `{"agent":{"version":"latest","registry_url":"`+srv.URL+`"}}`),
+		configSource: newMockConfiguration("", `{"agent":{"update_enabled":true,"version":"latest","registry_url":"`+srv.URL+`"}}`),
 		logger:       createTestModuleLogger(),
 		httpClient:   srv.Client(),
 	}

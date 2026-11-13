@@ -9,6 +9,7 @@ func RegisterCommand(c senhub-agent.go/app.ExtraCommand)
 == senhub-agent.go/probesdk/cliargs (package cliArgs) ==
 alias ParsedArgs = senhub-agent.go/internal/agent/cliArgs.ParsedArgs
   field AuthenticationKey string
+  field AutoUpdate *bool
   field CertFile string
   field CommitHash string
   field ConfigPath string
@@ -424,7 +425,9 @@ alias ParamSpec = senhub-agent.go/internal/agent/probes/spec.ParamSpec
   field Essential bool `json:"essential,omitempty"`
   field EssentialWhen []senhub-agent.go/internal/agent/probes/spec.Condition `json:"essential_when,omitempty"`
   field Example string `json:"example,omitempty"`
+  field Executable bool `json:"executable,omitempty"`
   field Fields []senhub-agent.go/internal/agent/probes/spec.ParamSpec `json:"fields,omitempty"`
+  field FileOnly bool `json:"file_only,omitempty"`
   field Group string `json:"group,omitempty"`
   field Key string `json:"key"`
   field Kind senhub-agent.go/internal/agent/probes/spec.ParamKind `json:"kind"`
@@ -443,6 +446,7 @@ alias Probe = senhub-agent.go/internal/agent/probes/spec.Probe
   field Type string `json:"type"`
   method CheckParams(params map[string]interface{}) []senhub-agent.go/internal/agent/probes/spec.SpecProblem
   method DeclaredKeys() map[string]struct{}
+  method ExecutablePaths() map[string]string
   method HasStartSet() bool
   method RunsOn(goos string) bool
   method SecretPaths() []string
@@ -526,6 +530,7 @@ type senhub-agent.go/internal/agent/probes/spec.Probe struct
   field Type string `json:"type"`
   method CheckParams(params map[string]interface{}) []senhub-agent.go/internal/agent/probes/spec.SpecProblem
   method DeclaredKeys() map[string]struct{}
+  method ExecutablePaths() map[string]string
   method HasStartSet() bool
   method RunsOn(goos string) bool
   method SecretPaths() []string
