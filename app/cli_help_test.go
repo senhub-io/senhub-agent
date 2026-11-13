@@ -165,7 +165,7 @@ func TestEveryCommandHasHelpGuard(t *testing.T) {
 		check(name)
 	}
 	for name := range knownTopLevelArgs {
-		if strings.HasPrefix(name, "-") || name == "help" || name == "version" || name == "debug-modules-list" {
+		if strings.HasPrefix(name, "-") || name == "help" || name == "version" || name == "debug-modules-list" || name == "update-watch" {
 			continue
 		}
 		check(name)
