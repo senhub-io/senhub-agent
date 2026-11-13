@@ -18,3 +18,8 @@ docs/user-guide/docs/deploying/cloud-init.md	\(`@V@` in the example\)
 docs/user-guide/docs/deploying/helm.md	tag: "@V@"
 docs/user-guide/docs/deploying/helm.md	exact version \(`@V@`\)
 packaging/podman/senhub-agent.container	use :@V@, or a digest
+docs/user-guide/docs/installation.md	releases/download/@V@/
+docs/user-guide/docs/installation.md	The tag is `@V@`
+docs/user-guide/docs/installation.md	not `v@V@`
+docs/user-guide/docs/installation.md	^VERSION=@V@
+docs/user-guide/docs/installation.md	"version":"@V@"
