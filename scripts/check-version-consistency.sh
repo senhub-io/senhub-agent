@@ -11,8 +11,12 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 new=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --root) root=$(cd "$2" && pwd); shift 2 ;;
-    --set) new="${2:-}"; shift 2 ;;
+    --root|--set)
+      if [ $# -lt 2 ] || [ -z "$2" ]; then
+        echo "usage: $0 [--root DIR] [--set X.Y.Z] ($1 needs a value)" >&2; exit 2
+      fi
+      if [ "$1" = --root ]; then root=$(cd "$2" && pwd); else new="$2"; fi
+      shift 2 ;;
     *) echo "usage: $0 [--root DIR] [--set X.Y.Z]" >&2; exit 2 ;;
   esac
 done
@@ -49,6 +53,8 @@ while IFS=$'\t' read -r file pattern; do
   suffix=${pattern#*@V@}
   any="${prefix}${generic}${suffix}"
   exact="${prefix}${escaped}${suffix}"
+  # With nothing after @V@, 0.6.4 must not pass for 0.6.40 or 0.6.4-beta.2.
+  [ -n "$suffix" ] || exact="${exact}([^0-9A-Za-z.+-]|$)"
 
   hits=$(grep -nE -- "$any" "$target" || true)
   if [ -z "$hits" ]; then
