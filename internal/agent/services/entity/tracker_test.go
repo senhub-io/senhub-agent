@@ -382,3 +382,52 @@ func TestDeleteForCopiesRetireByExpiry(t *testing.T) {
 		t.Fatalf("deleteFor did not copy RetireByExpiry, got %+v", del.Entity)
 	}
 }
+
+func TestTrackerDormantEviction(t *testing.T) {
+	var got []Event
+	tr := NewTracker(func(ev Event) { got = append(got, ev) }, 10*time.Second)
+	tr.dormantCap = 2
+
+	base := time.Unix(1000, 0)
+	mk := func(key string) Event {
+		return Event{
+			Kind: EntityState,
+			Entity: &Entity{
+				Type:           "host",
+				ID:             map[string]any{"name": key},
+				RetireByExpiry: true,
+			},
+			Interval: time.Hour,
+		}
+	}
+
+	// Cycle 1: only A.
+	now := base
+	tr.Reconcile([]Event{mk("A")}, now, nil)
+	// Cycle 2: A and B.
+	now = base.Add(time.Second)
+	tr.Reconcile([]Event{mk("A"), mk("B")}, now, nil)
+	// Cycle 3: A, B, C.
+	now = base.Add(2 * time.Second)
+	tr.Reconcile([]Event{mk("A"), mk("B"), mk("C")}, now, nil)
+
+	// Cycle 4: none present – no deletes, and A should be evicted silently.
+	got = nil
+	now = base.Add(3 * time.Second)
+	tr.Reconcile(nil, now, nil)
+	if len(got) != 0 {
+		t.Fatalf("cycle with all absent: expected no events, got %d", len(got))
+	}
+
+	// Cycle 5: all three return unchanged. Only A is republished (forgotten);
+	// B and C are suppressed because unchanged and not grid-due.
+	got = nil
+	now = base.Add(4 * time.Second)
+	tr.Reconcile([]Event{mk("A"), mk("B"), mk("C")}, now, nil)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 republished event, got %d", len(got))
+	}
+	if got[0].Entity.ID["name"] != "A" {
+		t.Fatalf("expected A republished, got key %v", got[0].Entity.ID)
+	}
+}

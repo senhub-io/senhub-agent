@@ -7,6 +7,12 @@ import (
 	"time"
 )
 
+// maxDormant is the default limit on how many dormant (absent but not expired)
+// RetireByExpiry entities the tracker keeps. Beyond this, the oldest are
+// silently forgotten so a flood of transient identities cannot grow the maps
+// without bound.
+const maxDormant = 50000
+
 // Tracker turns a per-cycle snapshot of observed entities into the event
 // stream the consumer expects: it re-emits every current entity as a state
 // event (the heartbeat — coalesced consumer-side) and emits a delete for any
@@ -43,6 +49,10 @@ type Tracker struct {
 	// received, and the tracker forgets it at the same point so a later
 	// return is published in full.
 	expiry map[string]time.Duration
+	// dormantCap is the maximum number of dormant (absent, RetireByExpiry,
+	// not yet expired) entities retained before the oldest are forgotten
+	// silently. Set to maxDormant by NewTracker; tests may lower it.
+	dormantCap int
 }
 
 type published struct {
@@ -54,11 +64,12 @@ type published struct {
 // heartbeat grid interval (see Tracker.refresh); zero disables it.
 func NewTracker(publish func(Event), refresh time.Duration) *Tracker {
 	return &Tracker{
-		publish: publish,
-		seen:    map[string]Event{},
-		refresh: refresh,
-		pub:     map[string]published{},
-		expiry:  map[string]time.Duration{},
+		publish:    publish,
+		seen:       map[string]Event{},
+		refresh:    refresh,
+		pub:        map[string]published{},
+		expiry:     map[string]time.Duration{},
+		dormantCap: maxDormant,
 	}
 }
 
@@ -75,7 +86,10 @@ func NewTracker(publish func(Event), refresh time.Duration) *Tracker {
 //
 // An entity marked RetireByExpiry is never deleted on absence; it is
 // forgotten silently once its announced interval has run since its last
-// published state.
+// published state. Absent ones still remembered are capped at dormantCap so a
+// flood of short-lived identities cannot grow the maps without bound: past
+// the cap the oldest by last publication are forgotten, still without a
+// delete.
 func (t *Tracker) Reconcile(current []Event, now time.Time, reasons map[string]string) {
 	cur := make(map[string]bool, len(current))
 
@@ -120,6 +134,10 @@ func (t *Tracker) Reconcile(current []Event, now time.Time, reasons map[string]s
 			t.nextGrid = now.Add(t.refresh)
 		}
 	}
+
+	// Collect dormant (absent, not expired) RetireByExpiry keys for possible
+	// eviction if they exceed the cap.
+	var dormant []string
 	for k, del := range t.seen {
 		if cur[k] {
 			continue
@@ -133,6 +151,8 @@ func (t *Tracker) Reconcile(current []Event, now time.Time, reasons map[string]s
 				delete(t.seen, k)
 				delete(t.pub, k)
 				delete(t.expiry, k)
+			} else {
+				dormant = append(dormant, k)
 			}
 			continue
 		}
@@ -149,6 +169,26 @@ func (t *Tracker) Reconcile(current []Event, now time.Time, reasons map[string]s
 		delete(t.seen, k)
 		delete(t.pub, k)
 		delete(t.expiry, k)
+	}
+
+	// If too many dormant entities remain, evict the oldest until we are at
+	// the cap. The entities are not expired yet, so we forget them silently
+	// (no delete) so that future reappearances are published in full.
+	if len(dormant) > t.dormantCap {
+		sort.Slice(dormant, func(i, j int) bool {
+			pi := t.pub[dormant[i]]
+			pj := t.pub[dormant[j]]
+			if pi.at.Equal(pj.at) {
+				return dormant[i] < dormant[j]
+			}
+			return pi.at.Before(pj.at)
+		})
+		excess := len(dormant) - t.dormantCap
+		for _, k := range dormant[:excess] {
+			delete(t.seen, k)
+			delete(t.pub, k)
+			delete(t.expiry, k)
+		}
 	}
 }
 
