@@ -37,6 +37,12 @@ type Tracker struct {
 	// pub maps an identity key to the content hash and emit time of the
 	// last published state for that key.
 	pub map[string]published
+	// expiry holds, for an entity marked RetireByExpiry, the interval its
+	// last state announced. Such an entity is never deleted on absence: the
+	// consumer expires it once that interval has run since the state it last
+	// received, and the tracker forgets it at the same point so a later
+	// return is published in full.
+	expiry map[string]time.Duration
 }
 
 type published struct {
@@ -52,6 +58,7 @@ func NewTracker(publish func(Event), refresh time.Duration) *Tracker {
 		seen:    map[string]Event{},
 		refresh: refresh,
 		pub:     map[string]published{},
+		expiry:  map[string]time.Duration{},
 	}
 }
 
@@ -65,6 +72,10 @@ func NewTracker(publish func(Event), refresh time.Duration) *Tracker {
 // the entities whose disappearance the caller can explain. A key with no entry
 // gets ReasonTerminated: the source answered and stopped listing the entity.
 // nil is fine and means every delete this cycle is a plain termination.
+//
+// An entity marked RetireByExpiry is never deleted on absence; it is
+// forgotten silently once its announced interval has run since its last
+// published state.
 func (t *Tracker) Reconcile(current []Event, now time.Time, reasons map[string]string) {
 	cur := make(map[string]bool, len(current))
 
@@ -92,6 +103,10 @@ func (t *Tracker) Reconcile(current []Event, now time.Time, reasons map[string]s
 		cur[k] = true
 		t.seen[k] = deleteFor(ev)
 
+		if ev.Entity != nil && ev.Entity.RetireByExpiry {
+			t.expiry[k] = ev.Interval
+		}
+
 		h := stateHash(ev)
 		p, ok := t.pub[k]
 		changed := !ok || p.hash != h
@@ -109,6 +124,18 @@ func (t *Tracker) Reconcile(current []Event, now time.Time, reasons map[string]s
 		if cur[k] {
 			continue
 		}
+		// A cache that stops listing an entry says nothing about it: no
+		// delete. Once the consumer's liveness deadline, armed by the last
+		// state it received, has passed, the entity is forgotten silently.
+		if del.Entity != nil && del.Entity.RetireByExpiry {
+			p, published := t.pub[k]
+			if !published || t.expiry[k] <= 0 || now.Sub(p.at) >= t.expiry[k] {
+				delete(t.seen, k)
+				delete(t.pub, k)
+				delete(t.expiry, k)
+			}
+			continue
+		}
 		del.Time = now
 		// Absence alone does not say why. The reason is decided upstream, in
 		// the detector, which knows whether the source answered, went quiet or
@@ -121,6 +148,7 @@ func (t *Tracker) Reconcile(current []Event, now time.Time, reasons map[string]s
 		t.publish(del)
 		delete(t.seen, k)
 		delete(t.pub, k)
+		delete(t.expiry, k)
 	}
 }
 
@@ -197,13 +225,15 @@ func canonicalID(id map[string]any) string {
 // state event, carrying only its type + identity (no descriptive attributes,
 // no relationships). Scope rides along so the delete is emitted under the same
 // instrumentation scope (discovery method) as the state it retires (#253).
+// RetireByExpiry rides along so absence never turns into a delete for it.
 func deleteFor(ev Event) Event {
 	return Event{
 		Kind: EntityDelete,
 		Entity: &Entity{
-			Type:  ev.Entity.Type,
-			ID:    ev.Entity.ID,
-			Scope: ev.Entity.Scope,
+			Type:           ev.Entity.Type,
+			ID:             ev.Entity.ID,
+			Scope:          ev.Entity.Scope,
+			RetireByExpiry: ev.Entity.RetireByExpiry,
 		},
 	}
 }

@@ -371,13 +371,17 @@ table `senhub-agent/snmp-arp`.
 
 A MAC owned by the observing device itself, multicast and broadcast
 addresses, entries the device marks as its own and entries it has not learned
-are not published. A neighbour leaves, as `aged_out`, when a successful read
-of the tables no longer lists it; a read that fails keeps the neighbours of
-the previous one.
+are not published. A neighbour is never deleted because a read stops listing
+it: a switch forgets an idle MAC within minutes, so its absence says nothing
+about the neighbour. Each neighbour announces a liveness interval of 24 hours,
+and the topology consumer retires it when no read has listed it for that long.
+A neighbour that really left therefore stays visible for up to 24 hours.
 
 At most `max_neighbors` neighbours are published per device (1000 by
-default). Above the bound, the neighbours resolved to an interface are kept
-first, then those with an IP address, then the others by MAC address. The
+default). Above the bound, the neighbours already published at the previous
+read are kept first, as long as they are still listed, so the cut does not
+move with every arrival. The free places go to the neighbours resolved to an
+interface, then those with an IP address, then the others by MAC address. The
 device entity carries `senhub.neighbors.limit` and
 `senhub.neighbors.omitted`, so a cut table is never mistaken for a complete
 one, and the agent logs `neighbor table bound: some neighbors omitted` at

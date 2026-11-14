@@ -137,9 +137,11 @@ func buildNeighborObservation(hostID string, neighbors []hostNeighbor, macIndex 
 			attrNetworkNeighborObservedInterface: ifaces[0],
 		}
 		obs.Entities = append(obs.Entities, entity.Entity{
-			Type:       entityTypeNetworkNeighbor,
-			ID:         id,
-			Attributes: attrs,
+			Type:           entityTypeNetworkNeighbor,
+			ID:             id,
+			Attributes:     attrs,
+			Cadence:        entity.NeighborLiveness,
+			RetireByExpiry: true,
 		})
 
 		for _, iface := range ifaces {

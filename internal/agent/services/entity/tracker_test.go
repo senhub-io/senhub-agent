@@ -238,3 +238,147 @@ func TestTracker_HeartbeatCadenceSurvivesTickJitter(t *testing.T) {
 		t.Errorf("published %d heartbeats over 30 min, want 16", len(times))
 	}
 }
+
+func TestTracker_RetireByExpiryNoDeleteOnAbsence(t *testing.T) {
+	var got []Event
+	tr := NewTracker(func(ev Event) { got = append(got, ev) }, 0)
+
+	t0 := time.Unix(1000, 0).UTC()
+	neighbor := Event{
+		Kind:     EntityState,
+		Time:     t0,
+		Interval: NeighborLiveness,
+		Entity: &Entity{
+			Type:           "network.neighbor",
+			ID:             map[string]any{"mac": "AA"},
+			RetireByExpiry: true,
+		},
+	}
+
+	tr.Reconcile([]Event{neighbor}, t0, nil)
+	if countKind(got, EntityDelete) != 0 {
+		t.Fatalf("first cycle produced delete, want none")
+	}
+
+	for _, delta := range []time.Duration{time.Minute, 2 * time.Minute, 10 * time.Hour} {
+		got = nil
+		now := t0.Add(delta)
+		tr.Reconcile(nil, now, nil)
+		if countKind(got, EntityDelete) != 0 {
+			t.Fatalf("absence after %v produced delete, want none", delta)
+		}
+	}
+}
+
+func TestTracker_RetireByExpiryReturnUnchangedBeforeExpirySuppressed(t *testing.T) {
+	var got []Event
+	tr := NewTracker(func(ev Event) { got = append(got, ev) }, time.Minute)
+
+	t0 := time.Unix(1000, 0).UTC()
+	neighbor := Event{
+		Kind:     EntityState,
+		Time:     t0,
+		Interval: NeighborLiveness,
+		Entity: &Entity{
+			Type:           "network.neighbor",
+			ID:             map[string]any{"mac": "AA"},
+			Attributes:     map[string]any{"state": "up"},
+			RetireByExpiry: true,
+		},
+	}
+
+	tr.Reconcile([]Event{neighbor}, t0, nil)
+	if len(got) != 1 || got[0].Kind != EntityState {
+		t.Fatalf("first cycle should publish exactly one state, got %v", got)
+	}
+
+	// Absence for a short time, then return unchanged before grid due.
+	tr.Reconcile(nil, t0.Add(10*time.Second), nil) // no delete, kept
+	got = nil
+	tr.Reconcile([]Event{neighbor}, t0.Add(20*time.Second), nil)
+	if len(got) != 0 {
+		t.Fatalf("unchanged return within refresh and before expiry should be suppressed, got %v", got)
+	}
+}
+
+func TestTracker_RetireByExpiryForgetAfterIntervalThenRepublish(t *testing.T) {
+	var got []Event
+	tr := NewTracker(func(ev Event) { got = append(got, ev) }, 0)
+
+	t0 := time.Unix(1000, 0).UTC()
+	interval := time.Minute
+	neighbor := Event{
+		Kind:     EntityState,
+		Time:     t0,
+		Interval: interval,
+		Entity: &Entity{
+			Type:           "network.neighbor",
+			ID:             map[string]any{"mac": "AA"},
+			RetireByExpiry: true,
+		},
+	}
+
+	tr.Reconcile([]Event{neighbor}, t0, nil)
+	if len(got) != 1 || got[0].Kind != EntityState {
+		t.Fatalf("first state published, got %v", got)
+	}
+	if countKind(got, EntityDelete) != 0 {
+		t.Fatal("first cycle had delete, want none")
+	}
+
+	// Absence beyond interval: should be forgotten silently.
+	now := t0.Add(2 * interval)
+	got = nil
+	tr.Reconcile(nil, now, nil)
+	if countKind(got, EntityDelete) != 0 {
+		t.Fatalf("absence beyond interval produced delete, want none, got %v", got)
+	}
+	if countKind(got, EntityState) != 0 {
+		t.Fatalf("absence beyond interval produced state, want none, got %v", got)
+	}
+
+	// Return after forgotten: should publish state again.
+	tr.Reconcile([]Event{neighbor}, now.Add(time.Second), nil)
+	if countKind(got, EntityState) != 1 {
+		t.Fatalf("return after expiry should republish state, got %v", got)
+	}
+	if countKind(got, EntityDelete) != 0 {
+		t.Fatalf("delete appeared after expiry, want none, got %v", got)
+	}
+}
+
+func TestTracker_NonRetireByExpiryStillDeletes(t *testing.T) {
+	var got []Event
+	tr := NewTracker(func(ev Event) { got = append(got, ev) }, 0)
+
+	t0 := time.Unix(1000, 0).UTC()
+	state := Event{
+		Kind: EntityState,
+		Time: t0,
+		Entity: &Entity{
+			Type: "host",
+			ID:   map[string]any{"host.id": "A"},
+		},
+	}
+
+	tr.Reconcile([]Event{state}, t0, nil)
+	tr.Reconcile(nil, t0.Add(time.Minute), nil)
+	if countKind(got, EntityDelete) != 1 {
+		t.Fatalf("non-RetireByExpiry absence should delete, got %v", got)
+	}
+}
+
+func TestDeleteForCopiesRetireByExpiry(t *testing.T) {
+	state := Event{
+		Kind: EntityState,
+		Entity: &Entity{
+			Type:           "network.neighbor",
+			ID:             map[string]any{"mac": "AA"},
+			RetireByExpiry: true,
+		},
+	}
+	del := deleteFor(state)
+	if del.Entity == nil || !del.Entity.RetireByExpiry {
+		t.Fatalf("deleteFor did not copy RetireByExpiry, got %+v", del.Entity)
+	}
+}
