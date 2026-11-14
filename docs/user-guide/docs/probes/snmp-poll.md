@@ -371,16 +371,21 @@ table `senhub-agent/snmp-arp`.
 
 A MAC owned by the observing device itself, multicast and broadcast
 addresses, entries the device marks as its own and entries it has not learned
-are not published. A neighbour leaves, as `aged_out`, when a successful read
-of the tables no longer lists it; a read that fails keeps the neighbours of
-the previous one.
+are not published. A neighbour is never deleted because a read stops listing
+it: a switch forgets an idle MAC within minutes, so its absence says nothing
+about the neighbour. Each neighbour announces a liveness interval of 24 hours,
+and the topology consumer retires it when no read has listed it for that long.
+A neighbour that really left therefore stays visible for up to 24 hours.
 
 At most `max_neighbors` neighbours are published per device (1000 by
 default). Above the bound, the neighbours resolved to an interface are kept
-first, then those with an IP address, then the others by MAC address. The
+first, then those with an IP address, then the others. Within each of these
+groups, the neighbours published at the previous read come first while they
+are still listed, then the others by MAC address, so the cut does not move
+with every arrival. The
 device entity carries `senhub.neighbors.limit` and
-`senhub.neighbors.omitted`, so a cut table is never mistaken for a complete
-one, and the agent logs `neighbor table bound: some neighbors omitted` at
+`senhub.neighbors.truncated` (true while the bound cuts the table), so a cut
+table is never mistaken for a complete one, and the agent logs `neighbor table bound: some neighbors omitted` at
 Info once per cut. A neighbour the bound leaves out after it was published
 is not retired explicitly: it leaves the topology when its liveness interval
 expires. VLAN membership (`dot1qVlanStaticTable`) is not published yet.

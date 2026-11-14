@@ -51,26 +51,26 @@ const (
 	// oper_state is a Toise state-key (closed set, underscore spelling): a change
 	// fires entity.state_changed. The old dotted "oper.state" was silently
 	// demoted to an ordinary attribute — see Toise #87 / the SNMP lot fix.
-	attrOperState         = "oper_state"
-	attrSpeed             = "speed"
-	attrMac               = "mac"
-	attrMtu               = "mtu"
-	attrIfType            = "interface.type"
-	attrDuplex            = "duplex"
-	relConnectedTo        = "connected_to"
-	relHasRoute           = "has_route"
-	relHasInterface       = "has_interface"
-	relBoundTo            = "bound_to"
-	relNextHopVia         = "next_hop_via"
-	relMonitors           = "monitors"
-	relRunsOn             = "runs_on"
-	relNeighborOf         = "neighbor_of"
-	relResolvesTo         = "resolves_to"
-	attrBasis             = "basis"
-	attrConfidence        = "confidence"
-	attrNeighborAddresses = "network.neighbor.addresses"
-	attrNeighborsOmitted  = "senhub.neighbors.omitted"
-	attrNeighborsLimit    = "senhub.neighbors.limit"
+	attrOperState          = "oper_state"
+	attrSpeed              = "speed"
+	attrMac                = "mac"
+	attrMtu                = "mtu"
+	attrIfType             = "interface.type"
+	attrDuplex             = "duplex"
+	relConnectedTo         = "connected_to"
+	relHasRoute            = "has_route"
+	relHasInterface        = "has_interface"
+	relBoundTo             = "bound_to"
+	relNextHopVia          = "next_hop_via"
+	relMonitors            = "monitors"
+	relRunsOn              = "runs_on"
+	relNeighborOf          = "neighbor_of"
+	relResolvesTo          = "resolves_to"
+	attrBasis              = "basis"
+	attrConfidence         = "confidence"
+	attrNeighborAddresses  = "network.neighbor.addresses"
+	attrNeighborsTruncated = "senhub.neighbors.truncated"
+	attrNeighborsLimit     = "senhub.neighbors.limit"
 
 	resolveConfidenceARPNDP = 0.9
 	resolveConfidenceFDB    = 0.7
@@ -162,6 +162,14 @@ type snmpEntitySource struct {
 	// neighborCapWarned is, per device, the number of neighbours the
 	// max_neighbors bound cut at the last announcement.
 	neighborCapWarned map[string]int
+	// neighborKept remembers, per device, the MACs kept at the last cut, so
+	// a neighbour already kept stays ahead of the others of its class
+	// (resolved, addressed, neither) while it is observed, and the cut does
+	// not move with every arrival.
+	// Its own lock is held from reading the previous cut to recording the
+	// new one, so two reads of the same device never interleave there.
+	neighborKeptMu sync.Mutex
+	neighborKept   map[string]map[string]bool
 	// discL2 holds, per discovered device, the last FDB and ARP rows read
 	// successfully, reused when a walk fails. Discovery workers run
 	// concurrently, hence discL2Mu.
@@ -1419,6 +1427,13 @@ func (s *snmpEntitySource) appendResolvesNeighbors(obs entity.Observation, res s
 		}
 	}
 
+	s.neighborKeptMu.Lock()
+	defer s.neighborKeptMu.Unlock()
+	kept := s.neighborKept[res.deviceID]
+	if kept == nil {
+		kept = map[string]bool{}
+	}
+
 	type candidate struct {
 		mac          string
 		hasResolves  bool
@@ -1442,6 +1457,11 @@ func (s *snmpEntitySource) appendResolvesNeighbors(obs entity.Observation, res s
 		if candidates[i].hasAddresses != candidates[j].hasAddresses {
 			return candidates[i].hasAddresses
 		}
+		// Stickiness only breaks ties inside a class: a flood of unknown
+		// MACs must not hold places against a neighbour resolved later.
+		if iKept, jKept := kept[candidates[i].mac], kept[candidates[j].mac]; iKept != jKept {
+			return iKept
+		}
 		return candidates[i].mac < candidates[j].mac
 	})
 
@@ -1462,6 +1482,16 @@ func (s *snmpEntitySource) appendResolvesNeighbors(obs entity.Observation, res s
 	if omitted > 0 {
 		candidates = candidates[:n]
 	}
+
+	newKept := make(map[string]bool, len(candidates))
+	for _, cand := range candidates {
+		newKept[cand.mac] = true
+	}
+	if s.neighborKept == nil {
+		s.neighborKept = map[string]map[string]bool{}
+	}
+	s.neighborKept[res.deviceID] = newKept
+
 	applyNeighborCounters(&obs, res.deviceID, omitted, n)
 
 	sort.Slice(candidates, func(i, j int) bool { return candidates[i].mac < candidates[j].mac })
@@ -1483,10 +1513,12 @@ func (s *snmpEntitySource) appendResolvesNeighbors(obs entity.Observation, res s
 		}
 
 		obs.Entities = append(obs.Entities, entity.Entity{
-			Type:       entityTypeNetworkNeighbor,
-			ID:         id,
-			Scope:      scope,
-			Attributes: attrs,
+			Type:           entityTypeNetworkNeighbor,
+			ID:             id,
+			Scope:          scope,
+			Attributes:     attrs,
+			Cadence:        entity.NeighborLiveness,
+			RetireByExpiry: true,
 		})
 
 		for _, port := range ports {
@@ -1560,7 +1592,7 @@ func (s *snmpEntitySource) discoveredL2Rows(deviceID string, client snmpClient) 
 }
 
 // forgetDiscoveredL2 drops what is kept for a discovered device that left:
-// its rows and its announced neighbour cut.
+// its rows, its announced neighbour cut, and its sticky neighbour set.
 func (s *snmpEntitySource) forgetDiscoveredL2(deviceID string) {
 	s.discL2Mu.Lock()
 	delete(s.discL2, deviceID)
@@ -1568,6 +1600,9 @@ func (s *snmpEntitySource) forgetDiscoveredL2(deviceID string) {
 	s.mu.Lock()
 	delete(s.neighborCapWarned, deviceID)
 	s.mu.Unlock()
+	s.neighborKeptMu.Lock()
+	delete(s.neighborKept, deviceID)
+	s.neighborKeptMu.Unlock()
 }
 
 // neighborCapChanged records how many neighbours of a device the bound cut
@@ -1599,7 +1634,7 @@ func applyNeighborCounters(obs *entity.Observation, deviceID string, omitted, li
 			if obs.Entities[i].Attributes == nil {
 				obs.Entities[i].Attributes = map[string]any{}
 			}
-			obs.Entities[i].Attributes[attrNeighborsOmitted] = int64(omitted)
+			obs.Entities[i].Attributes[attrNeighborsTruncated] = omitted > 0
 			obs.Entities[i].Attributes[attrNeighborsLimit] = int64(limit)
 			return
 		}

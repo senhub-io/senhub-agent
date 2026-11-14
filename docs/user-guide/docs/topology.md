@@ -129,7 +129,7 @@ anything about the resource.
 | `parent_removed` | It lost the relation that anchored it | Follows its parent |
 | `unmonitored` | The agent stopped observing: the probe was removed or stopped, or the source failed for too long | Nothing. It may still be running |
 | `rekeyed` | The resource is the same, the agent now identifies it differently, as when `systemd` units moved from `service.instance` to `host.service`, or when an SNMP device's id changes while it stays the same device (a stack whose chassis MAC follows a new master) | Nothing happened |
-| `aged_out` | A cache the source reads forgot the entry, such as an ARP entry | Nothing was seen leaving |
+| `aged_out` | A cache the source reads forgot the entry. Not sent for `network.neighbor` any more: a neighbour is retired by its 24-hour liveness interval instead | Nothing was seen leaving |
 | `excluded_by_config` | The agent's configuration stops reporting it, as when `snmp_poll` leaves system routes out | Nothing happened |
 
 The consumer adds its own account of who decided the deletion. The two
