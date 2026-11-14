@@ -2,6 +2,7 @@ package snmppoll
 
 import (
 	"reflect"
+	"sync"
 	"testing"
 
 	"senhub-agent.go/internal/agent/services/entity"
@@ -328,5 +329,35 @@ func TestNeighbors_StickyCapStableAtEqualVolume(t *testing.T) {
 				t.Errorf("kept = %v, want %s and %s", kept, macA, macB)
 			}
 		}
+	}
+}
+
+// TestNeighbors_ConcurrentReadsOfOneDevice checks two reads of one device do
+// not race on the kept set (run under -race).
+func TestNeighbors_ConcurrentReadsOfOneDevice(t *testing.T) {
+	s := learnedTestSource(t)
+	s.cfg.MaxNeighbors = 2
+
+	const macA, macB, macC = "00-50-56-00-00-0A", "00-50-56-00-00-0B", "00-50-56-00-00-0C"
+	fdb := []fdbEntry{{MAC: macA, IfIndex: 8}, {MAC: macB, IfIndex: 8}, {MAC: macC, IfIndex: 8}}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 200; j++ {
+				obs := entity.Observation{Entities: []entity.Entity{deviceEntity(switchID, nil, entity.ScopeSNMPIFMIB)}}
+				res := switchSweep()
+				res.fdb = fdb
+				s.appendResolvesNeighbors(obs, res)
+			}
+		}()
+	}
+	wg.Wait()
+
+	kept := s.neighborKept[switchID]
+	if len(kept) != 2 {
+		t.Fatalf("neighborKept[switchID] has %d entries, want 2", len(kept))
 	}
 }

@@ -431,3 +431,53 @@ func TestTrackerDormantEviction(t *testing.T) {
 		t.Fatalf("expected A republished, got key %v", got[0].Entity.ID)
 	}
 }
+
+// TestTracker_RetireByExpiryForgetAfterIntervalWithHeartbeatGrid checks an
+// entity past its interval is forgotten, so its return before the next grid
+// slot is published instead of suppressed as unchanged.
+func TestTracker_RetireByExpiryForgetAfterIntervalWithHeartbeatGrid(t *testing.T) {
+	var got []Event
+	tr := NewTracker(func(ev Event) { got = append(got, ev) }, 10*time.Minute)
+
+	t0 := time.Unix(1000, 0).UTC()
+	interval := time.Minute
+	neighbor := Event{
+		Kind:     EntityState,
+		Time:     t0,
+		Interval: interval,
+		Entity: &Entity{
+			Type:           "network.neighbor",
+			ID:             map[string]any{"mac": "AA"},
+			RetireByExpiry: true,
+		},
+	}
+
+	tr.Reconcile([]Event{neighbor}, t0, nil)
+	if len(got) != 1 || got[0].Kind != EntityState {
+		t.Fatalf("first state published, got %v", got)
+	}
+	if countKind(got, EntityDelete) != 0 {
+		t.Fatal("first cycle had delete, want none")
+	}
+
+	// Absence beyond interval, but before the next heartbeat grid: should be forgotten silently.
+	now := t0.Add(2 * interval)
+	got = nil
+	tr.Reconcile(nil, now, nil)
+	if countKind(got, EntityDelete) != 0 {
+		t.Fatalf("absence beyond interval produced delete, want none, got %v", got)
+	}
+	if countKind(got, EntityState) != 0 {
+		t.Fatalf("absence beyond interval produced state, want none, got %v", got)
+	}
+
+	// Return before the next heartbeat grid, after the entity was forgotten:
+	// it should be published as new.
+	tr.Reconcile([]Event{neighbor}, now.Add(time.Second), nil)
+	if countKind(got, EntityState) != 1 {
+		t.Fatalf("return after expiry before grid should republish state, got %v", got)
+	}
+	if countKind(got, EntityDelete) != 0 {
+		t.Fatalf("delete appeared after expiry, want none, got %v", got)
+	}
+}
