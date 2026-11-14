@@ -265,84 +265,50 @@ func TestNeighbors_EmittedWithRetireByExpiryAndCadence(t *testing.T) {
 	}
 }
 
+// TestNeighbors_StickyCapKeepsPreviouslyKept checks that a neighbour
+// already published keeps its place against others of its class, while a
+// neighbour resolved later still takes precedence.
 func TestNeighbors_StickyCapKeepsPreviouslyKept(t *testing.T) {
 	s := learnedTestSource(t)
 	s.cfg.MaxNeighbors = 2
-	const macA, macB, macC = "00-50-56-00-00-0A", "00-50-56-00-00-0B", "00-50-56-00-00-0C"
-	res := switchSweep()
-	res.fdb = []fdbEntry{
-		{MAC: macA, IfIndex: 8},
-		{MAC: macB, IfIndex: 8},
-		{MAC: macC, IfIndex: 8},
-	}
-
-	// Passage 1: no resolved, no addresses -> keeps first two by MAC.
+	const macA, macB, macEarly = "00-50-56-00-00-0A", "00-50-56-00-00-0B", "00-50-56-00-00-01"
 	in := entity.Observation{Entities: []entity.Entity{deviceEntity(switchID, nil, entity.ScopeSNMPIFMIB)}}
-	obs := s.appendResolvesNeighbors(in, res)
-	got := neighborsOf(obs)
-	if len(got) != 2 {
-		t.Fatalf("pass1: got %d neighbors, want 2", len(got))
-	}
-	if _, ok := got[macA]; !ok {
-		t.Error("pass1: macA not kept")
-	}
-	if _, ok := got[macB]; !ok {
-		t.Error("pass1: macB not kept")
-	}
-	if _, ok := got[macC]; ok {
-		t.Error("pass1: macC should be omitted")
+	want := func(pass string, got map[string]entity.Entity, macs ...string) {
+		t.Helper()
+		if len(got) != len(macs) {
+			t.Fatalf("%s: kept = %v, want %v", pass, got, macs)
+		}
+		for _, mac := range macs {
+			if _, ok := got[mac]; !ok {
+				t.Errorf("%s: kept = %v, want %v", pass, got, macs)
+			}
+		}
 	}
 
-	// Passage 2: add resolved foreignMAC (not previously kept), but sticky keeps A and B.
+	res := switchSweep()
+	res.fdb = []fdbEntry{{MAC: macA, IfIndex: 8}, {MAC: macB, IfIndex: 8}}
+	want("pass 1", neighborsOf(s.appendResolvesNeighbors(in, res)), macA, macB)
+
+	// A lower MAC of the same class arrives: the published ones stay.
+	res.fdb = append(res.fdb, fdbEntry{MAC: macEarly, IfIndex: 8})
+	want("pass 2", neighborsOf(s.appendResolvesNeighbors(in, res)), macA, macB)
+
+	// A neighbour resolved to a known interface outranks the class below.
 	s.macIndex.Register(foreignMAC, "serial:9:R1", "Gi0/1")
 	res.fdb = append(res.fdb, fdbEntry{MAC: foreignMAC, IfIndex: 8})
-	obs = s.appendResolvesNeighbors(in, res)
-	got = neighborsOf(obs)
-	if len(got) != 2 {
-		t.Fatalf("pass2: got %d neighbors, want 2", len(got))
-	}
-	if _, ok := got[macA]; !ok {
-		t.Error("pass2: macA should remain kept (sticky)")
-	}
-	if _, ok := got[macB]; !ok {
-		t.Error("pass2: macB should remain kept (sticky)")
-	}
-	if _, ok := got[foreignMAC]; ok {
-		t.Error("pass2: foreignMAC should not displace kept MACs")
-	}
+	want("pass 3", neighborsOf(s.appendResolvesNeighbors(in, res)), foreignMAC, macA)
 
-	// Passage 3: remove macA; sticky set now has macB, foreignMAC should fill the free slot.
-	res.fdb = []fdbEntry{
-		{MAC: macB, IfIndex: 8},
-		{MAC: macC, IfIndex: 8},
-		{MAC: foreignMAC, IfIndex: 8},
-	}
-	obs = s.appendResolvesNeighbors(in, res)
-	got = neighborsOf(obs)
-	if len(got) != 2 {
-		t.Fatalf("pass3: got %d neighbors, want 2", len(got))
-	}
-	if _, ok := got[macB]; !ok {
-		t.Error("pass3: macB should be kept")
-	}
-	if _, ok := got[foreignMAC]; !ok {
-		t.Error("pass3: foreignMAC should fill the freed slot")
-	}
-	if _, ok := got[macA]; ok {
-		t.Error("pass3: macA should be absent")
-	}
-	if _, ok := got[macC]; ok {
-		t.Error("pass3: macC should still be omitted (foreignMAC has higher priority)")
-	}
+	// Same tables again: the cut does not move.
+	want("pass 4", neighborsOf(s.appendResolvesNeighbors(in, res)), foreignMAC, macA)
 }
 
 // TestNeighbors_StickyCapStableAtEqualVolume checks that at an unchanged
-// table size the kept set does not move when a higher-ranked MAC replaces
-// an omitted one.
+// table size the kept set does not move when a MAC of the same class that
+// sorts first replaces an omitted one.
 func TestNeighbors_StickyCapStableAtEqualVolume(t *testing.T) {
 	s := learnedTestSource(t)
 	s.cfg.MaxNeighbors = 2
-	const macA, macB, macC, macD = "00-50-56-00-00-0A", "00-50-56-00-00-0B", "00-50-56-00-00-0C", "00-50-56-00-00-0D"
+	const macA, macB, macC, macEarly = "00-50-56-00-00-0A", "00-50-56-00-00-0B", "00-50-56-00-00-0C", "00-50-56-00-00-01"
 	in := entity.Observation{Entities: []entity.Entity{deviceEntity(switchID, nil, entity.ScopeSNMPIFMIB)}}
 
 	res := switchSweep()
@@ -350,8 +316,7 @@ func TestNeighbors_StickyCapStableAtEqualVolume(t *testing.T) {
 	first := neighborsOf(s.appendResolvesNeighbors(in, res))
 
 	res = switchSweep()
-	res.fdb = []fdbEntry{{MAC: macA, IfIndex: 8}, {MAC: macB, IfIndex: 8}, {MAC: macD, IfIndex: 8}}
-	res.arp = []arpEntry{{IfIndex: 8, IP: "192.0.2.20", MAC: macD}}
+	res.fdb = []fdbEntry{{MAC: macA, IfIndex: 8}, {MAC: macB, IfIndex: 8}, {MAC: macEarly, IfIndex: 8}}
 	second := neighborsOf(s.appendResolvesNeighbors(in, res))
 
 	for _, kept := range []map[string]entity.Entity{first, second} {

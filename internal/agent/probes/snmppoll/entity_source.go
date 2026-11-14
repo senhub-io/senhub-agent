@@ -163,8 +163,9 @@ type snmpEntitySource struct {
 	// max_neighbors bound cut at the last announcement.
 	neighborCapWarned map[string]int
 	// neighborKept remembers, per device, the MACs kept at the last cut, so
-	// a neighbour already kept stays kept while it is observed and the cut
-	// does not move with every arrival.
+	// a neighbour already kept stays ahead of the others of its class
+	// (resolved, addressed, neither) while it is observed, and the cut does
+	// not move with every arrival.
 	// Its own lock is held from reading the previous cut to recording the
 	// new one, so two reads of the same device never interleave there.
 	neighborKeptMu sync.Mutex
@@ -1450,16 +1451,16 @@ func (s *snmpEntitySource) appendResolvesNeighbors(obs entity.Observation, res s
 		})
 	}
 	sort.Slice(candidates, func(i, j int) bool {
-		iKept := kept[candidates[i].mac]
-		jKept := kept[candidates[j].mac]
-		if iKept != jKept {
-			return iKept
-		}
 		if candidates[i].hasResolves != candidates[j].hasResolves {
 			return candidates[i].hasResolves
 		}
 		if candidates[i].hasAddresses != candidates[j].hasAddresses {
 			return candidates[i].hasAddresses
+		}
+		// Stickiness only breaks ties inside a class: a flood of unknown
+		// MACs must not hold places against a neighbour resolved later.
+		if iKept, jKept := kept[candidates[i].mac], kept[candidates[j].mac]; iKept != jKept {
+			return iKept
 		}
 		return candidates[i].mac < candidates[j].mac
 	})

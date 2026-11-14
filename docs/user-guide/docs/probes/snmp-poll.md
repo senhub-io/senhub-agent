@@ -378,10 +378,11 @@ and the topology consumer retires it when no read has listed it for that long.
 A neighbour that really left therefore stays visible for up to 24 hours.
 
 At most `max_neighbors` neighbours are published per device (1000 by
-default). Above the bound, the neighbours already published at the previous
-read are kept first, as long as they are still listed, so the cut does not
-move with every arrival. The free places go to the neighbours resolved to an
-interface, then those with an IP address, then the others by MAC address. The
+default). Above the bound, the neighbours resolved to an interface are kept
+first, then those with an IP address, then the others. Within each of these
+groups, the neighbours published at the previous read come first while they
+are still listed, then the others by MAC address, so the cut does not move
+with every arrival. The
 device entity carries `senhub.neighbors.limit` and
 `senhub.neighbors.truncated` (true while the bound cuts the table), so a cut
 table is never mistaken for a complete one, and the agent logs `neighbor table bound: some neighbors omitted` at
