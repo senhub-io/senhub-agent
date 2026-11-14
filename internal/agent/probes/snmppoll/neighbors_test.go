@@ -170,8 +170,8 @@ func TestNeighbors_CapKeepsResolvedThenAddressedAndCountsOnDevice(t *testing.T) 
 		t.Error("the addressed neighbour was not kept second")
 	}
 	dev := obs.Entities[0]
-	if dev.Attributes[attrNeighborsOmitted] != int64(2) || dev.Attributes[attrNeighborsLimit] != int64(2) {
-		t.Errorf("device counters = %v, want omitted 2 limit 2", dev.Attributes)
+	if dev.Attributes[attrNeighborsTruncated] != true || dev.Attributes[attrNeighborsLimit] != int64(2) {
+		t.Errorf("device counters = %v, want truncated limit 2", dev.Attributes)
 	}
 }
 
@@ -179,8 +179,8 @@ func TestNeighbors_DeviceCountsZeroWhenNotCut(t *testing.T) {
 	s := learnedTestSource(t)
 	in := entity.Observation{Entities: []entity.Entity{deviceEntity(switchID, nil, entity.ScopeSNMPIFMIB)}}
 	dev := s.appendResolvesNeighbors(in, switchSweep()).Entities[0]
-	if dev.Attributes[attrNeighborsOmitted] != int64(0) || dev.Attributes[attrNeighborsLimit] != int64(defaultMaxNeighbors) {
-		t.Errorf("device counters = %v, want omitted 0 limit %d", dev.Attributes, defaultMaxNeighbors)
+	if dev.Attributes[attrNeighborsTruncated] != false || dev.Attributes[attrNeighborsLimit] != int64(defaultMaxNeighbors) {
+		t.Errorf("device counters = %v, want not truncated, limit %d", dev.Attributes, defaultMaxNeighbors)
 	}
 }
 

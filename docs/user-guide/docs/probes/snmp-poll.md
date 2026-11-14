@@ -383,8 +383,8 @@ read are kept first, as long as they are still listed, so the cut does not
 move with every arrival. The free places go to the neighbours resolved to an
 interface, then those with an IP address, then the others by MAC address. The
 device entity carries `senhub.neighbors.limit` and
-`senhub.neighbors.omitted`, so a cut table is never mistaken for a complete
-one, and the agent logs `neighbor table bound: some neighbors omitted` at
+`senhub.neighbors.truncated` (true while the bound cuts the table), so a cut
+table is never mistaken for a complete one, and the agent logs `neighbor table bound: some neighbors omitted` at
 Info once per cut. A neighbour the bound leaves out after it was published
 is not retired explicitly: it leaves the topology when its liveness interval
 expires. VLAN membership (`dot1qVlanStaticTable`) is not published yet.

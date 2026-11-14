@@ -7,4 +7,6 @@ Nothing released yet since 0.7.1. Changes land here as they are merged.
 
 - **Learned neighbours no longer come and go on every read.** A switch forgets an idle MAC address within minutes, and the agent deleted the neighbour each time, then created it again at the next read: on a large network, thousands of false changes an hour in the topology. A `network.neighbor`, read over SNMP or from the host's ARP table, is no longer deleted when a read stops listing it. It announces a liveness interval of 24 hours and the topology retires it when no read has listed it for that long, so a neighbour that really left stays visible for up to a day. Above `max_neighbors`, the neighbours already published stay published while they are listed, instead of changing with every arrival.
 
+- **`senhub.neighbors.omitted` is replaced by `senhub.neighbors.truncated`.** The number of neighbours cut by `max_neighbors` changed at almost every read on a cut device, and each change was recorded in the topology. The device entity now carries `senhub.neighbors.truncated`, a boolean that changes only when the cut starts or stops; `senhub.neighbors.limit` is unchanged, and the exact count stays in the agent log line `neighbor table bound: some neighbors omitted`.
+
 <div class="rn-filter"></div>

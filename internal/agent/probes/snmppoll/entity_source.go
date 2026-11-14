@@ -51,26 +51,26 @@ const (
 	// oper_state is a Toise state-key (closed set, underscore spelling): a change
 	// fires entity.state_changed. The old dotted "oper.state" was silently
 	// demoted to an ordinary attribute — see Toise #87 / the SNMP lot fix.
-	attrOperState         = "oper_state"
-	attrSpeed             = "speed"
-	attrMac               = "mac"
-	attrMtu               = "mtu"
-	attrIfType            = "interface.type"
-	attrDuplex            = "duplex"
-	relConnectedTo        = "connected_to"
-	relHasRoute           = "has_route"
-	relHasInterface       = "has_interface"
-	relBoundTo            = "bound_to"
-	relNextHopVia         = "next_hop_via"
-	relMonitors           = "monitors"
-	relRunsOn             = "runs_on"
-	relNeighborOf         = "neighbor_of"
-	relResolvesTo         = "resolves_to"
-	attrBasis             = "basis"
-	attrConfidence        = "confidence"
-	attrNeighborAddresses = "network.neighbor.addresses"
-	attrNeighborsOmitted  = "senhub.neighbors.omitted"
-	attrNeighborsLimit    = "senhub.neighbors.limit"
+	attrOperState          = "oper_state"
+	attrSpeed              = "speed"
+	attrMac                = "mac"
+	attrMtu                = "mtu"
+	attrIfType             = "interface.type"
+	attrDuplex             = "duplex"
+	relConnectedTo         = "connected_to"
+	relHasRoute            = "has_route"
+	relHasInterface        = "has_interface"
+	relBoundTo             = "bound_to"
+	relNextHopVia          = "next_hop_via"
+	relMonitors            = "monitors"
+	relRunsOn              = "runs_on"
+	relNeighborOf          = "neighbor_of"
+	relResolvesTo          = "resolves_to"
+	attrBasis              = "basis"
+	attrConfidence         = "confidence"
+	attrNeighborAddresses  = "network.neighbor.addresses"
+	attrNeighborsTruncated = "senhub.neighbors.truncated"
+	attrNeighborsLimit     = "senhub.neighbors.limit"
 
 	resolveConfidenceARPNDP = 0.9
 	resolveConfidenceFDB    = 0.7
@@ -1633,7 +1633,7 @@ func applyNeighborCounters(obs *entity.Observation, deviceID string, omitted, li
 			if obs.Entities[i].Attributes == nil {
 				obs.Entities[i].Attributes = map[string]any{}
 			}
-			obs.Entities[i].Attributes[attrNeighborsOmitted] = int64(omitted)
+			obs.Entities[i].Attributes[attrNeighborsTruncated] = omitted > 0
 			obs.Entities[i].Attributes[attrNeighborsLimit] = int64(limit)
 			return
 		}
