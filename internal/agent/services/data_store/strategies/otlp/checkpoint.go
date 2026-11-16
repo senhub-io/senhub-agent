@@ -101,6 +101,9 @@ type checkpointer struct {
 
 	lastSaveNanos atomic.Int64 // unix-nanos of the most recent successful save
 	lastSizeBytes atomic.Int64 // size of the most recent saved file
+
+	warnMu          sync.Mutex
+	warnedNonFinite map[string]struct{}
 }
 
 // newCheckpointer creates a configured checkpointer. The constructor
@@ -113,11 +116,12 @@ func newCheckpointer(cfg checkpointConfig, store *metricStore, log *logger.Modul
 		cfg.Interval = 30 * time.Second
 	}
 	return &checkpointer{
-		cfg:       cfg,
-		store:     store,
-		logger:    log,
-		stopCh:    make(chan struct{}),
-		stoppedCh: make(chan struct{}),
+		cfg:             cfg,
+		store:           store,
+		logger:          log,
+		stopCh:          make(chan struct{}),
+		stoppedCh:       make(chan struct{}),
+		warnedNonFinite: make(map[string]struct{}),
 	}
 }
 
@@ -195,7 +199,19 @@ func (c *checkpointer) save() error {
 		return fmt.Errorf("mkdir checkpoint dir: %w", err)
 	}
 
-	entries := c.store.snapshotForCheckpoint()
+	entries, skipped := c.store.snapshotForCheckpoint()
+	for _, name := range skipped {
+		agentstate.IncrementOTLPCheckpointErrors("non_finite_skipped")
+
+		c.warnMu.Lock()
+		if _, warned := c.warnedNonFinite[name]; !warned {
+			c.warnedNonFinite[name] = struct{}{}
+			if c.logger != nil {
+				c.logger.Warn().Str("metric", name).Msg("OTLP checkpoint skips a non-finite value")
+			}
+		}
+		c.warnMu.Unlock()
+	}
 	cp := checkpoint{
 		Version: checkpointFormatVersion,
 		SavedAt: time.Now(),
