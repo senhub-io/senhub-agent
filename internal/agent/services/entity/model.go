@@ -126,7 +126,18 @@ type Entity struct {
 	// announced Event.Interval, but a cadence change is not an entity
 	// content change.
 	Cadence time.Duration
+	// RetireByExpiry marks an entity read from a cache (an ARP or bridge
+	// table) whose absence proves nothing: the tracker never emits a delete
+	// for it, and the consumer retires it when the announced interval runs
+	// out. Outside identity and change hashing.
+	RetireByExpiry bool
 }
+
+// NeighborLiveness is the interval announced on a neighbour read from a
+// cache. A cache forgets an idle entry within minutes, so the neighbour is
+// not re-asserted while idle; the consumer keeps it this long before
+// expiring it.
+const NeighborLiveness = 24 * time.Hour
 
 // Scope* are the frozen instrumentation-scope names that carry an entity's
 // discovery provenance on the wire (#253, contract #87). Each names the METHOD

@@ -132,6 +132,7 @@ alias Entity = senhub-agent.go/internal/agent/services/entity.Entity
   field ID map[string]any
   field ObservedAt time.Time
   field Relationships []senhub-agent.go/internal/agent/services/entity.Relationship
+  field RetireByExpiry bool
   field Scope string
   field Type string
 func HostID() string

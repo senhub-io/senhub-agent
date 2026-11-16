@@ -203,3 +203,47 @@ func TestSlowCadenceIsReportedOncePerValue(t *testing.T) {
 		t.Fatalf("reported %v, want the 30-day cadence once and nothing for 1h", seen)
 	}
 }
+
+// TestDetectorKeepsEntityLongerCadence verifies that an entity's own Cadence
+// takes precedence over the source cadence, while an entity without Cadence
+// falls back to the source cadence.
+func TestDetectorKeepsEntityLongerCadence(t *testing.T) {
+	ResetForTest()
+	defer ResetForTest()
+
+	neighborID := map[string]any{"mac": "AA"}
+	deviceID := map[string]any{"network.device.id": "d1"}
+	hostID := map[string]any{"host.id": "host-1"}
+
+	obs := Observation{
+		Entities: []Entity{
+			{Type: "network.neighbor", ID: neighborID, Cadence: NeighborLiveness, RetireByExpiry: true},
+			{Type: "network.device", ID: deviceID},
+		},
+		Relations: []Relation{
+			{Type: "runs_on", FromType: "network.neighbor", FromID: neighborID, ToType: "host", ToID: hostID},
+			{Type: "runs_on", FromType: "network.device", FromID: deviceID, ToType: "host", ToID: hostID},
+		},
+	}
+
+	RegisterSource(staticCadenceSource{obs: obs, cadence: 3 * time.Minute})
+
+	d, events := newTestDetector()
+	d.reconcile(NewTracker(d.publish, reEmitTicks*d.interval), d.now())
+
+	neighbor, ok := findStateEvent(*events, "network.neighbor", neighborID)
+	if !ok {
+		t.Fatal("network.neighbor state event not published")
+	}
+	if neighbor.Interval < NeighborLiveness {
+		t.Fatalf("neighbor interval = %s, want >= %s", neighbor.Interval, NeighborLiveness)
+	}
+
+	device, ok := findStateEvent(*events, "network.device", deviceID)
+	if !ok {
+		t.Fatal("network.device state event not published")
+	}
+	if device.Interval < 3*time.Minute || device.Interval >= NeighborLiveness {
+		t.Fatalf("device interval = %s, want >= %s and < %s", device.Interval, 3*time.Minute, NeighborLiveness)
+	}
+}
