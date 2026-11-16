@@ -65,5 +65,53 @@
     "float": 1,
     "unit": "Custom",
     "customunit": "bit/s"
+  },
+  {
+    "channel": "TCP Active Opens",
+    "value": 88,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "TCP Attempt Fails",
+    "value": 111,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "TCP Connections tstate",
+    "value": 76.5,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "TCP Established Resets",
+    "value": 42,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "TCP Listen Overflows",
+    "value": 76.5,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "TCP Outbound Resets",
+    "value": 65,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "TCP Passive Opens",
+    "value": 99.5,
+    "float": 1,
+    "unit": "Count"
+  },
+  {
+    "channel": "TCP Retransmitted Segments",
+    "value": 53.5,
+    "float": 1,
+    "unit": "Count"
   }
 ]

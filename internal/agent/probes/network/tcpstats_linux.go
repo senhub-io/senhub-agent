@@ -32,3 +32,6 @@ func readTCPStats() (TCPStats, error) {
 	}
 	return stats, nil
 }
+
+// readTCPStatsFunc is the host reader on Linux; nil elsewhere.
+var readTCPStatsFunc = readTCPStats

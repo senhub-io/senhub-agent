@@ -9,4 +9,6 @@ Nothing released yet since 0.7.1. Changes land here as they are merged.
 
 - **`senhub.neighbors.omitted` is replaced by `senhub.neighbors.truncated`.** The number of neighbours cut by `max_neighbors` changed at almost every read on a cut device, and each change was recorded in the topology. The device entity now carries `senhub.neighbors.truncated`, a boolean that changes only when the cut starts or stops; `senhub.neighbors.limit` is unchanged, and the exact count stays in the agent log line `neighbor table bound: some neighbors omitted`.
 
+- **The network probe reports host TCP counters.** Connections by state, connections opened, failed and reset, retransmitted segments, resets sent and, on Linux, listen queue overflows, for the whole host. They are on by default; `tcp_stats: false` leaves only the per-interface metrics. On Linux the connection counts come from the kernel socket table and need no extra privilege.
+
 <div class="rn-filter"></div>

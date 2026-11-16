@@ -192,11 +192,27 @@ Values: `used, free`. **Linux swap** (`swap_used`/`swap_free`) is the counterpar
 | `system.network.packet.count` | `{packet}` | Counter | Packets transmitted/received |
 | `system.network.errors` | `{error}` | Counter | Transmit/receive errors |
 | `system.network.packet.dropped` | `{packet}` | Counter | Packets deliberately dropped (discards) |
+| `system.network.connection.count` | `{connection}` | Gauge | Host TCP connections per `network.connection.state`, with `network.transport: tcp`; every state is reported, at 0 when empty |
 
 **Attributes used:**
 
 - `network.io.direction` — official values: `receive`, `transmit`
 - `network.interface.name` — the interface name (`eth0`, `ens1`, `Ethernet 2`, …)
+
+#### 4.3.2 SenHub extensions: host TCP counters
+
+Host-wide, cumulative since boot; no interface attribute. Linux reads `/proc/net/snmp` and `/proc/net/netstat`; the connection counts come from the kernel socket table (sock_diag), readable without privilege.
+
+| Metric | Unit | Type | Meaning |
+|---|---|---|---|
+| `senhub.system.network.tcp.connections.opened` | `{connection}` | Counter | TCP connections opened, by `senhub.network.tcp.open.direction` (`active`: this host connected; `passive`: it accepted) |
+| `senhub.system.network.tcp.connections.failed` | `{connection}` | Counter | Connection attempts that failed |
+| `senhub.system.network.tcp.connections.reset` | `{connection}` | Counter | Established connections reset |
+| `senhub.system.network.tcp.segments.retransmitted` | `{segment}` | Counter | Segments retransmitted |
+| `senhub.system.network.tcp.resets.sent` | `{segment}` | Counter | Reset segments sent |
+| `senhub.system.network.tcp.listen.overflows` | `{connection}` | Counter | Connections dropped because a listen queue was full (Linux only) |
+
+Attribute: `senhub.network.tcp.open.direction` ∈ {`active`, `passive`}.
 
 ### 4.4 Probe `logicaldisk` (filesystem + disk I/O)
 

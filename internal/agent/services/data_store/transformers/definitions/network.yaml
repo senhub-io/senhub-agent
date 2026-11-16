@@ -172,6 +172,97 @@ metrics:
       attributes:
         network.io.direction: receive
 
+  - name: tcp_connections
+    channel: tcp_connections_{state}
+    display_name: TCP Connections {state}
+    unit: "#"
+    multi_instance_labels: ["state"]
+    category: connections
+    description: TCP connections of the host in each state
+    otel:
+      name: system.network.connection.count
+      unit: "{connection}"
+      type: gauge
+      attributes:
+        network.transport: tcp
+    tag_to_attribute:
+      state: network.connection.state
+  - name: tcp_active_opens
+    channel: tcp_active_opens
+    display_name: TCP Active Opens
+    unit: "#"
+    category: connections
+    description: Cumulative number of active TCP opens since host start
+    otel:
+      name: senhub.system.network.tcp.connections.opened
+      unit: "{connection}"
+      type: counter
+      attributes:
+        senhub.network.tcp.open.direction: active
+  - name: tcp_passive_opens
+    channel: tcp_passive_opens
+    display_name: TCP Passive Opens
+    unit: "#"
+    category: connections
+    description: Cumulative number of passive TCP opens since host start
+    otel:
+      name: senhub.system.network.tcp.connections.opened
+      unit: "{connection}"
+      type: counter
+      attributes:
+        senhub.network.tcp.open.direction: passive
+  - name: tcp_attempt_fails
+    channel: tcp_attempt_fails
+    display_name: TCP Attempt Fails
+    unit: "#"
+    category: errors
+    description: Cumulative number of failed TCP connection attempts since host start
+    otel:
+      name: senhub.system.network.tcp.connections.failed
+      unit: "{connection}"
+      type: counter
+  - name: tcp_estab_resets
+    channel: tcp_estab_resets
+    display_name: TCP Established Resets
+    unit: "#"
+    category: errors
+    description: Cumulative number of TCP resets on established connections since host start
+    otel:
+      name: senhub.system.network.tcp.connections.reset
+      unit: "{connection}"
+      type: counter
+  - name: tcp_retrans_segs
+    channel: tcp_retrans_segs
+    display_name: TCP Retransmitted Segments
+    unit: "#"
+    category: errors
+    description: Cumulative number of retransmitted TCP segments since host start
+    otel:
+      name: senhub.system.network.tcp.segments.retransmitted
+      unit: "{segment}"
+      type: counter
+  - name: tcp_out_rsts
+    channel: tcp_out_rsts
+    display_name: TCP Outbound Resets
+    unit: "#"
+    category: errors
+    description: Cumulative number of TCP reset segments sent since host start
+    otel:
+      name: senhub.system.network.tcp.resets.sent
+      unit: "{segment}"
+      type: counter
+  - name: tcp_listen_overflows
+    channel: tcp_listen_overflows
+    display_name: TCP Listen Overflows
+    unit: "#"
+    category: errors
+    description: Cumulative number of TCP listen queue overflows since host start
+    platforms: ["linux"]
+    otel:
+      name: senhub.system.network.tcp.listen.overflows
+      unit: "{connection}"
+      type: counter
+
 tag_metadata:
   interface:
     type: resource
