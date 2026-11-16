@@ -39,6 +39,8 @@ const checkpointFormatVersion = 1
 const (
 	snapshotFileName = "snapshot.json"
 	snapshotTmpName  = "snapshot.json.tmp"
+
+	maxWarnedNonFinite = 256
 )
 
 // checkpointConfig collects the operator-tunable knobs.
@@ -204,7 +206,8 @@ func (c *checkpointer) save() error {
 		agentstate.IncrementOTLPCheckpointErrors("non_finite_skipped")
 
 		c.warnMu.Lock()
-		if _, warned := c.warnedNonFinite[name]; !warned {
+		// Bounded: metric names come from what probes and receivers send.
+		if _, warned := c.warnedNonFinite[name]; !warned && len(c.warnedNonFinite) < maxWarnedNonFinite {
 			c.warnedNonFinite[name] = struct{}{}
 			if c.logger != nil {
 				c.logger.Warn().Str("metric", name).Msg("OTLP checkpoint skips a non-finite value")
