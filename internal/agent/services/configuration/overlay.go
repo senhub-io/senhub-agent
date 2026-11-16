@@ -1,6 +1,7 @@
 package configuration
 
 import (
+	"encoding/json"
 	"maps"
 	"regexp"
 	"sort"
@@ -71,6 +72,17 @@ func (t *overlayTarget) Probes() []extension.OverlayProbe {
 	out := make([]extension.OverlayProbe, 0, len(t.cfg.Probes))
 	for _, p := range t.cfg.Probes {
 		seconds, _ := wholeSeconds(p.Params["interval"])
+		targetParams := []string{}
+		for k := range reported[p.Name] {
+			if extension.IsTargetParam(k) {
+				targetParams = append(targetParams, k)
+			}
+		}
+		if len(targetParams) > 0 {
+			sort.Strings(targetParams)
+		} else {
+			targetParams = nil
+		}
 		out = append(out, extension.OverlayProbe{
 			Name:            p.Name,
 			Type:            p.Type,
@@ -79,6 +91,7 @@ func (t *overlayTarget) Probes() []extension.OverlayProbe {
 			EnvDefined:      len(envDefined[p.Name]) > 0,
 			Params:          reported[p.Name],
 			SecretParams:    secretBearing[p.Name],
+			TargetParams:    targetParams,
 		})
 	}
 	return out
@@ -293,17 +306,20 @@ func (t *overlayTarget) AdoptProbe(p extension.ManagedProbe) bool {
 	// to the new target. When the file cannot be read the secret-bearing
 	// list is unknown, so a retarget cannot be proven safe and is refused.
 	_, secretBearing, ok := reportedProbes(t.configPath)
-	hasTargetParam := false
+	retargets := false
 	for k := range p.Params {
 		if extension.IsTargetParam(k) {
-			hasTargetParam = true
-			break
+			if _, exists := local.Params[k]; !exists || !sameParamValue(p.Params[k], local.Params[k]) {
+				retargets = true
+				break
+			}
 		}
 	}
-	if hasTargetParam && !ok {
+	// A probe the file report does not list has an unknown secret list too.
+	if _, listed := secretBearing[p.Name]; retargets && (!ok || !listed) {
 		return false
 	}
-	if hasTargetParam {
+	if retargets {
 		for _, name := range secretBearing[p.Name] {
 			if _, ok := p.Params[name]; !ok {
 				return false
@@ -328,6 +344,15 @@ func (t *overlayTarget) AdoptProbe(p extension.ManagedProbe) bool {
 	adopted.Params = params
 	t.cfg.Probes[i] = adopted
 	return true
+}
+
+func sameParamValue(a, b any) bool {
+	aj, errA := json.Marshal(a)
+	bj, errB := json.Marshal(b)
+	if errA != nil || errB != nil {
+		return false
+	}
+	return string(aj) == string(bj)
 }
 
 func (t *overlayTarget) Entities() extension.EntitySwitches {

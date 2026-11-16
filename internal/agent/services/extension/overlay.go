@@ -69,6 +69,9 @@ type OverlayProbe struct {
 	// carry a secret: a secret-like name with a value, a reference, or a
 	// value the log redaction changes.
 	SecretParams []string
+	// TargetParams are the sorted names of the reported parameters that say
+	// where the probe connects (IsTargetParam).
+	TargetParams []string
 }
 
 // EntitySwitches are the entity detection switches an overlay may set.

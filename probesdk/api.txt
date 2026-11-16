@@ -267,6 +267,7 @@ alias OverlayProbe = senhub-agent.go/internal/agent/services/extension.OverlayPr
   field Name string
   field Params map[string]any
   field SecretParams []string
+  field TargetParams []string
   field Type string
 alias OverlayTarget = senhub-agent.go/internal/agent/services/extension.OverlayTarget
   imethod AddProbe(p senhub-agent.go/internal/agent/services/extension.ManagedProbe) bool
