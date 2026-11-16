@@ -4,6 +4,7 @@ package network
 
 import (
 	"os"
+	"senhub-agent.go/internal/agent/services/netconn"
 )
 
 // readTCPStats reads host TCP statistics from /proc/net/snmp and optionally /proc/net/netstat.
@@ -35,3 +36,6 @@ func readTCPStats() (TCPStats, error) {
 
 // readTCPStatsFunc is the host reader on Linux; nil elsewhere.
 var readTCPStatsFunc = readTCPStats
+
+// tcpConnsFunc reads the socket table through sock_diag.
+var tcpConnsFunc = netconn.DumpTCP

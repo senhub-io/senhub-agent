@@ -1,7 +1,6 @@
 package network
 
 import (
-	"runtime"
 	"sort"
 	"time"
 
@@ -91,11 +90,5 @@ func hostTCPDataPoints(src tcpSource, base []tags.Tag, ts time.Time) ([]data_sto
 
 // defaultTCPSource returns the appropriate tcpSource for the current platform.
 func defaultTCPSource() tcpSource {
-	if runtime.GOOS == "linux" {
-		return tcpSource{
-			stats: readTCPStatsFunc,
-			conns: netconn.DumpTCP,
-		}
-	}
-	return tcpSource{}
+	return tcpSource{stats: readTCPStatsFunc, conns: tcpConnsFunc}
 }

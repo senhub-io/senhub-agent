@@ -201,7 +201,7 @@ Values: `used, free`. **Linux swap** (`swap_used`/`swap_free`) is the counterpar
 
 #### 4.3.2 SenHub extensions: host TCP counters
 
-Host-wide, cumulative since boot; no interface attribute. Linux reads `/proc/net/snmp` and `/proc/net/netstat`; the connection counts come from the kernel socket table (sock_diag), readable without privilege.
+Host-wide, cumulative since boot; no interface attribute. Linux reads `/proc/net/snmp` and `/proc/net/netstat`; the connection counts come from the kernel socket table (sock_diag), readable without privilege. Windows reads `GetTcpStatisticsEx` (IPv4 + IPv6, 32-bit counters that wrap) and the TCP table; it has no listen overflow counter.
 
 | Metric | Unit | Type | Meaning |
 |---|---|---|---|
