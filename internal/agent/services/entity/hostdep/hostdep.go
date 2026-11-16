@@ -122,6 +122,7 @@ type nameEntry struct {
 type Source struct {
 	hostID      func() string
 	connections func(string) ([]gnet.ConnectionStat, error) // nil → gnet.Connections
+	uidView     func() *uidView                             // nil → buildUIDView
 	procName    func(int32) string                          // nil → gopsutil process name
 	procCreated func(int32) (int64, bool)                   // nil → gopsutil CreateTime
 	agentID     func() string                               // nil → agentstate.GetAgentInstanceID
@@ -205,10 +206,24 @@ func (s *Source) Observe() (entity.Observation, bool) {
 		return entity.Observation{}, false
 	}
 
+	// Owners by uid, read only when a socket's owner could not be read
+	// directly; outside the lock, as it walks /proc.
+	var view *uidView
+	for _, c := range conns {
+		if c.Status == statusEstablished && c.Pid == 0 {
+			viewFn := s.uidView
+			if viewFn == nil {
+				viewFn = buildUIDView
+			}
+			view = viewFn()
+			break
+		}
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	deps, nextLRU, unattributable := s.scrape(conns, hostID, s.nameLRU)
+	deps, nextLRU, unattributable := s.scrape(conns, hostID, s.nameLRU, view)
 	// Replace the LRU with only the pids named this scrape: a vanished pid drops
 	// out, keeping the cache bounded by the live socket table.
 	s.nameLRU = nextLRU
@@ -317,7 +332,7 @@ func hasAttributableDependant(deps []dependant) bool {
 // priorLRU is the previous scrape's pid→name cache; scrape returns the cache to
 // keep (only the pids it named this scrape), which the caller swaps in under the
 // lock.
-func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string, priorLRU map[int32]nameEntry) (deps []dependant, lru map[int32]nameEntry, unattributable int) {
+func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string, priorLRU map[int32]nameEntry, view *uidView) (deps []dependant, lru map[int32]nameEntry, unattributable int) {
 	listenPorts := map[uint32]bool{}
 	for _, c := range conns {
 		if c.Status == statusListen {
@@ -394,6 +409,16 @@ func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string, priorLRU map
 				}
 			}
 		default:
+			// Owner unreadable without privilege: name it by its uid when
+			// every process of that uid shares one executable name.
+			if c.Pid == 0 {
+				if n, ok := view.nameFor(normalizeIP(c.Laddr.IP), c.Laddr.Port, normalizeIP(c.Raddr.IP), c.Raddr.Port); ok {
+					d.svcID = n + "@" + hostID
+					d.svcName = n
+					out = append(out, d)
+					continue
+				}
+			}
 			// Cannot name the dependent: do not fabricate a service.instance.
 			// Counted, because the difference between "this host has no
 			// outbound dependencies" and "this agent is not allowed to see
