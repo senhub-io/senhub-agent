@@ -49,7 +49,7 @@
                 <h1>Outputs</h1>
                 <p class="sub">Where collected data goes. Pull outputs (Prometheus, PRTG, Nagios) wait for a poller; push outputs send on their own.</p>
             </div>
-            <a class="btn primary" href="#add">Add an output</a>
+            <a class="btn primary" data-write href="#add">Add an output</a>
         </div>
 
         <div id="banner" class="banner ok hide mb4"></div>
@@ -60,7 +60,7 @@
             <div class="card-foot"><span>The <b>...</b> menu holds Disable and Delete. Disable renames the file to <code>.disabled</code>; nothing is lost.</span></div>
         </div>
 
-        <div class="card" id="add">
+        <div class="card" id="add" data-write>
             <div class="card-h"><h2>Add an output</h2><span class="small muted">Pick where the data should go</span></div>
             <div class="starters" id="cards" style="margin-top:0"></div>
             <p class="small muted mt3">The HTTP output exists once per agent and cannot be added twice. Prometheus, PRTG pull and Nagios are endpoints of that one output: switch them in the list above.</p>
@@ -106,9 +106,9 @@
             if (o.type === 'http') {
                 acts = '<a class="btn sm" href="' + O.webBase + 'outputs/http#urls">Sensor URLs</a><a class="btn sm" href="' + editHref(o) + '">Edit</a>';
             } else {
-                acts = (dis ? '<button class="btn sm" data-act="enable">Enable</button>' : '<button class="btn sm" data-act="test">Test</button>') +
+                acts = (dis ? '<button class="btn sm" data-write data-act="enable">Enable</button>' : '<button class="btn sm" data-write data-act="test">Test</button>') +
                     '<a class="btn sm" href="' + editHref(o) + '">Edit</a>' +
-                    '<details class="menu"><summary class="btn sm ghost" title="More">...</summary><div class="items">' +
+                    '<details class="menu" data-write><summary class="btn sm ghost" title="More">...</summary><div class="items">' +
                     (dis ? '<button data-act="enable">Enable</button>' : '<button data-act="disable">Disable</button>') +
                     '<button class="danger" data-act="delete">Delete</button></div></details>';
             }
@@ -166,7 +166,7 @@
         }
         function pullRow(http, ep) {
             const i = pullInfo(http, ep);
-            const act = i.dis ? '' : '<button class="btn sm" data-ep="' + ep.id + '" data-on="' + (i.on ? '0' : '1') + '">' + (i.on ? 'Disable' : 'Enable') + '</button>';
+            const act = i.dis ? '' : '<button class="btn sm" data-write data-ep="' + ep.id + '" data-on="' + (i.on ? '0' : '1') + '">' + (i.on ? 'Disable' : 'Enable') + '</button>';
             return '<div class="orow' + (i.on ? '' : ' dis') + '" data-pull="' + ep.id + '">' +
                 '<div class="oicon' + (i.on ? '' : ' off') + '">' + ep.icon + '</div>' +
                 '<div class="grow"><div class="t">' + esc(ep.name) + ' ' + O.statePill(i.on ? 'listening' : 'disabled') + ' <span class="pill acc">pull</span></div>' +

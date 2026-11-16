@@ -181,7 +181,7 @@ func (d *Detector) Run(ctx context.Context) {
 }
 
 // withSourceCadence stamps the source's actual read cadence onto a copy of
-// each entity it asserted. The source may cache and reuse the observation
+// each entity it asserted, unless the entity already carries a longer one. The source may cache and reuse the observation
 // slice, so the entities are never mutated in place.
 func withSourceCadence(o Observation, src Source) Observation {
 	cadence := time.Duration(0)
@@ -194,7 +194,11 @@ func withSourceCadence(o Observation, src Source) Observation {
 	entities := make([]Entity, len(o.Entities))
 	copy(entities, o.Entities)
 	for i := range entities {
-		entities[i].Cadence = cadence
+		// The source cadence only raises an entity's: one that announces a
+		// longer life of its own, a neighbour read from a cache, keeps it.
+		if entities[i].Cadence < cadence {
+			entities[i].Cadence = cadence
+		}
 	}
 	o.Entities = entities
 	return o

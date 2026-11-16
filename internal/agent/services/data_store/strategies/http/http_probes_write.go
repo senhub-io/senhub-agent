@@ -95,6 +95,14 @@ func (h *HTTPSyncStrategy) handleProbeUpdate(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	stored := existing.Params
+	if found {
+		if ps, has := spec.For(existing.Type); has {
+			if err := credentialsStayWithDestination(ps.Params, ps.SecretPaths(), stored, req.Params); err != nil {
+				writeJSONError(w, http.StatusBadRequest, err.Error())
+				return
+			}
+		}
+	}
 	// A body that says nothing about enabled asks for a params-only
 	// edit: it must not bring back a probe the operator disabled.
 	if req.Enabled == nil && found {
@@ -173,6 +181,10 @@ func (h *HTTPSyncStrategy) checkProbeWrite(w http.ResponseWriter, req probeWrite
 	ps, has := spec.For(req.Type)
 	if !has {
 		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("probe type %q is not in the catalogue of this agent", req.Type))
+		return ps, nil, false
+	}
+	if reason := h.configManager.Console().execRefusal(ps, req.Params, stored); reason != "" {
+		writeJSONError(w, http.StatusForbidden, reason)
 		return ps, nil, false
 	}
 	if verdict := annotateCatalogEntry(ps, h.currentLicense(), h.licenseAgentKey()); !verdict.Authorized {

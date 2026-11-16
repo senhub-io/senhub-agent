@@ -2,6 +2,7 @@ package snmppoll
 
 import (
 	"reflect"
+	"sync"
 	"testing"
 
 	"senhub-agent.go/internal/agent/services/entity"
@@ -170,8 +171,8 @@ func TestNeighbors_CapKeepsResolvedThenAddressedAndCountsOnDevice(t *testing.T) 
 		t.Error("the addressed neighbour was not kept second")
 	}
 	dev := obs.Entities[0]
-	if dev.Attributes[attrNeighborsOmitted] != int64(2) || dev.Attributes[attrNeighborsLimit] != int64(2) {
-		t.Errorf("device counters = %v, want omitted 2 limit 2", dev.Attributes)
+	if dev.Attributes[attrNeighborsTruncated] != true || dev.Attributes[attrNeighborsLimit] != int64(2) {
+		t.Errorf("device counters = %v, want truncated limit 2", dev.Attributes)
 	}
 }
 
@@ -179,8 +180,8 @@ func TestNeighbors_DeviceCountsZeroWhenNotCut(t *testing.T) {
 	s := learnedTestSource(t)
 	in := entity.Observation{Entities: []entity.Entity{deviceEntity(switchID, nil, entity.ScopeSNMPIFMIB)}}
 	dev := s.appendResolvesNeighbors(in, switchSweep()).Entities[0]
-	if dev.Attributes[attrNeighborsOmitted] != int64(0) || dev.Attributes[attrNeighborsLimit] != int64(defaultMaxNeighbors) {
-		t.Errorf("device counters = %v, want omitted 0 limit %d", dev.Attributes, defaultMaxNeighbors)
+	if dev.Attributes[attrNeighborsTruncated] != false || dev.Attributes[attrNeighborsLimit] != int64(defaultMaxNeighbors) {
+		t.Errorf("device counters = %v, want not truncated, limit %d", dev.Attributes, defaultMaxNeighbors)
 	}
 }
 
@@ -237,5 +238,126 @@ func TestParseARPDropsLocalRows(t *testing.T) {
 	}
 	if got := parseIPNetToPhysicalTable(binds); len(got) != 0 {
 		t.Fatalf("local ARP row not dropped: %+v", got)
+	}
+}
+
+func TestNeighbors_EmittedWithRetireByExpiryAndCadence(t *testing.T) {
+	s := learnedTestSource(t)
+	s.cfg.MaxNeighbors = 10
+	s.macIndex.Register(foreignMAC, "serial:9:R1", "Gi0/1")
+	const macA = "00-50-56-00-00-0A"
+	res := switchSweep()
+	res.fdb = []fdbEntry{{MAC: foreignMAC, IfIndex: 8}, {MAC: macA, IfIndex: 8}}
+	res.arp = []arpEntry{{IfIndex: 8, IP: "192.0.2.10", MAC: macA}}
+
+	in := entity.Observation{Entities: []entity.Entity{deviceEntity(switchID, nil, entity.ScopeSNMPIFMIB)}}
+	obs := s.appendResolvesNeighbors(in, res)
+	neighbors := neighborsOf(obs)
+	if len(neighbors) != 2 {
+		t.Fatalf("expected 2 neighbors, got %d", len(neighbors))
+	}
+	for _, e := range neighbors {
+		if !e.RetireByExpiry {
+			t.Errorf("neighbor %v lacks RetireByExpiry", e.ID[idKeyNeighborMAC])
+		}
+		if e.Cadence != entity.NeighborLiveness {
+			t.Errorf("neighbor %v cadence = %v, want %v", e.ID[idKeyNeighborMAC], e.Cadence, entity.NeighborLiveness)
+		}
+	}
+}
+
+// TestNeighbors_StickyCapKeepsPreviouslyKept checks that a neighbour
+// already published keeps its place against others of its class, while a
+// neighbour resolved later still takes precedence.
+func TestNeighbors_StickyCapKeepsPreviouslyKept(t *testing.T) {
+	s := learnedTestSource(t)
+	s.cfg.MaxNeighbors = 2
+	const macA, macB, macEarly = "00-50-56-00-00-0A", "00-50-56-00-00-0B", "00-50-56-00-00-01"
+	in := entity.Observation{Entities: []entity.Entity{deviceEntity(switchID, nil, entity.ScopeSNMPIFMIB)}}
+	want := func(pass string, got map[string]entity.Entity, macs ...string) {
+		t.Helper()
+		if len(got) != len(macs) {
+			t.Fatalf("%s: kept = %v, want %v", pass, got, macs)
+		}
+		for _, mac := range macs {
+			if _, ok := got[mac]; !ok {
+				t.Errorf("%s: kept = %v, want %v", pass, got, macs)
+			}
+		}
+	}
+
+	res := switchSweep()
+	res.fdb = []fdbEntry{{MAC: macA, IfIndex: 8}, {MAC: macB, IfIndex: 8}}
+	want("pass 1", neighborsOf(s.appendResolvesNeighbors(in, res)), macA, macB)
+
+	// A lower MAC of the same class arrives: the published ones stay.
+	res.fdb = append(res.fdb, fdbEntry{MAC: macEarly, IfIndex: 8})
+	want("pass 2", neighborsOf(s.appendResolvesNeighbors(in, res)), macA, macB)
+
+	// A neighbour resolved to a known interface outranks the class below.
+	s.macIndex.Register(foreignMAC, "serial:9:R1", "Gi0/1")
+	res.fdb = append(res.fdb, fdbEntry{MAC: foreignMAC, IfIndex: 8})
+	want("pass 3", neighborsOf(s.appendResolvesNeighbors(in, res)), foreignMAC, macA)
+
+	// Same tables again: the cut does not move.
+	want("pass 4", neighborsOf(s.appendResolvesNeighbors(in, res)), foreignMAC, macA)
+}
+
+// TestNeighbors_StickyCapStableAtEqualVolume checks that at an unchanged
+// table size the kept set does not move when a MAC of the same class that
+// sorts first replaces an omitted one.
+func TestNeighbors_StickyCapStableAtEqualVolume(t *testing.T) {
+	s := learnedTestSource(t)
+	s.cfg.MaxNeighbors = 2
+	const macA, macB, macC, macEarly = "00-50-56-00-00-0A", "00-50-56-00-00-0B", "00-50-56-00-00-0C", "00-50-56-00-00-01"
+	in := entity.Observation{Entities: []entity.Entity{deviceEntity(switchID, nil, entity.ScopeSNMPIFMIB)}}
+
+	res := switchSweep()
+	res.fdb = []fdbEntry{{MAC: macA, IfIndex: 8}, {MAC: macB, IfIndex: 8}, {MAC: macC, IfIndex: 8}}
+	first := neighborsOf(s.appendResolvesNeighbors(in, res))
+
+	res = switchSweep()
+	res.fdb = []fdbEntry{{MAC: macA, IfIndex: 8}, {MAC: macB, IfIndex: 8}, {MAC: macEarly, IfIndex: 8}}
+	second := neighborsOf(s.appendResolvesNeighbors(in, res))
+
+	for _, kept := range []map[string]entity.Entity{first, second} {
+		if len(kept) != 2 {
+			t.Fatalf("kept = %v, want 2", kept)
+		}
+		for _, mac := range []string{macA, macB} {
+			if _, ok := kept[mac]; !ok {
+				t.Errorf("kept = %v, want %s and %s", kept, macA, macB)
+			}
+		}
+	}
+}
+
+// TestNeighbors_ConcurrentReadsOfOneDevice checks two reads of one device do
+// not race on the kept set (run under -race).
+func TestNeighbors_ConcurrentReadsOfOneDevice(t *testing.T) {
+	s := learnedTestSource(t)
+	s.cfg.MaxNeighbors = 2
+
+	const macA, macB, macC = "00-50-56-00-00-0A", "00-50-56-00-00-0B", "00-50-56-00-00-0C"
+	fdb := []fdbEntry{{MAC: macA, IfIndex: 8}, {MAC: macB, IfIndex: 8}, {MAC: macC, IfIndex: 8}}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 200; j++ {
+				obs := entity.Observation{Entities: []entity.Entity{deviceEntity(switchID, nil, entity.ScopeSNMPIFMIB)}}
+				res := switchSweep()
+				res.fdb = fdb
+				s.appendResolvesNeighbors(obs, res)
+			}
+		}()
+	}
+	wg.Wait()
+
+	kept := s.neighborKept[switchID]
+	if len(kept) != 2 {
+		t.Fatalf("neighborKept[switchID] has %d entries, want 2", len(kept))
 	}
 }

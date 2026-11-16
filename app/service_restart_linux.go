@@ -14,8 +14,9 @@ const serviceUnitName = "senhub-agent"
 
 // restartServiceAfterUpdate restarts the systemd service after update has
 // installed the new binary (#975).
-func restartServiceAfterUpdate() (string, error) {
+func restartServiceAfterUpdate(startIfStopped bool) (string, error) {
 	return serviceRestarter{
+		startIfStopped: startIfStopped,
 		installed: func() bool {
 			return resolveUnitPath("", func(p string) bool { _, err := os.Stat(p); return err == nil }) != ""
 		},
@@ -44,6 +45,7 @@ func restartServiceAfterUpdate() (string, error) {
 		},
 		wait:       30 * time.Second,
 		poll:       500 * time.Millisecond,
+		settle:     10 * time.Second,
 		statusHint: "check 'systemctl status senhub-agent'",
 	}.run()
 }

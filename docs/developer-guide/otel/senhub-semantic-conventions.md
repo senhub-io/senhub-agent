@@ -2285,7 +2285,7 @@ ended":
 | `terminated` | the resource ended | the source answered and stopped listing the entity (an empty observation with `ok=true` is the legitimate way to say everything it watched is gone) |
 | `parent_removed` | the resource ended | the entity lost its anchoring relation and is no longer reachable in the graph |
 | `unmonitored` | **the observation ended — the resource may still be running** | the source was unregistered (its probe stopped, or was removed from the configuration), or it failed for longer than `lastGoodTTL`; also a device `snmp_poll` can no longer read (three topology intervals without an answer, or a table walk that failed) |
-| `aged_out` | **a cache forgot the entry — nobody saw it leave** | a `network.neighbor` the source read from an ARP, NDP or bridge table is no longer listed: the entry aged out |
+| `aged_out` | **a cache forgot the entry — nobody saw it leave** | reserved for an entity read from a cache. A `network.neighbor` is no longer deleted by absence at all: it carries `RetireByExpiry`, announces a 24-hour `entity.report.interval`, and the consumer expires it (`liveness_expiry`) |
 
 `aged_out` is deliberately not `evicted`: the consumer's contract gives that
 word to a workload its scheduler removed, a resource that really ended. The

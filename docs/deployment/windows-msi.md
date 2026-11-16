@@ -43,6 +43,7 @@ agent installs in the offline Free-tier default.
 | `OTLP_ENDPOINT` | Optional collector `host:port` — writes an OTLP push strategy (`strategies.d\10-otlp.yaml`) |
 | `HTTP_PORT` | Port of the local HTTP endpoints, PRTG / Web UI / Nagios (default `8080`) |
 | `DESKTOP_SHORTCUT` | `1` (default) places a "SenHub Agent Console" shortcut on the desktop; `DESKTOP_SHORTCUT=0` skips it |
+| `AUTO_UPDATE` | `1` (default) writes `auto_update.enabled: true`, so the agent applies each new signed MSI itself; `AUTO_UPDATE=0` writes `false` and leaves the version to Intune, SCCM or another tool |
 | `INSTALLFOLDER` | Override the install directory (default `%ProgramFiles%\SenHub Agent\`) |
 | `PURGE_DATA` | Accepted for backward compatibility, no effect: an uninstall always deletes `%ProgramData%\SenHub\` in full (see [Uninstall and data purge](#uninstall-and-data-purge)) |
 

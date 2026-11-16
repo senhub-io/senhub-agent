@@ -97,7 +97,7 @@
                     </div>
                 </div>
                 <div class="actions">
-                    <button class="btn primary" id="save-lic" type="button">Activate license</button>
+                    <button class="btn primary" id="save-lic" data-write type="button">Activate license</button>
                 </div>
             </div>
         </div>
@@ -118,7 +118,7 @@
                     </div>
                 </div>
                 <div class="actions">
-                    <button class="btn primary" id="save-conn" type="button">Save connection settings</button>
+                    <button class="btn primary" id="save-conn" data-write type="button">Save connection settings</button>
                 </div>
             </div>
 
@@ -153,12 +153,12 @@
                 </div>
                 <div class="field span" data-path="governance.labels"><span class="lbl">Labels <span class="opt">key = value</span></span>
                     <table class="rows"><tbody id="label-rows"></tbody></table>
-                    <div><button type="button" class="btn sm" id="btn-add-label">Add a label</button></div>
+                    <div><button type="button" class="btn sm" id="btn-add-label" data-write>Add a label</button></div>
                     <span class="ferr" hidden></span>
                 </div>
             </div>
             <div class="actions">
-                <button class="btn primary" id="save-gov" type="button">Save governance</button>
+                <button class="btn primary" id="save-gov" data-write type="button">Save governance</button>
                 <span class="small muted" id="gov-applies"></span>
                 <span class="small" id="gov-status" role="status" aria-live="polite"></span>
             </div>

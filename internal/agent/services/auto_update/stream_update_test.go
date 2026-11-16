@@ -116,7 +116,7 @@ func TestDoUpdate_StreamsTheArchiveThroughDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := updaterFor(t, srv, target).doUpdate(srv.URL + "/senhub-agent.zip"); err != nil {
+	if err := updaterFor(t, srv, target).doUpdate(srv.URL+"/senhub-agent.zip", ""); err != nil {
 		t.Fatalf("doUpdate: %v", err)
 	}
 
@@ -151,7 +151,7 @@ func TestDoUpdate_RefusesATamperedArchiveBeforeOpeningIt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := updaterFor(t, srv, target).doUpdate(srv.URL + "/senhub-agent.zip")
+	err := updaterFor(t, srv, target).doUpdate(srv.URL+"/senhub-agent.zip", "")
 	if err == nil || !strings.Contains(err.Error(), "REJECTED") {
 		t.Fatalf("err = %v, want the update rejected", err)
 	}
@@ -179,7 +179,7 @@ func TestDoUpdate_RefusesAnArchiveWithoutTheBinary(t *testing.T) {
 	target := filepath.Join(dir, "senhub-agent")
 	_ = os.WriteFile(target, []byte("old binary"), 0o755)
 
-	err := updaterFor(t, srv, target).doUpdate(srv.URL + "/senhub-agent.zip")
+	err := updaterFor(t, srv, target).doUpdate(srv.URL+"/senhub-agent.zip", "")
 	if err == nil || !strings.Contains(err.Error(), "does not contain senhub-agent binary") {
 		t.Fatalf("err = %v", err)
 	}
@@ -205,7 +205,7 @@ func TestDoUpdate_AcceptsALegacySignature(t *testing.T) {
 	if err := os.WriteFile(target, []byte("old binary"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := updaterFor(t, srv, target).doUpdate(srv.URL + "/senhub-agent.zip"); err != nil {
+	if err := updaterFor(t, srv, target).doUpdate(srv.URL+"/senhub-agent.zip", ""); err != nil {
 		t.Fatalf("doUpdate: %v", err)
 	}
 	if got, _ := os.ReadFile(target); !bytes.Equal(got, binary) {

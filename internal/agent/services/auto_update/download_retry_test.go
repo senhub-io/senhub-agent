@@ -67,7 +67,7 @@ func TestDoUpdate_RetriesACutBody(t *testing.T) {
 	u := updaterFor(t, srv, target)
 	u.downloadWait = noWait()
 
-	if err := u.doUpdate(srv.URL + "/senhub-agent.zip"); err != nil {
+	if err := u.doUpdate(srv.URL+"/senhub-agent.zip", ""); err != nil {
 		t.Fatalf("doUpdate after two cut downloads: %v", err)
 	}
 	if got := served.Load(); got != 3 {
@@ -104,7 +104,7 @@ func TestDoUpdate_GivesUpAfterBoundedRetries(t *testing.T) {
 	u := updaterFor(t, srv, target)
 	u.downloadWait = noWait()
 
-	if err := u.doUpdate(srv.URL + "/senhub-agent.zip"); err == nil {
+	if err := u.doUpdate(srv.URL+"/senhub-agent.zip", ""); err == nil {
 		t.Fatal("a download that is always cut must fail")
 	}
 	if got := served.Load(); got != archiveDownloadTries {
@@ -164,7 +164,7 @@ func TestDoUpdate_AbandonsAStalledBody(t *testing.T) {
 	u.downloadIdle = &idle
 
 	start := time.Now()
-	if err := u.doUpdate(srv.URL + "/senhub-agent.zip"); err != nil {
+	if err := u.doUpdate(srv.URL+"/senhub-agent.zip", ""); err != nil {
 		t.Fatalf("doUpdate after a stalled download: %v", err)
 	}
 	if elapsed := time.Since(start); elapsed > 20*time.Second {

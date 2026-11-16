@@ -244,8 +244,12 @@ func (lc *LocalConfiguration) hasConfigurationChanged(old, new LocalConfiguratio
 		return true
 	}
 
-	// Auto-update config changes don't require reload of probes/storage
-	// but we could handle them separately if needed
+	// The auto-update service checks on notification: without it a new
+	// target version or a disable waits for the next periodic tick.
+	if !reflect.DeepEqual(old.AutoUpdate, new.AutoUpdate) {
+		lc.logger.Debug().Msg("Auto-update configuration changed")
+		return true
+	}
 
 	return false
 }

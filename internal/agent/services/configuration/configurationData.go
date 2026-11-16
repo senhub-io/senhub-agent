@@ -114,9 +114,11 @@ func (p ProbeConfig) IsEnabled() bool {
 // RegistryUrl here for SaaS-side update polling; that field is kept
 // to avoid a JSON-schema break for callers that still serialize it.
 type AgentConfig struct {
-	RegistryUrl         string `json:"registry_url"`
-	Version             string `json:"version"`
-	UpdateCheckInterval any    `json:"update_check_interval" default:"3600"`
+	RegistryUrl string `json:"registry_url"`
+	Version     string `json:"version"`
+	// UpdateEnabled mirrors auto_update.enabled as it is now, so a check
+	// scheduled before the operator turned updates off does nothing.
+	UpdateEnabled bool `json:"update_enabled"`
 	// IncludeBeta mirrors the local auto_update.include_beta flag so the
 	// active updater's "latest" resolution can consider the beta channel.
 	IncludeBeta       bool   `json:"include_beta"`

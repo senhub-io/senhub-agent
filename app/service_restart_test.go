@@ -69,3 +69,34 @@ func TestServiceRestarter_TimesOut(t *testing.T) {
 		t.Fatal("a failed restart must be reported")
 	}
 }
+
+func TestServiceRestarter_StableDuringSettle(t *testing.T) {
+	r, _ := fakeRestarter([]string{"100", "200"}, "/usr/local/bin/senhub-agent")
+	r.settle = 30 * time.Millisecond
+	if _, err := r.run(); err != nil {
+		t.Fatalf("a service that stays up with the same PID must pass the settle window: %v", err)
+	}
+}
+
+func TestServiceRestarter_PIDChangesDuringSettle(t *testing.T) {
+	r, _ := fakeRestarter([]string{"100", "200", "300"}, "/usr/local/bin/senhub-agent")
+	r.settle = time.Second
+	_, err := r.run()
+	if err == nil || !strings.Contains(err.Error(), "stopped within") {
+		t.Fatalf("a PID change during settle must fail with 'stopped within', got %v", err)
+	}
+}
+
+// The restore after a failed start must start a service the crash left
+// stopped; an ordinary restart still leaves a stopped service alone.
+func TestServiceRestarter_StartsAStoppedServiceWhenAsked(t *testing.T) {
+	r, restarts := fakeRestarter([]string{"0", "300"}, "/usr/local/bin/senhub-agent")
+	started := false
+	r.isActive = func() bool { return started }
+	r.restart = func() error { *restarts++; started = true; return nil }
+	r.startIfStopped = true
+	line, err := r.run()
+	if err != nil || *restarts != 1 || !strings.Contains(line, "0.6.1") {
+		t.Fatalf("a stopped service must be started when asked, got %q, %v, %d restarts", line, err, *restarts)
+	}
+}

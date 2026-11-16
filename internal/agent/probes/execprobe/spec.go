@@ -12,7 +12,7 @@ func init() {
 		MultiInstance:   true,
 		DefaultInterval: 60,
 		Params: []probes.ParamSpec{
-			{Key: "command", Kind: probes.KindString, Required: true, Group: "command", Description: "Absolute path of the program; no shell, no PATH lookup", Example: "/usr/local/bin/check_backup"},
+			{Key: "command", Kind: probes.KindString, Executable: true, Required: true, Group: "command", Description: "Absolute path of the program; no shell, no PATH lookup", Example: "/usr/local/bin/check_backup"},
 			{Key: "args", Kind: probes.KindStringList, Group: "command", Description: "Arguments passed verbatim; anything secret here is stored as typed"},
 			{Key: "format", Kind: probes.KindString, Default: "nagios", Enum: []string{"nagios", "json"}, Group: "command", Description: "Output format"},
 			{Key: "interval", Kind: probes.KindInt, Default: 60, Group: "collection", Description: "Seconds between runs; keep it above the timeout"},

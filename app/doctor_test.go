@@ -12,6 +12,7 @@ import (
 
 	"github.com/kardianos/service"
 
+	"senhub-agent.go/internal/agent/services/auto_update"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
 	"senhub-agent.go/internal/agent/services/status"
@@ -565,5 +566,46 @@ func TestStatusExitCodeWarnsOnProbeInError(t *testing.T) {
 	r.system.ProbesError = "decoding /info/probes: unexpected shape"
 	if code := r.exitCode(); code != cliexit.Warning {
 		t.Errorf("unreadable probe list: exit code %d, want %d", code, cliexit.Warning)
+	}
+}
+
+func TestDoctorReportsAnUpdateRollback(t *testing.T) {
+	rec := &auto_update.RolledBackRecord{
+		FailedVersion:   "0.7.0",
+		RestoredVersion: "0.6.9",
+		RolledBackAt:    doctorNow.Add(-time.Hour),
+		BootAttempts:    3,
+		Outcome:         auto_update.OutcomeRestored,
+	}
+	tests := []struct {
+		name  string
+		rec   *auto_update.RolledBackRecord
+		err   error
+		level string
+		want  string
+	}{
+		{"restored", rec, nil, levelWarn, "rolled back to 0.6.9"},
+		{"not performed", &auto_update.RolledBackRecord{FailedVersion: "0.7.0", RestoredVersion: "0.6.9", BootAttempts: 3, Outcome: auto_update.OutcomeNotPerformed}, nil, levelFail, "sudo senhub-agent update 0.6.9"},
+		{"unreadable", nil, errors.New("denied"), levelWarn, "denied"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := healthyDoctorDeps()
+			d.rolledBack = func() (*auto_update.RolledBackRecord, error) { return tt.rec, tt.err }
+			c := expectLevel(t, runDoctorChecks(d), "install.update_rollback", tt.level)
+			if !strings.Contains(c.Message+c.Fix, tt.want) {
+				t.Errorf("message %q / fix %q lack %q", c.Message, c.Fix, tt.want)
+			}
+		})
+	}
+}
+
+func TestDoctorSaysNothingWhenNoUpdateWasRolledBack(t *testing.T) {
+	d := healthyDoctorDeps()
+	d.rolledBack = func() (*auto_update.RolledBackRecord, error) { return nil, nil }
+	for _, c := range runDoctorChecks(d) {
+		if c.ID == "install.update_rollback" {
+			t.Fatalf("unexpected check: %+v", c)
+		}
 	}
 }

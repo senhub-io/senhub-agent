@@ -1007,10 +1007,14 @@ func (p *FileTailProbe) consume(file string, ts *tailState, startOffset int64, f
 	lastFlush := time.Now()
 	lastOffset := startOffset
 
-	persist := func() {
+	// persist reports whether the bookmark reached the disk. A failed write
+	// (on Windows, a rename refused while another handle has the file open)
+	// leaves the offset dirty, so the next tick retries it instead of
+	// waiting for a line that a quiet file may never write.
+	persist := func() bool {
 		// Once superseded, the tail that replaced this one owns the bookmark.
 		if ts.superseded.Load() {
-			return
+			return true
 		}
 		// A file below the fingerprint window has none yet. Once the offset
 		// shows the window was read, take it, provided the path still holds
@@ -1022,8 +1026,10 @@ func (p *FileTailProbe) consume(file string, ts *tailState, startOffset int64, f
 			}
 		}
 		if err := p.bookmarks.Set(file, bookmarkEntry{Offset: ts.committed.Load(), Fingerprint: fp}); err != nil {
-			p.warn().Err(err).Str("file", file).Msg("persisting bookmark failed")
+			p.warn().Err(err).Str("file", file).Msg("persisting bookmark failed; retrying at the next flush")
+			return false
 		}
+		return true
 	}
 
 	// idle sends a record in progress once the file has been quiet for
@@ -1150,9 +1156,8 @@ read:
 				p.debug().Err(err).Str("file", file).Msg("cannot open a drain handle on the new file")
 			}
 			fp = ts.restartedAtStart(file)
-			persist()
+			dirty = !persist()
 			lastFlush = time.Now()
-			dirty = false
 			p.verifyStartedTail(file, ts)
 			continue
 		case <-retiredTicker.C:
@@ -1168,9 +1173,8 @@ read:
 			continue
 		case <-ticker.C:
 			if dirty {
-				persist()
+				dirty = !persist()
 				lastFlush = time.Now()
-				dirty = false
 			}
 			continue
 		case l, ok := <-t.Lines:
@@ -1224,9 +1228,8 @@ read:
 		}
 
 		if time.Since(lastFlush) >= bookmarkFlushInterval {
-			persist()
+			dirty = !persist()
 			lastFlush = time.Now()
-			dirty = false
 		}
 	}
 

@@ -387,7 +387,7 @@ func (s *sensor) SyncConfiguration() error {
 		s.moduleLogger.Info().
 			Str("probe_id", p.id).
 			Str("probe_name", p.config.Name).
-			Any("probe_params", configuration.SanitizeParamsForLog(p.config.Params)).
+			Any("probe_params", configuration.SanitizeProbeParamsForLog(p.config.Type, p.config.Params)).
 			Msg("Starting new probe")
 
 		wg.Add(1)

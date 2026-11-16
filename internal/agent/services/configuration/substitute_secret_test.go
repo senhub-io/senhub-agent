@@ -66,15 +66,11 @@ func TestSanitizeParamsForLog_Recursive(t *testing.T) {
 	if out["password"] != "***" {
 		t.Errorf("flat password not masked: %v", out["password"])
 	}
+	// `auth` is a secret name under the shared rule: the whole block is
+	// masked, the nested password and user with it.
 	director := out["director"].(map[string]interface{})
-	auth := director["auth"].(map[string]interface{})
-	if auth["password"] != "***" {
-		t.Errorf("nested password not masked: %v", auth["password"])
-	}
-	// 'user' matches the LOG-redaction pattern (usernames are kept out of shared
-	// logs), so it is masked here too — confirms recursion reaches nested keys.
-	if auth["user"] != "***" {
-		t.Errorf("nested 'user' should be masked in the log view: %v", auth["user"])
+	if director["auth"] != "***" {
+		t.Errorf("auth block not masked: %v", director["auth"])
 	}
 	nodes := out["nodes"].([]interface{})
 	u0 := nodes[0].(map[string]interface{})

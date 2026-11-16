@@ -37,6 +37,7 @@ import (
 
 	"senhub-agent.go/internal/agent/services/configuration/secret"
 	"senhub-agent.go/internal/agent/services/logger"
+	"senhub-agent.go/internal/agent/services/logredact"
 )
 
 // ShowMode picks the rendering strategy. Zero value is ShowResolved
@@ -48,12 +49,6 @@ const (
 	ShowRaw
 	ShowRedact
 )
-
-// secretFieldPattern matches the YAML field names whose VALUE should
-// be masked in ShowRedact mode. The pattern uses substring matching
-// (no `^…$` anchors) so composite names like `api_key`, `auth_token`,
-// `db_password`, `client_secret` are all caught. Case-insensitive.
-var secretFieldPattern = regexp.MustCompile(`(?i)(key|token|password|passphrase|secret|community|credential|authorization|bearer|license|jwt)`)
 
 // fileRefPattern recognises a `${file:..}` reference inside a raw
 // (pre-substitution) string. The trailing capture is intentionally
@@ -116,6 +111,7 @@ func redactedCopy(load func() (LocalConfigurationData, error)) (LocalConfigurati
 	// Walk raw + resolved in lockstep, masking every string that was
 	// either file-backed or sits under a secret-named key.
 	redactInPlace(reflect.ValueOf(&raw).Elem(), reflect.ValueOf(&resolved).Elem(), "")
+	maskSpecSecrets(&resolved)
 	return resolved, nil
 }
 
@@ -227,7 +223,7 @@ func loadMerged(configPath string, log *logger.ModuleLogger) (LocalConfiguration
 //   - the value came from a ${file:..} reference (detected by
 //     looking at the matching position in the raw tree), OR
 //   - the most recent named context (struct YAML tag or map key)
-//     matches secretFieldPattern.
+//     matches logredact.IsSecretKey.
 //
 // Both trees must have the same shape (same struct types, parallel
 // slice lengths). They will, because they were loaded from the same
@@ -305,8 +301,16 @@ func redactInPlace(rawV, resV reflect.Value, currentName string) {
 		// empty — an empty secret is still a secret slot.
 		hasFileRef := fileRefPattern.MatchString(raw)
 		hasSecretRef := secretRefPattern.MatchString(raw) || envProbeRefPattern.MatchString(raw)
-		nameLooksSecret := currentName != "" && secretFieldPattern.MatchString(currentName)
+		nameLooksSecret := currentName != "" && logredact.IsSecretKey(currentName)
 		if !hasFileRef && !hasSecretRef && !nameLooksSecret {
+			// A value can carry a credential under any key name: the URL
+			// user part, query values, a fragment, a token. Mask it the
+			// way the logs do.
+			if resV.CanSet() {
+				if masked := logredact.String(resV.String()); masked != resV.String() {
+					resV.SetString(masked)
+				}
+			}
 			return
 		}
 		if !resV.CanSet() {

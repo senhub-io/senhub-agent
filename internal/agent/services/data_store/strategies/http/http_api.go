@@ -323,19 +323,25 @@ func (a *APIManager) HandleInfoSystem(w http.ResponseWriter, r *http.Request) {
 	commit := versionInfo.Commit
 
 	hostname := common.CanonicalHostName()
+	console := a.strategy.configManager.Console()
 	response := SystemInfoResponse{
-		Status:           "running",
-		Hostname:         hostname,
-		Version:          version,
-		Commit:           commit,
-		CoreCommit:       cliArgs.CoreCommit,
-		InstanceID:       configuration.AgentInstanceID(a.strategy.agentConfig.GetAuthenticationKey()),
-		GoVersion:        runtime.Version(),
-		OS:               runtime.GOOS,
-		Arch:             runtime.GOARCH,
-		Port:             a.strategy.port,
-		Uptime:           systemHealth.Uptime,
-		Health:           systemHealth.Health,
+		Status:     "running",
+		Hostname:   hostname,
+		Version:    version,
+		Commit:     commit,
+		CoreCommit: cliArgs.CoreCommit,
+		InstanceID: configuration.AgentInstanceID(a.strategy.agentConfig.GetAuthenticationKey()),
+		GoVersion:  runtime.Version(),
+		OS:         runtime.GOOS,
+		Arch:       runtime.GOARCH,
+		Port:       a.strategy.port,
+		Uptime:     systemHealth.Uptime,
+		Health:     systemHealth.Health,
+		Console: ConsoleInfo{
+			ReadOnly:  console.ReadOnly,
+			AllowExec: console.ExecAllowed(),
+			Mode:      console.Mode(),
+		},
 		StrategyFailures: strategyFailureList(),
 		OutputsFailing:   outputsFailing(),
 		ConfigPath:       filepath.Dir(a.strategy.agentConfig.GetConfigPath()),

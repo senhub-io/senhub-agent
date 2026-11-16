@@ -25,6 +25,9 @@ type ConfigurationManager struct {
 	port             int
 	bindAddress      string
 
+	console   ConsolePolicy
+	consoleMu sync.RWMutex
+
 	// maxCacheSize bounds the MetricCache cardinality (distinct time
 	// series). 0 = unbounded. Default DefaultMaxCacheSeries, same as
 	// the OTLP store cap.
@@ -133,6 +136,8 @@ func (cm *ConfigurationManager) loadConfiguration() {
 	// If no endpoints specified, default to no endpoints enabled
 	// User must explicitly configure endpoints
 
+	cm.loadConsolePolicy()
+
 	// Parse Prometheus endpoint options
 	if promParam, exists := cm.params["prometheus"]; exists {
 		if promCfg, ok := promParam.(map[string]interface{}); ok {
@@ -226,6 +231,11 @@ func ValidateParams(params configuration.StorageConfigParams) error {
 			return fmt.Errorf("port must be between 1 and 65535, got: %d", port)
 		}
 	}
+
+	// An unreadable console block is not refused here: refusing it would
+	// drop the reload, or stop the agent at start, and keep or lose the
+	// console with it. The output runs and the console fails closed
+	// (loadConsolePolicy); config check and doctor report the block.
 
 	// Validate bind_address if provided
 	if bindValue, exists := params["bind_address"]; exists {
@@ -352,6 +362,11 @@ func (cm *ConfigurationManager) UpdateConfiguration(newParams map[string]interfa
 	// TLS was removed, and merging would keep serving HTTPS on the old one.
 	if _, exists := newParams["tls"]; !exists {
 		delete(cm.params, "tls")
+	}
+	// The console block is the same: removing it from the file returns
+	// the console to its defaults.
+	if _, exists := newParams["console"]; !exists {
+		delete(cm.params, "console")
 	}
 
 	// Reload configuration

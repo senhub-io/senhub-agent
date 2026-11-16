@@ -3,12 +3,12 @@ package configuration
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v2"
 
 	"senhub-agent.go/internal/agent/services/configuration/secret"
+	"senhub-agent.go/internal/agent/services/logredact"
 )
 
 // The console never sees a stored secret: the listing shows a reference
@@ -38,11 +38,9 @@ func KeepStoredValues(existing, incoming map[string]interface{}, secretPaths []s
 }
 
 // ConsoleHides reports a key whose value the console never shows, wherever
-// it sits: a superset of the keys the boot-time sealer treats as
-// sensitive, so nothing sealed is ever shown resolved.
-func ConsoleHides(key string) bool { return consoleSecretKeyPattern.MatchString(key) }
-
-var consoleSecretKeyPattern = regexp.MustCompile(`(?i)(password|passphrase|secret|token|api[_-]?key|private[_-]?key|credential|community|dsn|uri|authorization|bearer|license|jwt)`)
+// it sits: the shared rule of logredact.IsSecretKey, so nothing sealed is
+// ever shown resolved.
+func ConsoleHides(key string) bool { return logredact.IsSecretKey(key) }
 
 // keepStored walks existing. With secret nil it keeps references only;
 // with a set it also keeps the literals the console hides, by the same

@@ -341,7 +341,7 @@ it does not install. In the journal:
 
 ```
 A newer version is available. The agent does not install it itself on Linux:
-the binary is root-owned so the service account cannot rewrite it.
+installing is left to root, outside the service.
 Apply it with 'sudo senhub-agent update', ...
 ```
 

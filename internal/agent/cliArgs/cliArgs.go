@@ -158,6 +158,9 @@ type ParsedArgs struct {
 	// HttpBindAddress is the address the generated HTTP strategy binds
 	// when HTTPS is off. Empty means loopback.
 	HttpBindAddress string
+	// AutoUpdate, when set, is the auto_update.enabled a fresh
+	// configuration is written with. Nil keeps the default (disabled).
+	AutoUpdate *bool
 
 	// HTTPS options
 	EnableHttps   bool

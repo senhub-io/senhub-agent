@@ -396,6 +396,10 @@ var knownTopLevelArgs = map[string]struct{}{
 	"refresh-unit": {},
 	"console":      {},
 	"doctor":       {},
+	// update-watch is internal: the Windows service spawns it before exiting
+	// into a new binary. Missing here, Main rejected it as unknown and no
+	// failed update was ever rolled back.
+	"update-watch": {},
 }
 
 func Main() {
@@ -576,6 +580,8 @@ func Main() {
 		// it here (#723).
 		agent.UpdateAgent(parsed, agent.AfterInstall(syncServiceBinary), agent.RefreshUnit(refreshUnitAfterUpdate), agent.RestartService(restartServiceAfterUpdate))
 		return
+	case "update-watch":
+		os.Exit(runUpdateWatch(os.Args[2:]))
 	case "refresh-unit":
 		runRefreshUnit()
 		return

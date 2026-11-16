@@ -23,6 +23,7 @@ import (
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
+	httpstrategy "senhub-agent.go/internal/agent/services/data_store/strategies/http"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
 	"senhub-agent.go/internal/agent/services/entitydetect"
 	"senhub-agent.go/internal/agent/services/governance"
@@ -442,6 +443,16 @@ func checkConfig(configPath string) checkOutcome {
 			warnings++
 		}
 	}
+	// A key inside the agent block that no field reads is dropped by the
+	// loader the same way: a misspelt licence key, or a setting from an
+	// older version that no longer does anything.
+	if unknown, uerr := configuration.FindUnknownAgentKeys(configPath); uerr == nil {
+		for _, k := range unknown {
+			fmt.Printf("  [WARN] %s: key \"agent.%s\" is not read and has no effect (accepted under agent: %s)\n",
+				filepath.Base(configPath), k, strings.Join(configuration.KnownAgentKeys(), ", "))
+			warnings++
+		}
+	}
 
 	// Config version. Validate against the agent's supported range
 	// (MinimumConfigVersion..CurrentConfigVersion) rather than a
@@ -680,7 +691,19 @@ func checkConfig(configPath string) checkOutcome {
 					continue
 				}
 			}
+			if s.Name != "http" {
+				fmt.Printf("  [OK]   Storage: %s\n", s.Name)
+				continue
+			}
+			policy, perr := httpstrategy.ParseConsolePolicy(s.Params)
+			if perr != nil {
+				fmt.Printf("  [ERROR] Storage %q: %v\n", s.Name, perr)
+				fmt.Println("          The agent runs with this file, but its console stays read-only until the block is fixed.")
+				errorCount++
+				continue
+			}
 			fmt.Printf("  [OK]   Storage: %s\n", s.Name)
+			fmt.Printf("  [INFO] Console mode: %s (%s)\n", policy.Mode(), policy.Describe())
 		}
 		reportEntityEmission(config.Entities, config.Storage)
 	}

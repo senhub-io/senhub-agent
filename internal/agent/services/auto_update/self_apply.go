@@ -44,6 +44,6 @@ func selfApplyRefusalFor(goos string, operatorDriven bool) string {
 		return ""
 	}
 	return "A newer version is available. The agent does not install it itself on Linux: " +
-		"the binary is root-owned so the service account cannot rewrite it. " +
+		"installing is left to root, outside the service. " +
 		"Apply it with 'sudo senhub-agent update', or through the package manager once packages are available."
 }

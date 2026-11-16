@@ -5,6 +5,18 @@ import (
 	"strings"
 )
 
+// secretKeyWords is the one list of words that make a parameter or
+// field name secret, for the configuration views, the logs, the
+// console and free text alike.
+var secretKeyWords = []string{"pass", "pwd", "secret", "token", "key", "session", "private", "cookie", "auth", "credential", "dsn", "uri", "community", "bearer", "license", "jwt"}
+
+var secretKeyPattern = regexp.MustCompile(`(?i)(` + strings.Join(secretKeyWords, "|") + `)`)
+
+// IsSecretKey reports whether a structured key (a YAML parameter, a
+// header, a log field) names a secret: any of secretKeyWords as a
+// substring, case ignored.
+func IsSecretKey(name string) bool { return secretKeyPattern.MatchString(name) }
+
 // uriUserinfoPattern masks the whole userinfo of scheme://...@host.
 var uriUserinfoPattern = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.\-]*://)[^/?#\s]*@`)
 
@@ -55,11 +67,10 @@ var cloudAccessKeyIDPattern = regexp.MustCompile(`\b(?:AKIA|ASIA)[A-Z0-9]{16}\b`
 
 // sensitivePairKeyNames are the key names that make a key=value / key: value
 // pair sensitive when they appear as the whole key, as a whole segment
-// (split on `_`, `-`, `.`), or as a plain suffix of the key.
-var sensitivePairKeyNames = []string{
-	"token", "secret", "apikey", "api_key", "api-key", "passphrase",
-	"credential", "auth", "password", "passwd", "pwd",
-}
+// (split on `_`, `-`, `.`), or as a plain suffix of the key. It uses the
+// same word list as IsSecretKey, plus the explicit spellings that carry no
+// shared keyword.
+var sensitivePairKeyNames = append(append([]string{}, secretKeyWords...), "apikey", "api_key", "api-key", "passphrase", "password", "passwd")
 
 // isSensitivePairKey reports whether key names a sensitive pair. Matching is
 // case-insensitive and uses the whole key, whole segments, or a plain suffix,

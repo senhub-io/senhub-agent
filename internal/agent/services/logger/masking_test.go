@@ -14,7 +14,7 @@ func TestMaskSensitiveData(t *testing.T) {
 		{
 			name:     "Password in JSON",
 			input:    `{"username": "admin", "password": "supersecret123"}`,
-			expected: `{"username": "admin", "password": "su**********23"}`,
+			expected: `{"username": "admin", "password": "***"}`,
 		},
 		{
 			name:     "API Key in text",
@@ -24,12 +24,12 @@ func TestMaskSensitiveData(t *testing.T) {
 		{
 			name:     "Authorization header",
 			input:    `Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0`,
-			expected: `Authorization: Bearer eyJh********************************************************wIn0`,
+			expected: `Authorization: Bearer ***`,
 		},
 		{
 			name:     "Short password",
 			input:    `password="abc"`,
-			expected: `password="********"`,
+			expected: `password="***"`,
 		},
 		{
 			name:     "No sensitive data",
@@ -44,7 +44,7 @@ func TestMaskSensitiveData(t *testing.T) {
 		{
 			name:     "Multiple sensitive fields",
 			input:    `{"user": "admin", "password": "secret123", "api_key": "abcdef123456"}`,
-			expected: `{"user": "admin", "password": "se*****23", "api_key": "ab********56"}`,
+			expected: `{"user": "admin", "password": "***", "api_key": "***"}`,
 		},
 	}
 
@@ -67,17 +67,17 @@ func TestMaskValue(t *testing.T) {
 		{
 			name:     "Short value",
 			input:    "abc",
-			expected: "********",
+			expected: "***",
 		},
 		{
 			name:     "Medium value",
 			input:    "password123",
-			expected: "pa*******23",
+			expected: "***",
 		},
 		{
 			name:     "Long value",
 			input:    "thisisaverylongpasswordwithmanycharacters",
-			expected: "this*********************************ters",
+			expected: "***",
 		},
 	}
 

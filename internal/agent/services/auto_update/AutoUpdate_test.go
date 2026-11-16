@@ -1,8 +1,9 @@
 package auto_update
 
 import (
-	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -691,56 +692,16 @@ func TestAutoUpdate_GetBinaryName(t *testing.T) {
 	}
 }
 
+// The check runs every hour whatever an old configuration still carries:
+// update_check_interval is not read.
 func TestAutoUpdate_GetUpdateCheckInterval(t *testing.T) {
-	testCases := []struct {
-		name           string
-		interval       any
-		expectedResult time.Duration
-	}{
-		{
-			name:           "1h",
-			interval:       "1h",
-			expectedResult: time.Hour,
-		},
-		{
-			name:           "1m",
-			interval:       "1m",
-			expectedResult: time.Minute,
-		},
-		{
-			name:           "number",
-			interval:       3600,
-			expectedResult: time.Hour,
-		},
-		{
-			name:           "default",
-			interval:       nil,
-			expectedResult: time.Hour,
-		},
+	au := &autoUpdate{
+		configSource: newMockConfiguration("http://localhost:8000", `{"agent": {"update_check_interval": "1m"}}`),
+		logger:       createTestModuleLogger(),
+		httpClient:   httpretry.NewDefaultClient(),
 	}
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			configInterval, _ := json.Marshal(tc.interval)
-			remoteConfig := newMockConfiguration(
-				"http://localhost:8000", `
-				{
-					"agent": {
-						"update_check_interval": `+string(configInterval)+`
-					}
-				}
-				`)
-
-			httpClient := httpretry.NewDefaultClient()
-			au := &autoUpdate{
-				configSource: remoteConfig,
-				logger:       createTestModuleLogger(),
-				httpClient:   httpClient,
-			}
-			result := au.GetUpdateCheckInterval()
-			if result != tc.expectedResult {
-				t.Errorf("Expected %v, got %v", tc.expectedResult, result)
-			}
-		})
+	if got := au.GetUpdateCheckInterval(); got != time.Hour {
+		t.Errorf("GetUpdateCheckInterval() = %v, want 1h", got)
 	}
 }
 
@@ -796,5 +757,50 @@ func TestAutoUpdate_ResolvedVersionNamesTheConcreteRelease(t *testing.T) {
 	}
 	if got := au.ResolvedVersion(); got != "1.1.0" {
 		t.Fatalf("ResolvedVersion = %q, want %q", got, "1.1.0")
+	}
+}
+
+// Turning auto_update off while the agent runs stops the checks: the
+// scheduler keeps running, so each check reads the setting in force and
+// reaches no registry.
+func TestPeriodicalCheckForUpdate_DisabledAtRuntimeContactsNothing(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	au := &autoUpdate{
+		configSource: newMockConfiguration("", `{"agent": {"update_enabled": false, "version": "latest", "registry_url": "`+srv.URL+`"}}`),
+		logger:       createTestModuleLogger(),
+		httpClient:   httpretry.NewDefaultClient(),
+	}
+	if err := au.PeriodicalCheckForUpdate(); err != nil {
+		t.Fatalf("a disabled check must not fail: %v", err)
+	}
+	if hits != 0 {
+		t.Fatalf("a disabled check contacted the registry %d time(s)", hits)
+	}
+}
+
+// The same check with auto_update on does reach the registry: the gate
+// above is not a check that never runs.
+func TestPeriodicalCheckForUpdate_EnabledContactsTheRegistry(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	au := &autoUpdate{
+		configSource: newMockConfiguration("", `{"agent": {"update_enabled": true, "version": "latest", "registry_url": "`+srv.URL+`"}}`),
+		logger:       createTestModuleLogger(),
+		httpClient:   httpretry.NewDefaultClient(),
+	}
+	au.PeriodicalCheckForUpdate() //nolint:errcheck // the stub registry answers 404; only the contact counts
+	if hits == 0 {
+		t.Fatal("an enabled check must contact the registry")
 	}
 }

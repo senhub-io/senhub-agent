@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/kardianos/service"
 
+	"senhub-agent.go/internal/agent/services/auto_update"
 	"senhub-agent.go/internal/agent/services/configuration"
+	httpstrategy "senhub-agent.go/internal/agent/services/data_store/strategies/http"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
 	"senhub-agent.go/internal/agent/services/status"
 )
@@ -90,6 +93,9 @@ func checkInstall(d doctorDeps, cfg doctorConfig, st statusResult) []doctorCheck
 		out = append(out, *bin)
 	}
 	out = append(out, skewCheck(d))
+	if c := rollbackCheck(d); c != nil {
+		out = append(out, *c)
+	}
 	if c := pathBinaryCheck(d, unit, unitErr, st); c != nil {
 		out = append(out, *c)
 	}
@@ -178,6 +184,33 @@ func binaryCheck(d doctorDeps, st statusResult) *doctorCheck {
 		return &c
 	}
 	c := okCheck(sectionInstall, "install.binary", fmt.Sprintf("the service runs the binary on disk (%s)", exe))
+	return &c
+}
+
+// rollbackCheck reports an update that did not survive its first boots. It
+// stays silent when no update was ever rolled back.
+func rollbackCheck(d doctorDeps) *doctorCheck {
+	if d.rolledBack == nil {
+		return nil
+	}
+	rec, err := d.rolledBack()
+	if err != nil {
+		c := warnCheck(sectionInstall, "install.update_rollback", "cannot read the update rollback record: "+err.Error(), "check that the state directory is readable")
+		return &c
+	}
+	if rec == nil {
+		return nil
+	}
+	when := rec.RolledBackAt.Format(time.RFC3339)
+	if rec.Outcome == auto_update.OutcomeRestored {
+		c := warnCheck(sectionInstall, "install.update_rollback",
+			fmt.Sprintf("version %s failed to start after %d boots and was rolled back to %s on %s; automatic updates skip it until a newer release", rec.FailedVersion, rec.BootAttempts, rec.RestoredVersion, when),
+			"read the agent log for the failure, then run 'senhub-agent update' once a newer version is available")
+		return &c
+	}
+	c := failCheck(sectionInstall, "install.update_rollback",
+		fmt.Sprintf("version %s failed to start after %d boots on %s and could not be rolled back automatically", rec.FailedVersion, rec.BootAttempts, when),
+		fmt.Sprintf("run 'sudo senhub-agent update %s' to return to the previous version", rec.RestoredVersion))
 	return &c
 }
 
@@ -299,6 +332,9 @@ func checkConfiguration(d doctorDeps, cfg doctorConfig, st statusResult) []docto
 		out = append(out, *c)
 	}
 	out = append(out, httpPortCheck(d, cfg, st))
+	if c := consoleModeCheck(cfg); c != nil {
+		out = append(out, *c)
+	}
 	out = append(out, extensionChecks(cfg, st)...)
 	return out
 }
@@ -414,6 +450,29 @@ func httpPortCheck(d doctorDeps, cfg doctorConfig, st statusResult) doctorCheck 
 			"stop the process holding the port, or set another one in strategies.d/00-http.yaml")
 	}
 	return okCheck(sectionConfiguration, "config.http_port", fmt.Sprintf("port %d is free on %s", port, bind))
+}
+
+// consoleModeCheck states what the console may change on this agent. A
+// restricted mode is a choice, not a defect, so it is reported OK: the
+// line is there for whoever finds a write refused and wonders why.
+func consoleModeCheck(cfg doctorConfig) *doctorCheck {
+	if cfg.err != nil {
+		return nil
+	}
+	for _, s := range cfg.data.Storage {
+		if s.Name != "http" {
+			continue
+		}
+		policy, err := httpstrategy.ParseConsolePolicy(s.Params)
+		if err != nil {
+			c := failCheck(sectionConfiguration, "config.console", fmt.Sprintf("the console block is invalid and the console is read-only until it is fixed (%v)", err),
+				"correct the console block in the http output, with read_only and allow_exec set to true or false")
+			return &c
+		}
+		c := okCheck(sectionConfiguration, "config.console", fmt.Sprintf("%s: %s", policy.Mode(), policy.Describe()))
+		return &c
+	}
+	return nil
 }
 
 func checkOutputs(d doctorDeps, cfg doctorConfig, st statusResult) []doctorCheck {

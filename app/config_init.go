@@ -40,8 +40,10 @@ type initConfigArgs struct {
 	tags           map[string]string
 	httpPort       int
 	httpBind       string
-	licenseFile    string
-	licenseDir     string
+	// autoUpdate: nil means the default.
+	autoUpdate  *bool
+	licenseFile string
+	licenseDir  string
 	// jsonMode prints one JSON object instead of the text report.
 	jsonMode bool
 	// okIfUnchanged turns the Unchanged exit into OK, for a caller that
@@ -99,6 +101,22 @@ func parseInitConfigArgs(argv []string) (initConfigArgs, error) {
 			var raw string
 			if raw, err = value(&i); err == nil {
 				out.httpBind, err = parseHTTPBind(raw)
+			}
+		case "--auto-update":
+			var raw string
+			if raw, err = value(&i); err == nil {
+				switch strings.ToLower(strings.TrimSpace(raw)) {
+				case "":
+					out.autoUpdate = nil
+				case "1", "true":
+					v := true
+					out.autoUpdate = &v
+				case "0", "false":
+					v := false
+					out.autoUpdate = &v
+				default:
+					err = fmt.Errorf("--auto-update must be 1 or 0, got %q", raw)
+				}
 			}
 		case "--http-port":
 			var raw string
@@ -288,6 +306,9 @@ func runConfigInit(argv []string, out io.Writer, env initEnv) int {
 		if opts.httpBind != "" {
 			fmt.Fprintf(text, "Warning: --http-bind %s was ignored; an existing configuration keeps its address. Change it with 'senhub-agent config set http.bind_address %s'.\n", opts.httpBind, opts.httpBind)
 		}
+		if opts.autoUpdate != nil {
+			fmt.Fprintln(text, "Warning: --auto-update was ignored; an existing configuration keeps its auto_update setting.")
+		}
 		if _, port := resolveHTTPStrategyEndpoint(configPath); port > 0 {
 			if opts.httpPort != 0 && opts.httpPort != port {
 				fmt.Fprintf(text, "Warning: --http-port %d was ignored; the existing configuration keeps port %d. Change it with 'senhub-agent config set http.port %d'.\n", opts.httpPort, port, opts.httpPort)
@@ -353,7 +374,7 @@ func runConfigInit(argv []string, out io.Writer, env initEnv) int {
 		return fail(fmt.Errorf("config init: %w", err))
 	}
 
-	args := &cliArgs.ParsedArgs{ConfigPath: configPath, HttpPort: opts.httpPort, HttpBindAddress: opts.httpBind}
+	args := &cliArgs.ParsedArgs{ConfigPath: configPath, HttpPort: opts.httpPort, HttpBindAddress: opts.httpBind, AutoUpdate: opts.autoUpdate}
 	if err := env.generate(args); err != nil {
 		return fail(fmt.Errorf("config init: %w", err))
 	}

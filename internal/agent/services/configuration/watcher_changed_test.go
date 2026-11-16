@@ -42,4 +42,12 @@ func TestHasConfigurationChangedSeesReloadedSections(t *testing.T) {
 	if !lc.hasConfigurationChanged(build(), tags) {
 		t.Error("a global_tags-only change must be detected")
 	}
+
+	au := build()
+	au.AutoUpdate = &AutoUpdateConfig{Enabled: true, Version: "0.7.97"}
+	before := build()
+	before.AutoUpdate = &AutoUpdateConfig{Enabled: true, Version: "0.7.96"}
+	if !lc.hasConfigurationChanged(before, au) {
+		t.Error("an auto_update-only change must be detected")
+	}
 }

@@ -3,7 +3,6 @@ package logger
 import (
 	"encoding/json"
 	"io"
-	"strings"
 
 	"github.com/rs/zerolog"
 
@@ -141,26 +140,7 @@ func redactJSONStrings(v interface{}) interface{} {
 
 // isSensitiveFieldName checks if a field name is likely to contain sensitive data
 func isSensitiveFieldName(fieldName string) bool {
-	sensitiveNames := []string{
-		"password", "passwd", "pwd",
-		"token", "api_key", "apikey",
-		"secret", "credential",
-		"authentication_key", "authkey",
-		"authorization", "auth",
-		// passphrase covers SNMPv3 priv_passphrase, which carries no
-		// other keyword (auth_passphrase only matched by luck on
-		// "auth"); community is the SNMP v2c shared secret.
-		"passphrase", "community",
-	}
-
-	fieldNameLower := strings.ToLower(fieldName)
-	for _, name := range sensitiveNames {
-		if strings.Contains(fieldNameLower, name) {
-			return true
-		}
-	}
-
-	return false
+	return logredact.IsSecretKey(fieldName)
 }
 
 // appendNewlineIfMissing ensures the buffer ends with exactly one '\n'.

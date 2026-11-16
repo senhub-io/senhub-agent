@@ -2,38 +2,25 @@ package configuration
 
 import (
 	"regexp"
+	"strings"
 
+	"senhub-agent.go/internal/agent/probes/spec"
+	"senhub-agent.go/internal/agent/services/data_store/outputspec"
 	"senhub-agent.go/internal/agent/services/logredact"
 )
 
-// logSensitiveKeyPattern is a superset of the show-redact pattern.
-// `show.go`'s secretFieldPattern protects file-backed and named-secret
-// values when an operator prints the config. The log path needs the
-// same coverage PLUS the identifier-style fields (`user`, `login`,
-// `username`, `email`) that aren't secrets per se but should not be
-// echoed into shared log infrastructure either.
-//
-// Case-insensitive substring match: catches `api_key`, `auth_token`,
-// `client_secret`, `db_password`, `pub400_user`, `auth_login`,
-// `Authorization` (the OTLP strategy's `headers.Authorization: Bearer <token>`)…
-// The case-insensitivity is necessary because YAML keys are written
-// in mixed conventions (snake_case, camelCase) across the probe set.
-//
-// `authorization`/`bearer` are included so a resolved bearer token carried under
-// an `Authorization` header key is masked before it reaches any log sink — the
-// token is otherwise logged in cleartext when a strategy fails to start, at
-// Error level, i.e. exactly during a misconfiguration incident. They are the
-// full words (not a bare `auth`) so a legitimate `auth:` container key — e.g.
-// citrix `director.auth.password` — still recurses and masks only the leaf
-// secret rather than collapsing the whole subtree.
-var logSensitiveKeyPattern = regexp.MustCompile(`(?i)(key|token|password|passphrase|secret|user|login|email|credential|community|authorization|bearer|license|jwt)`)
+// logIdentifierPattern adds, for the logs only, the identifier-style
+// fields that are not secrets but should not reach shared log
+// infrastructure either.
+var logIdentifierPattern = regexp.MustCompile(`(?i)(user|login|email)`)
 
 // redactSecretsInString is kept as a thin wrapper so existing callers and
 // tests keep compiling; the implementation lives in logredact.
 func redactSecretsInString(s string) string { return logredact.String(s) }
 
 // SanitizeParamsForLog returns a deep copy of params with the value of any key
-// matching logSensitiveKeyPattern replaced by "***". The original map is never
+// matching the shared rule of logredact.IsSecretKey (plus the log-only
+// identifier fields) replaced by "***". The original map is never
 // mutated — the caller's runtime config stays intact, only the log-bound view
 // is masked.
 //
@@ -64,8 +51,32 @@ func SanitizeStorageForLog(list []StorageConfig) []map[string]interface{} {
 	for _, s := range list {
 		out = append(out, map[string]interface{}{
 			"name":   s.Name,
-			"params": SanitizeParamsForLog(s.Params),
+			"params": SanitizeOutputParamsForLog(s.Name, s.Params),
 		})
+	}
+	return out
+}
+
+// SanitizeProbeParamsForLog is SanitizeParamsForLog plus the parameters
+// the probe's spec declares secret, whatever their name.
+func SanitizeProbeParamsForLog(probeType string, params map[string]interface{}) map[string]interface{} {
+	out := SanitizeParamsForLog(params)
+	if s, ok := spec.For(probeType); ok {
+		for _, p := range s.SecretPaths() {
+			maskSpecPath(out, strings.Split(p, "."))
+		}
+	}
+	return out
+}
+
+// SanitizeOutputParamsForLog is SanitizeParamsForLog plus the parameters
+// the output's spec declares secret, whatever their name.
+func SanitizeOutputParamsForLog(outputType string, params map[string]interface{}) map[string]interface{} {
+	out := SanitizeParamsForLog(params)
+	if s, ok := outputspec.For(outputType); ok {
+		for _, p := range s.SecretPaths() {
+			maskSpecPath(out, strings.Split(p, "."))
+		}
 	}
 	return out
 }
@@ -82,7 +93,7 @@ func SanitizeProbesForLog(list []ProbeConfig) []map[string]interface{} {
 		out = append(out, map[string]interface{}{
 			"name":   p.Name,
 			"type":   p.Type,
-			"params": SanitizeParamsForLog(p.Params),
+			"params": SanitizeProbeParamsForLog(p.Type, p.Params),
 		})
 	}
 	return out
@@ -92,7 +103,7 @@ func SanitizeProbesForLog(list []ProbeConfig) []map[string]interface{} {
 // composite values. For slice elements the key is empty (an index carries no
 // meaning) so each element is judged by its own inner keys.
 func sanitizeValueForLog(key string, v interface{}) interface{} {
-	if key != "" && logSensitiveKeyPattern.MatchString(key) {
+	if key != "" && (logredact.IsSecretKey(key) || logIdentifierPattern.MatchString(key)) {
 		return "***"
 	}
 	switch t := v.(type) {
