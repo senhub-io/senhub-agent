@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	mrand "math/rand/v2"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -38,6 +39,12 @@ const (
 	DefaultRetryAttempts = 3
 	// DefaultRetryDelay is the delay between retry attempts
 	DefaultRetryDelay = time.Second
+	// DefaultFirstRetryDelay holds the first resend of a batch whose answer
+	// was lost until the intake can see the ids it already stored (about
+	// one second after insertion); an earlier resend is stored again.
+	DefaultFirstRetryDelay = 5 * time.Second
+	// DefaultFirstRetryJitter spreads first resends from many agents.
+	DefaultFirstRetryJitter = 2 * time.Second
 )
 
 // EventSyncStrategyParams holds the configuration for the event sync strategy
@@ -67,8 +74,10 @@ type EventSyncStrategy struct {
 	// retryAttempts / retryDelay drive the short in-tick retry. They are
 	// fields rather than the bare constants so a test can exercise the
 	// outage path without paying seconds of real sleep per cycle.
-	retryAttempts uint
-	retryDelay    time.Duration
+	retryAttempts    uint
+	retryDelay       time.Duration
+	firstRetryDelay  time.Duration
+	firstRetryJitter time.Duration
 
 	config      EventSyncStrategyParams
 	server      server.Server
@@ -142,6 +151,8 @@ func NewEventSyncStrategy(
 		formatter:        eventFormatter.NewFormatter(),
 		retryAttempts:    DefaultRetryAttempts,
 		retryDelay:       DefaultRetryDelay,
+		firstRetryDelay:  DefaultFirstRetryDelay,
+		firstRetryJitter: DefaultFirstRetryJitter,
 		syncTriggerSize:  DefaultChunkSize,
 		syncTriggerBytes: MaxMessageSize / 2, // Trigger at 50% of max message size
 	}
@@ -411,6 +422,7 @@ collect:
 		},
 		retry.Attempts(s.retryAttempts),
 		retry.Delay(s.retryDelay),
+		retry.DelayType(s.retryDelayFor),
 		retry.RetryIf(exporterrors.IsRetryable),
 		retry.OnRetry(func(n uint, err error) {
 			s.logger.Warn().
@@ -623,4 +635,16 @@ func (s *EventSyncStrategy) Shutdown(ctx context.Context) error {
 
 	// Final sync of remaining events
 	return s.doSync()
+}
+
+// retryDelayFor is the wait before the next attempt, n being the number of
+// attempts already made. Later retries keep retry-go's default backoff.
+func (s *EventSyncStrategy) retryDelayFor(n uint, err error, c *retry.Config) time.Duration {
+	if n <= 1 {
+		if s.firstRetryJitter <= 0 {
+			return s.firstRetryDelay
+		}
+		return s.firstRetryDelay + mrand.N(s.firstRetryJitter)
+	}
+	return retry.CombineDelay(retry.BackOffDelay, retry.RandomDelay)(n, err, c)
 }

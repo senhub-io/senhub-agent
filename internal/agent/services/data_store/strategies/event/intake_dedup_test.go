@@ -51,6 +51,8 @@ func TestIntakeDuplicatesReplyIsSuccess(t *testing.T) {
 	s.syncTriggerBytes = 1 << 30
 	s.retryAttempts = 3
 	s.retryDelay = 0
+	s.firstRetryDelay = 0
+	s.firstRetryJitter = 0
 
 	enqueueEvents(t, s, 3)
 

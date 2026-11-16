@@ -95,6 +95,8 @@ func newLossyIntakeStrategy(t *testing.T, intake *lossyIntake, backlogCap int) *
 	s.syncTriggerBytes = 1 << 30
 	s.retryAttempts = 1
 	s.retryDelay = 0
+	s.firstRetryDelay = 0
+	s.firstRetryJitter = 0
 	return s
 }
 

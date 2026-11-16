@@ -61,6 +61,8 @@ func newOutageStrategy(t *testing.T, intake *fakeIntake, backlogCap int) *EventS
 	// tests are about, and its real delays would cost minutes.
 	s.retryAttempts = 1
 	s.retryDelay = 0
+	s.firstRetryDelay = 0
+	s.firstRetryJitter = 0
 	return s
 }
 
