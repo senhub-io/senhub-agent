@@ -210,6 +210,7 @@ alias EntitySwitches = senhub-agent.go/internal/agent/services/extension.EntityS
   field DependsOn bool
   field Enabled bool
   field Neighbors bool
+var ErrFleetSecretNotFound error
 alias Extension = senhub-agent.go/internal/agent/services/extension.Extension
   field Check func(block map[string]any, present bool) []senhub-agent.go/internal/agent/services/extension.CheckLine
   field ConfigBlock string
@@ -218,6 +219,12 @@ alias Extension = senhub-agent.go/internal/agent/services/extension.Extension
   field New func(senhub-agent.go/internal/agent/services/extension.Host) (senhub-agent.go/internal/agent/services/extension.Service, error)
   field Overlay func(senhub-agent.go/internal/agent/services/extension.OverlayTarget)
   field StopBudget time.Duration
+const FleetSecretPrefix untyped string = "fleet."
+alias FleetSecretStore = senhub-agent.go/internal/agent/services/extension.FleetSecretStore
+  imethod Delete(name string) error
+  imethod Get(name string) (string, error)
+  imethod List() ([]string, error)
+  imethod Set(name string, value string) error
 alias Health = senhub-agent.go/internal/agent/services/extension.Health
   field Healthy bool
   field Outputs []senhub-agent.go/internal/agent/services/extension.OutputHealth
@@ -227,6 +234,7 @@ alias Host = senhub-agent.go/internal/agent/services/extension.Host
   imethod Authorized(feature string) bool
   imethod ConfigBlock(name string) (map[string]any, bool)
   imethod EffectiveConfig() ([]senhub-agent.go/internal/agent/services/extension.ConfigFile, error)
+  imethod FleetSecrets() (senhub-agent.go/internal/agent/services/extension.FleetSecretStore, error)
   imethod Health() senhub-agent.go/internal/agent/services/extension.Health
   imethod HostAttributes() (map[string]string, error)
   imethod Identity() senhub-agent.go/internal/agent/services/extension.Identity
@@ -284,6 +292,7 @@ func Register(e senhub-agent.go/probesdk/extension.Extension)
 alias Service = senhub-agent.go/internal/agent/services/extension.Service
   imethod Shutdown(ctx context.Context) error
   imethod Start(ctx context.Context) error
+func ValidFleetSecretName(name string) bool
 == senhub-agent.go/probesdk/license (package license) ==
 func GetFreeTierProbes() []string
 func IsProbeAuthorizable(probeName string) bool
@@ -652,6 +661,7 @@ type senhub-agent.go/internal/agent/services/extension.Host interface
   imethod Authorized(feature string) bool
   imethod ConfigBlock(name string) (map[string]any, bool)
   imethod EffectiveConfig() ([]senhub-agent.go/internal/agent/services/extension.ConfigFile, error)
+  imethod FleetSecrets() (senhub-agent.go/internal/agent/services/extension.FleetSecretStore, error)
   imethod Health() senhub-agent.go/internal/agent/services/extension.Health
   imethod HostAttributes() (map[string]string, error)
   imethod Identity() senhub-agent.go/internal/agent/services/extension.Identity
