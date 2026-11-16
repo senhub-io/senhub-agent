@@ -202,3 +202,34 @@ func TestNeighborSourceEmptyHostIDReturnsFalse(t *testing.T) {
 		t.Fatal("Observe returned ok=true with empty host id, want false")
 	}
 }
+
+// TestNeighborSourceRetiresByExpiry checks a host ARP neighbour is retired by
+// liveness, never by absence, with the 24-hour interval.
+func TestNeighborSourceRetiresByExpiry(t *testing.T) {
+	src := newTestNeighborSource("host-1")
+	src.readNeighbors = func() ([]hostNeighbor, error) {
+		return []hostNeighbor{
+			{IP: "192.0.2.10", MAC: "aa-bb-cc-dd-ee-ff", Iface: "eth0", State: "reachable"},
+		}, nil
+	}
+
+	obs := mustObserve(t, src)
+
+	var neighbor *entity.Entity
+	for i := range obs.Entities {
+		if obs.Entities[i].Type == "network.neighbor" {
+			neighbor = &obs.Entities[i]
+			break
+		}
+	}
+	if neighbor == nil {
+		t.Fatal("no neighbor entity in observation")
+	}
+
+	if !neighbor.RetireByExpiry {
+		t.Fatalf("neighbor entity RetireByExpiry = false, want true")
+	}
+	if neighbor.Cadence != entity.NeighborLiveness {
+		t.Fatalf("neighbor entity Cadence = %v, want %v", neighbor.Cadence, entity.NeighborLiveness)
+	}
+}
