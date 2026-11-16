@@ -2,6 +2,8 @@ package event
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -233,7 +235,28 @@ func (s *EventSyncStrategy) AddDataPoints(data []datapoint.DataPoint) error {
 // the oldest event to make room (best-effort, same posture as the receive
 // side). Shared by AddDataPoints (event probe datapoints) and the log-bus
 // pump (syslog records) so both sources behave identically.
+// eventIDField carries a random id set once when an event is queued. It
+// rides every resend of the event, so an intake that inserted a batch and
+// lost its answer can recognise the copies.
+const eventIDField = "senhub_event_id"
+
+func generateEventID() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
 func (s *EventSyncStrategy) enqueue(evt eventtypes.EventDataPoint) {
+	if id, ok := evt[eventIDField].(string); !ok || id == "" {
+		if generated, err := generateEventID(); err != nil {
+			s.logger.Warn().Err(err).Msg("Failed to generate event ID; sending without one")
+		} else {
+			evt[eventIDField] = generated
+		}
+	}
+
 	if err := evt.Validate(); err != nil {
 		s.logger.Error().Err(err).Msg("Invalid event data")
 		return

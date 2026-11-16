@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"senhub-agent.go/internal/agent/cliArgs"
@@ -383,5 +384,29 @@ func TestPost_BodyReadableAndConnectionReusable(t *testing.T) {
 	}
 	if _, err := io.ReadAll(res2.Body); err != nil {
 		t.Fatalf("PostStream body unreadable: %v", err)
+	}
+}
+
+// TestPostStreamDoesNotRetry checks an event batch is posted once: a replay
+// belongs to the caller, which knows whether the intake can recognise it.
+func TestPostStreamDoesNotRetry(t *testing.T) {
+	var requestCount atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
+	client := NewServer("test-key", srv.URL, baseLogger)
+
+	res, err := client.PostStream("/event/insert", `[{"foo":"bar"}]`)
+	if err != nil {
+		t.Fatalf("PostStream: %v", err)
+	}
+	_ = res.Body.Close()
+
+	if got := requestCount.Load(); got != 1 {
+		t.Errorf("intake received %d requests, want exactly 1 (no retries)", got)
 	}
 }
