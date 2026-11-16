@@ -38,7 +38,8 @@ type server struct {
 	authenticationKey string               // Key for server authentication
 	moduleLogger      *logger.ModuleLogger // Structured logging
 	url               string               // Base server URL
-	http              *http.Client         // Retry-enabled HTTP client
+	http              *http.Client         // Retry-enabled HTTP client for Get and Post
+	httpNoRetry       *http.Client         // Non-retrying HTTP client for PostStream
 }
 
 // NewServer creates server client with automatic retry and auth handling
@@ -52,16 +53,27 @@ func NewServer(
 	moduleLogger.Debug().
 		Str("url", url).
 		Msg("[DEBUG] Creating new server client")
-	http := httpretry.NewDefaultClient(
+
+	// Retry-enabled client for methods where the caller does not manage
+	// replay semantics (Get, Post).
+	retryClient := httpretry.NewDefaultClient(
 		httpretry.WithMaxRetryCount(3),
 	)
-	http.Timeout = defaultRequestTimeout
+	retryClient.Timeout = defaultRequestTimeout
+
+	// Non-retrying client for PostStream: the caller (event strategy) owns
+	// the retry/requeue decision and knows whether the body is safe to
+	// replay without duplicating events.
+	noRetryClient := &http.Client{
+		Timeout: defaultRequestTimeout,
+	}
 
 	return &server{
 		authenticationKey: authenticationKey,
 		url:               url,
 		moduleLogger:      moduleLogger,
-		http:              http,
+		http:              retryClient,
+		httpNoRetry:       noRetryClient,
 	}
 }
 
@@ -125,7 +137,9 @@ func (s *server) Post(urlPath string, data any) (*http.Response, error) {
 	return bufferAndClose(res)
 }
 
-// PostStream sends streaming data via HTTP POST
+// PostStream sends streaming data via HTTP POST. It intentionally does NOT
+// use the retry-enabled client: the event payload can be replayed only if
+// the caller can guarantee idempotency, so retries are left to the caller.
 func (s *server) PostStream(urlPath string, streamBody string) (*http.Response, error) {
 	fullUrl, err := url.JoinPath(s.url, urlPath)
 	if err != nil {
@@ -139,7 +153,7 @@ func (s *server) PostStream(urlPath string, streamBody string) (*http.Response, 
 	}
 
 	req.Header.Set("Content-Type", "application/stream+json")
-	res, err := s.http.Do(req)
+	res, err := s.httpNoRetry.Do(req)
 	if err != nil {
 		return nil, exporterrors.Transport("stream request failed", err)
 	}
