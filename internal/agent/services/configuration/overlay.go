@@ -152,12 +152,12 @@ func maskReportedValue(key string, v any) any {
 	}
 }
 
-// reportSecretKeyPattern widens secretFieldPattern for what leaves the
+// reportSecretKeyPattern widens logredact.IsSecretKey for what leaves the
 // host: names such as pass, pwd or auth carry secrets too.
 var reportSecretKeyPattern = regexp.MustCompile(`(?i)(pass|pwd|private|auth|cookie|session|apikey)`)
 
 func reportSecretKey(key string) bool {
-	return secretFieldPattern.MatchString(key) || reportSecretKeyPattern.MatchString(key)
+	return logredact.IsSecretKey(key) || reportSecretKeyPattern.MatchString(key)
 }
 
 // secretBearingParams returns the sorted names of the top-level parameters
