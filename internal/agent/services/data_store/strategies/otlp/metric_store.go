@@ -1,6 +1,7 @@
 package otlp
 
 import (
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -273,15 +274,21 @@ func (s *metricStore) probeSeriesCount(probeName string) int {
 }
 
 // snapshotForCheckpoint returns the store contents as JSON-shaped
-// entrySnapshot values, ready for the checkpointer to serialize. The
-// tag map is shared by reference — the caller must treat it as
-// read-only.
-func (s *metricStore) snapshotForCheckpoint() []entrySnapshot {
+// entrySnapshot values, ready for the checkpointer to serialize, and
+// a list of metric names that were skipped because they contained a
+// non-finite float (NaN or ±Inf). The tag map is shared by reference —
+// the caller must treat it as read-only.
+func (s *metricStore) snapshotForCheckpoint() (entries []entrySnapshot, skipped []string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]entrySnapshot, 0, len(s.entries))
+	entries = make([]entrySnapshot, 0, len(s.entries))
+	skipped = make([]string, 0)
 	for _, e := range s.entries {
-		out = append(out, entrySnapshot{
+		if !finiteEntry(e.value, e.histogram) {
+			skipped = append(skipped, e.metricName)
+			continue
+		}
+		entries = append(entries, entrySnapshot{
 			ProbeName:  e.probeName,
 			ProbeType:  e.probeType,
 			MetricName: e.metricName,
@@ -292,7 +299,32 @@ func (s *metricStore) snapshotForCheckpoint() []entrySnapshot {
 			ObservedAt: e.observedAt,
 		})
 	}
-	return out
+	return entries, skipped
+}
+
+// finiteEntry reports whether value and all floating-point fields of the
+// optional histogram are finite (not NaN or ±Inf).
+func finiteEntry(value float64, h *datapoint.HistogramValue) bool {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return false
+	}
+	if h != nil {
+		if h.Sum != nil && (math.IsNaN(*h.Sum) || math.IsInf(*h.Sum, 0)) {
+			return false
+		}
+		if h.Min != nil && (math.IsNaN(*h.Min) || math.IsInf(*h.Min, 0)) {
+			return false
+		}
+		if h.Max != nil && (math.IsNaN(*h.Max) || math.IsInf(*h.Max, 0)) {
+			return false
+		}
+		for _, b := range h.ExplicitBounds {
+			if math.IsNaN(b) || math.IsInf(b, 0) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // restoreFromSnapshot replaces the store contents with the given
