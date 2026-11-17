@@ -15,6 +15,7 @@ func init() {
 			{Key: "interval", Kind: probes.KindInt, Default: 30, Group: "collection", Description: "Collection interval in seconds"},
 			{Key: "include_virtual_interfaces", Kind: probes.KindBool, Default: false, Group: "collection", Description: "Collect container/virtualisation interfaces; false skips virtual interfaces to keep default metric series minimal, true restores every interface the probe accepts."},
 			{Key: "address_label", Kind: probes.KindBool, Default: false, Group: "collection", Description: "Add the primary interface address as a per-series IP label; false keeps dynamic address changes from creating new series, true restores the previous IP tag."},
+			{Key: "tcp_stats", Kind: probes.KindBool, Default: true, Group: "collection", Description: "Collect host-wide TCP counters (connections by state, opens, failures, resets, retransmissions, listen overflows); false leaves only the per-interface metrics."},
 		},
 	})
 }

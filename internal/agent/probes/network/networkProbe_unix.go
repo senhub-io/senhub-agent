@@ -111,6 +111,8 @@ type unixNetworkCollector struct {
 	lastCounters             map[string]counterWithTime
 	includeVirtualInterfaces bool
 	addressLabel             bool
+	tcp                      tcpSource
+	tcpStats                 bool
 }
 
 type counterWithTime struct {
@@ -121,12 +123,18 @@ type counterWithTime struct {
 func newNetworkCollector(config map[string]interface{}, logger *logger.Logger) (hostpoll.Collector, error) {
 	includeVirtual, _ := types.BoolParam(config, "include_virtual_interfaces")
 	addressLabel, _ := types.BoolParam(config, "address_label")
+	tcpStats, ok := types.BoolParam(config, "tcp_stats")
+	if !ok {
+		tcpStats = true
+	}
 
 	return &unixNetworkCollector{
 		logger:                   logger,
 		lastCounters:             make(map[string]counterWithTime),
 		includeVirtualInterfaces: includeVirtual,
 		addressLabel:             addressLabel,
+		tcp:                      defaultTCPSource(),
+		tcpStats:                 tcpStats,
 	}, nil
 }
 
@@ -245,6 +253,13 @@ func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPo
 		}
 	}
 
+	if u.tcpStats {
+		pts, errs := hostTCPDataPoints(u.tcp, baseTags, timestamp)
+		dataPoints = append(dataPoints, pts...)
+		for _, err := range errs {
+			u.logger.Debug().Err(err).Msg("Host TCP counters unavailable")
+		}
+	}
 	return dataPoints, nil
 }
 

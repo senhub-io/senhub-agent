@@ -12,4 +12,6 @@ Nothing released yet since 0.7.1. Changes land here as they are merged.
 
 - **The OTLP checkpoint is saved again when a metric is not a number.** One NaN or infinite value in the metrics kept for the OTLP output made every checkpoint save fail (`OTLP checkpoint save failed: json: unsupported value: NaN`), so a restart restored old values or none. Such values are now left out of the checkpoint, and the agent logs the metric name once.
 
+- **The network probe reports host TCP counters.** Connections by state, connections opened, failed and reset, retransmitted segments, resets sent and, on Linux, listen queue overflows, for the whole host. They are on by default; `tcp_stats: false` leaves only the per-interface metrics. On Linux the connection counts come from the kernel socket table and need no extra privilege; on Windows the counters come from the IP Helper API, without listen overflows.
+
 <div class="rn-filter"></div>

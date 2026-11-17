@@ -98,6 +98,8 @@ type windowsNetworkCollector struct {
 	initialized         bool
 	logger              *logger.ModuleLogger
 	includeAddressLabel bool
+	tcp                 tcpSource
+	tcpStats            bool
 }
 
 func getNetworkInterfaces(logger *logger.ModuleLogger, includeVirtual bool) (map[string]interfaceInfo, error) {
@@ -298,6 +300,10 @@ func newNetworkCollector(config map[string]interface{}, baseLogger *logger.Logge
 
 	includeVirtual, _ := types.BoolParam(config, "include_virtual_interfaces")
 	addressLabel, _ := types.BoolParam(config, "address_label")
+	tcpStats, ok := types.BoolParam(config, "tcp_stats")
+	if !ok {
+		tcpStats = true
+	}
 
 	query, err := pdh.NewQuery()
 	if err != nil {
@@ -318,6 +324,8 @@ func newNetworkCollector(config map[string]interface{}, baseLogger *logger.Logge
 		interfaces:          interfaces,
 		logger:              moduleLogger,
 		includeAddressLabel: addressLabel,
+		tcp:                 defaultTCPSource(),
+		tcpStats:            tcpStats,
 	}
 
 	if err := collector.initializeCounters(); err != nil {
@@ -460,6 +468,13 @@ func (w *windowsNetworkCollector) Collect(timestamp time.Time) ([]data_store.Dat
 		})
 	}
 
+	if w.tcpStats {
+		pts, errs := hostTCPDataPoints(w.tcp, baseTags, timestamp)
+		dataPoints = append(dataPoints, pts...)
+		for _, err := range errs {
+			w.logger.Debug().Err(err).Msg("Host TCP counters unavailable")
+		}
+	}
 	return dataPoints, nil
 }
 

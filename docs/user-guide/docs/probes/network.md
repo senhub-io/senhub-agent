@@ -60,13 +60,14 @@ All metrics include the `interface` tag to identify the specific network interfa
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:8f603a6b775e2b27430e4ce93333cdd4fa729ef191812e43a2cad3adf4fff6b8 -->
+<!-- sha256:bc6edcd5323d14e2eb29151f2f98e6bff80ff9cac7e9777a7ed23a7ae43237fd -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
 | `interval` | No | `30` | Collection interval in seconds |
 | `include_virtual_interfaces` | No | `false` | Collect container/virtualisation interfaces; false skips virtual interfaces to keep default metric series minimal, true restores every interface the probe accepts. |
 | `address_label` | No | `false` | Add the primary interface address as a per-series IP label; false keeps dynamic address changes from creating new series, true restores the previous IP tag. |
+| `tcp_stats` | No | `true` | Collect host-wide TCP counters (connections by state, opens, failures, resets, retransmissions, listen overflows); false leaves only the per-interface metrics. |
 
 <!-- schema:params:end -->
 
@@ -525,5 +526,13 @@ series' tags.
 | `system.network.errors` | `errors_received` | Network {interface} Receive Errors | # | Inbound packets per second that contained errors and were discarded |
 | `system.network.packet.dropped` | `discards_sent` | Network {interface} Send Discards | # | Outbound packets per second discarded even though no errors were detected |
 | `system.network.packet.dropped` | `discards_received` | Network {interface} Receive Discards | # | Inbound packets per second discarded even though no errors were detected |
+| `system.network.connection.count` | `tcp_connections` | TCP Connections {state} | # | TCP connections of the host in each state |
+| `senhub.system.network.tcp.connections.opened` | `tcp_active_opens` | TCP Active Opens | # | Cumulative number of active TCP opens since host start |
+| `senhub.system.network.tcp.connections.opened` | `tcp_passive_opens` | TCP Passive Opens | # | Cumulative number of passive TCP opens since host start |
+| `senhub.system.network.tcp.connections.failed` | `tcp_attempt_fails` | TCP Attempt Fails | # | Cumulative number of failed TCP connection attempts since host start |
+| `senhub.system.network.tcp.connections.reset` | `tcp_estab_resets` | TCP Established Resets | # | Cumulative number of TCP resets on established connections since host start |
+| `senhub.system.network.tcp.segments.retransmitted` | `tcp_retrans_segs` | TCP Retransmitted Segments | # | Cumulative number of retransmitted TCP segments since host start |
+| `senhub.system.network.tcp.resets.sent` | `tcp_out_rsts` | TCP Outbound Resets | # | Cumulative number of TCP reset segments sent since host start |
+| `senhub.system.network.tcp.listen.overflows` | `tcp_listen_overflows` | TCP Listen Overflows | # | Cumulative number of TCP listen queue overflows since host start |
 
 <!-- schema:metrics:end -->

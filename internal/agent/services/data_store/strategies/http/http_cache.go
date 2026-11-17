@@ -62,7 +62,7 @@ var DiscriminantTagsRegistry = map[string][]string{
 	// process: one series per running process identified by pid+name;
 	// aggregate (process.count) is discriminated by name only.
 	"process":     {"process.pid", "process.name"},
-	"network":     {"interface", "adapter"},           // Different network interfaces
+	"network":     {"interface", "adapter", "state"},  // Interfaces; state splits the host TCP connection counts
 	"logicaldisk": {"drive", "mount_point", "device"}, // Different drives/volumes
 	"os_updates":  {},                                 // System-level; one series per metric, no instances
 
