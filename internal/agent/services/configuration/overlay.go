@@ -327,13 +327,20 @@ func (t *overlayTarget) AdoptProbe(p extension.ManagedProbe) bool {
 			}
 		}
 	}
+	// Same rule as AddProbe: only ${secret:fleet.<name>} is resolved, any
+	// other ${…} refuses the adoption.
+	resolved, err := resolveManagedParams(p.Params)
+	if err != nil {
+		log.Warn().Str("probe", p.Name).Err(err).Msg("Adoption not applied")
+		return false
+	}
 	prev := t.cfg.Probes[i]
 	t.undo = append(t.undo, func() { t.cfg.Probes[i] = prev })
 	params := maps.Clone(prev.Params)
 	if params == nil {
 		params = ProbeConfigParams{}
 	}
-	for k, v := range p.Params {
+	for k, v := range resolved {
 		params[k] = v
 	}
 	if p.Interval != 0 {

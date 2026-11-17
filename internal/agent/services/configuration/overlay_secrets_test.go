@@ -2,8 +2,10 @@
 package configuration
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
+	"senhub-agent.go/internal/agent/services/extension"
 	"strings"
 	"testing"
 )
@@ -108,5 +110,37 @@ func TestResolveManagedParams(t *testing.T) {
 				t.Errorf("got %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestAdoptProbeResolvesOnlyFleetSecrets(t *testing.T) {
+	prev := resolveSecretFunc
+	t.Cleanup(func() { resolveSecretFunc = prev })
+	resolveSecretFunc = func(name, _ string, _ bool) (string, error) {
+		if name == "fleet.pg" {
+			return "s3cret", nil
+		}
+		return "", errors.New("unknown secret")
+	}
+	configPath := writeSecurityTestConfig(t, "- name: db\n  type: postgresql\n  params:\n    host: db1\n")
+	newTarget := func() *overlayTarget {
+		enabled := true
+		return &overlayTarget{
+			cfg:        &LocalConfigurationData{Probes: []ProbeConfig{{Name: "db", Type: "postgresql", Enabled: &enabled, Params: ProbeConfigParams{"host": "db1"}}}},
+			configPath: configPath,
+		}
+	}
+	target := newTarget()
+	if !target.AdoptProbe(extension.ManagedProbe{Name: "db", Type: "postgresql", Enabled: true, Params: map[string]any{"password": "${secret:fleet.pg}"}}) {
+		t.Fatal("adoption with a fleet secret refused")
+	}
+	if got := target.cfg.Probes[0].Params["password"]; got != "s3cret" {
+		t.Fatalf("password = %v, want the resolved fleet secret", got)
+	}
+	for _, v := range []string{"${secret:db.pw}", "${env:HOME}"} {
+		target = newTarget()
+		if target.AdoptProbe(extension.ManagedProbe{Name: "db", Type: "postgresql", Enabled: true, Params: map[string]any{"password": v}}) {
+			t.Fatalf("adoption with %q accepted", v)
+		}
 	}
 }

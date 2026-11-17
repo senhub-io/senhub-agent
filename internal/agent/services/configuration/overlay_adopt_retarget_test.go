@@ -1,6 +1,7 @@
 package configuration
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 
@@ -8,6 +9,14 @@ import (
 )
 
 func TestOverlayAdoptRetargetComparesWithLocalValue(t *testing.T) {
+	prevResolve := resolveSecretFunc
+	t.Cleanup(func() { resolveSecretFunc = prevResolve })
+	resolveSecretFunc = func(name, _ string, _ bool) (string, error) {
+		if name == "fleet.db" {
+			return "fleet-db-secret", nil
+		}
+		return "", errors.New("unknown secret")
+	}
 	probeYAML := `- name: db
   type: postgresql
   params:
