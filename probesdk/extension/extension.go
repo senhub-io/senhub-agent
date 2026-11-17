@@ -70,3 +70,16 @@ func Register(e Extension) { iextension.Register(e) }
 // RedactSecrets masks the credentials a free-form text can carry (the
 // password of a URI, DSN password pairs) before it leaves the process.
 func RedactSecrets(s string) string { return configuration.RedactSecretsInString(s) }
+
+type (
+	// FleetSecretStore is an alias for the host's fleet secret store.
+	FleetSecretStore = iextension.FleetSecretStore
+)
+
+var ErrFleetSecretNotFound = iextension.ErrFleetSecretNotFound
+
+const FleetSecretPrefix = iextension.FleetSecretPrefix
+
+func ValidFleetSecretName(name string) bool {
+	return iextension.ValidFleetSecretName(name)
+}

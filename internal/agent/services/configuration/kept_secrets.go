@@ -185,7 +185,7 @@ func pruneInstanceSecrets(instance string, params map[string]interface{}) error 
 		return fmt.Errorf("listing the secret store: %w", err)
 	}
 	keep := referencedSecrets(params)
-	prefix := secret.SanitizeKey(instance) + "."
+	prefix := secret.OperatorKey(instance) + "."
 	for _, name := range names {
 		if !strings.HasPrefix(name, prefix) || keep[name] {
 			continue

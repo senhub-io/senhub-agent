@@ -8,6 +8,8 @@ package extension
 
 import (
 	"context"
+	"errors"
+	"regexp"
 	"sync"
 	"time"
 
@@ -97,6 +99,44 @@ type Host interface {
 	SetAutoUpdatePaused(paused bool)
 	// ProbeCatalog lists every registered probe type with its parameter specs.
 	ProbeCatalog() []CatalogProbe
+	// FleetSecrets is the agent's secret store restricted to the names a
+	// fleet server may manage: every name is stored under "fleet.". It
+	// returns an error when no secret backend is available on this host.
+	FleetSecrets() (FleetSecretStore, error)
+}
+
+// FleetSecretStore gives an extension access to the secrets a fleet server
+// may manage. Every name is stored under the prefix "fleet."; names in
+// method arguments and return values do not include that prefix.
+type FleetSecretStore interface {
+	// Get returns the secret value for the given name.
+	// Get returns an error wrapping ErrFleetSecretNotFound for an unknown name.
+	Get(name string) (string, error)
+	// Set stores the secret value under the given name.
+	Set(name, value string) error
+	// Delete removes the secret with the given name.
+	Delete(name string) error
+	// List returns all names currently stored, without the "fleet." prefix,
+	// sorted lexicographically.
+	List() ([]string, error)
+}
+
+// ErrFleetSecretNotFound is returned by FleetSecretStore.Get when the
+// requested secret name does not exist.
+var ErrFleetSecretNotFound = errors.New("fleet secret not found")
+
+// FleetSecretPrefix is the prefix under which all fleet-managed secrets
+// are stored in the agent's secret backend.
+const FleetSecretPrefix = "fleet."
+
+// fleetSecretNameRE matches a valid fleet secret name: 1 to 64 characters
+// from the set [a-z0-9._-], must start with a lowercase letter, digit or
+// underscore. An initial underscore is reserved for the agent itself.
+var fleetSecretNameRE = regexp.MustCompile(`^[a-z0-9_][a-z0-9._-]{0,63}$`)
+
+// ValidFleetSecretName reports whether name is a valid fleet secret name.
+func ValidFleetSecretName(name string) bool {
+	return fleetSecretNameRE.MatchString(name)
 }
 
 // Identity is what the agent is.

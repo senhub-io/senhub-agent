@@ -44,3 +44,22 @@ func SanitizeKey(name string) string {
 	}
 	return clean + suffix
 }
+
+// FleetPrefix is the part of the store reserved for the secrets a fleet
+// server seals to the agent; an operator name never lands in it.
+const FleetPrefix = "fleet."
+
+// OperatorKey is SanitizeKey for a secret the operator owns (a sealed
+// probe or output parameter). A key that would fall in the fleet part of
+// the store, such as the secrets of a probe named "fleet", is moved under
+// "local-": a fleet overlay may resolve and erase fleet.* names, never an
+// operator's secret. The comparison ignores case, for case-insensitive
+// file systems.
+func OperatorKey(name string) string {
+	key := SanitizeKey(name)
+	lower := strings.ToLower(key)
+	if lower == strings.TrimSuffix(FleetPrefix, ".") || strings.HasPrefix(lower, FleetPrefix) {
+		return SanitizeKey("local-" + key)
+	}
+	return key
+}

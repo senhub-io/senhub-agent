@@ -45,7 +45,7 @@ type ManagedProbe struct {
 	Type     string
 	Enabled  bool
 	Interval int            // seconds, 0 = probe default; else 10..3600
-	Params   map[string]any // JSON-decoded params, secret refs already resolved to "${secret:<name>}" strings
+	Params   map[string]any // JSON-decoded; the only reference allowed is an exact "${secret:fleet.<name>}" string, resolved by the agent
 }
 
 // OverlayProbe is one probe of the local configuration.
