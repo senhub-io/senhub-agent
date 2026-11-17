@@ -107,7 +107,7 @@ func TestOverlayAddProbeRollbackOnPanic(t *testing.T) {
 		},
 	})
 	cfg := addProbeTestConfig()
-	applyOverlays(cfg)
+	applyOverlays(cfg, "")
 	if len(cfg.Probes) != 1 {
 		t.Fatalf("len(Probes) = %d after panicking overlay, want 1", len(cfg.Probes))
 	}
