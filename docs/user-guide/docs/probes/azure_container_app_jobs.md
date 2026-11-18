@@ -1,5 +1,10 @@
 <img src="../../assets/probe-logos/azure_container_apps.svg" alt="" class="probe-page-logo probe-page-logo-si">
 
+!!! warning
+    **License: Pro** - Requires a Pro or Enterprise license.
+
+    Shipped in the `senhub-agent` edition only (package or MSI); the `senhub-agent-oss` edition does not contain this probe.
+
 # Azure Container App Jobs
 
 **Type:** `azure_container_app_jobs` · **Tier:** Pro · **Platforms:** any
@@ -231,7 +236,7 @@ probes:
 
 ## Checking the setup
 
-`senhub-agent check azure` verifies, without changing anything, that the credentials of the configured Azure probes (`azure_container_apps` and `azure_container_app_jobs`) can do what the probes need. It prints one verdict per line and never prints a secret.
+`senhub-agent check azure` (in the `senhub-agent` edition only, like the Azure probes) verifies, without changing anything, that the credentials of the configured Azure probes (`azure_container_apps` and `azure_container_app_jobs`) can do what the probes need. It prints one verdict per line and never prints a secret.
 
 ```bash
 senhub-agent check azure               # every enabled Azure probe in the installed configuration

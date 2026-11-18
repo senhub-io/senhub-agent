@@ -3,6 +3,8 @@
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
 
+    Shipped in the `senhub-agent` edition only (package or MSI); the `senhub-agent-oss` edition does not contain this probe.
+
 # Overview
 
 The Azure Log Query probe runs one **KQL query** on one **Azure Log Analytics workspace** at each cycle and publishes every row of the result as a gauge metric. It turns any question you can ask a workspace (a count of failed sign-ins, the free space of a disk reported by VM Insights, the backlog of an application's own log table) into a metric, without installing anything next to the data.

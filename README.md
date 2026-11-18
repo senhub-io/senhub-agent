@@ -36,10 +36,12 @@ PRTG, Nagios, Zabbix, Prometheus or any OpenTelemetry backend.
   point in time. Off by default (the container image and the Helm chart
   turn it on) and carried by the OTLP output only. See
   [Topology](docs/user-guide/docs/topology.md).
-- **Paid probes** (Pro/Enterprise licence): Citrix, NetScaler, Veeam,
-  Redfish, IBM i, Dell PowerStore, SQL Server and Oracle high availability,
-  vSphere and Hyper-V HA, Active Directory hybrid, Exchange Online, Azure
-  Container Apps, synthetic web checks.
+- **Paid probes** (Pro/Enterprise licence, in the `senhub-agent` edition
+  only, not in `senhub-agent-oss`): Citrix, NetScaler, Veeam, Redfish,
+  IBM i, Dell PowerStore, SQL Server and Oracle high availability, vSphere
+  and Hyper-V HA, Active Directory hybrid, Entra ID, Exchange Online, Azure
+  Monitor, Azure Log Query, Azure Container Apps and Container App Jobs,
+  synthetic web checks.
 
 ## Outputs
 

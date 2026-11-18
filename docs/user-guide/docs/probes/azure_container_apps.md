@@ -3,6 +3,8 @@
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
 
+    Shipped in the `senhub-agent` edition only (package or MSI); the `senhub-agent-oss` edition does not contain this probe.
+
 # Overview
 
 The Azure Container Apps probe reads the console log stream of an application hosted on Azure Container Apps: the standard output and standard error of every container of every replica, as they are written. It is the same stream `az containerapp logs show --follow` reads, obtained through Azure Resource Manager with an Entra ID app registration. Nothing changes in the container: no volume, no sidecar, no logging library.
@@ -295,7 +297,7 @@ probes:
 
 ## Checking the setup
 
-`senhub-agent check azure` verifies, without changing anything, that the credentials of the configured Azure probes (`azure_container_apps` and `azure_container_app_jobs`) can do what the probes need. It prints one verdict per line and never prints a secret.
+`senhub-agent check azure` (in the `senhub-agent` edition only, like the Azure probes) verifies, without changing anything, that the credentials of the configured Azure probes (`azure_container_apps` and `azure_container_app_jobs`) can do what the probes need. It prints one verdict per line and never prints a secret.
 
 ```bash
 senhub-agent check azure               # every enabled Azure probe in the installed configuration
