@@ -3,7 +3,7 @@
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
 
-    Shipped in the `senhub-agent` edition only (package or MSI); the `senhub-agent-oss` edition does not contain this probe.
+    Shipped in the `senhub-agent` edition only (package or MSI); the `senhub-agent-oss` edition does not contain this probe, nor `senhub-agent check azure`, which answers `unknown command or flag "check"` there.
 
 # Overview
 
