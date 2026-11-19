@@ -264,3 +264,5 @@ jobs:
         with:
           name: senhub-agent-msi-${{ steps.ver.outputs.version }}
           path: dist/*.msi
+          # Manual layout/install checks only; releases carry the real MSI.
+          retention-days: 3
