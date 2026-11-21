@@ -10,4 +10,6 @@ Nothing released yet since 0.7.1. Changes land here as they are merged.
 
 - **`senhub.neighbors.omitted` is replaced by `senhub.neighbors.truncated`.** The number of neighbours cut by `max_neighbors` changed at almost every read on a cut device, and each change was recorded in the topology. The device entity now carries `senhub.neighbors.truncated`, a boolean that changes only when the cut starts or stops; `senhub.neighbors.limit` is unchanged, and the exact count stays in the agent log line `neighbor table bound: some neighbors omitted`.
 
+- **The OTLP checkpoint is saved again when a metric is not a number.** One NaN or infinite value in the metrics kept for the OTLP output made every checkpoint save fail (`OTLP checkpoint save failed: json: unsupported value: NaN`), so a restart restored old values or none. Such values are now left out of the checkpoint, and the agent logs the metric name once.
+
 <div class="rn-filter"></div>
