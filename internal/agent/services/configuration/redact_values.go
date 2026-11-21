@@ -33,6 +33,24 @@ func webhookHostPath(host, path string) bool {
 		return true
 	case strings.HasSuffix(host, ".logic.azure.com") && strings.HasPrefix(path, "/workflows/"):
 		return true
+	case host == "chat.googleapis.com" && strings.HasPrefix(path, "/v1/spaces/"):
+		return true
+	}
+	return genericHookPath(path)
+}
+
+// genericHookPath catches self-hosted webhooks (Mattermost, Rocket.Chat,
+// Gitea and the like): a path segment named hooks, webhook or webhooks
+// followed by a segment of 16 characters or more, the token.
+func genericHookPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	for i := 0; i+1 < len(parts); i++ {
+		switch strings.ToLower(parts[i]) {
+		case "hooks", "webhook", "webhooks":
+			if len(parts[i+1]) >= 16 {
+				return true
+			}
+		}
 	}
 	return false
 }

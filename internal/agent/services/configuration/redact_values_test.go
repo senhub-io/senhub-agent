@@ -169,3 +169,18 @@ func TestShannonEntropy(t *testing.T) {
 		})
 	}
 }
+
+func TestMaskWebhookPathGenericAndGoogleChat(t *testing.T) {
+	token := strings.Repeat("q7", 13)
+	for in, want := range map[string]string{
+		"https://chat.example.org/hooks/" + token:                         "https://chat.example.org/***",
+		"https://git.example.org/api/v1/webhooks/" + token:                "https://git.example.org/***",
+		"https://chat.googleapis.com/v1/spaces/AAA" + token + "/messages": "https://chat.googleapis.com/***",
+		"https://example.org/hooks/short":                                 "https://example.org/hooks/short",
+		"https://example.org/docs/webhooks":                               "https://example.org/docs/webhooks",
+	} {
+		if got := maskWebhookPath(in); got != want {
+			t.Errorf("maskWebhookPath(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
