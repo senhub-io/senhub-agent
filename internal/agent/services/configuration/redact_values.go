@@ -2,6 +2,7 @@ package configuration
 
 import (
 	"math"
+	"net/url"
 	"regexp"
 	"strings"
 	"unicode"
@@ -14,7 +15,9 @@ func valueFromEnv(raw string) bool {
 	return envRefPattern.MatchString(raw)
 }
 
-var urlPattern = regexp.MustCompile(`(?i)\bhttps?://[A-Za-z0-9.\-]+(?:/[^\s"'<>)]*)?`)
+// urlPattern takes a wide span; each candidate is then parsed with net/url
+// so a port, a userinfo or a trailing dot cannot hide a webhook host.
+var urlPattern = regexp.MustCompile(`(?i)\bhttps?://[^\s"'<>]+`)
 
 var (
 	hostLabelPattern  = regexp.MustCompile(`^[A-Za-z0-9\-]{1,63}$`)
@@ -59,19 +62,17 @@ func genericHookPath(path string) bool {
 // keeping scheme and host. Works on a URL embedded in a longer string too.
 func maskWebhookPath(s string) string {
 	return urlPattern.ReplaceAllStringFunc(s, func(m string) string {
-		i := strings.Index(m, "://")
-		if i < 0 {
+		u, err := url.Parse(m)
+		if err != nil || u.Host == "" {
 			return m
 		}
-		scheme, rest := m[:i], m[i+3:]
-		host, path := rest, ""
-		if j := strings.IndexByte(rest, '/'); j >= 0 {
-			host, path = rest[:j], rest[j:]
+		host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+		if !webhookHostPath(host, u.Path) {
+			return m
 		}
-		if webhookHostPath(strings.ToLower(host), path) {
-			return scheme + "://" + host + "/***"
-		}
-		return m
+		// Keep scheme and host (with its port); drop userinfo, path,
+		// query and fragment, which may all carry the token.
+		return u.Scheme + "://" + u.Host + "/***"
 	})
 }
 
