@@ -184,3 +184,18 @@ func TestMaskWebhookPathGenericAndGoogleChat(t *testing.T) {
 		}
 	}
 }
+
+func TestMaskWebhookPathCannotBeHiddenByPortUserinfoOrDot(t *testing.T) {
+	tok := strings.Repeat("Z9", 12)
+	for in, want := range map[string]string{
+		"https://hooks.slack.com:443/services/T0/B0/" + tok:        "https://hooks.slack.com:443/***",
+		"https://hooks.slack.com./services/T0/B0/" + tok:           "https://hooks.slack.com./***",
+		"https://u:p@hooks.slack.com/services/T0/B0/" + tok:        "https://hooks.slack.com/***",
+		"https://***@hooks.slack.com/services/T0/B0/" + tok:        "https://hooks.slack.com/***",
+		"https://HOOKS.SLACK.COM/services/T0/B0/" + tok + "?x=1#f": "https://HOOKS.SLACK.COM/***",
+	} {
+		if got := maskWebhookPath(in); got != want {
+			t.Errorf("maskWebhookPath(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
