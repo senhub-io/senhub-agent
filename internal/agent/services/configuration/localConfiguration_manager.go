@@ -87,7 +87,7 @@ func (lc *LocalConfiguration) loadConfiguration() error {
 
 	// Fix YAML interface conversion issues
 	config = lc.fixYAMLTypes(config)
-	applyOverlays(&config)
+	applyOverlays(&config, lc.configPath)
 
 	// Validate configuration
 	if err := ValidateConfiguration(&config); err != nil {
