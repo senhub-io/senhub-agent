@@ -14,4 +14,6 @@ Nothing released yet since 0.7.1. Changes land here as they are merged.
 
 - **The network probe reports host TCP counters.** Connections by state, connections opened, failed and reset, retransmitted segments, resets sent and, on Linux, listen queue overflows, for the whole host. They are on by default; `tcp_stats: false` leaves only the per-interface metrics. On Linux the connection counts come from the kernel socket table and need no extra privilege; on Windows the counters come from the IP Helper API, without listen overflows.
 
+- **The configuration views mask more of what may be a secret.** `config show --redact`, the console and the configuration an agent reports to its fleet server now also mask a value taken from `${env:}`, the path of a webhook URL (Slack, Teams, Discord, Google Chat, Logic Apps, and self-hosted hooks) and any value that looks like a token, a known prefix or an opaque high-entropy string, whatever its key is called. Before, a secret under a key with a harmless name, or in a webhook URL, was shown in clear.
+
 <div class="rn-filter"></div>

@@ -151,11 +151,10 @@ func TestShowConfig_MarshalSortedYAML(t *testing.T) {
 	}
 }
 
-// TestShowConfig_RedactPreservesEnvRefValues verifies that values
-// coming from ${env:..} (NOT ${file:..}) on non-secret fields are
-// NOT masked. We want operators to see resolved env values; only
-// file-backed values and secret-named fields are sensitive.
-func TestShowConfig_RedactPreservesEnvRefValues(t *testing.T) {
+// TestShowConfig_RedactMasksEnvRefValues verifies that a value taken from
+// ${env:..} is masked even under a harmless key: the variable may hold a
+// secret the key name does not announce (ent#972).
+func TestShowConfig_RedactMasksEnvRefValues(t *testing.T) {
 	t.Setenv("SENHUB_SHOW_ENV_VAL", "visible")
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "agent.yaml")
@@ -169,8 +168,8 @@ agent:
 	if err != nil {
 		t.Fatalf("LoadForShow: %v", err)
 	}
-	if data.Agent.GlobalTags["site"] != "visible" {
-		t.Errorf("env-resolved non-secret field should NOT be masked; got %q", data.Agent.GlobalTags["site"])
+	if data.Agent.GlobalTags["site"] != "***" {
+		t.Errorf("env-resolved field must be masked; got %q", data.Agent.GlobalTags["site"])
 	}
 }
 

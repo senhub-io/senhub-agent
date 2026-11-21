@@ -327,7 +327,7 @@ senhub-agent config show --json
 
 | Flag | Description |
 |------|-------------|
-| `--redact` | Substitute `${env:}` / `${file:}` / `${secret:}` references but mask secret values (default) |
+| `--redact` | Mask every value that may be a secret (default): `${env:}`, `${file:}` and `${secret:}` values, keys named like a secret, credentials in a URL, the path of a webhook URL (Slack, Teams, Discord, Google Chat, Logic Apps, and self-hosted hooks), and any value that looks like a token (known prefix or an opaque high-entropy string). The OpAMP effective configuration sent to a fleet server uses the same rules |
 | `--resolved` | Substitute all references, printing secret values in cleartext |
 | `--raw` | Leave references exactly as written in the file |
 | `--json` | Print the configuration inside one JSON object (see [JSON output](#json-output)); the redaction mode applies as in text |
