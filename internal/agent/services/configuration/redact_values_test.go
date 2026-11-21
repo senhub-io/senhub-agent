@@ -199,3 +199,19 @@ func TestMaskWebhookPathCannotBeHiddenByPortUserinfoOrDot(t *testing.T) {
 		}
 	}
 }
+
+func TestMaskWebhookPathJoinedOrMalformedFailsClosed(t *testing.T) {
+	tok := strings.Repeat("K3", 12)
+	cases := map[string]string{
+		"https://a.example.com,https://hooks.slack.com/services/T0/B0/" + tok: "https://a.example.com,https://hooks.slack.com/***",
+		"https://a.example.com;https://hooks.slack.com/services/T0/B0/" + tok: "https://a.example.com;https://hooks.slack.com/***",
+		"https://hooks.slack.com:99999/services/T0/B0/" + tok:                 "https://hooks.slack.com:99999/***",
+		"https://hooks.slack.com/services/%zz/" + tok:                         "https://***",
+		"https://example.com/plain/path":                                      "https://example.com/plain/path",
+	}
+	for in, want := range cases {
+		if got := maskWebhookPath(in); got != want {
+			t.Errorf("maskWebhookPath(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

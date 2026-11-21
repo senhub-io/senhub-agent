@@ -61,19 +61,39 @@ func genericHookPath(path string) bool {
 // maskWebhookPath replaces the path of a URL on a known webhook host by "/***",
 // keeping scheme and host. Works on a URL embedded in a longer string too.
 func maskWebhookPath(s string) string {
-	return urlPattern.ReplaceAllStringFunc(s, func(m string) string {
-		u, err := url.Parse(m)
-		if err != nil || u.Host == "" {
-			return m
+	return urlPattern.ReplaceAllStringFunc(s, maskWebhookCandidate)
+}
+
+// schemeInside finds another URL glued to the first one (a list joined by
+// a comma or a semicolon), so each is judged on its own.
+var schemeInside = regexp.MustCompile(`(?i)https?://`)
+
+func maskWebhookCandidate(m string) string {
+	if loc := schemeInside.FindAllStringIndex(m, -1); len(loc) > 1 {
+		cut := loc[1][0]
+		return maskWebhookCandidate(m[:cut]) + maskWebhookCandidate(m[cut:])
+	}
+	// A list separator ending the piece belongs to the text, not the URL.
+	trail := ""
+	if t := strings.TrimRight(m, ",;"); t != m {
+		trail, m = m[len(t):], t
+	}
+	u, err := url.Parse(m)
+	if err != nil || u.Host == "" || strings.ContainsAny(u.Hostname(), ",;@ ") {
+		// Fail closed: an URL that does not parse cleanly keeps only its
+		// scheme, so a malformed webhook cannot slip through unmasked.
+		if k := strings.Index(m, "://"); k >= 0 {
+			return m[:k+3] + "***" + trail
 		}
-		host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
-		if !webhookHostPath(host, u.Path) {
-			return m
-		}
-		// Keep scheme and host (with its port); drop userinfo, path,
-		// query and fragment, which may all carry the token.
-		return u.Scheme + "://" + u.Host + "/***"
-	})
+		return "***" + trail
+	}
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	if !webhookHostPath(host, u.Path) {
+		return m + trail
+	}
+	// Keep scheme and host (with its port); drop userinfo, path,
+	// query and fragment, which may all carry the token.
+	return u.Scheme + "://" + u.Host + "/***" + trail
 }
 
 var secretPrefixes = []string{
