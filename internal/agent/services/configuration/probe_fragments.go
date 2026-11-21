@@ -204,7 +204,7 @@ func sealParams(instance string, params map[string]interface{}, secretPaths []st
 					}
 					prov = backend
 				}
-				key := secret.SanitizeKey(instance + "." + strings.Join(stored, "."))
+				key := secret.OperatorKey(instance + "." + strings.Join(stored, "."))
 				if err := prov.Set(key, secret.New(val)); err != nil {
 					return fmt.Errorf("storing secret %q: %w", key, err)
 				}

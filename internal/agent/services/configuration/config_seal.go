@@ -505,7 +505,7 @@ func sealMapping(instance string, path []string, node *yaml.Node, st *sealState)
 		case yaml.ScalarNode:
 			if secret.IsSensitiveKey(k) && isPlaintextScalar(v.Value) {
 				where := instance + "." + strings.Join(child, ".")
-				key := secret.SanitizeKey(where)
+				key := secret.OperatorKey(where)
 				ref, err := st.sealValue(key, v.Value, where)
 				if err != nil {
 					return total, err

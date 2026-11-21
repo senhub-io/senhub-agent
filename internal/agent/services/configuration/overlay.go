@@ -114,9 +114,10 @@ func (t *overlayTarget) AddProbe(p extension.ManagedProbe) bool {
 	if _, ok := p.Params["interval"]; ok {
 		return false
 	}
-	params := make(ProbeConfigParams, len(p.Params)+1)
-	for k, v := range p.Params {
-		params[k] = v
+	params, err := resolveManagedParams(p.Params)
+	if err != nil {
+		log.Warn().Str("probe", p.Name).Err(err).Msg("Managed probe not added")
+		return false
 	}
 	if p.Interval != 0 {
 		params["interval"] = p.Interval
