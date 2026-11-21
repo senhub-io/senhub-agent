@@ -300,14 +300,23 @@ func redactInPlace(rawV, resV reflect.Value, currentName string) {
 		// regardless of whether the resolved value happens to be
 		// empty — an empty secret is still a secret slot.
 		hasFileRef := fileRefPattern.MatchString(raw)
-		hasSecretRef := secretRefPattern.MatchString(raw) || envProbeRefPattern.MatchString(raw)
+		// A value taken from the environment is never shown resolved: the
+		// variable may hold a secret under a key whose name says nothing.
+		hasSecretRef := secretRefPattern.MatchString(raw) || envProbeRefPattern.MatchString(raw) || valueFromEnv(raw)
 		nameLooksSecret := currentName != "" && logredact.IsSecretKey(currentName)
 		if !hasFileRef && !hasSecretRef && !nameLooksSecret {
 			// A value can carry a credential under any key name: the URL
 			// user part, query values, a fragment, a token. Mask it the
 			// way the logs do.
+			// Then the path of a known webhook URL, and any value that
+			// looks like a secret itself (known token prefix, or an
+			// opaque high-entropy string), whatever its key is called.
 			if resV.CanSet() {
-				if masked := logredact.String(resV.String()); masked != resV.String() {
+				masked := maskWebhookPath(logredact.String(resV.String()))
+				if looksLikeSecret(masked) {
+					masked = "***"
+				}
+				if masked != resV.String() {
 					resV.SetString(masked)
 				}
 			}

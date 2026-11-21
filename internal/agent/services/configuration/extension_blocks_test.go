@@ -115,7 +115,8 @@ func TestClaimedBlockIsShownRedacted(t *testing.T) {
 		}
 	}
 	for name, out := range map[string]string{"config show --redact": string(body), "agent.yaml file": top} {
-		if !strings.Contains(out, "sample:") || !strings.Contains(out, "wss://server.example/v1") {
+		// The endpoint comes from ${env:}: masked since ent#972.
+		if !strings.Contains(out, "sample:") || strings.Contains(out, "wss://server.example/v1") {
 			t.Errorf("%s lacks the claimed block:\n%s", name, out)
 		}
 		if strings.Contains(out, "ExtInlineT0ken") {

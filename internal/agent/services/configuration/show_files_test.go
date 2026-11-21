@@ -91,8 +91,9 @@ func TestRedactedConfigFilesMultiFile(t *testing.T) {
 	}
 
 	probeBody := bodyByName["probes.d/01-a.yaml"]
-	if !bytes.Contains(probeBody, []byte("db.example")) {
-		t.Errorf("probes body should contain resolved non-secret db.example: %s", probeBody)
+	// db.example comes from ${env:}: masked since ent#972.
+	if bytes.Contains(probeBody, []byte("db.example")) {
+		t.Errorf("probes body shows an env-resolved value: %s", probeBody)
 	}
 	if !bytes.Contains(probeBody, []byte("***")) {
 		t.Errorf("probes body should contain redacted secret marker: %s", probeBody)

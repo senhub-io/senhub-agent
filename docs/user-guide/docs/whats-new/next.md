@@ -10,4 +10,6 @@ Nothing released yet since 0.7.1. Changes land here as they are merged.
 
 - **`senhub.neighbors.omitted` is replaced by `senhub.neighbors.truncated`.** The number of neighbours cut by `max_neighbors` changed at almost every read on a cut device, and each change was recorded in the topology. The device entity now carries `senhub.neighbors.truncated`, a boolean that changes only when the cut starts or stops; `senhub.neighbors.limit` is unchanged, and the exact count stays in the agent log line `neighbor table bound: some neighbors omitted`.
 
+- **The configuration views mask more of what may be a secret.** `config show --redact`, the console and the configuration an agent reports to its fleet server now also mask a value taken from `${env:}`, the path of a webhook URL (Slack, Teams, Discord, Logic Apps) and any value that looks like a token, a known prefix or an opaque high-entropy string, whatever its key is called. Before, a secret under a key with a harmless name, or in a webhook URL, was shown in clear.
+
 <div class="rn-filter"></div>
