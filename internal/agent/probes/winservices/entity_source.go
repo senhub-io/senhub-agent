@@ -89,17 +89,19 @@ func buildHostServiceEntity(hostID, hostName string, s serviceState) (entity.Ent
 		attrs["host.service.trigger_start"] = *s.triggerStart
 	}
 
-	return entity.Entity{
-			Type:       entity.TypeHostService,
-			ID:         id,
-			Attributes: attrs,
-		}, entity.Relation{
-			Type:     relRunsOn,
-			FromType: entity.TypeHostService,
-			FromID:   id,
-			ToType:   entityTypeHost,
-			ToID:     map[string]any{idKeyHost: hostID},
-		}
+	ent := entity.Entity{
+		Type:       entity.TypeHostService,
+		ID:         id,
+		Attributes: attrs,
+	}
+	rel := entity.Relation{
+		Type:     relRunsOn,
+		FromType: entity.TypeHostService,
+		FromID:   id,
+		ToType:   entityTypeHost,
+		ToID:     map[string]any{idKeyHost: hostID},
+	}
+	return ent, rel
 }
 
 // winServicesEntitySource feeds the entity rail with the probe-level

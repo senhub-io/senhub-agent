@@ -23,21 +23,23 @@ func buildHostServiceEntity(hostID, hostName string, u hostServiceUnit) (entity.
 		"host.service.name": u.Name,
 	}
 
-	return entity.Entity{
-			Type: entity.TypeHostService,
-			ID:   id,
-			Attributes: map[string]any{
-				"host.service.manager":    systemdManager,
-				"host.service.start_mode": u.UnitFileState,
-				"host.name":               hostName,
-			},
-		}, entity.Relation{
-			Type:     "runs_on",
-			FromType: entity.TypeHostService,
-			FromID:   id,
-			ToType:   "host",
-			ToID:     map[string]any{"host.id": hostID},
-		}
+	ent := entity.Entity{
+		Type: entity.TypeHostService,
+		ID:   id,
+		Attributes: map[string]any{
+			"host.service.manager":    systemdManager,
+			"host.service.start_mode": u.UnitFileState,
+			"host.name":               hostName,
+		},
+	}
+	rel := entity.Relation{
+		Type:     "runs_on",
+		FromType: entity.TypeHostService,
+		FromID:   id,
+		ToType:   "host",
+		ToID:     map[string]any{"host.id": hostID},
+	}
+	return ent, rel
 }
 
 func legacyServiceInstanceID(hostID, name string) string {
