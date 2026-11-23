@@ -33,6 +33,19 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+// shutdownMargin is what a Shutdown test allows past the context deadline,
+// on top of the time the backlog spent writing files. After the deadline
+// Shutdown cancels the send, takes a mutex and writes; the writes are the
+// only unbounded part, since the events must reach the disk to be kept and
+// a saturated disk stalled a single small write for 4.7 s in a measured
+// run. The rest is goroutine scheduling, for which one second is ample.
+const shutdownMargin = time.Second
+
+// overrun is how far a stop went past its deadline, disk writes excluded.
+func overrun(elapsed, deadline time.Duration, b *eventBacklog) time.Duration {
+	return elapsed - deadline - time.Duration(b.writeNanos.Load())
+}
+
 // ackIntake is a fake intake that records the messages of every batch it
 // acknowledges, and checks at request time that the batch is still on disk.
 type ackIntake struct {
@@ -317,14 +330,14 @@ func TestBacklogEvictsOldestPastSizeCap(t *testing.T) {
 	dir := t.TempDir()
 
 	probe := newEventBacklog(t.TempDir(), 0, 0, newDurableStrategy(t, t.TempDir(), nil).logger)
-	if err := probe.append(batchOf("x", 0, 10)); err != nil {
+	if err := probe.append(batchOf("x", 0, 10), true); err != nil {
 		t.Fatal(err)
 	}
 	_, one := probe.pending()
 
 	b := newEventBacklog(dir, one*5/2, time.Hour, probe.logger)
 	for i := 0; i < 5; i++ {
-		if err := b.append(batchOf("b", i*10, 10)); err != nil {
+		if err := b.append(batchOf("b", i*10, 10), true); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -363,9 +376,9 @@ func TestBacklogEvictsPastMaxAge(t *testing.T) {
 	b := newEventBacklog(dir, 0, time.Hour, log)
 	b.now = func() time.Time { return clock }
 
-	_ = b.append(batchOf("old", 0, 4))
+	_ = b.append(batchOf("old", 0, 4), true)
 	clock = clock.Add(40 * time.Minute)
-	_ = b.append(batchOf("mid", 0, 3))
+	_ = b.append(batchOf("mid", 0, 3), true)
 	clock = clock.Add(40 * time.Minute) // old is 80 min, mid 40 min
 	b.sweep()
 
@@ -511,8 +524,8 @@ func TestShutdownHonoursContextAgainstHangingIntake(t *testing.T) {
 	err := s.Shutdown(ctx)
 	elapsed := time.Since(start)
 
-	if elapsed > budget+time.Second {
-		t.Fatalf("Shutdown took %s, want about %s", elapsed, budget)
+	if o := overrun(elapsed, budget, s.backlog); o > shutdownMargin {
+		t.Fatalf("Shutdown took %s, %s past its %s deadline (disk writes excluded)", elapsed, o, budget)
 	}
 	if err == nil {
 		t.Fatal("Shutdown against a hanging intake must report that it did not deliver")
@@ -550,8 +563,8 @@ func TestShutdownInterruptsRunningSync(t *testing.T) {
 	defer cancel()
 	start := time.Now()
 	_ = s.Shutdown(ctx)
-	if elapsed := time.Since(start); elapsed > budget+time.Second {
-		t.Fatalf("Shutdown took %s, want about %s", elapsed, budget)
+	if elapsed := time.Since(start); overrun(elapsed, budget, s.backlog) > shutdownMargin {
+		t.Fatalf("Shutdown took %s, past its %s deadline (disk writes excluded)", elapsed, budget)
 	}
 	if n, _ := s.backlog.pending(); n != 5 {
 		t.Fatalf("%d events on disk, want the 5 of the interrupted sync", n)
@@ -592,7 +605,7 @@ func TestBacklogKeepsFileOnTransientReadError(t *testing.T) {
 	dir := t.TempDir()
 	log := newDurableStrategy(t, t.TempDir(), nil).logger
 	b := newEventBacklog(dir, 0, 0, log)
-	if err := b.append(batchOf("m", 0, 3)); err != nil {
+	if err := b.append(batchOf("m", 0, 3), true); err != nil {
 		t.Fatal(err)
 	}
 	ioErr := fmt.Errorf("too many open files")
@@ -636,7 +649,7 @@ func TestBacklogGivesUpOnPersistentReadError(t *testing.T) {
 	dir := t.TempDir()
 	log := newDurableStrategy(t, t.TempDir(), nil).logger
 	b := newEventBacklog(dir, 0, 0, log)
-	_ = b.append(batchOf("m", 0, 3))
+	_ = b.append(batchOf("m", 0, 3), true)
 	b.readFn = func(string) ([]byte, error) { return nil, fmt.Errorf("permission denied") }
 	send := func(context.Context, []eventtypes.EventDataPoint) error { return nil }
 	for round := 0; round < maxReadFailures; round++ {
@@ -700,8 +713,8 @@ func TestShutdownOwnsParkingOrder(t *testing.T) {
 	defer cancel()
 	start := time.Now()
 	_ = s.Shutdown(ctx)
-	if elapsed := time.Since(start); elapsed > time.Second {
-		t.Fatalf("Shutdown took %s against an intake that ignores the context", elapsed)
+	if elapsed := time.Since(start); overrun(elapsed, 200*time.Millisecond, s.backlog) > shutdownMargin {
+		t.Fatalf("Shutdown took %s against an intake that ignores the context (disk writes excluded)", elapsed)
 	}
 	filesAtReturn := countBacklogFiles(dir)
 

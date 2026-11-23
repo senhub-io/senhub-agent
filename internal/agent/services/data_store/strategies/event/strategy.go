@@ -579,7 +579,7 @@ func (s *EventSyncStrategy) doSyncDurable(ctx context.Context) error {
 	}
 	if err != nil {
 		s.recordSendFailure(err)
-		s.handOff(nil)
+		s.handOff(ctx, nil)
 		return fmt.Errorf("replaying the event backlog: %w", err)
 	}
 
@@ -600,7 +600,7 @@ func (s *EventSyncStrategy) doSyncDurable(ctx context.Context) error {
 		s.clearInflight()
 		return nil
 	}
-	s.handOff(events)
+	s.handOff(ctx, events)
 	return fmt.Errorf("failed to sync events after %d attempts: %w", s.retryAttempts, err)
 }
 
@@ -677,11 +677,11 @@ func (s *EventSyncStrategy) replayBatch(ctx context.Context, events []eventtypes
 
 // persist puts a batch on disk. A write failure loses the batch, counted,
 // with at most one warning a minute.
-func (s *EventSyncStrategy) persist(events []eventtypes.EventDataPoint) {
+func (s *EventSyncStrategy) persist(events []eventtypes.EventDataPoint, durable bool) {
 	if len(events) == 0 || s.backlog == nil {
 		return
 	}
-	if err := s.backlog.append(events); err != nil {
+	if err := s.backlog.append(events, durable); err != nil {
 		agentstate.IncrementPushBufferDropped("event", len(events))
 		now := time.Now().UnixNano()
 		last := s.lastWarnAt.Load()
@@ -701,15 +701,17 @@ func (s *EventSyncStrategy) clearInflight() {
 // handOff is how a sync gives the backlog the batch it could not deliver,
 // then the buffer. After Shutdown has taken over it writes nothing: the
 // batch is still in inflight and Shutdown puts it on disk, in order.
-func (s *EventSyncStrategy) handOff(events []eventtypes.EventDataPoint) {
+func (s *EventSyncStrategy) handOff(ctx context.Context, events []eventtypes.EventDataPoint) {
 	s.persistMu.Lock()
 	defer s.persistMu.Unlock()
 	if s.closing {
 		return
 	}
-	s.persist(events)
+	// Past the deadline the write must be quick: no fsync (see append).
+	durable := ctx.Err() == nil
+	s.persist(events, durable)
 	s.inflight = nil
-	s.parkBuffer()
+	s.parkBuffer(durable)
 }
 
 // takeOver is the one write Shutdown makes: the batch an interrupted sync
@@ -718,15 +720,15 @@ func (s *EventSyncStrategy) takeOver() {
 	s.persistMu.Lock()
 	defer s.persistMu.Unlock()
 	s.closing = true
-	s.persist(s.inflight)
+	s.persist(s.inflight, false)
 	s.inflight = nil
-	s.parkBuffer()
+	s.parkBuffer(false)
 }
 
 // parkBuffer moves what the in-memory buffer holds onto disk. Bounded by
 // the buffer capacity, so a producer faster than the disk cannot hold it.
 // The caller holds persistMu. Without a backlog it does nothing.
-func (s *EventSyncStrategy) parkBuffer() {
+func (s *EventSyncStrategy) parkBuffer(durable bool) {
 	if s.backlog == nil {
 		return
 	}
@@ -735,7 +737,7 @@ func (s *EventSyncStrategy) parkBuffer() {
 		if len(events) == 0 {
 			return
 		}
-		s.persist(events)
+		s.persist(events, durable)
 	}
 }
 
