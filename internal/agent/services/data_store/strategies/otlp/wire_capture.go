@@ -50,6 +50,9 @@ type wireSlot struct {
 	// the exporter built.
 	replay []byte
 
+	// substituted is set by the hook when it swapped the stored request in.
+	substituted bool
+
 	msg      proto.Message
 	body     func() (io.ReadCloser, error)
 	bodyGzip bool
@@ -62,6 +65,31 @@ func withWireSlot(ctx context.Context, s *wireSlot) context.Context {
 func wireSlotFrom(ctx context.Context) *wireSlot {
 	s, _ := ctx.Value(wireSlotKey{}).(*wireSlot)
 	return s
+}
+
+func (s *wireSlot) markSubstituted() {
+	s.mu.Lock()
+	s.substituted = true
+	s.mu.Unlock()
+}
+
+// wasSubstituted reports whether the stored request reached the transport.
+func (s *wireSlot) wasSubstituted() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.substituted
+}
+
+// errReplayNotSent says an exporter reported success for a replay without
+// the hook ever seeing the request: the stored bytes were not sent.
+var errReplayNotSent = errors.New("replayed request never reached the transport")
+
+// checkReplayed turns a silent success into a failure.
+func (s *wireSlot) checkReplayed(err error) error {
+	if err == nil && !s.wasSubstituted() {
+		return errReplayNotSent
+	}
+	return err
 }
 
 func (s *wireSlot) setMessage(m proto.Message) {
@@ -128,6 +156,7 @@ func wireUnaryInterceptor() grpc.UnaryClientInterceptor {
 			if err := proto.Unmarshal(s.replay, m); err != nil {
 				return fmt.Errorf("stored request: %w", err)
 			}
+			s.markSubstituted()
 			return invoker(ctx, method, req, reply, cc, opts...)
 		}
 		s.setMessage(m)
@@ -149,23 +178,27 @@ func (t *wireRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 		return t.next.RoundTrip(req)
 	}
 	if s.replay != nil {
-		var buf bytes.Buffer
-		zw := gzip.NewWriter(&buf)
-		if _, err := zw.Write(s.replay); err != nil {
-			closeBody(req)
-			return nil, err
-		}
-		if err := zw.Close(); err != nil {
-			closeBody(req)
-			return nil, err
+		raw := s.replay
+		gz := req.Header.Get("Content-Encoding") == "gzip"
+		if gz {
+			var buf bytes.Buffer
+			zw := gzip.NewWriter(&buf)
+			if _, err := zw.Write(raw); err != nil {
+				closeBody(req)
+				return nil, err
+			}
+			if err := zw.Close(); err != nil {
+				closeBody(req)
+				return nil, err
+			}
+			raw = buf.Bytes()
 		}
 		closeBody(req)
-		raw := buf.Bytes()
 		out := req.Clone(req.Context())
 		out.Body = io.NopCloser(bytes.NewReader(raw))
 		out.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(raw)), nil }
 		out.ContentLength = int64(len(raw))
-		out.Header.Set("Content-Encoding", "gzip")
+		s.markSubstituted()
 		return t.next.RoundTrip(out)
 	}
 	s.setBody(req.GetBody, req.Header.Get("Content-Encoding") == "gzip")

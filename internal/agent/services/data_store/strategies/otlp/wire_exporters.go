@@ -30,8 +30,9 @@ func (o *sdkOp) send(ctx context.Context) error {
 }
 
 func (o *sdkOp) payload(ctx context.Context, attempted bool) ([]byte, error) {
-	if !attempted {
-		// The batch goes to disk without a network attempt: the exporter
+	if !attempted || !o.slot.captured() {
+		// The batch goes to disk without a network attempt, or the attempt
+		// was cut off (cancelled) before the transport saw it: the exporter
 		// still encodes it, and the hook keeps it instead of sending it.
 		o.slot.dry = true
 		err := o.call(withWireSlot(context.WithoutCancel(ctx), o.slot))
@@ -54,7 +55,7 @@ func newPersistentMetricExporter(wrapped sdkmetric.Exporter, ch *wireChannel) *p
 	e := &persistentMetricExporter{Exporter: wrapped, ch: ch}
 	ch.replaySend = func(ctx context.Context, request []byte) error {
 		slot := &wireSlot{replay: request}
-		return wrapped.Export(withWireSlot(ctx, slot), &metricdata.ResourceMetrics{})
+		return slot.checkReplayed(wrapped.Export(withWireSlot(ctx, slot), &metricdata.ResourceMetrics{}))
 	}
 	return e
 }
@@ -78,7 +79,7 @@ func newPersistentSpanExporter(wrapped sdktrace.SpanExporter, ch *wireChannel) *
 		// The exporter sends nothing for an empty batch; one placeholder
 		// span makes it build a request, which the hook replaces.
 		stub := tracetest.SpanStub{Name: "replay"}.Snapshot()
-		return wrapped.ExportSpans(withWireSlot(ctx, slot), []sdktrace.ReadOnlySpan{stub})
+		return slot.checkReplayed(wrapped.ExportSpans(withWireSlot(ctx, slot), []sdktrace.ReadOnlySpan{stub}))
 	}
 	return e
 }

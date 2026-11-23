@@ -49,7 +49,15 @@ type wireRig struct {
 
 func newWireRig(t *testing.T, col *fakeCollector, dir, signal string, maxBytes int64) *wireRig {
 	t.Helper()
+	return newWireRigCfg(t, col, dir, signal, maxBytes, nil)
+}
+
+func newWireRigCfg(t *testing.T, col *fakeCollector, dir, signal string, maxBytes int64, mutate func(*Config)) *wireRig {
+	t.Helper()
 	cfg := wireTestConfig(col, dir)
+	if mutate != nil {
+		mutate(&cfg)
+	}
 	r := &wireRig{t: t, col: col, signal: signal}
 	log := testModuleLogger(t)
 	if signal == "metrics" {
@@ -85,6 +93,10 @@ func newWireRig(t *testing.T, col *fakeCollector, dir, signal string, maxBytes i
 var wireBase = time.Unix(1_700_000_000, 0)
 
 func (r *wireRig) pushMetric(i int, series int) error {
+	return r.pushMetricCtx(context.Background(), i, series)
+}
+
+func (r *wireRig) pushMetricCtx(ctx context.Context, i int, series int) error {
 	recs := make([]otelmapper.OtelRecord, 0, series)
 	for s := 0; s < series; s++ {
 		recs = append(recs, otelmapper.OtelRecord{
@@ -93,7 +105,7 @@ func (r *wireRig) pushMetric(i int, series int) error {
 		})
 	}
 	rm := buildResourceMetrics(recs, resource.NewSchemaless(), "", wireBase, wireBase.Add(time.Duration(i)*time.Second))
-	return r.mexp.Export(context.Background(), rm)
+	return r.mexp.Export(ctx, rm)
 }
 
 func (r *wireRig) pushSpan(name string) error {

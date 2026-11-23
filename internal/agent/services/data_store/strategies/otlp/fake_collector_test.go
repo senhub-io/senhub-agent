@@ -28,13 +28,14 @@ type fakeCollector struct {
 	protocol string
 	endpoint string
 
-	mu       sync.Mutex
-	down     bool
-	allow    int // acknowledged requests left before it turns down; -1 = no limit
-	reject   bool
-	attempts int
-	metrics  []*collectormetricspb.ExportMetricsServiceRequest
-	traces   []*collectortracepb.ExportTraceServiceRequest
+	mu        sync.Mutex
+	down      bool
+	allow     int // acknowledged requests left before it turns down; -1 = no limit
+	reject    bool
+	attempts  int
+	encodings []string
+	metrics   []*collectormetricspb.ExportMetricsServiceRequest
+	traces    []*collectortracepb.ExportTraceServiceRequest
 
 	stop func()
 }
@@ -161,6 +162,9 @@ func (c *fakeCollector) spanNames() []string {
 
 func (c *fakeCollector) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
+	c.mu.Lock()
+	c.encodings = append(c.encodings, r.Header.Get("Content-Encoding"))
+	c.mu.Unlock()
 	if r.Header.Get("Content-Encoding") == "gzip" {
 		if zr, err := gzip.NewReader(bytes.NewReader(body)); err == nil {
 			body, _ = io.ReadAll(zr)
