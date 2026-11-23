@@ -104,7 +104,7 @@ func (p *program) run(ctx context.Context) {
 // (packaging/systemd/senhub-agent.service, User=senhub).
 func linuxCommandNeedsRoot(command string) bool {
 	switch command {
-	case "install", "uninstall", "start", "stop", "restart", "refresh-unit":
+	case "install", "uninstall", "start", "stop", "restart", "refresh-unit", "update-apply":
 		return true
 	case "update":
 		// `update <version>` overwrites the on-disk binary, which the
@@ -400,6 +400,9 @@ var knownTopLevelArgs = map[string]struct{}{
 	// into a new binary. Missing here, Main rejected it as unknown and no
 	// failed update was ever rolled back.
 	"update-watch": {},
+	// update-apply is internal: the root unit senhub-agent-update.service runs
+	// it when the service asks for an update on a deb or rpm install.
+	"update-apply": {},
 }
 
 func Main() {
@@ -582,6 +585,8 @@ func Main() {
 		return
 	case "update-watch":
 		os.Exit(runUpdateWatch(os.Args[2:]))
+	case "update-apply":
+		os.Exit(runUpdateApply(os.Args[2:]))
 	case "refresh-unit":
 		runRefreshUnit()
 		return

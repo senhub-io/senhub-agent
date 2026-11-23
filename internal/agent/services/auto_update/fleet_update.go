@@ -376,6 +376,9 @@ const listSeqFileName = "update-list-seq.json"
 // state accepts the first valid list.
 func (a *autoUpdate) acceptListSeq(channel string, seq int64) error {
 	env := a.rollbackEnvFor("")
+	if a.seqDir != "" {
+		env.stateDir = a.seqDir
+	}
 	path := filepath.Join(env.stateDir, listSeqFileName)
 	floors := map[string]int64{}
 	if env.stateDir != "" {

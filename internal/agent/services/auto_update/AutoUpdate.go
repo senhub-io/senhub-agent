@@ -120,6 +120,10 @@ type autoUpdate struct {
 	// stateDir holds the update markers; empty means the agent's own state
 	// directory. Set by tests.
 	stateDir string
+	// seqDir, when set, holds the list sequence floor instead of stateDir.
+	// The root update unit keeps it in a directory the service cannot write,
+	// so a compromised service cannot lower the floor and replay an old list.
+	seqDir string
 	// launchInstaller runs the staged MSI. Nil in production (the real msiexec
 	// launch is used); injected by tests to assert applyMsiUpdate orchestration
 	// without spawning a process.
