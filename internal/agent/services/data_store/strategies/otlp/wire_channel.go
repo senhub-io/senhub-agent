@@ -78,6 +78,7 @@ func newWireChannel(signal string, queue *wireQueue, ordered, countErrors bool, 
 		logger:      log,
 	}
 	c.exporterHealth.init("otlp/"+signal, log)
+	c.backlog = queue.hasFiles
 	return c
 }
 
@@ -272,7 +273,7 @@ func (c *wireChannel) exportDirect(ctx context.Context, request []byte, units in
 	started := c.now()
 	err := c.reporter.reportRejections(c.replaySend(ctx, request))
 	if err == nil {
-		c.markSuccessSince(started)
+		c.markReplaySuccess(started)
 		return nil
 	}
 	if errors.Is(ctx.Err(), context.Canceled) || errors.Is(err, errBatchDiscarded) {

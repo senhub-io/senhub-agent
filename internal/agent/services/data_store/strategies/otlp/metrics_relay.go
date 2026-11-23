@@ -197,12 +197,20 @@ type metricsRelay struct {
 
 func newMetricsRelay(cfg Config, enricher *relayEnricher, moduleLogger *logger.ModuleLogger) (*metricsRelay, error) {
 	reporter := newPartialSuccessReporter(moduleLogger, "relay")
-	var fwd metricBatchForwarder
-	var err error
-	if cfg.Protocol == "http" {
-		fwd, err = newHTTPMetricBatchForwarder(cfg, reporter)
-	} else {
-		fwd, err = newGRPCMetricBatchForwarder(cfg, reporter)
+	build := func(c Config) (metricBatchForwarder, error) {
+		if c.Protocol == "http" {
+			return newHTTPMetricBatchForwarder(c, reporter)
+		}
+		return newGRPCMetricBatchForwarder(c, reporter)
+	}
+	fwd, err := build(cfg)
+	if err == nil && len(cfg.FallbackEndpoints) > 0 {
+		var fwds []metricBatchForwarder
+		var core *failoverCore
+		if fwds, core, err = buildFailoverForwarders(cfg, moduleLogger, build); err == nil {
+			_ = fwd.close()
+			fwd = &failoverMetricBatchForwarder{core: core, fwds: fwds}
+		}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("building log batch forwarder: %w", err)

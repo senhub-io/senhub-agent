@@ -91,7 +91,7 @@ for the sizing.
 A backend that answers with a throttle hint (HTTP 429 or 503 with
 `Retry-After`, gRPC `RESOURCE_EXHAUSTED` or `UNAVAILABLE` with `RetryInfo`) is
 not treated as down. The signals with a queue have the SDK retry turned off,
-so the queue's own retry clock (5 s doubling to 5 min) decides when to try
+so the queue's own retry clock (5 s doubling to 60 s) decides when to try
 again, and the hint stretches it: no live export and no replay probe is sent
 before the wait asked for has passed, capped at 10 minutes (a longer hint is
 cut and logged once); new batches go to disk meanwhile. A throttled export is
