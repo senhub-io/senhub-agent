@@ -78,17 +78,35 @@ type edgeTotals struct {
 type edgeRegistry struct {
 	mu      sync.Mutex
 	byTuple map[tupleKey]edgeKey
-	edges   map[edgeKey]struct{}
-	totals  map[edgeKey]*edgeTotals
-	socks   map[sockKey]sockState
+	// retiredTuples keeps sockets that were attributed to an edge whose
+	// totals are still retained but are not attributed now, so their baselines
+	// survive and a returning edge does not count their whole value again.
+	retiredTuples map[tupleKey]edgeKey
+	edges         map[edgeKey]struct{}
+	totals        map[edgeKey]*edgeTotals
+	socks         map[sockKey]sockState
+	// retiredAt is when an edge with totals stopped being emitted. Its totals
+	// are kept for totalsRetention so an edge that flaps continues the same
+	// series instead of restarting at zero, which a consumer reads as a reset.
+	retiredAt map[edgeKey]time.Time
+	now       func() time.Time
 }
+
+// totalsRetention bounds how long a retired edge's totals are kept: longer than
+// the miss tolerance of the debounce at any sane cadence, short enough that
+// the registry stays small on a host whose peers keep changing.
+const totalsRetention = time.Hour
 
 func newEdgeRegistry() *edgeRegistry {
 	return &edgeRegistry{
-		byTuple: map[tupleKey]edgeKey{},
-		edges:   map[edgeKey]struct{}{},
-		totals:  map[edgeKey]*edgeTotals{},
-		socks:   map[sockKey]sockState{},
+		byTuple:       map[tupleKey]edgeKey{},
+		retiredTuples: map[tupleKey]edgeKey{},
+		edges:         map[edgeKey]struct{}{},
+		totals:        map[edgeKey]*edgeTotals{},
+		socks:         map[sockKey]sockState{},
+
+		retiredAt: map[edgeKey]time.Time{},
+		now:       time.Now,
 	}
 }
 
@@ -126,8 +144,8 @@ func emittedEdges(streak map[peerKey]streakState, threshold int, hostID string) 
 }
 
 // publish replaces the set of emitted edges and the sockets attributed to them.
-// Totals of an edge that is no longer emitted are dropped, so its series ends
-// with it; if the same edge returns later it starts from zero, as a new series.
+// An edge that is no longer emitted reports nothing; its totals are kept for
+// totalsRetention, then purged, so a returning edge resumes its counters.
 func (r *edgeRegistry) publish(emitted map[peerKey]edgeKey, deps []dependant) {
 	byTuple := make(map[tupleKey]edgeKey, len(deps))
 	edges := make(map[edgeKey]struct{}, len(emitted))
@@ -142,20 +160,47 @@ func (r *edgeRegistry) publish(emitted map[peerKey]edgeKey, deps []dependant) {
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	retiredTuples := map[tupleKey]edgeKey{}
+	for t, k := range r.byTuple {
+		retiredTuples[t] = k
+	}
+	for t, k := range r.retiredTuples {
+		retiredTuples[t] = k
+	}
+	for t := range byTuple {
+		delete(retiredTuples, t)
+	}
 	r.byTuple = byTuple
 	r.edges = edges
+	now := r.now()
 	for k := range r.totals {
-		if _, ok := edges[k]; !ok {
+		if _, ok := edges[k]; ok {
+			delete(r.retiredAt, k)
+			continue
+		}
+		since, retired := r.retiredAt[k]
+		if !retired {
+			r.retiredAt[k] = now
+			continue
+		}
+		if now.Sub(since) > totalsRetention {
 			delete(r.totals, k)
+			delete(r.retiredAt, k)
 		}
 	}
+	for t, k := range retiredTuples {
+		if _, kept := r.totals[k]; !kept {
+			delete(retiredTuples, t)
+		}
+	}
+	r.retiredTuples = retiredTuples
 }
 
 func (r *edgeRegistry) collect(conns []netconn.Conn) []EdgeMetric {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if len(r.edges) == 0 {
+	if len(r.edges) == 0 && len(r.retiredTuples) == 0 {
 		r.socks = map[sockKey]sockState{}
 		return nil
 	}
@@ -168,23 +213,40 @@ func (r *edgeRegistry) collect(conns []netconn.Conn) []EdgeMetric {
 	seen := make(map[sockKey]sockState, len(r.socks))
 
 	for _, c := range conns {
-		if c.State != netconn.StateEstablished || !c.HasInfo {
-			continue
-		}
 		t := tupleKey{
 			laddr: c.LocalAddr.Addr().Unmap().String(), lport: uint32(c.LocalAddr.Port()),
 			raddr: c.RemoteAddr.Addr().Unmap().String(), rport: uint32(c.RemoteAddr.Port()),
 		}
-		ek, ok := r.byTuple[t]
-		if !ok {
-			continue
+		ek, live := r.byTuple[t]
+		if !live {
+			var retired bool
+			if ek, retired = r.retiredTuples[t]; !retired {
+				continue
+			}
 		}
 		sk := sockKey{inode: c.Inode}
 		if c.Inode == 0 {
 			sk.tuple = t
 		}
-		cur := sockState{retrans: uint64(c.Retransmits), sent: c.BytesSent, received: c.BytesReceived}
 		prev, known := r.socks[sk]
+		if c.State != netconn.StateEstablished || !c.HasInfo {
+			// Still in the table, only not readable this cycle: keep its
+			// baseline, or its whole value would be added again when it is.
+			if known {
+				seen[sk] = prev
+			}
+			continue
+		}
+		cur := sockState{retrans: uint64(c.Retransmits), sent: c.BytesSent, received: c.BytesReceived}
+		if !live {
+			// Not attributed now (edge retired, or between two attributions):
+			// keep the baseline untouched so the growth in between is added
+			// once when the socket is attributed again.
+			if known {
+				seen[sk] = prev
+			}
+			continue
+		}
 		seen[sk] = cur
 
 		tot := r.totals[ek]
@@ -215,6 +277,9 @@ func (r *edgeRegistry) collect(conns []netconn.Conn) []EdgeMetric {
 
 	out := make([]EdgeMetric, 0, len(r.totals))
 	for ek, tot := range r.totals {
+		if _, live := r.edges[ek]; !live {
+			continue
+		}
 		m := EdgeMetric{
 			Attributes:    ek.attributes(),
 			Retransmits:   tot.retrans,

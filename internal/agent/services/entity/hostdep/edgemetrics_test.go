@@ -176,9 +176,6 @@ func TestEdgeMetrics_RetiredEdgeSeriesIsGone(t *testing.T) {
 	if ms := reg.collect(live); len(ms) != 0 {
 		t.Fatalf("retired edge still has metrics: %+v", ms)
 	}
-	if len(reg.totals) != 0 {
-		t.Errorf("totals not dropped: %v", reg.totals)
-	}
 }
 
 func TestEdgeMetrics_ExcludedPeerHasNoMetric(t *testing.T) {
@@ -219,5 +216,98 @@ func TestEdgeMetrics_UnsupportedPlatformYieldsNothing(t *testing.T) {
 	observeOK(t, s)
 	if ms := reg.collect(nil); len(ms) != 0 {
 		t.Fatalf("got %+v, want nothing", ms)
+	}
+}
+
+func TestEdgeMetrics_FlappingEdgeContinuesItsCounter(t *testing.T) {
+	rows := []gnet.ConnectionStat{conn(statusEstablished, "10.0.0.5", 53000, "8.8.8.8", 443, 100)}
+	live := []netconn.Conn{nc("10.0.0.5", 53000, "8.8.8.8", 443, 1, 0, 0, 1000, 0)}
+	s, reg := edgeSource(rows)
+	clock := time.Unix(1000, 0)
+	reg.now = func() time.Time { return clock }
+	observeOK(t, s)
+	reg.collect(live)
+
+	s.connections = fakeConns(nil)
+	for i := 0; i <= earnWindow+1; i++ {
+		observeOK(t, s)
+	}
+	if ms := reg.collect(live); len(ms) != 0 {
+		t.Fatalf("retired edge emitted: %+v", ms)
+	}
+
+	clock = clock.Add(10 * time.Minute)
+	s.connections = fakeConns(rows)
+	observeOK(t, s)
+	// The old socket is gone; a new one carries 300 bytes. The series must
+	// continue from 1000, not restart at 300.
+	live2 := []netconn.Conn{nc("10.0.0.5", 53000, "8.8.8.8", 443, 2, 0, 0, 300, 0)}
+	m := metricFor(reg.collect(live2), "8.8.8.8")
+	if m == nil || m.BytesSent != 1300 {
+		t.Fatalf("counter restarted on flap: %+v", m)
+	}
+}
+
+func TestEdgeMetrics_RetiredTotalsArePurgedAfterRetention(t *testing.T) {
+	rows := []gnet.ConnectionStat{conn(statusEstablished, "10.0.0.5", 53000, "8.8.8.8", 443, 100)}
+	s, reg := edgeSource(rows)
+	clock := time.Unix(1000, 0)
+	reg.now = func() time.Time { return clock }
+	observeOK(t, s)
+	reg.collect([]netconn.Conn{nc("10.0.0.5", 53000, "8.8.8.8", 443, 1, 0, 0, 1000, 0)})
+	s.connections = fakeConns(nil)
+	for i := 0; i <= earnWindow+1; i++ {
+		observeOK(t, s)
+	}
+	clock = clock.Add(totalsRetention + time.Minute)
+	observeOK(t, s)
+	if len(reg.totals) != 0 || len(reg.retiredAt) != 0 {
+		t.Errorf("not purged: totals=%v retiredAt=%v", reg.totals, reg.retiredAt)
+	}
+}
+
+func TestEdgeMetrics_BaselineSurvivesACycleWithoutInfo(t *testing.T) {
+	rows := []gnet.ConnectionStat{conn(statusEstablished, "10.0.0.5", 53000, "8.8.8.8", 443, 100)}
+	noInfo := nc("10.0.0.5", 53000, "8.8.8.8", 443, 1, 0, 0, 1000, 0)
+	noInfo.HasInfo = false
+	notEstab := nc("10.0.0.5", 53000, "8.8.8.8", 443, 1, 0, 0, 1000, 0)
+	notEstab.State = 8
+	cases := []struct {
+		name string
+		gap  netconn.Conn
+	}{
+		{"cycle without tcp_info", noInfo},
+		{"cycle not established", notEstab},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s, reg := edgeSource(rows)
+			observeOK(t, s)
+			reg.collect([]netconn.Conn{nc("10.0.0.5", 53000, "8.8.8.8", 443, 1, 0, 0, 1000, 0)})
+			reg.collect([]netconn.Conn{tc.gap})
+			ms := reg.collect([]netconn.Conn{nc("10.0.0.5", 53000, "8.8.8.8", 443, 1, 0, 0, 1100, 0)})
+			if m := metricFor(ms, "8.8.8.8"); m == nil || m.BytesSent != 1100 {
+				t.Fatalf("sent = %+v, want 1100 (not counted twice)", m)
+			}
+		})
+	}
+}
+
+func TestEdgeMetrics_JoinMatchesIPv4MappedLocalAddress(t *testing.T) {
+	rows := []gnet.ConnectionStat{conn(statusEstablished, "::ffff:10.0.0.5", 53000, "8.8.8.8", 443, 100)}
+	s, reg := edgeSource(rows)
+	observeOK(t, s)
+	c := nc("::ffff:10.0.0.5", 53000, "8.8.8.8", 443, 1, 0, 0, 10, 0)
+	ms := reg.collect([]netconn.Conn{c})
+	if metricFor(ms, "8.8.8.8") == nil {
+		t.Fatal("mapped local address did not join")
+	}
+	// And the plain IPv4 form on the netconn side.
+	reg2 := newEdgeRegistry()
+	s.edges = reg2
+	observeOK(t, s)
+	c4 := nc("10.0.0.5", 53000, "8.8.8.8", 443, 1, 0, 0, 10, 0)
+	if metricFor(reg2.collect([]netconn.Conn{c4}), "8.8.8.8") == nil {
+		t.Fatal("unmapped local address did not join a mapped gopsutil string")
 	}
 }
