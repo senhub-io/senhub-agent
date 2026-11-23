@@ -135,6 +135,9 @@ type autoUpdate struct {
 	// goos replaces runtime.GOOS in the decision of a server-driven update;
 	// empty means the running one. Set by tests.
 	goos string
+	// listRetryWait is the pause before a version list pair is fetched again;
+	// nil means the default. Tests set it to zero.
+	listRetryWait *time.Duration
 	// installMSI replaces applyMsiUpdate in tests of the server-driven path.
 	installMSI func(msiURL, version string) error
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"aead.dev/minisign"
 
@@ -238,31 +240,54 @@ func (a *autoUpdate) admissibleVersions(registry, target string) ([]VersionMetad
 	return DedupeVersions(append(append([]VersionMetadata{}, stable...), beta...)), nil
 }
 
+const (
+	manifestSeqHeader   = "X-Senhub-Manifest-Seq"
+	listFetchAttempts   = 3
+	listFetchRetryDelay = 3 * time.Second
+)
+
 // fetchSignedList downloads a version list and its detached minisign
-// signature and decodes the list only once the signature verifies.
+// signature and decodes the list only once the signature verifies. The two
+// come from two requests, so a pair published in between can give the body
+// of one publication and the signature of the next: when the manifest
+// sequence headers differ, or the signature fails, the pair is fetched again
+// a few seconds later, twice at most, before the list is refused.
 func (a *autoUpdate) fetchSignedList(registry, path string) ([]VersionMetadata, error) {
+	wait := listFetchRetryDelay
+	if a.listRetryWait != nil {
+		wait = *a.listRetryWait
+	}
+	var lastErr error
+	for attempt := 1; attempt <= listFetchAttempts; attempt++ {
+		if attempt > 1 {
+			a.logger.Warn().Err(lastErr).Int("attempt", attempt).Int("of", listFetchAttempts).
+				Msg("Version list and signature do not match; fetching the pair again")
+			time.Sleep(wait)
+		}
+		list, err := a.fetchSignedListOnce(registry, path)
+		if err == nil {
+			return list, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
+}
+
+func (a *autoUpdate) fetchSignedListOnce(registry, path string) ([]VersionMetadata, error) {
 	listURL, err := url.JoinPath(registry, path)
 	if err != nil {
 		return nil, fmt.Errorf("building the list URL: %w", err)
 	}
-	resp, err := getVersionList(a.httpClient, listURL)
-	if err != nil {
-		return nil, fmt.Errorf("fetching %s: %w", listURL, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("fetching %s: HTTP %d", listURL, resp.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxVersionListBytes+1))
-	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", listURL, err)
-	}
-	if len(body) > maxVersionListBytes {
-		return nil, fmt.Errorf("%s is larger than %d bytes", listURL, maxVersionListBytes)
-	}
-	sig, err := a.fetchSignature(listURL + versionListSignatureSufx)
+	body, listSeq, err := a.getBounded(listURL, maxVersionListBytes)
 	if err != nil {
 		return nil, err
+	}
+	sig, sigSeq, err := a.getBounded(listURL+versionListSignatureSufx, 64*1024)
+	if err != nil {
+		return nil, err
+	}
+	if listSeq != sigSeq {
+		return nil, fmt.Errorf("%s: list is manifest seq %q but its signature is %q", listURL, listSeq, sigSeq)
 	}
 	channel := listChannel(path)
 	seq, err := verifyListSignature(body, sig, channel)
@@ -277,6 +302,27 @@ func (a *autoUpdate) fetchSignedList(registry, path string) ([]VersionMetadata, 
 		return nil, fmt.Errorf("%s: %w", listURL, err)
 	}
 	return list, nil
+}
+
+// getBounded reads a response of at most limit bytes and returns it with its
+// manifest sequence header.
+func (a *autoUpdate) getBounded(u string, limit int) ([]byte, string, error) {
+	resp, err := getVersionList(a.httpClient, u)
+	if err != nil {
+		return nil, "", fmt.Errorf("fetching %s: %w", u, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("fetching %s: HTTP %d", u, resp.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, int64(limit)+1))
+	if err != nil {
+		return nil, "", fmt.Errorf("reading %s: %w", u, err)
+	}
+	if len(data) > limit {
+		return nil, "", fmt.Errorf("%s is larger than %d bytes", u, limit)
+	}
+	return data, resp.Header.Get(manifestSeqHeader), nil
 }
 
 func listChannel(path string) string {

@@ -197,6 +197,7 @@ func (f *registryFake) updater(t *testing.T, goos string, fileEnabled bool) flee
 	a.goos = goos
 	zero := time.Duration(0)
 	a.downloadWait = &zero
+	a.listRetryWait = &zero
 	return fleetUpdater{autoUpdate: a, target: target, cfg: cfg}
 }
 
@@ -922,5 +923,82 @@ func TestFailureReasonSurvivesWrapping(t *testing.T) {
 	}
 	if got := failureReason(errors.New("plain")); got != ReasonInstall {
 		t.Errorf("reason = %q, want the default", got)
+	}
+}
+
+// The list and its signature come from two requests: a pair split by a
+// publication in between is fetched again, and refused only if it stays so.
+func TestFleetUpdate_MismatchedPairIsFetchedAgain(t *testing.T) {
+	cleanUpdateState(t)
+	withRunningVersion(t, "0.7.1")
+	withInstallKind(t, KindZip)
+	withBenchKey(t)
+	good, goodSig := vector(t, "releases.json"), vector(t, "releases.json.minisig")
+	otherSig := vector(t, "old-seq-releases.json.minisig")
+
+	serve := func(mismatches int32) (*httptest.Server, *atomic.Int32) {
+		var listCalls atomic.Int32
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case VERSION_METADATA_LIST_PATH:
+				listCalls.Add(1)
+				w.Header().Set(manifestSeqHeader, "2")
+				_, _ = w.Write(good)
+			case VERSION_METADATA_LIST_PATH + ".minisig":
+				if listCalls.Load() <= mismatches {
+					w.Header().Set(manifestSeqHeader, "3")
+					_, _ = w.Write(otherSig)
+					return
+				}
+				w.Header().Set(manifestSeqHeader, "2")
+				_, _ = w.Write(goodSig)
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		t.Cleanup(srv.Close)
+		return srv, &listCalls
+	}
+	updater := func(srv *httptest.Server) *autoUpdate {
+		cfg := newMockConfiguration("", `{"agent":{"version":"latest","registry_url":"`+srv.URL+`","update_enabled":true}}`)
+		a := newTestAutoUpdate(cfg, srv.Client())
+		a.stateDir = t.TempDir()
+		zero := time.Duration(0)
+		a.listRetryWait = &zero
+		a.dryRun = true
+		return a
+	}
+
+	srv, calls := serve(1)
+	a := updater(srv)
+	if _, err := a.fetchSignedList(srv.URL, VERSION_METADATA_LIST_PATH); err != nil {
+		t.Fatalf("a pair split once must be accepted on the next fetch: %v", err)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Errorf("list fetched %d times, want 2", got)
+	}
+
+	srv, calls = serve(100)
+	a = updater(srv)
+	if _, err := a.fetchSignedList(srv.URL, VERSION_METADATA_LIST_PATH); err == nil {
+		t.Fatal("a pair that never matches was accepted")
+	}
+	if got := calls.Load(); got != listFetchAttempts {
+		t.Errorf("list fetched %d times, want %d", got, listFetchAttempts)
+	}
+
+	// Equal headers but a signature that fails is retried too, then refused.
+	bad := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(manifestSeqHeader, "2")
+		if strings.HasSuffix(r.URL.Path, ".minisig") {
+			_, _ = w.Write(otherSig)
+			return
+		}
+		_, _ = w.Write(good)
+	}))
+	t.Cleanup(bad.Close)
+	b := updater(bad)
+	if _, err := b.fetchSignedList(bad.URL, VERSION_METADATA_LIST_PATH); err == nil {
+		t.Fatal("a list with the signature of another was accepted")
 	}
 }
