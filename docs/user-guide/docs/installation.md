@@ -14,7 +14,7 @@ A container is a supported deployment and has its own page: see [Running the age
 
 **Resource requirements**: 1 CPU core, 512 MB RAM, 500 MB disk space.
 
-**Network requirements**: outbound HTTPS from the agent host to whichever sink you configure (Prometheus scraper, OTLP collector, vmagent, Grafana Cloud OTLP). For an agent that only exposes data through its local HTTPS endpoint, no outbound connection is required at all.
+**Network requirements**: outbound HTTPS from the agent host to whichever sink you configure (Prometheus scraper, OTLP collector, vmagent, Grafana Cloud OTLP). For an agent that only exposes data through its local HTTPS endpoint, no outbound connection is required at all. At start the agent also asks the cloud instance metadata address `169.254.169.254` (port 80) once, for at most 800 ms in all, to name the host's provider, region and instance type on AWS, Azure and GCP. Where an egress firewall blocks it, nothing else is affected; to skip the request on a cloud host, set `CLOUD_PROVIDER` (and optionally `CLOUD_REGION`, `CLOUD_AVAILABILITY_ZONE`, `HOST_TYPE`, `CLOUD_ACCOUNT_ID`) in the service environment.
 
 ## Obtaining the Agent
 

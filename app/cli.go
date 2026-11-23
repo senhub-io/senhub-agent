@@ -74,7 +74,7 @@ func (p *program) Stop(s service.Service) error {
 		// The service manager is tearing the process down; the agent's
 		// own logger is part of what is being shut down, so this last
 		// word goes straight to stderr.
-		fmt.Fprintf(os.Stderr, "Agent forced to shutdown with error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Agent stopped before every service had finished (anything not sent is kept on disk where a queue exists): %v\n", err)
 	}
 	if p.cancel != nil {
 		p.cancel()
