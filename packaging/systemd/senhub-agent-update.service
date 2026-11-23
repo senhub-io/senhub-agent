@@ -3,11 +3,15 @@ Description=SenHub Agent update, applied as root on the service's request
 Documentation=https://github.com/senhub-io/senhub-agent
 After=network-online.target
 Wants=network-online.target
-# No systemd start limit: hitting it would fail the path unit for good, and
-# no later request would ever be handled. The limit is in update-apply, which
-# refuses more than six attempts in the last hour (rate_limited) and recovers
-# by itself; a rollback is never refused for it.
-StartLimitIntervalSec=0
+# The real limit is in update-apply: it refuses more than six attempts in the
+# last hour (rate_limited) and recovers by itself, and it deletes the request
+# first, whatever it is. systemd's own limit is only a backstop for a request
+# entry that cannot be deleted at all, a loop one run in two seconds would
+# otherwise never end. It is generous (120 starts an hour), and
+# senhub-agent-update-reset.timer clears it every hour, so the path unit is
+# never left failed for good.
+StartLimitIntervalSec=3600
+StartLimitBurst=120
 
 [Service]
 Type=oneshot

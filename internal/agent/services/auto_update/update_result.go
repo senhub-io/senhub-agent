@@ -13,11 +13,12 @@ import (
 const (
 	updateResultFile = "update-result.json"
 
-	ResultInstalled   = "installed"
-	ResultRefused     = "refused"
-	ResultRolledBack  = "rolled_back"
-	ReasonRateLimited = "rate_limited"
-	maxResultBytes    = 4096
+	ResultInstalled           = "installed"
+	ResultRefused             = "refused"
+	ResultRolledBack          = "rolled_back"
+	ReasonRateLimited         = "rate_limited"
+	ReasonRequestNotRemovable = "request_not_removable"
+	maxResultBytes            = 4096
 )
 
 // UpdateResult is what the root update unit reports of its last run, in the

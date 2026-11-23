@@ -1,0 +1,30 @@
+[Unit]
+Description=Clear the start limit of the SenHub Agent root update units
+Documentation=https://github.com/senhub-io/senhub-agent
+# Only while the path unit is enabled: an operator who disabled it keeps it off.
+ConditionPathExistsGlob=/etc/systemd/system/*.wants/senhub-agent-update.path
+
+[Service]
+Type=oneshot
+# If the update units hit systemd's start limit, the path unit is left failed:
+# clear that and start it again.
+ExecStart=/usr/bin/systemctl reset-failed senhub-agent-update.path senhub-agent-update.service
+ExecStartPost=/usr/bin/systemctl start senhub-agent-update.path
+User=root
+TimeoutStartSec=60
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX

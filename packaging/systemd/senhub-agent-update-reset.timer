@@ -1,0 +1,10 @@
+[Unit]
+Description=Clear the start limit of the SenHub Agent root update units
+Documentation=https://github.com/senhub-io/senhub-agent
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=1h
+
+[Install]
+WantedBy=timers.target

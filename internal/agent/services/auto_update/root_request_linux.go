@@ -231,8 +231,7 @@ func consumeFile(dir, file string, serviceUID uint32, log *logger.ModuleLogger, 
 
 	// Schedule deletion regardless of outcome.
 	defer func() {
-		err := unix.Unlinkat(dirfd, file, 0)
-		if err != nil && !errors.Is(err, unix.ENOENT) {
+		if err := removeEntry(dirfd, file, 0); err != nil {
 			log.Warn().Err(err).Str("file", file).Msg("Failed to remove request file")
 		}
 	}()

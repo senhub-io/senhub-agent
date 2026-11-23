@@ -109,9 +109,19 @@ func RootApply(opts RootApplyOptions) error {
 	// Whatever happens below, an early error, a refusal or a panic, the
 	// request files are gone when this returns: the path unit starts the
 	// service again for as long as one exists, and nothing else stops it.
-	defer removeRequests(opts.RequestDir, []string{opts.RequestFile, RootUpdateRollbackFile}, opts.Logger)
-
 	st := &applyState{}
+	defer func() {
+		left, rerr := removeRequests(opts.RequestDir, []string{opts.RequestFile, RootUpdateRollbackFile})
+		if len(left) == 0 {
+			return
+		}
+		// Left in place, the entry keeps the path unit starting this run. Say
+		// so where it is seen: the log, and the result the service reads.
+		opts.Logger.Error().Err(rerr).Strs("entries", left).Str("reason", ReasonRequestNotRemovable).
+			Msg("A request entry cannot be removed; the systemd start limit is the only thing left to stop a loop")
+		_ = writeResultFile(opts.StateDir, UpdateResult{Version: st.version, Outcome: ResultRefused, Reason: ReasonRequestNotRemovable, At: opts.Now().UTC()})
+	}()
+
 	err := rootApply(opts, st)
 	writeRunResult(opts, st, err)
 	return err
@@ -436,22 +446,4 @@ func recordAttempt(rootDir string, now time.Time, window time.Duration, burst in
 		return false, fmt.Errorf("recording the attempt: %w", err)
 	}
 	return allowed, nil
-}
-
-// removeRequests unlinks the request files relative to the request directory,
-// never through a path a link could redirect. Absent is fine.
-func removeRequests(dir string, names []string, log *logger.ModuleLogger) {
-	dirfd, err := unix.Open(dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
-	if err != nil {
-		if !errors.Is(err, unix.ENOENT) {
-			log.Warn().Err(err).Str("dir", dir).Msg("Could not open the request directory to clear it")
-		}
-		return
-	}
-	defer func() { _ = unix.Close(dirfd) }()
-	for _, name := range names {
-		if err := unix.Unlinkat(dirfd, name, 0); err != nil && !errors.Is(err, unix.ENOENT) {
-			log.Warn().Err(err).Str("file", name).Msg("Could not remove the request file")
-		}
-	}
 }

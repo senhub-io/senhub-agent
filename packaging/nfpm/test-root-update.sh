@@ -117,6 +117,38 @@ expect_refused "rollback with no install by the unit" "step=rollback"
 write_as senhub 'rollback\n' 640
 expect_refused "rollback forged through the version request" "malformed request content"
 
+# 6c entries the service makes to block the removal of the request: a directory
+# with a file inside, and nested directories holding a link to /etc. The unit
+# runs once, removes them without following the link, and the path unit lives.
+x "su -s /bin/sh senhub -c 'mkdir $REQ && echo x > $REQ/f'"
+expect_refused "request made as a directory with a file inside" "not a regular file"
+x "su -s /bin/sh senhub -c 'mkdir -p $REQ/a/b && ln -s /etc $REQ/a/etc && echo x > $REQ/a/b/f'"
+expect_refused "nested directories holding a link to /etc" "not a regular file"
+x "[ -f /etc/passwd ] && [ -d /etc/systemd ]" && verdict ok "/etc intact after the nested request" || verdict FAIL "/etc intact after the nested request"
+
+# 6d an entry that cannot be removed at all (a mount point): the unit reports it,
+# systemd's start limit stops the loop, and the reset timer service brings the
+# path unit back
+x "mkdir -p /etc/systemd/system/$UNIT.d && printf '[Unit]\nStartLimitIntervalSec=3600\nStartLimitBurst=5\n' > /etc/systemd/system/$UNIT.d/test.conf && systemctl daemon-reload"
+x "rm -f /var/lib/senhub-agent-update/attempts.json; journalctl --rotate; journalctl --vacuum-time=1s" >/dev/null 2>&1
+x "mkdir $REQ && mount -t tmpfs none $REQ && chown senhub:senhub $REQ"
+sleep 30
+out=$(x "journalctl -u $UNIT --no-pager -o cat")
+starts=$(echo "$out" | grep -c 'Starting senhub-agent-update.service')
+notrem=$(echo "$out" | grep -c 'reason=request_not_removable')
+if [ "$starts" -ge 1 ] && [ "$starts" -le 5 ] && [ "$notrem" -ge 1 ] && x "systemctl is-failed senhub-agent-update.path" >/dev/null; then
+    verdict ok "unremovable entry: reported (request_not_removable), loop stopped by the start limit" "starts=$starts"
+else
+    verdict FAIL "unremovable entry" "starts=$starts reported=$notrem path=$(x 'systemctl is-active senhub-agent-update.path')"
+fi
+x "grep -q request_not_removable /var/lib/senhub-agent/update-result.json" && verdict ok "result file says request_not_removable" || verdict FAIL "result file says request_not_removable"
+x "umount $REQ && rmdir $REQ && rm -rf /etc/systemd/system/$UNIT.d && systemctl daemon-reload && systemctl start senhub-agent-update-reset.service"
+sleep 3
+x "systemctl is-active senhub-agent-update.path" >/dev/null && verdict ok "reset service brings the path unit back" || verdict FAIL "reset service brings the path unit back"
+x "systemctl is-active senhub-agent-update-reset.timer" >/dev/null && verdict ok "reset timer active" || verdict FAIL "reset timer active"
+x "rm -f /var/lib/senhub-agent-update/attempts.json; journalctl --rotate; journalctl --vacuum-time=1s" >/dev/null 2>&1
+sleep 3
+
 # 7 a burst: six runs are handled, the rest are rate_limited, every request is one
 # start of the unit, and the path unit never dies (no systemd start limit)
 x "rm -f /var/lib/senhub-agent-update/attempts.json; journalctl --rotate; journalctl --vacuum-time=1s" >/dev/null 2>&1

@@ -69,6 +69,14 @@ contents:
     dst: /usr/lib/systemd/system/senhub-agent-update.service
     file_info:
       mode: 0644
+  - src: packaging/systemd/senhub-agent-update-reset.timer
+    dst: /usr/lib/systemd/system/senhub-agent-update-reset.timer
+    file_info:
+      mode: 0644
+  - src: packaging/systemd/senhub-agent-update-reset.service
+    dst: /usr/lib/systemd/system/senhub-agent-update-reset.service
+    file_info:
+      mode: 0644
   - src: packaging/nfpm/conf/root-update
     dst: /usr/lib/senhub-agent/root-update
     file_info:

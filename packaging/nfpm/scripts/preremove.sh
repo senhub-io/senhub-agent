@@ -16,8 +16,8 @@ if [ "$1" = 0 ] && command -v rpm >/dev/null 2>&1; then
 fi
 
 if [ -d /run/systemd/system ]; then
-    systemctl stop senhub-agent-update.path || true
-    systemctl disable senhub-agent-update.path || true
+    systemctl stop senhub-agent-update.path senhub-agent-update-reset.timer || true
+    systemctl disable senhub-agent-update.path senhub-agent-update-reset.timer || true
     systemctl stop senhub-agent.service || true
     systemctl disable senhub-agent.service || true
     systemctl stop senhub-ebpf.service || true

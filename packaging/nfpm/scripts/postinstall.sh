@@ -113,10 +113,11 @@ if [ ! -L "${root_dir}" ]; then
     chmod 0700 "${root_dir}"
 fi
 if [ ! -L "${root_dir}" ] && [ ! -e "${root_update_marker}" ] && [ ! -L "${root_update_marker}" ]; then
-    systemctl enable --now senhub-agent-update.path || true
+    systemctl enable --now senhub-agent-update.path senhub-agent-update-reset.timer || true
     ( umask 077; set -C; : > "${root_update_marker}" ) || true
 else
     systemctl try-restart senhub-agent-update.path || true
+    systemctl try-restart senhub-agent-update-reset.timer || true
 fi
 
 if [ "${fresh}" = 1 ] || [ "${migrated}" = 1 ]; then
