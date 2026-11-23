@@ -835,7 +835,7 @@ func (ts *tailState) divergence(path string) (reason string, resume bool) {
 	if opened != nil && !os.SameFile(opened, cur) {
 		return "the path names a different file than the one being read", false
 	}
-	if cur.Size() < offset {
+	if cur.Size() < offset && !sameHead(ts, path, cur.Size()) {
 		return "the file is shorter than the offset already read", false
 	}
 	// A file emptied and refilled past the offset between two looks is the
@@ -853,6 +853,22 @@ func (ts *tailState) divergence(path string) (reason string, resume bool) {
 		return "the file grew and the tail read nothing of it", true
 	}
 	return "", false
+}
+
+// sameHead says that a size shorter than the offset is a stale one: the
+// first bytes of the file are still the ones the tail opened. On Windows a
+// writer that keeps the file open with buffered writes can leave the size
+// seen by path behind what the tail has read, and restarting from the first
+// byte would send the whole file again. A real truncation changes the head,
+// or leaves less than a fingerprint window to compare, and still restarts.
+func sameHead(ts *tailState, path string, size int64) bool {
+	ts.mu.Lock()
+	head := ts.headFP
+	ts.mu.Unlock()
+	if head == "" || size < DefaultFingerprintLength {
+		return false
+	}
+	return fingerprint(path, DefaultFingerprintLength) == head
 }
 
 // restartStalledTails restarts every tail that has not followed its file
