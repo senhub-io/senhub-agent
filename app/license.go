@@ -249,8 +249,12 @@ func handleLicenseShow(args *cliArgs.LicenseShowArgs) {
 // removal. A non-terminal stdin is an error, not a "no": an automation
 // must never read a removal that did not happen as success.
 func confirmLicenseRemove(in *os.File, out, errOut io.Writer) (proceed bool, code int) {
+	return confirmLicenseRemoveFrom(in, term.IsTerminal(int(in.Fd())), out, errOut)
+}
+
+func confirmLicenseRemoveFrom(in io.Reader, terminal bool, out, errOut io.Writer) (proceed bool, code int) {
 	fmt.Fprint(out, "Are you sure you want to remove the license? [y/N] ")
-	ok, interactive := confirmFrom(in, errOut, "--force")
+	ok, interactive := confirmReader(in, terminal, errOut, "--force")
 	if ok {
 		return true, cliexit.OK
 	}

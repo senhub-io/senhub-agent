@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/kardianos/service"
+	"golang.org/x/term"
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
@@ -67,13 +68,17 @@ func removeService(s serviceRemover, args *cliArgs.ParsedArgs, out, errOut io.Wr
 // A non-terminal stdin is an error, not a "no": an automation must not
 // read a removal that did not happen as success.
 func confirmUninstall(in *os.File, out, errOut io.Writer) (proceed bool, code int) {
+	return confirmUninstallFrom(in, term.IsTerminal(int(in.Fd())), out, errOut)
+}
+
+func confirmUninstallFrom(in io.Reader, terminal bool, out, errOut io.Writer) (proceed bool, code int) {
 	fmt.Fprintln(out, "Uninstall will remove the whole agent configuration directory — agent.yaml,")
 	fmt.Fprintln(out, "probes.d/, strategies.d/ AND the sealed secret store, which holds the agent")
 	fmt.Fprintln(out, "key and every credential the agent sealed (database, BMC, API tokens).")
 	fmt.Fprintln(out, "That is irreversible: sealed values cannot be recovered afterwards.")
 	fmt.Fprintln(out, "The certs/ directory and log files/directories are removed too.")
 	fmt.Fprint(out, "Proceed? [y/N] ")
-	ok, interactive := confirmFrom(in, errOut, "--yes")
+	ok, interactive := confirmReader(in, terminal, errOut, "--yes")
 	if ok {
 		return true, cliexit.OK
 	}
