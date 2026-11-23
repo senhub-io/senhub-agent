@@ -31,6 +31,16 @@ func TestFileTail_EmittedCounterLeavesWithItsFile(t *testing.T) {
 		t.Fatal("no counter for the file being read")
 	}
 
+	// The tail is taken before its directory goes: once the watcher sees the
+	// removal, the probe can forget the tail on its own at any moment, and a
+	// lookup afterwards finds nothing registered.
+	p.mu.Lock()
+	ts := p.tailing[first]
+	p.mu.Unlock()
+	if ts == nil {
+		t.Fatal("no tail registered for the file being read")
+	}
+
 	if err := os.RemoveAll(filepath.Dir(first)); err != nil {
 		t.Fatal(err)
 	}
@@ -38,12 +48,6 @@ func TestFileTail_EmittedCounterLeavesWithItsFile(t *testing.T) {
 	// Whether the tail library ends a tail whose directory was removed, and
 	// when, depends on its watcher and the host's load. What is under test is
 	// what the probe does once a tail ends, so the tail is ended here.
-	p.mu.Lock()
-	ts := p.tailing[first]
-	p.mu.Unlock()
-	if ts == nil {
-		t.Fatal("no tail registered for the file being read")
-	}
 	ts.t.Kill(errors.New("file removed"))
 	deadline := time.Now().Add(15 * time.Second)
 	for {
