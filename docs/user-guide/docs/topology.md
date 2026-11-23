@@ -42,6 +42,7 @@ otlp:
 | `depends_on.enabled` | `false` | Maps the outbound connections of the host. Runs as root, or as the service user when the unit grants `CAP_SYS_PTRACE` and `CAP_DAC_READ_SEARCH`; see [OTLP](otlp.md#signalsentities) |
 | `inbound_callers.enabled` | `false` | Reports who connects to the host's listeners as log records and a metric, not as topology |
 | `inbound_callers.public_addresses` | `clear` | Public caller addresses: `clear`, `truncated` (/24, /48) or `count` (counted only) |
+| `ebpf.enabled` | `true` | Lets the dependency scan ask the optional [eBPF helper](ebpf.md) which process owns a socket it cannot read. Nothing happens unless the helper runs |
 | `neighbors.enabled` | `false` | Reports ARP and NDP neighbours |
 | `neighbors.resolves_to` | `false` | Links a neighbour to the interface that owns its MAC address |
 | `aggregation.enabled` | `false` | Links the members of an Ethernet aggregate to it |

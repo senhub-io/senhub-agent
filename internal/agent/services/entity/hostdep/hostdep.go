@@ -149,6 +149,12 @@ type Source struct {
 	inbound    InboundSink
 	noOutbound bool
 
+	// ebpf is the optional helper view; ebpfView is its snapshot for the
+	// scrape in progress, set and read under mu.
+	ebpf        EBPFSource
+	onEBPFError func(error)
+	ebpfView    *ebpfView
+
 	mu     sync.Mutex
 	streak map[peerKey]streakState // debounce position per peer endpoint
 
@@ -304,9 +310,12 @@ func (s *Source) Observe() (entity.Observation, bool) {
 		}
 	}
 
+	eb := s.fetchEBPF()
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	s.ebpfView = eb
 	deps, nextLRU, unattributable := s.scrape(conns, hostID, s.nameLRU, view)
 	// Replace the LRU with only the pids named this scrape: a vanished pid drops
 	// out, keeping the cache bounded by the live socket table.
@@ -359,6 +368,7 @@ func (s *Source) Observe() (entity.Observation, bool) {
 	}
 	s.streak = next
 	s.edges.publish(emittedEdges(next, s.threshold, hostID), deps)
+	s.edges.setEBPFRetransmits(eb.retransmits())
 
 	return buildObservation(next, s.threshold, hostID).WithScope(entity.ScopeHostDep), true
 }
@@ -506,6 +516,20 @@ func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string, priorLRU map
 					d.svcName = n
 					out = append(out, d)
 					continue
+				}
+				// Several users share the uid, or the owner is another user's:
+				// the helper saw which process connected this very socket.
+				if o, ok := s.ebpfView.owner(normalizeIP(c.Laddr.IP), c.Laddr.Port, normalizeIP(c.Raddr.IP), c.Raddr.Port); ok {
+					if n, ok := s.ebpfName(o, nameFn, createdFn, priorLRU, nextLRU); ok {
+						d.svcID = n + "@" + hostID
+						d.svcName = n
+						if id, ok := instanceid.ResolveForPID(o.pid, n, agentID); ok {
+							d.svcID = id
+							d.svcName = instanceid.ServiceName
+						}
+						out = append(out, d)
+						continue
+					}
 				}
 			}
 			// Cannot name the dependent: do not fabricate a service.instance.

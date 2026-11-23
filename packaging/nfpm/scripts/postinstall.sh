@@ -111,4 +111,9 @@ else
     systemctl try-restart senhub-agent.service || true
 fi
 
+# The eBPF helper is never enabled here: the operator does it with
+# `systemctl enable --now senhub-ebpf`. One that is already running only
+# picks up its new binary.
+systemctl try-restart senhub-ebpf.service || true
+
 exit 0

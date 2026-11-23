@@ -20,6 +20,7 @@ import (
 	"senhub-agent.go/internal/agent/services/configuration/secret"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/http"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
+	"senhub-agent.go/internal/agent/services/ebpfclient"
 	"senhub-agent.go/internal/agent/services/instanceid"
 	"senhub-agent.go/internal/agent/services/license"
 	agentLogger "senhub-agent.go/internal/agent/services/logger"
@@ -72,6 +73,8 @@ type doctorDeps struct {
 	serviceEnv     func() serviceEnvReport
 	unsetEnv       func(configPath string) []configuration.EnvReference
 	rolledBack     func() (*auto_update.RolledBackRecord, error)
+	// ebpf reports the optional senhub-ebpf helper; nil skips the check.
+	ebpf func() ebpfclient.Status
 }
 
 // secretReport is what `secret status` says, or that no store exists.
@@ -125,6 +128,7 @@ func newDoctorDeps(configPath string) doctorDeps {
 		rolledBack: func() (*auto_update.RolledBackRecord, error) {
 			return auto_update.ReadRolledBack(instanceid.OwnStateDir())
 		},
+		ebpf: func() ebpfclient.Status { return ebpfclient.Inspect(ebpfclient.New("")) },
 	}
 }
 

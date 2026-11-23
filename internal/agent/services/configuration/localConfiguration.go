@@ -73,6 +73,15 @@ type EntitiesConfig struct {
 	// log records and one metric, never as entities. Off by default: which
 	// clients reach a host can be sensitive.
 	InboundCallers *EntitiesInboundCallersConfig `yaml:"inbound_callers,omitempty"`
+	// EBPF lets the dependency scanner ask the optional senhub-ebpf helper
+	// which process owns a socket it cannot read. On by default: it does
+	// nothing unless the helper's socket exists.
+	EBPF *EntitiesEBPFConfig `yaml:"ebpf,omitempty"`
+}
+
+// EntitiesEBPFConfig is the switch of the eBPF helper client.
+type EntitiesEBPFConfig struct {
+	Enabled *bool `yaml:"enabled,omitempty"`
 }
 
 // EntitiesInboundCallersConfig is the inbound-callers log report.

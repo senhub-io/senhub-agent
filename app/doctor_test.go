@@ -15,6 +15,7 @@ import (
 	"senhub-agent.go/internal/agent/services/auto_update"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
+	"senhub-agent.go/internal/agent/services/ebpfclient"
 	"senhub-agent.go/internal/agent/services/status"
 	"senhub-agent.go/internal/cliexit"
 )
@@ -606,6 +607,39 @@ func TestDoctorSaysNothingWhenNoUpdateWasRolledBack(t *testing.T) {
 	for _, c := range runDoctorChecks(d) {
 		if c.ID == "install.update_rollback" {
 			t.Fatalf("unexpected check: %+v", c)
+		}
+	}
+}
+
+func TestDoctorEBPFHostCheck(t *testing.T) {
+	cases := []struct {
+		name  string
+		st    ebpfclient.Status
+		level string
+		want  string
+	}{
+		{"not installed", ebpfclient.Status{State: ebpfclient.NotInstalled, Kernel: "6.8.0", BTF: true}, levelSkip, "not installed"},
+		{"installed, not started", ebpfclient.Status{State: ebpfclient.NotRunning, Kernel: "6.8.0", BTF: true}, levelSkip, "installed, not running"},
+		{"unsupported kernel", ebpfclient.Status{State: ebpfclient.Unsupported, Kernel: "4.18.0", Detail: "kernel 4.18.0 is older than 5.8"}, levelSkip, "unsupported"},
+		{"running", ebpfclient.Status{State: ebpfclient.Running, Kernel: "6.8.0", BTF: true, HelperVersion: "0.7.2", TrackedConns: 12}, levelOK, "12 connections tracked"},
+		{"socket without helper", ebpfclient.Status{State: ebpfclient.NotRunning, Kernel: "6.8.0", BTF: true, ProtocolFailed: true, Detail: "refused"}, levelWarn, "not running"},
+	}
+	for _, tc := range cases {
+		d := healthyDoctorDeps()
+		st := tc.st
+		d.ebpf = func() ebpfclient.Status { return st }
+		c := expectLevel(t, runDoctorChecks(d), "host.ebpf", tc.level)
+		if !strings.Contains(c.Message, tc.want) {
+			t.Errorf("%s: %q does not mention %q", tc.name, c.Message, tc.want)
+		}
+	}
+}
+
+func TestDoctorEBPFAbsentFromDepsIsSkipped(t *testing.T) {
+	d := healthyDoctorDeps()
+	for _, c := range runDoctorChecks(d) {
+		if c.ID == "host.ebpf" {
+			t.Fatal("a doctor without the eBPF dependency must not report it")
 		}
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"senhub-agent.go/internal/agent/services/configuration"
 	httpstrategy "senhub-agent.go/internal/agent/services/data_store/strategies/http"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/otlp"
+	"senhub-agent.go/internal/agent/services/ebpfclient"
 	"senhub-agent.go/internal/agent/services/status"
 )
 
@@ -581,7 +582,40 @@ func checkHost(d doctorDeps, st statusResult) []doctorCheck {
 	} else {
 		out = append(out, skipCheck(sectionHost, "host.memory", "the agent's memory is read from the running agent, which did not answer"))
 	}
+	if d.ebpf != nil {
+		out = append(out, ebpfCheck(d.ebpf()))
+	}
 	return out
+}
+
+// ebpfCheck reports the optional eBPF helper. Not installed and not running
+// are normal states of a package that ships it disabled, so only a helper
+// that answers wrongly is a warning.
+func ebpfCheck(st ebpfclient.Status) doctorCheck {
+	facts := fmt.Sprintf("kernel %s, BTF %s", valueOr(st.Kernel, "unknown"), map[bool]string{true: "present", false: "absent"}[st.BTF])
+	switch st.State {
+	case ebpfclient.Running:
+		msg := fmt.Sprintf("eBPF helper running (version %s, %s, %d connections tracked, %d events dropped)",
+			valueOr(st.HelperVersion, "unknown"), facts, st.TrackedConns, st.Dropped)
+		return okCheck(sectionHost, "host.ebpf", msg)
+	case ebpfclient.Unsupported:
+		return skipCheck(sectionHost, "host.ebpf", fmt.Sprintf("eBPF helper unsupported on this host (%s): %s", facts, st.Detail))
+	case ebpfclient.NotRunning:
+		if st.ProtocolFailed {
+			return warnCheck(sectionHost, "host.ebpf", fmt.Sprintf("eBPF helper not running (%s): %s", facts, st.Detail),
+				"check `systemctl status senhub-ebpf` and `journalctl -u senhub-ebpf`")
+		}
+		return skipCheck(sectionHost, "host.ebpf", fmt.Sprintf("eBPF helper installed, not running (%s); start it with `systemctl enable --now senhub-ebpf`", facts))
+	default:
+		return skipCheck(sectionHost, "host.ebpf", fmt.Sprintf("eBPF helper not installed (%s); optional", facts))
+	}
+}
+
+func valueOr(s, fallback string) string {
+	if s == "" {
+		return fallback
+	}
+	return s
 }
 
 func diskCheck(d doctorDeps) doctorCheck {

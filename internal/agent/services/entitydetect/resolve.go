@@ -36,6 +36,7 @@ func Resolve(global *configuration.EntitiesConfig, storage []configuration.Stora
 		AgentInstanceID:   agentInstanceID,
 		AgentService:      "senhub-agent",
 		AgentVersion:      cliArgs.Version,
+		EBPFEnabled:       true,
 	}
 
 	if e := global; e != nil {
@@ -53,6 +54,9 @@ func Resolve(global *configuration.EntitiesConfig, storage []configuration.Stora
 		if n := e.Neighbors; n != nil {
 			cfg.NeighborsEnabled = n.Enabled
 			cfg.NeighborsResolvesTo = n.ResolvesTo
+		}
+		if b := e.EBPF; b != nil && b.Enabled != nil {
+			cfg.EBPFEnabled = *b.Enabled
 		}
 		if a := e.Aggregation; a != nil {
 			cfg.AggregationEnabled = a.Enabled

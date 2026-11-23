@@ -80,6 +80,10 @@ NC=\033[0m # No Color
 # key; local/dev builds normally leave it empty.
 UPDATE_SIGNING_PUBKEY ?=
 
+# The eBPF helper (Linux only, see cmd/senhub-ebpf) ships next to the agent.
+EBPF_HELPER=senhub-ebpf
+EBPF_LDFLAGS=-s -w -X 'main.version=$(VERSION)'
+
 # Update ldflags to include this information
 LDFLAGS=-s -w \
     -X '${PACKAGE}.Version=$(VERSION)' \
@@ -164,6 +168,8 @@ build-linux: create-dist ## Build for Linux
 		@mkdir -p $(LINUX_AMD64_DIR) $(LINUX_ARM64_DIR)
 		@env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(LINUX_AMD64) -ldflags="$(LDFLAGS)" ./cmd/agent/
 		@env CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(LINUX_ARM64) -ldflags="$(LDFLAGS)" ./cmd/agent/
+		@env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(LINUX_AMD64_DIR)/$(EBPF_HELPER) -ldflags="$(EBPF_LDFLAGS)" ./cmd/senhub-ebpf/
+		@env CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $(LINUX_ARM64_DIR)/$(EBPF_HELPER) -ldflags="$(EBPF_LDFLAGS)" ./cmd/senhub-ebpf/
 		@$(MAKE) --no-print-directory verify-static
 
 build-darwin: create-dist ## Build for Darwin (macOS)
@@ -172,7 +178,7 @@ build-darwin: create-dist ## Build for Darwin (macOS)
 		@env CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o $(DARWIN_ARM64) -ldflags="$(LDFLAGS)" ./cmd/agent/
 
 verify-static: ## Fail if a linux binary carries an ELF interpreter (would not run on musl/scratch)
-		@for f in $(LINUX_AMD64) $(LINUX_ARM64); do \
+		@for f in $(LINUX_AMD64) $(LINUX_ARM64) $(LINUX_AMD64_DIR)/$(EBPF_HELPER) $(LINUX_ARM64_DIR)/$(EBPF_HELPER); do \
 			if [ -f "$$f" ] && head -c 4096 "$$f" | grep -qa "/ld-linux\|/ld-musl"; then \
 				echo "ERROR: $$f is dynamically linked — it will not run on Alpine, scratch or distroless."; \
 				echo "       Build with CGO_ENABLED=0."; \
@@ -279,6 +285,8 @@ packages: $(if $(and $(filter oss,$(EDITION)),$(filter $(DIST_DIR),$(BINARY_DIR)
 	@# a distro package must not write under /usr/local (see app/managed_binary.go).
 	@sed 's|^ExecStart=/usr/local/bin/|ExecStart=/usr/bin/|' packaging/systemd/senhub-agent.service > $(PACKAGES_DIR)/stage/senhub-agent.service
 	@grep -q '^ExecStart=/usr/bin/senhub-agent ' $(PACKAGES_DIR)/stage/senhub-agent.service || { echo "$(RED)unit ExecStart rewrite failed$(NC)"; exit 1; }
+	@sed 's|^ExecStart=/usr/local/bin/|ExecStart=/usr/bin/|' packaging/systemd/senhub-ebpf.service > $(PACKAGES_DIR)/stage/senhub-ebpf.service
+	@grep -q '^ExecStart=/usr/bin/senhub-ebpf$$' $(PACKAGES_DIR)/stage/senhub-ebpf.service || { echo "$(RED)eBPF unit ExecStart rewrite failed$(NC)"; exit 1; }
 	@# Generated per build, from the commit (not the clock): the man page and the
 	@# changelog nFPM turns into /usr/share/doc/.../changelog and the rpm changelog.
 	@gzip -9n < packaging/nfpm/senhub-agent.1 > $(PACKAGES_DIR)/stage/senhub-agent.1.gz
@@ -297,6 +305,11 @@ packages: $(if $(and $(filter oss,$(EDITION)),$(filter $(DIST_DIR),$(BINARY_DIR)
 		case $$arch in amd64) rpmarch=x86_64;; arm64) rpmarch=aarch64;; esac; \
 		bin=$(BINARY_DIR)/linux-$$arch/$(EXECUTABLE); \
 		test -f $$bin || { echo "$(RED)missing $$bin$(NC)"; exit 1; }; \
+		ebpfbin=/binaries/linux-$$arch/$(EBPF_HELPER); \
+		if [ ! -f $(BINARY_DIR)/linux-$$arch/$(EBPF_HELPER) ]; then \
+			ebpfbin=$(PACKAGES_DIR)/stage/$(EBPF_HELPER)-$$arch; \
+			env CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build -o $$ebpfbin -ldflags="$(EBPF_LDFLAGS)" ./cmd/senhub-ebpf/ || exit 1; \
+		fi; \
 		for fmt in deb rpm; do \
 			if [ $$fmt = deb ]; then out=$(PACKAGES_DIR)/$(PKG_NAME)_$(PKG_VERSION)-1_$$arch.deb; \
 			else out=$(PACKAGES_DIR)/$(PKG_NAME)-$(PKG_VERSION)-1.$$rpmarch.rpm; fi; \
@@ -309,6 +322,7 @@ packages: $(if $(and $(filter oss,$(EDITION)),$(filter $(DIST_DIR),$(BINARY_DIR)
 				-e STAGE=$(PACKAGES_DIR)/stage \
 				-e BIN=/binaries/linux-$$arch/$(EXECUTABLE) \
 				-e UNIT=$(PACKAGES_DIR)/stage/senhub-agent.service \
+				-e EBPF_BIN=$$ebpfbin -e EBPF_UNIT=$(PACKAGES_DIR)/stage/senhub-ebpf.service \
 				$(NFPM_IMAGE) package -f $(PACKAGES_DIR)/stage/nfpm-$$fmt.yaml -p $$fmt -t $$out || exit 1; \
 		done; \
 	done
