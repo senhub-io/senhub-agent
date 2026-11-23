@@ -337,6 +337,10 @@ func (r *logsRelay) export(rl []*logspb.ResourceLogs, records int) {
 		return
 	}
 
+	started := time.Now()
+	if r.queue != nil {
+		started = r.queue.now()
+	}
 	if err := r.forwarder.forward(ctx, rl); err != nil {
 		var kept, throttled bool
 		if r.queue != nil {
@@ -364,7 +368,7 @@ func (r *logsRelay) export(rl []*logspb.ResourceLogs, records int) {
 		return
 	}
 	if r.queue != nil {
-		r.queue.markSuccess()
+		r.queue.markSuccessSince(started)
 	}
 	agentstate.IncrementOTLPLogsRelayed(records)
 	r.logger.Debug().

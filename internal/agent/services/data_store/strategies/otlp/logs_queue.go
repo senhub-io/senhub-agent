@@ -296,6 +296,7 @@ func (e *persistentLogExporter) recordFailure(err error, throttled bool) error {
 }
 
 func (e *persistentLogExporter) Export(ctx context.Context, records []sdklog.Record) error {
+	started := e.now()
 	if e.stopping.Load() {
 		if !e.knownUp() {
 			if !e.persist(records) {
@@ -390,7 +391,7 @@ func (e *persistentLogExporter) Export(ctx context.Context, records []sdklog.Rec
 		}
 		return err
 	}
-	e.markSuccess()
+	e.markSuccessSince(started)
 	return nil
 }
 
@@ -402,12 +403,13 @@ var errLogsBackendDown = errors.New("otlp logs backend down and the queue did no
 // queue replay uses it, so a failure is never persisted a second time. A
 // cancelled ctx (the agent is stopping) is not a verdict on the backend.
 func (e *persistentLogExporter) exportDirect(ctx context.Context, records []sdklog.Record) error {
+	started := e.now()
 	raw := e.wrapped.Export(ctx, records)
 	var se *splitExportError
 	split := errors.As(raw, &se)
 	err := e.reporter.reportRejections(raw)
 	if err == nil {
-		e.markSuccess()
+		e.markSuccessSince(started)
 		return nil
 	}
 	if !errors.Is(ctx.Err(), context.Canceled) {

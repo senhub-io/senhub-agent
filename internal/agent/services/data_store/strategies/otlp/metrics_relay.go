@@ -347,6 +347,10 @@ func (r *metricsRelay) export(rm []*metricpb.ResourceMetrics, points int) {
 		return
 	}
 
+	started := time.Now()
+	if r.queue != nil {
+		started = r.queue.now()
+	}
 	if err := r.forwarder.forward(ctx, rm); err != nil {
 		var kept, throttled bool
 		if r.queue != nil {
@@ -374,7 +378,7 @@ func (r *metricsRelay) export(rm []*metricpb.ResourceMetrics, points int) {
 		return
 	}
 	if r.queue != nil {
-		r.queue.markSuccess()
+		r.queue.markSuccessSince(started)
 	}
 	agentstate.IncrementOTLPMetricsRelayed(points)
 	r.logger.Debug().

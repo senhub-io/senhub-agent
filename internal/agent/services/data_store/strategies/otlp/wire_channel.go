@@ -83,6 +83,7 @@ func newWireChannel(signal string, queue *wireQueue, ordered, countErrors bool, 
 
 // export runs one export through the queue: delivered, or kept on disk.
 func (c *wireChannel) export(ctx context.Context, op wireOp) error {
+	started := c.now()
 	attempt := true
 	switch {
 	case c.ordered && c.queue.hasFiles():
@@ -127,7 +128,7 @@ func (c *wireChannel) export(ctx context.Context, op wireOp) error {
 
 	err := c.reporter.reportRejections(op.send(ctx))
 	if err == nil {
-		c.markSuccess()
+		c.markSuccessSince(started)
 		return nil
 	}
 
@@ -268,9 +269,10 @@ func (c *wireChannel) keepRelayed(request func() ([]byte, error), units int) boo
 // is never persisted a second time. A cancelled ctx (the agent is stopping)
 // is not a verdict on the backend.
 func (c *wireChannel) exportDirect(ctx context.Context, request []byte, units int) error {
+	started := c.now()
 	err := c.reporter.reportRejections(c.replaySend(ctx, request))
 	if err == nil {
-		c.markSuccess()
+		c.markSuccessSince(started)
 		return nil
 	}
 	if errors.Is(ctx.Err(), context.Canceled) || errors.Is(err, errBatchDiscarded) {

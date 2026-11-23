@@ -345,6 +345,10 @@ func (r *spansRelay) export(rs []*tracepb.ResourceSpans, spans int) {
 		return
 	}
 
+	started := time.Now()
+	if r.queue != nil {
+		started = r.queue.now()
+	}
 	if err := r.forwarder.forward(ctx, rs); err != nil {
 		var kept, throttled bool
 		if r.queue != nil {
@@ -372,7 +376,7 @@ func (r *spansRelay) export(rs []*tracepb.ResourceSpans, spans int) {
 		return
 	}
 	if r.queue != nil {
-		r.queue.markSuccess()
+		r.queue.markSuccessSince(started)
 	}
 	agentstate.IncrementOTLPSpansRelayed(spans)
 	r.logger.Debug().

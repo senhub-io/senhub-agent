@@ -645,6 +645,10 @@ Third-party logs that the agent relays from an OTLP receiver are kept the
 same way, in a `logrelayqueue/` directory next to the others, sized and aged
 by `logs_queue_max_bytes` and `logs_queue_max_age`, and replayed in order.
 Its depth appears in `senhub.agent.otlp.queue.*` as `signal="logs_relay"`.
+Its disk use adds to that of the logs queue: both can fill their cap. The two
+queues are independent, one holding the agent's own logs and the other the
+relayed ones, so no order is kept between them; within each queue the oldest
+batch is sent first.
 
 Metrics are delivered in order: while a backlog waits, a new push is kept
 behind it instead of overtaking it, so a time-series store that refuses

@@ -59,6 +59,8 @@ type exporterHealth struct {
 	// throttledUntilNs is when the server asked the agent to try again, as
 	// a unix time; live exports and replay probes both wait for it.
 	throttledUntilNs atomic.Int64
+	// throttleNotedNs is when the latest hint was noted.
+	throttleNotedNs atomic.Int64
 	// throttled is set for the length of one throttling episode: from the
 	// first hint until an export is acknowledged. It keeps the episode to
 	// one warning however many batches the server turns away.
@@ -142,12 +144,22 @@ func (h *exporterHealth) claimAttempt() bool {
 	return h.lastFailureNs.CompareAndSwap(last, now)
 }
 
-func (h *exporterHealth) markSuccess() {
+func (h *exporterHealth) markSuccess() { h.markSuccessSince(h.now()) }
+
+// markSuccessSince records an acknowledged export that began at started. An
+// export that began before the server's hint was noted does not lift the
+// wait the hint asked for: it was already in flight when the server said
+// slow down, so it proves nothing about the pace the server now wants. Live
+// exports stay held and newer batches do not overtake the backlog.
+func (h *exporterHealth) markSuccessSince(started time.Time) {
 	agentstate.RecordExportSuccess(h.successKey)
+	h.lastSuccessNs.Store(h.now().UnixNano())
+	if noted := h.throttleNotedNs.Load(); noted != 0 && started.UnixNano() < noted && h.throttleRemaining() > 0 {
+		return
+	}
 	h.throttledUntilNs.Store(0)
 	h.throttled.Store(false)
 	h.capWarned.Store(false)
-	h.lastSuccessNs.Store(h.now().UnixNano())
 	// Export succeeded: if we were unhealthy, the backend just recovered.
 	if h.healthy.CompareAndSwap(false, true) {
 		h.runRecovered()
@@ -228,6 +240,7 @@ func (h *exporterHealth) noteThrottle(err error) bool {
 			break
 		}
 	}
+	h.throttleNotedNs.Store(now.UnixNano())
 	agentstate.IncrementOTLPThrottled(h.signalName())
 	if h.throttled.CompareAndSwap(false, true) && h.logger != nil {
 		h.logger.Warn().Str("signal", h.signalName()).Dur("retry_after", wait).

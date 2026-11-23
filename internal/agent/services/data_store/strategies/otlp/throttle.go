@@ -12,6 +12,7 @@ import (
 
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
@@ -62,6 +63,12 @@ func parseRetryAfter(v string, now time.Time) (time.Duration, bool) {
 func retryInfoDelay(err error) (time.Duration, bool) {
 	st, ok := status.FromError(err)
 	if !ok {
+		return 0, false
+	}
+	// Only the codes that mean "overloaded, try again" carry a wait worth
+	// honouring; a hint on any other code (a refusal of the request itself)
+	// must not hold the signal back.
+	if c := st.Code(); c != codes.ResourceExhausted && c != codes.Unavailable {
 		return 0, false
 	}
 	for _, d := range st.Details() {
