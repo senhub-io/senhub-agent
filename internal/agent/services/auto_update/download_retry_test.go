@@ -130,6 +130,7 @@ func TestDoUpdate_AbandonsAStalledBody(t *testing.T) {
 	signature := prehashedSignature(t, priv, archive)
 
 	release := make(chan struct{})
+	abandoned := make(chan struct{})
 	var served atomic.Int32
 	mux := http.NewServeMux()
 	mux.HandleFunc("/senhub-agent.zip", func(w http.ResponseWriter, r *http.Request) {
@@ -141,6 +142,7 @@ func TestDoUpdate_AbandonsAStalledBody(t *testing.T) {
 			select {
 			case <-release:
 			case <-r.Context().Done():
+				close(abandoned)
 			}
 			return
 		}
@@ -160,7 +162,11 @@ func TestDoUpdate_AbandonsAStalledBody(t *testing.T) {
 	}
 	u := updaterFor(t, srv, target)
 	u.downloadWait = noWait()
-	idle := 300 * time.Millisecond
+	// The idle delay also bounds the gap between two reads of the second,
+	// healthy attempt, so it must stay well above what a loaded host can
+	// stall a goroutine for; a spurious abandonment there only costs a
+	// retry, which the assertions below allow.
+	idle := time.Second
 	u.downloadIdle = &idle
 
 	start := time.Now()
@@ -170,8 +176,13 @@ func TestDoUpdate_AbandonsAStalledBody(t *testing.T) {
 	if elapsed := time.Since(start); elapsed > 20*time.Second {
 		t.Errorf("stall took %s to be abandoned", elapsed)
 	}
-	if got := served.Load(); got != 2 {
-		t.Errorf("archive requested %d times, want 2", got)
+	select {
+	case <-abandoned:
+	default:
+		t.Error("the stalled request was not abandoned by the client")
+	}
+	if got := served.Load(); got < 2 || got > archiveDownloadTries {
+		t.Errorf("archive requested %d times, want a retry after the stall (2 to %d)", got, archiveDownloadTries)
 	}
 	if got, _ := os.ReadFile(target); !bytes.Equal(got, binary) {
 		t.Error("target does not hold the new binary")
