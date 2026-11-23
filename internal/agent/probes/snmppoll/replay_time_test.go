@@ -37,3 +37,28 @@ func TestSilentGraceReplaysWithTheLastSweepTime(t *testing.T) {
 		}
 	}
 }
+
+// TestSweepRunsOnTheCycleThatFallsOneIntervalLater checks a poll cycle that
+// starts a few milliseconds before the topology interval has elapsed still
+// sweeps, so the sweep period is the interval and not twice it.
+func TestSweepRunsOnTheCycleThatFallsOneIntervalLater(t *testing.T) {
+	good := &fakeClient{walkRawResult: map[string][]snmpRawBind{
+		oidSysNameBase: {{OID: oidSysName, Value: []byte("sw1")}},
+	}}
+	const iv = time.Minute
+	s := newEntitySource(&config{Target: "192.0.2.10", Interval: iv, TopologyInterval: iv}, testLogger(t))
+	t0 := time.Unix(1780272000, 0)
+	s.now = func() time.Time { return t0 }
+
+	s.maybeSweep(good, t0)
+	early := t0.Add(iv / 2)
+	s.maybeSweep(good, early)
+	if !s.lastSweep.Equal(t0) {
+		t.Fatalf("a cycle half an interval later swept: lastSweep = %v", s.lastSweep)
+	}
+	jittered := t0.Add(iv - 40*time.Millisecond)
+	s.maybeSweep(good, jittered)
+	if !s.lastSweep.Equal(jittered) {
+		t.Fatalf("the cycle one interval later was skipped: lastSweep = %v, want %v", s.lastSweep, jittered)
+	}
+}

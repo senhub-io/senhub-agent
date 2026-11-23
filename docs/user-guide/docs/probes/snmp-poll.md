@@ -140,7 +140,7 @@ startup, not one at a time.
 `retries` matters on a congested link: UDP loses packets, and each
 attempt costs one `timeout` before the device counts as unanswered.
 `topology_interval` is a slower rail, independent of `interval`: the
-topology is swept at most once per `topology_interval`, inside a poll
+topology is swept once per `topology_interval` (a poll cycle that starts up to a tenth of `interval` early still sweeps), inside a poll
 cycle. A sweep stops its walks once it has run for `interval` (30
 seconds at least) and still reads the device identity. It stops at its
 first read that times out when the device has answered nothing yet, so
