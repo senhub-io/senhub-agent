@@ -655,7 +655,7 @@ Each probe targets one class of system and turns its state into typed metrics an
     <img class="probe-logo probe-logo-si" src="../assets/probe-logos/azure_container_apps.svg" alt="" loading="lazy">
     <span class="probe-name">SharePoint Online</span>
     <span class="probe-tier-badge pro">Pro</span>
-    <span class="probe-desc">Service health and open issues of SharePoint Online in a Microsoft 365 tenant</span>
+    <span class="probe-desc">Service health, site storage, files and sharing of SharePoint Online in a Microsoft 365 tenant</span>
   </a>
 
 </div>
