@@ -51,6 +51,13 @@ type exporterHealth struct {
 	// flush every few seconds; one warning per interval is enough to
 	// surface a dying pipeline without flooding the journal (#821).
 	lastFailWarnNs atomic.Int64
+
+	// recovering keeps one recovery callback in flight, whatever the backend's
+	// flapping; recoverWG lets the replayer wait for it at stop, and
+	// recoveryClosed ends the callbacks for good.
+	recovering     atomic.Bool
+	recoverWG      sync.WaitGroup
+	recoveryClosed atomic.Bool
 }
 
 // logExportWarnInterval spaces the "OTLP logs export failed" warnings.
@@ -126,10 +133,30 @@ func (h *exporterHealth) markSuccess() {
 	h.lastSuccessNs.Store(h.now().UnixNano())
 	// Export succeeded: if we were unhealthy, the backend just recovered.
 	if h.healthy.CompareAndSwap(false, true) {
-		if p := h.onRecovered.Load(); p != nil && *p != nil {
-			go (*p)()
-		}
+		h.runRecovered()
 	}
+}
+
+func (h *exporterHealth) runRecovered() {
+	p := h.onRecovered.Load()
+	if p == nil || *p == nil || h.recoveryClosed.Load() {
+		return
+	}
+	if !h.recovering.CompareAndSwap(false, true) {
+		return // one is running; the replay it drives picks up the rest
+	}
+	h.recoverWG.Add(1)
+	go func() {
+		defer h.recoverWG.Done()
+		defer h.recovering.Store(false)
+		(*p)()
+	}()
+}
+
+// closeRecovery stops the recovery callbacks and waits for the one in flight.
+func (h *exporterHealth) closeRecovery() {
+	h.recoveryClosed.Store(true)
+	h.recoverWG.Wait()
 }
 
 func (h *exporterHealth) markFailure() {
@@ -186,11 +213,14 @@ type replayLoop struct {
 	// after is the retry clock; tests replace it.
 	after func(time.Duration) <-chan time.Time
 
-	ctx    context.Context
-	cancel context.CancelFunc
-	wake   chan struct{}
-	quit   chan struct{}
-	wg     sync.WaitGroup
+	ctx      context.Context
+	cancel   context.CancelFunc
+	wake     chan struct{}
+	quit     chan struct{}
+	wg       sync.WaitGroup
+	stopOnce sync.Once
+	// afterStop runs once the loops have ended.
+	afterStop func()
 }
 
 func (r *replayLoop) initLoop(label string, log *logger.ModuleLogger) {
@@ -225,11 +255,16 @@ func (r *replayLoop) sweepLoop() {
 	}
 }
 
-// stop ends the retry loop and aborts a replay in flight. Safe to call once.
+// stop ends the retry loop and aborts a replay in flight. Safe to call twice.
 func (r *replayLoop) stop() {
-	r.cancel()
-	close(r.quit)
-	r.wg.Wait()
+	r.stopOnce.Do(func() {
+		r.cancel()
+		close(r.quit)
+		r.wg.Wait()
+		if r.afterStop != nil {
+			r.afterStop()
+		}
+	})
 }
 
 // kick tells the loop a batch was just queued. It starts the retry clock if

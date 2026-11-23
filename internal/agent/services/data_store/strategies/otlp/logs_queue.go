@@ -467,6 +467,7 @@ func newLogsReplayer(q *logsQueue, p *logsPipeline, exp *persistentLogExporter, 
 	r.pending = q.pending
 	r.run = r.replay
 	r.sweep = func() { q.sweepAged() }
+	r.afterStop = exp.closeRecovery
 	return r
 }
 

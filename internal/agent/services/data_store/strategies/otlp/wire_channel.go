@@ -288,6 +288,7 @@ func newWireReplayer(ch *wireChannel, log *logger.ModuleLogger) *wireReplayer {
 	r.pending = ch.queue.pending
 	r.run = r.replay
 	r.sweep = func() { ch.queue.sweepAged() }
+	r.afterStop = ch.closeRecovery
 	return r
 }
 
