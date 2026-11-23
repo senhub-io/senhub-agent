@@ -132,6 +132,11 @@ type autoUpdate struct {
 	// enabled remembers auto_update.enabled so a change made while the
 	// agent runs is logged once.
 	enabled enabledState
+	// goos replaces runtime.GOOS in the decision of a server-driven update;
+	// empty means the running one. Set by tests.
+	goos string
+	// installMSI replaces applyMsiUpdate in tests of the server-driven path.
+	installMSI func(msiURL, version string) error
 }
 
 // msiAttempt is the record of a launched MSI upgrade used to detect a
@@ -188,9 +193,11 @@ func (a *autoUpdate) createScheduler() {
 
 func (a *autoUpdate) Start(ctx context.Context) error {
 	a.runCtx = ctx
-	a.noteEnabled(a.configSource.GetConfiguration().Agent.UpdateEnabled)
+	enabled, _ := a.effectiveSettings()
+	a.noteEnabled(enabled)
 	a.configSource.OnConfigChanged(a.onConfigChange)
 	setResumeHook(a.checkAfterResume)
+	setDirectiveHook(a.checkAfterDirective)
 
 	a.createScheduler()
 	if err := (*a.scheduler).Start(ctx); err != nil {
@@ -205,6 +212,7 @@ func (a *autoUpdate) Start(ctx context.Context) error {
 
 func (a *autoUpdate) Shutdown(ctx context.Context) error {
 	setResumeHook(nil)
+	setDirectiveHook(nil)
 	if a.scheduler == nil {
 		return nil
 	}
@@ -218,7 +226,8 @@ func (a *autoUpdate) Shutdown(ctx context.Context) error {
 }
 
 func (a *autoUpdate) onConfigChange(string) {
-	a.noteEnabled(a.configSource.GetConfiguration().Agent.UpdateEnabled)
+	enabled, _ := a.effectiveSettings()
+	a.noteEnabled(enabled)
 	if err := a.PeriodicalCheckForUpdate(); err != nil {
 		a.logger.Error().
 			Err(err).
@@ -459,8 +468,9 @@ func (a *autoUpdate) doUpdate(downloadURL, toVersion string) error {
 	}
 
 	if !strings.HasPrefix(downloadURL, "https://") {
-		return fmt.Errorf("unsafe URL scheme - only HTTPS URLs are allowed: %s", downloadURL)
+		return fail(ReasonDownload, fmt.Errorf("unsafe URL scheme - only HTTPS URLs are allowed: %s", downloadURL))
 	}
+	setStatus(Status{State: StateDownloading, Target: toVersion})
 
 	a.logger.Info().
 		Str("download_url", downloadURL).
@@ -479,11 +489,11 @@ func (a *autoUpdate) doUpdate(downloadURL, toVersion string) error {
 	// directory because the latter is often a tmpfs, which is RAM too.
 	target, err := a.targetBinaryPath()
 	if err != nil {
-		return err
+		return fail(ReasonInstall, err)
 	}
 	archive, err := os.CreateTemp(filepath.Dir(target), ".senhub-agent-update-*.zip")
 	if err != nil {
-		return fmt.Errorf("creating the update archive next to %s: %w", target, err)
+		return fail(ReasonInstall, fmt.Errorf("creating the update archive next to %s: %w", target, err))
 	}
 	archivePath := archive.Name()
 	defer os.Remove(archivePath)
@@ -493,13 +503,13 @@ func (a *autoUpdate) doUpdate(downloadURL, toVersion string) error {
 		err = closeErr
 	}
 	if err != nil {
-		return fmt.Errorf("writing update archive to %s: %w", archivePath, err)
+		return fail(ReasonDownload, fmt.Errorf("writing update archive to %s: %w", archivePath, err))
 	}
 	if size > maxArchiveSize {
-		return fmt.Errorf("update archive too large (> %d bytes)", maxArchiveSize)
+		return fail(ReasonDownload, fmt.Errorf("update archive too large (> %d bytes)", maxArchiveSize))
 	}
 	if size < 1024*1024 {
-		return fmt.Errorf("update archive too small: %d bytes (expected at least 1MB)", size)
+		return fail(ReasonDownload, fmt.Errorf("update archive too small: %d bytes (expected at least 1MB)", size))
 	}
 
 	// Verify the detached minisign signature of the archive BEFORE
@@ -510,17 +520,17 @@ func (a *autoUpdate) doUpdate(downloadURL, toVersion string) error {
 	signature, err := a.fetchSignature(downloadURL + ".minisig")
 	if err != nil {
 		agentstate.IncrementUpdateRejected("signature_unavailable")
-		return fmt.Errorf("update REJECTED — signature unavailable: %w", err)
+		return fail(ReasonSignature, fmt.Errorf("update REJECTED — signature unavailable: %w", err))
 	}
 	if err := verifyArchiveFile(digest, archivePath, signature); err != nil {
 		agentstate.IncrementUpdateRejected("signature_invalid")
-		return fmt.Errorf("update REJECTED — %w", err)
+		return fail(ReasonSignature, fmt.Errorf("update REJECTED — %w", err))
 	}
 	a.logger.Info().Msg("Update archive signature verified")
 
 	zr, err := zip.OpenReader(archivePath)
 	if err != nil {
-		return fmt.Errorf("opening update archive as zip: %w", err)
+		return fail(ReasonInstall, fmt.Errorf("opening update archive as zip: %w", err))
 	}
 	defer func() {
 		if cErr := zr.Close(); cErr != nil {
@@ -544,7 +554,7 @@ func (a *autoUpdate) doUpdate(downloadURL, toVersion string) error {
 		for _, f := range zr.File {
 			names = append(names, f.Name)
 		}
-		return fmt.Errorf("update archive does not contain senhub-agent binary; found entries: %v", names)
+		return fail(ReasonInstall, fmt.Errorf("update archive does not contain senhub-agent binary; found entries: %v", names))
 	}
 
 	a.logger.Info().
@@ -554,7 +564,7 @@ func (a *autoUpdate) doUpdate(downloadURL, toVersion string) error {
 
 	rc, err := entry.Open()
 	if err != nil {
-		return fmt.Errorf("opening binary entry inside archive: %w", err)
+		return fail(ReasonInstall, fmt.Errorf("opening binary entry inside archive: %w", err))
 	}
 	defer rc.Close()
 
@@ -568,8 +578,9 @@ func (a *autoUpdate) doUpdate(downloadURL, toVersion string) error {
 			Msg("Could not keep the current binary for rollback; this update cannot be rolled back automatically")
 	}
 
+	setStatus(Status{State: StateInstalling, Target: toVersion})
 	if err := applyBinary(rc, target); err != nil {
-		return fmt.Errorf("failed to apply update: %w", err)
+		return fail(ReasonInstall, fmt.Errorf("failed to apply update: %w", err))
 	}
 
 	if toVersion != "" && keepErr == nil {
@@ -801,8 +812,12 @@ func (a *autoUpdate) checkForUpdateOnce() error {
 	// auto_update.enabled can be turned off while the agent runs: the
 	// updater started with it on keeps its scheduler, so every check reads
 	// the setting in force.
-	if !a.configSource.GetConfiguration().Agent.UpdateEnabled {
+	enabled, expectedVersion := a.effectiveSettings()
+	if !enabled {
 		a.logger.Debug().Msg("Update check skipped: auto_update is disabled")
+		if CurrentDirective() != nil {
+			settleStatus(a.rollbackEnvFor("").stateDir)
+		}
 		return nil
 	}
 
@@ -817,13 +832,22 @@ func (a *autoUpdate) checkForUpdateOnce() error {
 	}
 	defer release()
 
-	expectedVersion := a.configSource.GetConfiguration().Agent.Version
 	registryUrl := a.configSource.GetConfiguration().Agent.RegistryUrl
 
-	updateApplied, err := a.Update(
-		expectedVersion,
-		registryUrl,
-	)
+	var updateApplied bool
+	if d := CurrentDirective(); d != nil {
+		updateApplied, err = a.updateForDirective(*d, registryUrl)
+	} else {
+		updateApplied, err = a.Update(
+			expectedVersion,
+			registryUrl,
+		)
+		if err != nil {
+			setStatus(Status{State: StateFailed, Target: a.resolved, Reason: failureReason(err)})
+		} else if !updateApplied {
+			settleStatus(a.rollbackEnvFor("").stateDir)
+		}
+	}
 	if err != nil {
 		a.logger.Error().
 			Err(err).
