@@ -43,15 +43,18 @@ func (osRollbackFS) WriteFileAtomic(name string, data []byte) error {
 		os.Remove(tmpName)
 		return fmt.Errorf("write temp file: %w", err)
 	}
+	// The CLI that writes the marker runs as root and the daemon that reads it
+	// does not; CreateTemp's 0600 would hide it from the daemon. The mode is
+	// set on the open file, not by path: the directory belongs to the service
+	// user, who could swap the name for a symbolic link while root runs.
+	if err := tmp.Chmod(0o644); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return fmt.Errorf("set mode on temp file: %w", err)
+	}
 	if err := tmp.Close(); err != nil {
 		os.Remove(tmpName)
 		return fmt.Errorf("close temp file: %w", err)
-	}
-	// The CLI that writes the marker runs as root and the daemon that reads it
-	// does not; CreateTemp's 0600 would hide it from the daemon.
-	if err := os.Chmod(tmpName, 0o644); err != nil {
-		os.Remove(tmpName)
-		return fmt.Errorf("set mode on temp file: %w", err)
 	}
 	if err := os.Rename(tmpName, name); err != nil {
 		os.Remove(tmpName)
@@ -99,6 +102,10 @@ type RolledBackRecord struct {
 const (
 	OutcomeRestored     = "restored"
 	OutcomeNotPerformed = "not_performed"
+	// OutcomeRequested marks a rollback the service asked the root update unit
+	// to perform; the unit turns it into OutcomeRestored once it has installed
+	// the previous version.
+	OutcomeRequested = "requested"
 )
 
 type rollbackEnv struct {
@@ -204,6 +211,15 @@ func (e rollbackEnv) boot() bootAction {
 	}
 
 	if !e.canSwap {
+		if e.requestRollbackThroughRoot(marker) {
+			// The marker stays: the root unit reads it as the proof that the
+			// boot guard of this update is still pending.
+			record.Outcome = OutcomeRequested
+			if err := e.writeRolledBackRecord(record); err != nil {
+				e.log.Warn().Err(err).Msg("failed to write rolled-back record")
+			}
+			return bootRollbackNotPerformed
+		}
 		e.log.Error().
 			Str("from_version", marker.FromVersion).
 			Str("to_version", marker.ToVersion).
@@ -253,6 +269,34 @@ func (e rollbackEnv) boot() bootAction {
 	}
 	e.removePath(path)
 	return bootRolledBack
+}
+
+// requestRollbackThroughRoot asks the root update unit for the version the
+// failed update replaced, the same path an update takes. It declines when no
+// such unit is available, and when the version to return to is itself the one
+// that failed earlier, so two bad versions cannot swap places forever.
+func (e rollbackEnv) requestRollbackThroughRoot(marker pendingUpdate) bool {
+	installer := registeredPrivilegedInstaller()
+	if installer == nil || marker.FromVersion == "" {
+		return false
+	}
+	if rec, _ := readRolledBack(e.fs, e.stateDir); rec != nil && canonicalVersion(rec.FailedVersion) == canonicalVersion(marker.FromVersion) {
+		e.log.Error().Str("from_version", marker.FromVersion).Str("to_version", marker.ToVersion).
+			Msg("rollback not requested: the version to return to already failed to start on this host")
+		return false
+	}
+	rb, ok := installer.(RollbackRequester)
+	if !ok {
+		return false
+	}
+	if err := rb.RequestRollback(); err != nil {
+		e.log.Error().Err(err).Str("from_version", marker.FromVersion).Str("to_version", marker.ToVersion).
+			Msg("rollback not requested: the root update unit refused the request")
+		return false
+	}
+	e.log.Error().Str("from_version", marker.FromVersion).Str("to_version", marker.ToVersion).
+		Msg("update never confirmed; rollback requested through the root update unit")
+	return true
 }
 
 func (e rollbackEnv) cleanStop() error {

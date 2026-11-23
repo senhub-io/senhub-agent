@@ -60,6 +60,19 @@ contents:
     dst: /usr/lib/systemd/system/senhub-ebpf.service
     file_info:
       mode: 0644
+  # Root update path: the service asks, a root unit installs (see the units).
+  - src: packaging/systemd/senhub-agent-update.path
+    dst: /usr/lib/systemd/system/senhub-agent-update.path
+    file_info:
+      mode: 0644
+  - src: packaging/systemd/senhub-agent-update.service
+    dst: /usr/lib/systemd/system/senhub-agent-update.service
+    file_info:
+      mode: 0644
+  - src: packaging/nfpm/conf/root-update
+    dst: /usr/lib/senhub-agent/root-update
+    file_info:
+      mode: 0644
   # nFPM only honours type: doc for the rpm, hence two entries.
   - src: ${STAGE}/senhub-agent.1.gz
     expand: true
@@ -144,6 +157,12 @@ contents:
       owner: senhub
       group: senhub
   - dst: /var/lib/senhub-agent
+    type: dir
+    file_info:
+      mode: 0750
+      owner: senhub
+      group: senhub
+  - dst: /var/lib/senhub-agent/update-request
     type: dir
     file_info:
       mode: 0750

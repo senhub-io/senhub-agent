@@ -218,6 +218,8 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		},
 	})
 
+	auto_update.RegisterPackageInstaller()
+
 	return agent{
 		statusChan:         statuschan.New(logger, localConfiguration.GetConfigPath(), agentCliArgs.Version, agentCliArgs.CommitHash),
 		supervisor:         lifecycle.NewSupervisor(logger),

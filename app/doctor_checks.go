@@ -213,6 +213,12 @@ func rollbackCheck(d doctorDeps) *doctorCheck {
 			"read the agent log for the failure, then run 'senhub-agent update' once a newer version is available")
 		return &c
 	}
+	if rec.Outcome == auto_update.OutcomeRequested {
+		c := warnCheck(sectionInstall, "install.update_rollback",
+			fmt.Sprintf("version %s failed to start after %d boots on %s; the return to %s was requested from the root update unit", rec.FailedVersion, rec.BootAttempts, when, rec.RestoredVersion),
+			"check 'journalctl -u senhub-agent-update.service'; if the unit is disabled, run 'sudo senhub-agent update "+rec.RestoredVersion+"'")
+		return &c
+	}
 	c := failCheck(sectionInstall, "install.update_rollback",
 		fmt.Sprintf("version %s failed to start after %d boots on %s and could not be rolled back automatically", rec.FailedVersion, rec.BootAttempts, when),
 		fmt.Sprintf("run 'sudo senhub-agent update %s' to return to the previous version", rec.RestoredVersion))
