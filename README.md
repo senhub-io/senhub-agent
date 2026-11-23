@@ -38,8 +38,8 @@ PRTG, Nagios, Zabbix, Prometheus or any OpenTelemetry backend.
   [Topology](docs/user-guide/docs/topology.md).
 - **Paid probes** (Pro/Enterprise licence): Citrix, NetScaler, Veeam,
   Redfish, IBM i, Dell PowerStore, SQL Server and Oracle high availability,
-  vSphere and Hyper-V HA, Active Directory hybrid, Exchange Online, Azure
-  Container Apps, synthetic web checks.
+  vSphere and Hyper-V HA, Active Directory hybrid, Exchange Online,
+  SharePoint Online, Azure Container Apps, synthetic web checks.
 
 ## Outputs
 
