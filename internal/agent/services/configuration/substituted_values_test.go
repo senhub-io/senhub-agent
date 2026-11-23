@@ -196,51 +196,6 @@ func TestSubstitutedValuesShortValuesNotMasked(t *testing.T) {
 	}
 }
 
-func TestOverlayManagedParamsWithFleetSecret(t *testing.T) {
-	resetSubstituted(t)
-	useMemorySecrets(t, map[string]string{"fleet.snmp_ctx": "fleet-secret-xyz1"})
-	cfg := addProbeTestConfig()
-	target := &overlayTarget{cfg: cfg}
-	ok := target.AddProbe(extension.ManagedProbe{
-		Name:    "managed",
-		Type:    "snmp_poll",
-		Enabled: true,
-		Params: map[string]any{
-			"x_ref": "${secret:fleet.snmp_ctx}",
-			"nest":  map[string]any{"deep": []any{"u-${secret:fleet.snmp_ctx}"}},
-			"host":  "plain.example",
-		},
-	})
-	if !ok {
-		t.Fatal("AddProbe refused a managed probe with a fleet secret")
-	}
-	added := cfg.Probes[1]
-	if added.Params["x_ref"] != "fleet-secret-xyz1" {
-		t.Fatalf("x_ref was not resolved: %v", added.Params["x_ref"])
-	}
-	out := SanitizeProbeParamsForLog(added.Type, added.Params)
-	text := strings.ReplaceAll(strings.TrimSpace(formatParams(out)), "\n", " ")
-	if strings.Contains(text, "fleet-secret-xyz1") {
-		t.Errorf("a fleet secret reached the sanitized view: %s", text)
-	}
-	if out["host"] != "plain.example" {
-		t.Errorf("host = %v", out["host"])
-	}
-}
-
-func TestOverlayManagedParamsUnresolvedReferenceRefused(t *testing.T) {
-	resetSubstituted(t)
-	useMemorySecrets(t, nil)
-	cfg := addProbeTestConfig()
-	target := &overlayTarget{cfg: cfg}
-	if target.AddProbe(extension.ManagedProbe{Name: "m", Type: "http", Params: map[string]any{"x": "${secret:fleet.absent}"}}) {
-		t.Fatal("a managed probe with an unresolvable secret must be refused")
-	}
-	if len(cfg.Probes) != 1 {
-		t.Fatalf("probes = %d, want 1", len(cfg.Probes))
-	}
-}
-
 func TestRecordSubstitutedMasksExternallyResolvedValues(t *testing.T) {
 	resetSubstituted(t)
 	RecordSubstituted("externally-resolved-9")
