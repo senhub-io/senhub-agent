@@ -36,6 +36,11 @@ type RootApplyOptions struct {
 	StateDir     string
 	RootStateDir string
 	Restart      func(startIfStopped bool) (string, error)
+	// RateWindow and RateBurst bound the runs of the unit: at most RateBurst
+	// in any RateWindow (6 in an hour by default). Now is the clock.
+	RateWindow time.Duration
+	RateBurst  int
+	Now        func() time.Time
 	// PackageName names the package that owns Binary; nil asks dpkg or rpm.
 	PackageName   func(binary string) string
 	DownloadWait  *time.Duration
@@ -55,8 +60,18 @@ func (e *RootApplyError) Unwrap() error {
 	return e.Err
 }
 
+// applyState is what the result file reports of a run, filled as it goes.
+type applyState struct {
+	version  string
+	rollback bool
+}
+
+const (
+	defaultRateWindow = time.Hour
+	defaultRateBurst  = 6
+)
+
 func RootApply(opts RootApplyOptions) error {
-	// Defaults
 	if opts.Logger == nil {
 		opts.Logger = logger.NewModuleLogger(nil, "service.root_update")
 	}
@@ -81,7 +96,49 @@ func RootApply(opts RootApplyOptions) error {
 	if opts.HTTPClient == nil {
 		opts.HTTPClient = httpretry.NewDefaultClient(httpretry.WithMaxRetryCount(3))
 	}
+	if opts.RateWindow == 0 {
+		opts.RateWindow = defaultRateWindow
+	}
+	if opts.RateBurst == 0 {
+		opts.RateBurst = defaultRateBurst
+	}
+	if opts.Now == nil {
+		opts.Now = time.Now
+	}
+
+	// Whatever happens below, an early error, a refusal or a panic, the
+	// request files are gone when this returns: the path unit starts the
+	// service again for as long as one exists, and nothing else stops it.
+	defer removeRequests(opts.RequestDir, []string{opts.RequestFile, RootUpdateRollbackFile}, opts.Logger)
+
+	st := &applyState{}
+	err := rootApply(opts, st)
+	writeRunResult(opts, st, err)
+	return err
+}
+
+func rootApply(opts RootApplyOptions, st *applyState) error {
 	log := opts.Logger
+
+	// Step lock
+	if err := os.MkdirAll(opts.RootStateDir, 0o700); err != nil {
+		log.Error().Err(err).Str("step", "lock").Msg("Root update refused")
+		return &RootApplyError{Step: "lock", Err: err}
+	}
+	release, err := acquireRootLock(opts.RootStateDir)
+	if err != nil {
+		log.Error().Err(err).Str("step", "lock").Msg("Root update refused")
+		return &RootApplyError{Step: "lock", Err: err}
+	}
+	defer release()
+
+	// Step rate: every run is counted before it looks at anything, so a loop
+	// of any kind is bounded; the window slides, and recovers by itself.
+	allowed, err := recordAttempt(opts.RootStateDir, opts.Now(), opts.RateWindow, opts.RateBurst)
+	if err != nil {
+		log.Error().Err(err).Str("step", "rate").Msg("Root update refused")
+		return &RootApplyError{Step: "rate", Err: err}
+	}
 
 	// Step request
 	uid, err := opts.ServiceUID()
@@ -91,12 +148,20 @@ func RootApply(opts RootApplyOptions) error {
 	}
 	rbErr := consumeRollbackRequest(opts.RequestDir, RootUpdateRollbackFile, uid, log)
 	version, verErr := consumeRequest(opts.RequestDir, opts.RequestFile, uid, log)
+	st.version = version
 	switch {
 	case rbErr == nil:
+		// A rollback is never rate limited: it answers an update that does
+		// not start, and has its own proof to give.
+		st.rollback = true
 		return rootRollback(opts)
 	case !errors.Is(rbErr, unix.ENOENT):
 		log.Error().Err(rbErr).Str("step", "request").Msg("Root update refused")
 		return &RootApplyError{Step: "request", Err: rbErr}
+	case !allowed:
+		err := fmt.Errorf("more than %d attempts in the last %s", opts.RateBurst, opts.RateWindow)
+		log.Error().Err(err).Str("step", "rate").Str("reason", "rate_limited").Msg("Root update refused")
+		return &RootApplyError{Step: "rate", Err: err}
 	case verErr != nil:
 		log.Error().Err(verErr).Str("step", "request").Msg("Root update refused")
 		return &RootApplyError{Step: "request", Err: verErr}
@@ -113,18 +178,6 @@ func RootApply(opts RootApplyOptions) error {
 		log.Error().Err(err).Str("step", "edition").Msg("Root update refused")
 		return &RootApplyError{Step: "edition", Err: err}
 	}
-
-	// Step lock
-	if err := os.MkdirAll(opts.RootStateDir, 0o700); err != nil {
-		log.Error().Err(err).Str("step", "lock").Msg("Root update refused")
-		return &RootApplyError{Step: "lock", Err: err}
-	}
-	release, err := acquireRootLock(opts.RootStateDir)
-	if err != nil {
-		log.Error().Err(err).Str("step", "lock").Msg("Root update refused")
-		return &RootApplyError{Step: "lock", Err: err}
-	}
-	defer release()
 
 	// Step list
 	a := &autoUpdate{
@@ -289,15 +342,6 @@ func rootRollback(opts RootApplyOptions) error {
 		log.Error().Err(err).Str("step", "rollback").Msg("Root update refused")
 		return &RootApplyError{Step: "rollback", Err: err}
 	}
-	if err := os.MkdirAll(opts.RootStateDir, 0o700); err != nil {
-		return refuse(err)
-	}
-	release, err := acquireRootLock(opts.RootStateDir)
-	if err != nil {
-		return refuse(err)
-	}
-	defer release()
-
 	path := filepath.Join(opts.RootStateDir, installRecordFile)
 	data, err := os.ReadFile(path) // #nosec G304 - root's own state directory
 	if err != nil {
@@ -356,4 +400,58 @@ func archiveBaseForPackage(name string) (string, error) {
 		return "senhub-agent", nil
 	}
 	return "", fmt.Errorf("the edition of this install cannot be told: the binary belongs to package %q", name)
+}
+
+const attemptsFile = "attempts.json"
+
+// recordAttempt notes a run in the root-owned attempts record and says
+// whether it is within burst runs per window. A refused run is not noted, so
+// the window slides on the allowed ones and a flood cannot keep it shut.
+func recordAttempt(rootDir string, now time.Time, window time.Duration, burst int) (bool, error) {
+	path := filepath.Join(rootDir, attemptsFile)
+	var times []int64
+	if data, err := os.ReadFile(path); err == nil { // #nosec G304 - root's own state directory
+		if jerr := json.Unmarshal(data, &times); jerr != nil {
+			times = nil
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return false, fmt.Errorf("reading %s: %w", path, err)
+	}
+	cutoff := now.Add(-window).Unix()
+	kept := times[:0]
+	for _, t := range times {
+		if t > cutoff && t <= now.Unix() {
+			kept = append(kept, t)
+		}
+	}
+	allowed := len(kept) < burst
+	if allowed {
+		kept = append(kept, now.Unix())
+	}
+	data, err := json.Marshal(kept)
+	if err != nil {
+		return false, fmt.Errorf("encoding the attempts: %w", err)
+	}
+	if err := (osRollbackFS{}).WriteFileAtomic(path, data); err != nil {
+		return false, fmt.Errorf("recording the attempt: %w", err)
+	}
+	return allowed, nil
+}
+
+// removeRequests unlinks the request files relative to the request directory,
+// never through a path a link could redirect. Absent is fine.
+func removeRequests(dir string, names []string, log *logger.ModuleLogger) {
+	dirfd, err := unix.Open(dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		if !errors.Is(err, unix.ENOENT) {
+			log.Warn().Err(err).Str("dir", dir).Msg("Could not open the request directory to clear it")
+		}
+		return
+	}
+	defer func() { _ = unix.Close(dirfd) }()
+	for _, name := range names {
+		if err := unix.Unlinkat(dirfd, name, 0); err != nil && !errors.Is(err, unix.ENOENT) {
+			log.Warn().Err(err).Str("file", name).Msg("Could not remove the request file")
+		}
+	}
 }

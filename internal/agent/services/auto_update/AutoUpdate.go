@@ -124,6 +124,9 @@ type autoUpdate struct {
 	// The root update unit keeps it in a directory the service cannot write,
 	// so a compromised service cannot lower the floor and replay an old list.
 	seqDir string
+	// resultPoll is the pause between reads of the root unit's result file;
+	// nil means resultPollEvery. Tests set it small.
+	resultPoll *time.Duration
 	// archiveBase, when set, names the archive family downloaded
 	// (senhub-agent-oss for the open source edition); empty is the default
 	// archive.

@@ -178,10 +178,12 @@ func (a *autoUpdate) updateForDirective(d Directive, registryUrl string) (bool, 
 		return true, nil
 	case a.goosName() == "linux" && privileged != nil:
 		setStatus(Status{State: StateInstalling, Target: target})
+		requestedAt := time.Now()
 		if err := privileged.Request(target); err != nil {
 			setStatus(Status{State: StateFailed, Target: target, Reason: ReasonInstall})
 			return false, fail(ReasonInstall, err)
 		}
+		a.watchRootResult(target, requestedAt)
 		return false, nil
 	}
 
