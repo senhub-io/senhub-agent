@@ -1,10 +1,12 @@
 package otlp
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -101,7 +103,16 @@ func (q *diskQueue) recover() {
 	var maxSeq uint64
 	format := q.prefix + "-%020d" + q.ext
 	for _, e := range entries {
-		if e.IsDir() || filepath.Ext(e.Name()) != q.ext {
+		if e.IsDir() {
+			continue
+		}
+		if strings.HasSuffix(e.Name(), q.ext+".tmp") {
+			// A write that never reached its rename: no reader will ever
+			// take it, and left alone it would sit outside the size cap.
+			_ = os.Remove(filepath.Join(q.dir, e.Name()))
+			continue
+		}
+		if filepath.Ext(e.Name()) != q.ext {
 			continue
 		}
 		info, statErr := e.Info()
@@ -254,6 +265,13 @@ func (q *diskQueue) evictLocked() {
 	if q.sizeBytes <= q.maxBytes {
 		return
 	}
+	// The counters can be stale (a file removed behind our back, one that
+	// could not be read when it left): confirm against the disk before
+	// taking a live file for being over the cap.
+	q.resyncLocked()
+	if q.sizeBytes <= q.maxBytes {
+		return
+	}
 	files := q.listLocked()
 	for _, name := range files {
 		if q.sizeBytes <= q.maxBytes {
@@ -266,6 +284,17 @@ func (q *diskQueue) evictLocked() {
 		}
 		info, _ := os.Stat(path)
 		if rmErr := os.Remove(path); rmErr != nil {
+			if !errors.Is(rmErr, os.ErrNotExist) {
+				// Nothing more can be freed this way; the next commit
+				// would only scan again.
+				if q.logger != nil {
+					q.logger.Warn().Err(rmErr).Str("file", name).Msg(q.label + " cannot evict the oldest batch")
+				}
+				break
+			}
+			// Gone already (removed behind our back): the counters are stale,
+			// so they are read from the disk again.
+			q.resyncLocked()
 			continue
 		}
 		if info != nil {
@@ -283,6 +312,25 @@ func (q *diskQueue) evictLocked() {
 	}
 	if q.records < 0 {
 		q.records = 0
+	}
+}
+
+// resyncLocked recomputes the counters from the files on disk. Caller holds mu.
+func (q *diskQueue) resyncLocked() {
+	var size int64
+	var units int
+	for _, name := range q.listLocked() {
+		path := filepath.Join(q.dir, name)
+		if info, err := os.Stat(path); err == nil {
+			size += info.Size()
+		}
+		if _, n, err := q.inspect(path); err == nil {
+			units += n
+		}
+	}
+	q.sizeBytes, q.records = size, units
+	if units == 0 {
+		q.oldestAt = time.Time{}
 	}
 }
 
@@ -328,6 +376,11 @@ func (q *diskQueue) removeFile(name string) {
 	}
 	if q.records < 0 {
 		q.records = 0
+	}
+	if len(q.listLocked()) == 0 {
+		// Nothing left on disk: whatever the counters still say is drift,
+		// from a file that could not be read when it left.
+		q.records, q.sizeBytes = 0, 0
 	}
 	if q.records == 0 {
 		q.oldestAt = time.Time{}
