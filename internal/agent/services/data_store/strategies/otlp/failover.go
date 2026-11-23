@@ -9,6 +9,10 @@ import (
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
+	metricpb "go.opentelemetry.io/proto/otlp/metrics/v1"
+	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/logger"
@@ -234,4 +238,117 @@ func buildFailoverLogExporter(ctx context.Context, cfg Config, log *logger.Modul
 		exps = append(exps, e)
 	}
 	return &failoverLogExporter{core: newFailoverCore(eps, cfg.FailoverCooldown, log), exps: exps}, nil
+}
+
+// failoverSpanExporter is the span exporter failover decorator.
+type failoverSpanExporter struct {
+	core *failoverCore
+	exps []sdktrace.SpanExporter
+}
+
+func (f *failoverSpanExporter) ExportSpans(ctx context.Context, spans []sdktrace.ReadOnlySpan) error {
+	return f.core.do(func(i int) error { return f.exps[i].ExportSpans(ctx, spans) })
+}
+func (f *failoverSpanExporter) Shutdown(ctx context.Context) error {
+	var errs []error
+	for _, e := range f.exps {
+		if err := e.Shutdown(ctx); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// buildFailoverTraceExporter builds one trace exporter per endpoint and wraps
+// them in the failover decorator, so spans, and the backlog the queue replays
+// through it, reach a standby when the primary is down.
+func buildFailoverTraceExporter(ctx context.Context, cfg Config, log *logger.ModuleLogger) (sdktrace.SpanExporter, error) {
+	eps := allEndpoints(cfg)
+	exps := make([]sdktrace.SpanExporter, 0, len(eps))
+	for _, ep := range eps {
+		c := cfg
+		c.Endpoint = ep
+		e, err := buildTraceExporter(ctx, c)
+		if err != nil {
+			for _, built := range exps {
+				_ = built.Shutdown(ctx)
+			}
+			return nil, err
+		}
+		exps = append(exps, e)
+	}
+	return &failoverSpanExporter{core: newFailoverCore(eps, cfg.FailoverCooldown, log), exps: exps}, nil
+}
+
+// The relays send through their own forwarders rather than the SDK
+// exporters, so they get the same failover: one forwarder per endpoint.
+
+type failoverLogBatchForwarder struct {
+	core *failoverCore
+	fwds []logBatchForwarder
+}
+
+func (f *failoverLogBatchForwarder) forward(ctx context.Context, rl []*logspb.ResourceLogs) error {
+	return f.core.do(func(i int) error { return f.fwds[i].forward(ctx, rl) })
+}
+func (f *failoverLogBatchForwarder) close() error {
+	var errs []error
+	for _, w := range f.fwds {
+		errs = append(errs, w.close())
+	}
+	return errors.Join(errs...)
+}
+
+type failoverMetricBatchForwarder struct {
+	core *failoverCore
+	fwds []metricBatchForwarder
+}
+
+func (f *failoverMetricBatchForwarder) forward(ctx context.Context, rm []*metricpb.ResourceMetrics) error {
+	return f.core.do(func(i int) error { return f.fwds[i].forward(ctx, rm) })
+}
+func (f *failoverMetricBatchForwarder) close() error {
+	var errs []error
+	for _, w := range f.fwds {
+		errs = append(errs, w.close())
+	}
+	return errors.Join(errs...)
+}
+
+type failoverSpanForwarder struct {
+	core *failoverCore
+	fwds []spanForwarder
+}
+
+func (f *failoverSpanForwarder) forward(ctx context.Context, rs []*tracepb.ResourceSpans) error {
+	return f.core.do(func(i int) error { return f.fwds[i].forward(ctx, rs) })
+}
+func (f *failoverSpanForwarder) close() error {
+	var errs []error
+	for _, w := range f.fwds {
+		errs = append(errs, w.close())
+	}
+	return errors.Join(errs...)
+}
+
+// buildFailoverForwarder builds one forwarder per endpoint with build and
+// returns them with the selection core; the caller wraps them in the
+// forwarder type of its signal.
+func buildFailoverForwarders[T interface{ close() error }](cfg Config, log *logger.ModuleLogger, build func(Config) (T, error)) ([]T, *failoverCore, error) {
+	eps := allEndpoints(cfg)
+	out := make([]T, 0, len(eps))
+	for _, ep := range eps {
+		c := cfg
+		c.Endpoint = ep
+		w, err := build(c)
+		if err != nil {
+			for _, built := range out {
+				_ = built.close()
+			}
+			var zero []T
+			return zero, nil, err
+		}
+		out = append(out, w)
+	}
+	return out, newFailoverCore(eps, cfg.FailoverCooldown, log), nil
 }

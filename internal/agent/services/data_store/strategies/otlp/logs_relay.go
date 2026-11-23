@@ -200,12 +200,20 @@ type logsRelay struct {
 
 func newLogsRelay(cfg Config, enricher *relayEnricher, moduleLogger *logger.ModuleLogger) (*logsRelay, error) {
 	reporter := newPartialSuccessReporter(moduleLogger, "relay")
-	var fwd logBatchForwarder
-	var err error
-	if cfg.Protocol == "http" {
-		fwd, err = newHTTPLogBatchForwarder(cfg, reporter)
-	} else {
-		fwd, err = newGRPCLogBatchForwarder(cfg, reporter)
+	build := func(c Config) (logBatchForwarder, error) {
+		if c.Protocol == "http" {
+			return newHTTPLogBatchForwarder(c, reporter)
+		}
+		return newGRPCLogBatchForwarder(c, reporter)
+	}
+	fwd, err := build(cfg)
+	if err == nil && len(cfg.FallbackEndpoints) > 0 {
+		var fwds []logBatchForwarder
+		var core *failoverCore
+		if fwds, core, err = buildFailoverForwarders(cfg, moduleLogger, build); err == nil {
+			_ = fwd.close()
+			fwd = &failoverLogBatchForwarder{core: core, fwds: fwds}
+		}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("building log batch forwarder: %w", err)

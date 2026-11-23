@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -32,7 +33,8 @@ import (
 //
 //   - metric: otlpmetricgrpc.Exporter | otlpmetrichttp.Exporter
 //   - log:    otlploggrpc.Exporter   | otlploghttp.Exporter
-//   - trace:  *otlptrace.Exporter wrapping a grpc or http otlptrace.Client
+//   - trace:  *otlptrace.Exporter wrapping a grpc or http otlptrace.Client,
+//     or the failover decorator over one per endpoint
 //
 // They are constructed lazily — the transport dial does NOT happen at
 // construction time; the first export call is what actually opens the
@@ -42,7 +44,7 @@ import (
 type exporters struct {
 	metric sdkmetric.Exporter
 	log    sdklog.Exporter
-	trace  *otlptrace.Exporter
+	trace  sdktrace.SpanExporter
 	// hints carries the throttle hint each signal's transport saw.
 	hints *hintSinks
 }
@@ -71,8 +73,7 @@ func buildExporters(ctx context.Context, cfg Config, log *logger.ModuleLogger) (
 	ctx = withHintSinks(ctx, exp.hints)
 
 	// With fallback_endpoints configured, each signal's exporter is a
-	// failover decorator over one exporter per endpoint (#217). Traces
-	// keep a single endpoint (failover not wired for the trace signal).
+	// failover decorator over one exporter per endpoint (#217).
 	failover := len(cfg.FallbackEndpoints) > 0
 
 	if cfg.Metrics.Enabled {
@@ -111,7 +112,13 @@ func buildExporters(ctx context.Context, cfg Config, log *logger.ModuleLogger) (
 	}
 
 	if cfg.Traces.Enabled {
-		te, err := buildTraceExporter(ctx, cfg)
+		var te sdktrace.SpanExporter
+		var err error
+		if failover {
+			te, err = buildFailoverTraceExporter(ctx, cfg, log)
+		} else {
+			te, err = buildTraceExporter(ctx, cfg)
+		}
 		if err != nil {
 			if exp.metric != nil {
 				_ = exp.metric.Shutdown(ctx)

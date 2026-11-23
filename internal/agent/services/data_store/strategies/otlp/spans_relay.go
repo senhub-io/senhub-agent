@@ -211,12 +211,20 @@ type spansRelay struct {
 
 func newSpansRelay(cfg Config, enricher *relayEnricher, moduleLogger *logger.ModuleLogger) (*spansRelay, error) {
 	reporter := newPartialSuccessReporter(moduleLogger, "relay")
-	var fwd spanForwarder
-	var err error
-	if cfg.Protocol == "http" {
-		fwd, err = newHTTPSpanForwarder(cfg, reporter)
-	} else {
-		fwd, err = newGRPCSpanForwarder(cfg, reporter)
+	build := func(c Config) (spanForwarder, error) {
+		if c.Protocol == "http" {
+			return newHTTPSpanForwarder(c, reporter)
+		}
+		return newGRPCSpanForwarder(c, reporter)
+	}
+	fwd, err := build(cfg)
+	if err == nil && len(cfg.FallbackEndpoints) > 0 {
+		var fwds []spanForwarder
+		var core *failoverCore
+		if fwds, core, err = buildFailoverForwarders(cfg, moduleLogger, build); err == nil {
+			_ = fwd.close()
+			fwd = &failoverSpanForwarder{core: core, fwds: fwds}
+		}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("building span forwarder: %w", err)
