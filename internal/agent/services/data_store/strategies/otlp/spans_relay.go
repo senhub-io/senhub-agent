@@ -164,7 +164,7 @@ func (f *httpSpanForwarder) forward(ctx context.Context, rs []*tracepb.ResourceS
 	// invisible from here (#819).
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("POST %s: unexpected status %d", f.url, resp.StatusCode)
+		return relayStatusError(f.url, resp)
 	}
 	var answer collectortracepb.ExportTraceServiceResponse
 	if proto.Unmarshal(respBody, &answer) == nil {
@@ -199,6 +199,9 @@ type spansRelay struct {
 	forwarder spanForwarder
 	enricher  *relayEnricher
 	logger    *logger.ModuleLogger
+	// queue keeps a batch the collector did not take on disk, to be replayed
+	// with the agent's own spans. nil when the queue is off.
+	queue *wireChannel
 
 	mu         sync.Mutex
 	subscribed <-chan []*tracepb.ResourceSpans
@@ -208,12 +211,20 @@ type spansRelay struct {
 
 func newSpansRelay(cfg Config, enricher *relayEnricher, moduleLogger *logger.ModuleLogger) (*spansRelay, error) {
 	reporter := newPartialSuccessReporter(moduleLogger, "relay")
-	var fwd spanForwarder
-	var err error
-	if cfg.Protocol == "http" {
-		fwd, err = newHTTPSpanForwarder(cfg, reporter)
-	} else {
-		fwd, err = newGRPCSpanForwarder(cfg, reporter)
+	build := func(c Config) (spanForwarder, error) {
+		if c.Protocol == "http" {
+			return newHTTPSpanForwarder(c, reporter)
+		}
+		return newGRPCSpanForwarder(c, reporter)
+	}
+	fwd, err := build(cfg)
+	if err == nil && len(cfg.FallbackEndpoints) > 0 {
+		var fwds []spanForwarder
+		var core *failoverCore
+		if fwds, core, err = buildFailoverForwarders(cfg, moduleLogger, build); err == nil {
+			_ = fwd.close()
+			fwd = &failoverSpanForwarder{core: core, fwds: fwds}
+		}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("building span forwarder: %w", err)
@@ -332,14 +343,48 @@ func (r *spansRelay) export(rs []*tracepb.ResourceSpans, spans int) {
 	// telemetry in the backend (#294). No-op when enrichment is disabled.
 	rs = r.enricher.enrichSpans(rs)
 
-	if err := r.forwarder.forward(ctx, rs); err != nil {
-		agentstate.IncrementOTLPExportErrors("traces")
-		r.logger.Warn().
-			Str("error", redactSensitive(err.Error())).
-			Int("resource_spans", len(rs)).
-			Int("spans", spans).
-			Msg("OTLP span relay export failed; batch dropped")
+	marshal := func() ([]byte, error) {
+		return proto.Marshal(&collectortracepb.ExportTraceServiceRequest{ResourceSpans: rs})
+	}
+	if r.queue != nil && r.queue.relayAdmit() == relayKeep {
+		if r.queue.keepRelayed(marshal, spans) {
+			r.logger.Debug().Int("spans", spans).Msg("OTLP span relay: batch kept on disk for replay")
+		}
 		return
+	}
+
+	started := time.Now()
+	if r.queue != nil {
+		started = r.queue.now()
+	}
+	if err := r.forwarder.forward(ctx, rs); err != nil {
+		var kept, throttled bool
+		if r.queue != nil {
+			kept, throttled = r.queue.relayResult(err, marshal, spans)
+		}
+		if !throttled {
+			agentstate.IncrementOTLPExportErrors("traces")
+		}
+		switch {
+		case kept && throttled:
+			r.logger.Debug().Int("spans", spans).Msg("OTLP span relay: backend is throttling; batch kept on disk for replay")
+		case kept:
+			r.logger.Warn().
+				Str("error", redactSensitive(err.Error())).
+				Int("resource_spans", len(rs)).
+				Int("spans", spans).
+				Msg("OTLP span relay export failed; batch kept on disk for replay")
+		default:
+			r.logger.Warn().
+				Str("error", redactSensitive(err.Error())).
+				Int("resource_spans", len(rs)).
+				Int("spans", spans).
+				Msg("OTLP span relay export failed; batch dropped")
+		}
+		return
+	}
+	if r.queue != nil {
+		r.queue.markSuccessSince(started)
 	}
 	agentstate.IncrementOTLPSpansRelayed(spans)
 	r.logger.Debug().

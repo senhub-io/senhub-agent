@@ -64,11 +64,11 @@ func init() {
 		"key_file", "logs", "logs_queue_max_age", "logs_queue_max_bytes", "match",
 		"max_active_series_per_probe", "max_concurrent_exports",
 		"max_elapsed_time", "max_export_bytes", "max_interval", "max_store_size", "memory_limit",
-		"metrics", "org_id", "path", "persistence", "probe_name", "probe_type",
+		"metrics", "metrics_queue_max_age", "metrics_queue_max_bytes", "org_id", "path", "persistence", "probe_name", "probe_type",
 		"protocol", "redact_attributes", "relay", "relay_enrichment",
 		"relay_tenant_overrides", "resource", "retry", "sample_ratio",
 		"signals", "soft_mib", "staleness_ttl", "tags", "temporality",
-		"tenant", "timeout", "tls", "traces", "unit", "url_path_prefix",
+		"tenant", "timeout", "tls", "traces", "traces_queue_max_age", "traces_queue_max_bytes", "unit", "url_path_prefix",
 		"value",
 	}, map[string]string{
 		// The spelling most OTLP tooling uses for "no TLS". This

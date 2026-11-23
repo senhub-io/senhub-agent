@@ -134,7 +134,7 @@ func IncrementOTLPMetricsRelayed(n int) {
 // empty on a healthy agent, and an empty panel reads as "no error" (#972).
 var (
 	OTLPSignals     = []string{"metrics", "logs", "traces"}
-	OTLPDropReasons = []string{"store_cap", "probe_cardinality", "memory_soft_limit", "memory_hard_limit", "staleness", "logs_queue_full", "dropped_by_age", "receiver_rejected", "record_too_large"}
+	OTLPDropReasons = []string{"store_cap", "probe_cardinality", "memory_soft_limit", "memory_hard_limit", "staleness", "logs_queue_full", "dropped_by_age", "metrics_queue_full", "metrics_dropped_by_age", "traces_queue_full", "traces_dropped_by_age", "queue_write_failed", "receiver_rejected", "record_too_large"}
 )
 
 // IncrementOTLPExportErrors records one failed export (after retry
@@ -176,6 +176,42 @@ func GetOTLPExportErrorsBySignal() map[string]uint64 {
 	return out
 }
 
+// otlpThrottled counts the exports a backend answered with a throttle
+// hint (HTTP 429/503 with Retry-After, gRPC RetryInfo), by signal. A
+// throttled backend is up and asking for less: its batches wait on disk and
+// the retry clock honours the hint, so it is not an export error and is
+// counted apart from them.
+var otlpThrottled = struct {
+	mu sync.RWMutex
+	m  map[string]uint64
+}{m: map[string]uint64{}}
+
+// IncrementOTLPThrottled records one export the backend asked the agent to
+// slow down on, for one signal ("metrics", "logs", "traces").
+func IncrementOTLPThrottled(signal string) {
+	if signal == "" {
+		signal = "unknown"
+	}
+	otlpThrottled.mu.Lock()
+	otlpThrottled.m[signal]++
+	otlpThrottled.mu.Unlock()
+}
+
+// GetOTLPThrottledBySignal returns a snapshot copy of the throttle
+// counters, every known signal present from 0.
+func GetOTLPThrottledBySignal() map[string]uint64 {
+	otlpThrottled.mu.RLock()
+	defer otlpThrottled.mu.RUnlock()
+	out := make(map[string]uint64, len(otlpThrottled.m)+len(OTLPSignals))
+	for _, k := range OTLPSignals {
+		out[k] = 0
+	}
+	for k, v := range otlpThrottled.m {
+		out[k] = v
+	}
+	return out
+}
+
 // GetOTLPMetricsPushedTotal / GetOTLPLogsPushedTotal /
 // GetOTLPSpansRelayedTotal / GetOTLPExportErrorsTotal are scrape-time
 // accessors. Read once per scrape by the Prometheus bridge.
@@ -192,11 +228,21 @@ func GetOTLPExportErrorsTotal() uint64   { return otlpExportErrors.Load() }
 // surface as the `reason` attribute on the
 // `senhub.agent.otlp.dropped` counter — keep them stable and small.
 func IncrementOTLPDropped(reason string) {
+	AddOTLPDropped(reason, 1)
+}
+
+// AddOTLPDropped records n datapoints, records or spans dropped for one
+// reason, under one lock: a queue evicting a file of tens of thousands of
+// points counts them in one step.
+func AddOTLPDropped(reason string, n int) {
+	if n <= 0 {
+		return
+	}
 	if reason == "" {
 		reason = "unknown"
 	}
 	otlpDropped.mu.Lock()
-	otlpDropped.m[reason]++
+	otlpDropped.m[reason] += uint64(n)
 	otlpDropped.mu.Unlock()
 }
 
@@ -239,6 +285,66 @@ func IncrementOTLPLogsReplayed(n int) {
 func RecordOTLPLogsQueueSize(records int, bytes int64) {
 	otlpLogsQueueRecords.Store(int64(records))
 	otlpLogsQueueBytes.Store(bytes)
+}
+
+// OTLPQueuedSignals are the request queues besides the logs dead-letter
+// queue: metrics, traces, and the relayed (third-party) logs, which are
+// verbatim requests and cannot share the SDK-record format of that queue.
+var OTLPQueuedSignals = []string{"metrics", "traces", "logs_relay"}
+
+// otlpWireQueue is the depth and traffic of one signal's request queue.
+type otlpWireQueue struct {
+	queued   atomic.Uint64 // units written to the queue (cumulative)
+	replayed atomic.Uint64 // units acknowledged after a replay (cumulative)
+	records  atomic.Int64  // units currently on disk (gauge)
+	bytes    atomic.Int64  // bytes currently held (gauge)
+}
+
+var otlpWireQueues = map[string]*otlpWireQueue{
+	"metrics":    {},
+	"traces":     {},
+	"logs_relay": {},
+}
+
+// OTLPQueueStats is one signal's queue as the scrape sees it.
+type OTLPQueueStats struct {
+	Records, Bytes   int64
+	Queued, Replayed uint64
+}
+
+func wireQueueFor(signal string) *otlpWireQueue { return otlpWireQueues[signal] }
+
+// IncrementOTLPQueued records n units (data points for metrics, spans for
+// traces) written to the signal's on-disk queue after a failed export.
+func IncrementOTLPQueued(signal string, n int) {
+	if q := wireQueueFor(signal); q != nil && n > 0 {
+		q.queued.Add(uint64(n))
+	}
+}
+
+// IncrementOTLPReplayed records n units acknowledged by the backend after
+// being replayed from the signal's queue.
+func IncrementOTLPReplayed(signal string, n int) {
+	if q := wireQueueFor(signal); q != nil && n > 0 {
+		q.replayed.Add(uint64(n))
+	}
+}
+
+// RecordOTLPQueueSize publishes the current depth of a signal's queue.
+func RecordOTLPQueueSize(signal string, records int, bytes int64) {
+	if q := wireQueueFor(signal); q != nil {
+		q.records.Store(int64(records))
+		q.bytes.Store(bytes)
+	}
+}
+
+// GetOTLPQueueStats returns one signal's queue depth and traffic.
+func GetOTLPQueueStats(signal string) OTLPQueueStats {
+	q := wireQueueFor(signal)
+	if q == nil {
+		return OTLPQueueStats{}
+	}
+	return OTLPQueueStats{Records: q.records.Load(), Bytes: q.bytes.Load(), Queued: q.queued.Load(), Replayed: q.replayed.Load()}
 }
 
 // GetOTLPLogsQueued* / GetOTLPLogsQueue* are scrape-time accessors.

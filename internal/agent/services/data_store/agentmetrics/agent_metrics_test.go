@@ -50,8 +50,10 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	// The entity-event hand-off adds four OpenTelemetry SDK series:
 	// processed, processed{error.type=queue_full}, queue.size, capacity;
 	// plus senhub.agent.entity.attribute.conflicts and .duplicates.merged;
-	// plus senhub.agent.self_logs.published and .dropped.
-	want := 34 + 6 + 2 + len(agentstate.OTLPSignals) + len(agentstate.OTLPDropReasons)
+	// plus senhub.agent.self_logs.published and .dropped;
+	// plus the four queue series of each signal that keeps a request queue;
+	// plus `senhub.agent.otlp.throttled`, one series per signal from 0.
+	want := 34 + 6 + 2 + 2*len(agentstate.OTLPSignals) + len(agentstate.OTLPDropReasons) + 4*len(agentstate.OTLPQueuedSignals)
 	if len(recs) != want {
 		t.Fatalf("expected %d records (no build info, no http requests, no collect errors, no checkpoint errors), got %d", want, len(recs))
 	}
@@ -62,6 +64,7 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	}
 	for _, want := range []string{
 		"senhub.agent.uptime_seconds",
+		"senhub.agent.otlp.throttled",
 		"senhub.agent.cache.entries",
 		"senhub.agent.probes.active",
 		"senhub.agent.probe.count",

@@ -19,6 +19,8 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -31,7 +33,8 @@ import (
 //
 //   - metric: otlpmetricgrpc.Exporter | otlpmetrichttp.Exporter
 //   - log:    otlploggrpc.Exporter   | otlploghttp.Exporter
-//   - trace:  *otlptrace.Exporter wrapping a grpc or http otlptrace.Client
+//   - trace:  *otlptrace.Exporter wrapping a grpc or http otlptrace.Client,
+//     or the failover decorator over one per endpoint
 //
 // They are constructed lazily — the transport dial does NOT happen at
 // construction time; the first export call is what actually opens the
@@ -41,17 +44,36 @@ import (
 type exporters struct {
 	metric sdkmetric.Exporter
 	log    sdklog.Exporter
-	trace  *otlptrace.Exporter
+	trace  sdktrace.SpanExporter
+	// hints carries the throttle hint each signal's transport saw.
+	hints *hintSinks
+}
+
+// sink returns the throttle hint collector of one signal, nil when the
+// exporters were not built with one.
+func (e *exporters) sink(signal string) *hintSink {
+	if e == nil || e.hints == nil {
+		return nil
+	}
+	switch signal {
+	case "metrics":
+		return e.hints.metrics
+	case "logs":
+		return e.hints.logs
+	case "traces":
+		return e.hints.traces
+	}
+	return nil
 }
 
 // buildExporters constructs the OTel SDK exporters based on cfg.
 // Any of the three can be nil if its signal is disabled.
 func buildExporters(ctx context.Context, cfg Config, log *logger.ModuleLogger) (*exporters, error) {
-	exp := &exporters{}
+	exp := &exporters{hints: newHintSinks()}
+	ctx = withHintSinks(ctx, exp.hints)
 
 	// With fallback_endpoints configured, each signal's exporter is a
-	// failover decorator over one exporter per endpoint (#217). Traces
-	// keep a single endpoint (failover not wired for the trace signal).
+	// failover decorator over one exporter per endpoint (#217).
 	failover := len(cfg.FallbackEndpoints) > 0
 
 	if cfg.Metrics.Enabled {
@@ -90,7 +112,13 @@ func buildExporters(ctx context.Context, cfg Config, log *logger.ModuleLogger) (
 	}
 
 	if cfg.Traces.Enabled {
-		te, err := buildTraceExporter(ctx, cfg)
+		var te sdktrace.SpanExporter
+		var err error
+		if failover {
+			te, err = buildFailoverTraceExporter(ctx, cfg, log)
+		} else {
+			te, err = buildTraceExporter(ctx, cfg)
+		}
 		if err != nil {
 			if exp.metric != nil {
 				_ = exp.metric.Shutdown(ctx)
@@ -154,9 +182,46 @@ func newHTTPClient(tlsConf *tls.Config, timeout, idleConnTimeout time.Duration) 
 	return &http.Client{Transport: transport, Timeout: timeout}
 }
 
+// newWireHTTPClient is newHTTPClient with the queue's transport hook under
+// it, for a signal whose failed exports are kept on disk. The idle timeout
+// is only overridden when one is configured, so the standard default holds
+// otherwise.
+func newWireHTTPClient(tlsConf *tls.Config, timeout, idleConnTimeout time.Duration, hints *hintSink) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = tlsConf
+	if idleConnTimeout > 0 {
+		transport.IdleConnTimeout = idleConnTimeout
+	}
+	return &http.Client{Transport: &wireRoundTripper{next: transport, hints: hints}, Timeout: timeout}
+}
+
+// newHintHTTPClient is newHTTPClient with a hook that reads the server's
+// throttle hint, for the logs signal, whose queue stores records rather than
+// requests and so needs no wire capture.
+func newHintHTTPClient(tlsConf *tls.Config, timeout, idleConnTimeout time.Duration, hints *hintSink) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = tlsConf
+	if idleConnTimeout > 0 {
+		transport.IdleConnTimeout = idleConnTimeout
+	}
+	return &http.Client{Transport: &hintRoundTripper{next: transport, hints: hints}, Timeout: timeout}
+}
+
 // ── Metrics ──────────────────────────────────────────────────────────
 
+// metricsExportConfig returns cfg adjusted for the metrics exporter. With the
+// dead-letter queue on, the queue is the retry mechanism: a failed push goes
+// to disk at once instead of holding the push for the SDK's retry window.
+func metricsExportConfig(cfg Config) Config {
+	if !cfg.Metrics.Enabled || cfg.Persistence.metricsQueuePath() == "" {
+		return cfg
+	}
+	cfg.Retry.Enabled = false
+	return cfg
+}
+
 func buildMetricExporter(ctx context.Context, cfg Config) (sdkmetric.Exporter, error) {
+	cfg = metricsExportConfig(cfg)
 	if cfg.Protocol == "http" {
 		return buildMetricExporterHTTP(ctx, cfg)
 	}
@@ -168,6 +233,9 @@ func buildMetricExporterGRPC(ctx context.Context, cfg Config) (sdkmetric.Exporte
 	opts := []otlpmetricgrpc.Option{
 		otlpmetricgrpc.WithEndpoint(rt.endpoint),
 		otlpmetricgrpc.WithTimeout(cfg.Timeout),
+	}
+	if cfg.Persistence.metricsQueuePath() != "" {
+		opts = append(opts, otlpmetricgrpc.WithDialOption(grpc.WithChainUnaryInterceptor(wireUnaryInterceptor(hintSinkFor(ctx, "metrics")))))
 	}
 	creds, insec, err := tlsCredentials(rt.tls)
 	if err != nil {
@@ -215,7 +283,9 @@ func buildMetricExporterHTTP(ctx context.Context, cfg Config) (sdkmetric.Exporte
 	} else {
 		opts = append(opts, otlpmetrichttp.WithTLSClientConfig(tlsConf))
 	}
-	if cfg.IdleConnTimeout > 0 {
+	if cfg.Persistence.metricsQueuePath() != "" {
+		opts = append(opts, otlpmetrichttp.WithHTTPClient(newWireHTTPClient(tlsConf, cfg.Timeout, cfg.IdleConnTimeout, hintSinkFor(ctx, "metrics"))))
+	} else if cfg.IdleConnTimeout > 0 {
 		opts = append(opts, otlpmetrichttp.WithHTTPClient(newHTTPClient(tlsConf, cfg.Timeout, cfg.IdleConnTimeout)))
 	}
 	if len(rt.headers) > 0 {
@@ -273,6 +343,9 @@ func buildLogExporterGRPC(ctx context.Context, cfg Config) (sdklog.Exporter, err
 		otlploggrpc.WithEndpoint(rt.endpoint),
 		otlploggrpc.WithTimeout(cfg.Timeout),
 	}
+	if hints := hintSinkFor(ctx, "logs"); hints != nil && cfg.Persistence.logsQueuePath() != "" {
+		opts = append(opts, otlploggrpc.WithDialOption(grpc.WithChainUnaryInterceptor(hintInterceptor(hints))))
+	}
 	creds, insec, err := tlsCredentials(rt.tls)
 	if err != nil {
 		return nil, err
@@ -319,7 +392,9 @@ func buildLogExporterHTTP(ctx context.Context, cfg Config) (sdklog.Exporter, err
 	} else {
 		opts = append(opts, otlploghttp.WithTLSClientConfig(tlsConf))
 	}
-	if cfg.IdleConnTimeout > 0 {
+	if hints := hintSinkFor(ctx, "logs"); hints != nil && cfg.Persistence.logsQueuePath() != "" {
+		opts = append(opts, otlploghttp.WithHTTPClient(newHintHTTPClient(tlsConf, cfg.Timeout, cfg.IdleConnTimeout, hints)))
+	} else if cfg.IdleConnTimeout > 0 {
 		opts = append(opts, otlploghttp.WithHTTPClient(newHTTPClient(tlsConf, cfg.Timeout, cfg.IdleConnTimeout)))
 	}
 	if len(rt.headers) > 0 {
@@ -343,7 +418,17 @@ func buildLogExporterHTTP(ctx context.Context, cfg Config) (sdklog.Exporter, err
 
 // ── Traces ───────────────────────────────────────────────────────────
 
+// tracesExportConfig is metricsExportConfig for the trace exporter.
+func tracesExportConfig(cfg Config) Config {
+	if !cfg.Traces.Enabled || cfg.Persistence.tracesQueuePath() == "" {
+		return cfg
+	}
+	cfg.Retry.Enabled = false
+	return cfg
+}
+
 func buildTraceExporter(ctx context.Context, cfg Config) (*otlptrace.Exporter, error) {
+	cfg = tracesExportConfig(cfg)
 	if cfg.Protocol == "http" {
 		return buildTraceExporterHTTP(ctx, cfg)
 	}
@@ -355,6 +440,9 @@ func buildTraceExporterGRPC(ctx context.Context, cfg Config) (*otlptrace.Exporte
 	opts := []otlptracegrpc.Option{
 		otlptracegrpc.WithEndpoint(rt.endpoint),
 		otlptracegrpc.WithTimeout(cfg.Timeout),
+	}
+	if cfg.Persistence.tracesQueuePath() != "" {
+		opts = append(opts, otlptracegrpc.WithDialOption(grpc.WithChainUnaryInterceptor(wireUnaryInterceptor(hintSinkFor(ctx, "traces")))))
 	}
 	creds, insec, err := tlsCredentials(rt.tls)
 	if err != nil {
@@ -402,7 +490,9 @@ func buildTraceExporterHTTP(ctx context.Context, cfg Config) (*otlptrace.Exporte
 	} else {
 		opts = append(opts, otlptracehttp.WithTLSClientConfig(tlsConf))
 	}
-	if cfg.IdleConnTimeout > 0 {
+	if cfg.Persistence.tracesQueuePath() != "" {
+		opts = append(opts, otlptracehttp.WithHTTPClient(newWireHTTPClient(tlsConf, cfg.Timeout, cfg.IdleConnTimeout, hintSinkFor(ctx, "traces"))))
+	} else if cfg.IdleConnTimeout > 0 {
 		opts = append(opts, otlptracehttp.WithHTTPClient(newHTTPClient(tlsConf, cfg.Timeout, cfg.IdleConnTimeout)))
 	}
 	if len(rt.headers) > 0 {
