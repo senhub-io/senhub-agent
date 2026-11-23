@@ -991,6 +991,11 @@ func parsePersistence(raw interface{}, out *PersistenceConfig) error {
 	// path even if set, enabled:true requires a path to be meaningful.
 	if v, ok := m["enabled"].(bool); ok {
 		out.Enabled = v
+		if !v {
+			// The file's master switch: every queue off. The environment
+			// can still switch one signal back on.
+			out.MetricsQueueEnabled, out.TracesQueueEnabled = false, false
+		}
 	}
 	if v, ok := m["path"].(string); ok {
 		out.Path = v
@@ -1139,19 +1144,23 @@ func parseByteSize(raw string) (int64, error) {
 // persistence.path when set, else under the agent state directory.
 // Empty means the queue is off.
 func (p PersistenceConfig) logsQueuePath() string {
-	return p.queueBase()
-}
-
-// queueBase is the directory the queues live under, empty when persistence
-// is off. Each signal keeps its files in its own subdirectory.
-func (p PersistenceConfig) queueBase() string {
 	if !p.Enabled {
 		return ""
 	}
+	return p.queueBase()
+}
+
+// queueBase is the directory the queues live under. Each signal keeps its files in its own subdirectory.
+func (p PersistenceConfig) queueBase() string {
 	if p.Path != "" {
 		return p.Path
 	}
 	return filepath.Join(instanceid.OwnStateDir(), defaultLogsQueueSubdir)
+}
+
+// anyQueue reports whether at least one queue is switched on.
+func (p PersistenceConfig) anyQueue() bool {
+	return p.logsQueuePath() != "" || p.metricsQueuePath() != "" || p.tracesQueuePath() != ""
 }
 
 // metricsQueuePath is where the metrics request queue lives; empty means off.

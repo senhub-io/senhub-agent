@@ -356,13 +356,15 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 	// cannot use is found here, once, and every signal keeps its SDK retry
 	// instead of a queue that cannot write.
 	exporterCfg := s.cfg
-	queuesUsable := s.cfg.Persistence.queueBase() != ""
+	queuesUsable := s.cfg.Persistence.anyQueue()
 	if queuesUsable && (s.cfg.Metrics.Enabled || s.cfg.Logs.Enabled || s.cfg.Traces.Enabled) {
 		if err := prepareQueueDir(s.cfg.Persistence.queueBase()); err != nil {
 			s.logger.Warn().Err(err).Str("path", s.cfg.Persistence.queueBase()).
 				Msg("OTLP queues disabled: the directory is not writable; failed log batches, metric pushes and trace spans are not kept across an outage")
 			queuesUsable = false
 			exporterCfg.Persistence.Enabled = false
+			exporterCfg.Persistence.MetricsQueueEnabled = false
+			exporterCfg.Persistence.TracesQueueEnabled = false
 		}
 	}
 

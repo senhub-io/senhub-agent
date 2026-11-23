@@ -215,7 +215,7 @@ func TestQueues_UnwritableDirOneWarningNoQueue(t *testing.T) {
 	if n := strings.Count(buf.String(), "OTLP queues disabled"); n != 1 {
 		t.Errorf("warning count = %d, want exactly 1\n%s", n, buf.String())
 	}
-	if cfg := metricsExportConfig(func() Config { c := s.cfg; c.Persistence.Enabled = false; return c }()); !cfg.Retry.Enabled {
+	if cfg := metricsExportConfig(func() Config { c := s.cfg; c.Persistence.MetricsQueueEnabled = false; return c }()); !cfg.Retry.Enabled {
 		t.Error("a signal without a queue must keep its SDK retry")
 	}
 }
