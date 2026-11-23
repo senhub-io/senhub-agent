@@ -3,13 +3,15 @@
 package netconn
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
+	"io"
+	"net"
 	"net/netip"
 	"syscall"
 	"testing"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -65,11 +67,7 @@ func buildInetDiagMsg(family uint8, state uint8, sport, dport uint16, src, dst n
 	binary.NativeEndian.PutUint32(msg[68:72], inode)
 
 	if info != nil {
-		var infoBuf bytes.Buffer
-		if err := binary.Write(&infoBuf, binary.NativeEndian, info); err != nil {
-			panic(err)
-		}
-		infoBytes := infoBuf.Bytes()
+		infoBytes := kernelTCPInfo(info)
 		if truncInfoLen > 0 && truncInfoLen < len(infoBytes) {
 			infoBytes = infoBytes[:truncInfoLen]
 		}
@@ -213,4 +211,117 @@ func TestDumpTCPLive(t *testing.T) {
 		}
 		t.Logf("state=%d local=%s remote=%s uid=%d info=%v rtt=%s", c.State, c.LocalAddr, c.RemoteAddr, c.UID, c.HasInfo, c.RTT)
 	}
+}
+
+// kernelTCPInfo lays the fields the parser reads out as the kernel does,
+// padding included, over the kernel's full struct size (232 bytes on 6.x).
+func kernelTCPInfo(info *unix.TCPInfo) []byte {
+	b := make([]byte, 232)
+	b[0] = info.State
+	binary.NativeEndian.PutUint32(b[tcpiRTT:], info.Rtt)
+	binary.NativeEndian.PutUint32(b[tcpiTotalRetrans:], info.Total_retrans)
+	binary.NativeEndian.PutUint64(b[tcpiBytesReceived:], info.Bytes_received)
+	binary.NativeEndian.PutUint64(b[tcpiBytesSent:], info.Bytes_sent)
+	return b
+}
+
+// The offsets must match the C layout of struct tcp_info, which unix.TCPInfo
+// mirrors with natural alignment. A packed read (binary.Read) is two bytes
+// off from tcpi_rto on, which multiplied every value by 65536.
+func TestTCPInfoOffsetsMatchKernelLayout(t *testing.T) {
+	var i unix.TCPInfo
+	for _, tc := range []struct {
+		name      string
+		got, want uintptr
+	}{
+		{"rtt", tcpiRTT, unsafe.Offsetof(i.Rtt)},
+		{"total_retrans", tcpiTotalRetrans, unsafe.Offsetof(i.Total_retrans)},
+		{"bytes_received", tcpiBytesReceived, unsafe.Offsetof(i.Bytes_received)},
+		{"bytes_sent", tcpiBytesSent, unsafe.Offsetof(i.Bytes_sent)},
+	} {
+		if tc.got != tc.want {
+			t.Errorf("%s offset = %d, kernel layout = %d", tc.name, tc.got, tc.want)
+		}
+	}
+	if packed := binary.Size(&i); uintptr(packed) == unsafe.Sizeof(i) {
+		t.Logf("unix.TCPInfo has no implicit padding in this x/sys version")
+	}
+}
+
+func TestParseTCPInfoAtKernelOffsets(t *testing.T) {
+	info := unix.TCPInfo{Rtt: 151, Total_retrans: 2, Bytes_sent: 14892, Bytes_received: 9000}
+	buf := buildTestNLMsg(unix.SOCK_DIAG_BY_FAMILY, buildInetDiagMsg(unix.AF_INET, 1, 40000, 443,
+		netip.MustParseAddr("10.0.0.1"), netip.MustParseAddr("10.0.0.2"), 0, 1, &info, 0))
+	conns, _, err := parseDiagMessages(buf)
+	if err != nil || len(conns) != 1 {
+		t.Fatalf("parse: %v, %d conns", err, len(conns))
+	}
+	c := conns[0]
+	if c.RTT != 151*time.Microsecond || c.Retransmits != 2 || c.BytesSent != 14892 || c.BytesReceived != 9000 {
+		t.Errorf("got rtt=%v retrans=%d sent=%d recv=%d", c.RTT, c.Retransmits, c.BytesSent, c.BytesReceived)
+	}
+}
+
+func TestParseOldKernelShortTCPInfo(t *testing.T) {
+	info := unix.TCPInfo{Rtt: 300, Total_retrans: 1, Bytes_received: 50, Bytes_sent: 70}
+	buf := buildTestNLMsg(unix.SOCK_DIAG_BY_FAMILY, buildInetDiagMsg(unix.AF_INET, 1, 40000, 443,
+		netip.MustParseAddr("10.0.0.1"), netip.MustParseAddr("10.0.0.2"), 0, 1, &info, 136))
+	conns, _, err := parseDiagMessages(buf)
+	if err != nil || len(conns) != 1 {
+		t.Fatalf("parse: %v, %d conns", err, len(conns))
+	}
+	c := conns[0]
+	if c.RTT != 300*time.Microsecond || c.Retransmits != 1 || c.BytesReceived != 50 || c.BytesSent != 0 {
+		t.Errorf("got rtt=%v retrans=%d recv=%d sent=%d", c.RTT, c.Retransmits, c.BytesReceived, c.BytesSent)
+	}
+}
+
+// A real loopback connection: the kernel's own counters for a known exchange
+// must come back at their real size, not shifted.
+func TestDumpTCPLiveValuesArePlausible(t *testing.T) {
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Skipf("no loopback listener: %v", err)
+	}
+	defer ln.Close()
+	accepted := make(chan net.Conn, 1)
+	go func() {
+		c, err := ln.Accept()
+		if err == nil {
+			_, _ = io.Copy(io.Discard, c)
+			accepted <- c
+		}
+	}()
+	client, err := net.Dial("tcp4", ln.Addr().String())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer client.Close()
+	const sent = 10000
+	if _, err := client.Write(make([]byte, sent)); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	time.Sleep(200 * time.Millisecond)
+
+	conns, err := DumpTCP()
+	if err != nil {
+		t.Skipf("DumpTCP failed (possibly not supported): %v", err)
+	}
+	local := netip.MustParseAddrPort(client.LocalAddr().String())
+	for _, c := range conns {
+		if c.LocalAddr != local || !c.HasInfo {
+			continue
+		}
+		if c.BytesSent != 0 && (c.BytesSent < sent || c.BytesSent > sent*4) {
+			t.Errorf("bytes_sent = %d for %d bytes written", c.BytesSent, sent)
+		}
+		if c.RTT <= 0 || c.RTT > time.Second {
+			t.Errorf("loopback rtt = %v", c.RTT)
+		}
+		if c.Retransmits > 100 {
+			t.Errorf("loopback retransmits = %d", c.Retransmits)
+		}
+		return
+	}
+	t.Skip("client socket not found in the dump")
 }

@@ -3,7 +3,6 @@
 package netconn
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"net/netip"
@@ -171,19 +170,19 @@ func parseInetDiagMsg(data []byte) (Conn, error) {
 			}
 			payload := attrs[4:rtaLen]
 			if rtaType == 2 { // INET_DIAG_INFO
-				var info unix.TCPInfo
-				infoSize := binary.Size(&info)
-				buf := make([]byte, infoSize)
-				copy(buf, payload[:min(len(payload), infoSize)])
-				reader := bytes.NewReader(buf)
-				if err := binary.Read(reader, binary.NativeEndian, &info); err != nil {
-					return c, fmt.Errorf("reading tcp_info: %w", err)
-				}
 				c.HasInfo = true
-				c.RTT = time.Duration(info.Rtt) * time.Microsecond
-				c.Retransmits = info.Total_retrans
-				c.BytesSent = info.Bytes_sent
-				c.BytesReceived = info.Bytes_received
+				if v, ok := tcpInfoU32(payload, tcpiRTT); ok {
+					c.RTT = time.Duration(v) * time.Microsecond
+				}
+				if v, ok := tcpInfoU32(payload, tcpiTotalRetrans); ok {
+					c.Retransmits = v
+				}
+				if v, ok := tcpInfoU64(payload, tcpiBytesReceived); ok {
+					c.BytesReceived = v
+				}
+				if v, ok := tcpInfoU64(payload, tcpiBytesSent); ok {
+					c.BytesSent = v
+				}
 				break
 			}
 			// Align to 4 bytes
@@ -195,4 +194,30 @@ func parseInetDiagMsg(data []byte) (Conn, error) {
 		}
 	}
 	return c, nil
+}
+
+// Offsets of struct tcp_info fields as the kernel lays them out
+// (include/uapi/linux/tcp.h). binary.Read over unix.TCPInfo cannot be used:
+// it packs the Go struct and drops the two bytes of padding the kernel keeps
+// before tcpi_rto, which shifts every later field by two bytes. An older
+// kernel sends a shorter struct; a field beyond its end stays zero.
+const (
+	tcpiRTT           = 68
+	tcpiTotalRetrans  = 100
+	tcpiBytesReceived = 128
+	tcpiBytesSent     = 200
+)
+
+func tcpInfoU32(b []byte, off int) (uint32, bool) {
+	if len(b) < off+4 {
+		return 0, false
+	}
+	return binary.NativeEndian.Uint32(b[off : off+4]), true
+}
+
+func tcpInfoU64(b []byte, off int) (uint64, bool) {
+	if len(b) < off+8 {
+		return 0, false
+	}
+	return binary.NativeEndian.Uint64(b[off : off+8]), true
 }
