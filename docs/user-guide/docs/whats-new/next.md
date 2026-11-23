@@ -32,3 +32,5 @@ Nothing released yet since 0.7.1. Changes land here as they are merged.
 
 <div class="rn-filter"></div>
 - **A value read from `${secret:}`, `${env:}` or `${file:}` never appears in the agent log.** The "Configuration changes detected" and "Starting new probe" lines masked only keys recognised by name (`password`, `bearer_token`...): a secret under a neutral key such as `x_ref`, or inside a URL, was written in clear. The agent now masks every value that came from a reference, whatever its key, including in the parameters of managed probes. A value taken from the `:-default` part of a reference is written in the file, not secret, and stays visible.
+
+- **`license show` and `doctor` say who signed the licence.** For a licence issued through a delegating platform, `senhub-agent license show` prints the platform, the delegation key id and the date the delegation ends, and the `config.license` check of `senhub-agent doctor` carries the same information. A licence signed by the root key says so. Renew the licence, or ask the platform to renew its delegation, before the delegation ends.

@@ -58,8 +58,8 @@ func healthyDoctorDeps() doctorDeps {
 		httpListen:  func(string) (string, string, int) { return "http", "127.0.0.1", 8080 },
 		portFree:    func(string, int) error { return nil },
 		secretStore: func(string) (secretReport, error) { return secretReport{}, nil },
-		licenseExpiry: func(string) (string, time.Time, error) {
-			return "pro", doctorNow.Add(200 * 24 * time.Hour), nil
+		licenseExpiry: func(string) (doctorLicense, error) {
+			return doctorLicense{tier: "pro", expires: doctorNow.Add(200 * 24 * time.Hour), signedBy: "signed by the root key"}, nil
 		},
 		outputTest: func(context.Context, string, map[string]interface{}, string, int) []otlp.ConnectionStep {
 			return []otlp.ConnectionStep{{Name: "dns", Passed: true}, {Name: "tcp", Passed: true}}
@@ -379,10 +379,21 @@ func TestDoctorConfigurationSection(t *testing.T) {
 		}
 		d.loadConfig = withLicense
 		expectLevel(t, runDoctorChecks(d), "config.license", levelOK)
-		d.licenseExpiry = func(string) (string, time.Time, error) { return "pro", doctorNow.Add(10 * 24 * time.Hour), nil }
+		d.licenseExpiry = func(string) (doctorLicense, error) {
+			return doctorLicense{tier: "pro", expires: doctorNow.Add(10 * 24 * time.Hour), signedBy: "signed by the root key"}, nil
+		}
 		expectLevel(t, runDoctorChecks(d), "config.license", levelWarn)
-		d.licenseExpiry = func(string) (string, time.Time, error) { return "pro", doctorNow.Add(-24 * time.Hour), nil }
+		d.licenseExpiry = func(string) (doctorLicense, error) {
+			return doctorLicense{tier: "pro", expires: doctorNow.Add(-24 * time.Hour), signedBy: "signed by the root key"}, nil
+		}
 		expectLevel(t, runDoctorChecks(d), "config.license", levelFail)
+		d.licenseExpiry = func(string) (doctorLicense, error) {
+			return doctorLicense{tier: "pro", expires: doctorNow.Add(200 * 24 * time.Hour), signedBy: "delegated to platform lab-bench (delegation kid k1, delegation expires 2027-01-01)"}, nil
+		}
+		c := expectLevel(t, runDoctorChecks(d), "config.license", levelOK)
+		if !strings.Contains(c.Message, "delegated to platform lab-bench") || !strings.Contains(c.Message, "delegation expires 2027-01-01") {
+			t.Errorf("message %q does not name the delegating platform and its expiry", c.Message)
+		}
 	})
 	t.Run("port held by someone else", func(t *testing.T) {
 		d := healthyDoctorDeps()

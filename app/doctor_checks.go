@@ -406,22 +406,23 @@ func licenseCheck(d doctorDeps, cfg doctorConfig) *doctorCheck {
 	if d.licenseExpiry == nil {
 		return nil
 	}
-	tier, expires, err := d.licenseExpiry(token)
+	lic, err := d.licenseExpiry(token)
 	if err != nil {
 		return nil
 	}
+	tier, expires := lic.tier, lic.expires
 	days := int(expires.Sub(d.now()).Hours() / 24)
 	var c doctorCheck
 	switch {
 	case expires.Before(d.now()):
 		c = failCheck(sectionConfiguration, "config.license",
-			fmt.Sprintf("the %s licence expired on %s", tier, expires.Format("2006-01-02")), "renew the licence, then 'senhub-agent license activate'")
+			fmt.Sprintf("the %s licence expired on %s, %s", tier, expires.Format("2006-01-02"), lic.signedBy), "renew the licence, then 'senhub-agent license activate'")
 	case days < licenseWarnDays:
 		c = warnCheck(sectionConfiguration, "config.license",
-			fmt.Sprintf("the %s licence expires on %s (%d days)", tier, expires.Format("2006-01-02"), days), "renew the licence, then 'senhub-agent license activate'")
+			fmt.Sprintf("the %s licence expires on %s (%d days), %s", tier, expires.Format("2006-01-02"), days, lic.signedBy), "renew the licence, then 'senhub-agent license activate'")
 	default:
 		c = okCheck(sectionConfiguration, "config.license",
-			fmt.Sprintf("%s licence valid until %s (%d days)", tier, expires.Format("2006-01-02"), days))
+			fmt.Sprintf("%s licence valid until %s (%d days), %s", tier, expires.Format("2006-01-02"), days, lic.signedBy))
 	}
 	return &c
 }

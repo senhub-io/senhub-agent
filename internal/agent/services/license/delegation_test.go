@@ -120,6 +120,13 @@ func TestDelegatedLicence(t *testing.T) {
 		if !got.DelegationExpiresAt.Equal(wantDlgExp) {
 			t.Errorf("DelegationExpiresAt = %v, want %v", got.DelegationExpiresAt, wantDlgExp)
 		}
+		if got.DelegationKID != "platform-a" {
+			t.Errorf("DelegationKID = %q, want platform-a", got.DelegationKID)
+		}
+		wantSigned := "delegated to platform platform-a (delegation kid platform-a, delegation expires " + wantDlgExp.Format("2006-01-02") + ")"
+		if got.SignedBy() != wantSigned {
+			t.Errorf("SignedBy = %q, want %q", got.SignedBy(), wantSigned)
+		}
 		if !v.IsProbeAuthorized(got, "citrix") {
 			t.Error("delegated Enterprise licence must authorize citrix")
 		}
@@ -403,6 +410,9 @@ func TestDelegatedLicence(t *testing.T) {
 		}
 		if got.Platform != "" || !got.DelegationExpiresAt.IsZero() {
 			t.Errorf("Platform = %q, want empty for root licence", got.Platform)
+		}
+		if got.SignedBy() != "signed by the root key" {
+			t.Errorf("SignedBy = %q, want the root key", got.SignedBy())
 		}
 	})
 }

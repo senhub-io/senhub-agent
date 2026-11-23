@@ -220,6 +220,7 @@ func handleLicenseShow(args *cliArgs.LicenseShowArgs) {
 	fmt.Printf("Subject: %s\n", validatedLicense.Subject)
 	fmt.Printf("Issued at: %s\n", validatedLicense.IssuedAt.Format(time.RFC1123))
 	fmt.Printf("Expires at: %s\n", validatedLicense.ExpiresAt.Format(time.RFC1123))
+	printLicenseSigner(os.Stdout, validatedLicense)
 
 	if validatedLicense.IsExpired {
 		fmt.Printf("\nStatus: EXPIRED\n")
@@ -314,4 +315,18 @@ func licenseCodeFrom(arg string, stdin *os.File) (string, error) {
 		return "", errors.New("no license code on standard input")
 	}
 	return code, nil
+}
+
+// printLicenseSigner tells who signed the licence: the root key, or a
+// delegating platform with its key id and the date its delegation ends.
+func printLicenseSigner(out io.Writer, lic *license.License) {
+	if lic.Platform == "" {
+		fmt.Fprintln(out, "Signed by: the root key")
+		return
+	}
+	fmt.Fprintf(out, "Signed by: platform %s (delegation)\n", lic.Platform)
+	fmt.Fprintf(out, "Delegation kid: %s\n", lic.DelegationKID)
+	if !lic.DelegationExpiresAt.IsZero() {
+		fmt.Fprintf(out, "Delegation expires at: %s\n", lic.DelegationExpiresAt.Format(time.RFC1123))
+	}
 }

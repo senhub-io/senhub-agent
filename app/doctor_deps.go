@@ -66,7 +66,7 @@ type doctorDeps struct {
 	httpListen     func(path string) (scheme, bind string, port int)
 	portFree       func(bind string, port int) error
 	secretStore    func(configDir string) (secretReport, error)
-	licenseExpiry  func(token string) (tier string, expires time.Time, err error)
+	licenseExpiry  func(token string) (doctorLicense, error)
 	outputTest     func(ctx context.Context, outputType string, params map[string]interface{}, agentKey string, port int) []otlp.ConnectionStep
 	freePercent    func(path string) (float64, error)
 	install        installProbe
@@ -110,16 +110,16 @@ func newDoctorDeps(configPath string) doctorDeps {
 		outputTest: func(ctx context.Context, outputType string, params map[string]interface{}, agentKey string, port int) []otlp.ConnectionStep {
 			return http.RunOutputConnectionTest(ctx, outputType, params, doctorOutputTimeout, agentKey, port)
 		},
-		licenseExpiry: func(token string) (string, time.Time, error) {
+		licenseExpiry: func(token string) (doctorLicense, error) {
 			validator, err := license.GetDefaultValidator(7)
 			if err != nil {
-				return "", time.Time{}, fmt.Errorf("building the licence validator: %w", err)
+				return doctorLicense{}, fmt.Errorf("building the licence validator: %w", err)
 			}
 			lic, err := validator.ValidateLicense(token)
 			if err != nil {
-				return "", time.Time{}, fmt.Errorf("validating the licence: %w", err)
+				return doctorLicense{}, fmt.Errorf("validating the licence: %w", err)
 			}
-			return string(lic.Tier), lic.ExpiresAt, nil
+			return doctorLicense{tier: string(lic.Tier), expires: lic.ExpiresAt, signedBy: lic.SignedBy()}, nil
 		},
 		freePercent: diskFreePercent,
 		install:     platformInstallProbe(),
@@ -130,6 +130,13 @@ func newDoctorDeps(configPath string) doctorDeps {
 		},
 		ebpf: func() ebpfclient.Status { return ebpfclient.Inspect(ebpfclient.New("")) },
 	}
+}
+
+// doctorLicense is what the licence check needs from a validated token.
+type doctorLicense struct {
+	tier     string
+	expires  time.Time
+	signedBy string
 }
 
 // collectDoctorStatus is `status` without its printing: the service

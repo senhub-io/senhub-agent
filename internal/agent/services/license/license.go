@@ -110,9 +110,25 @@ type License struct {
 	// Platform is the signing platform named by the delegation; empty
 	// for a root-signed licence.
 	Platform string
+	// DelegationKID is the key id of the delegation; empty for a
+	// root-signed licence.
+	DelegationKID string
 	// DelegationExpiresAt is the delegation's exp; zero for a
 	// root-signed licence.
 	DelegationExpiresAt time.Time
+}
+
+// SignedBy says who signed the licence, for the operator: the delegating
+// platform with its key id and the delegation expiry, or the root key.
+func (l *License) SignedBy() string {
+	if l.Platform == "" {
+		return "signed by the root key"
+	}
+	s := fmt.Sprintf("delegated to platform %s (delegation kid %s", l.Platform, l.DelegationKID)
+	if !l.DelegationExpiresAt.IsZero() {
+		s += ", delegation expires " + l.DelegationExpiresAt.Format("2006-01-02")
+	}
+	return s + ")"
 }
 
 // Validator validates license tokens
@@ -240,11 +256,13 @@ func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
 	}
 	var platform string
 	var delegationExpiresAt time.Time
+	var delegationKID string
 	if delegation != nil {
 		if err := checkDelegatedLicenceClaims(claims, issuedAt, expiresAt, delegation); err != nil {
 			return nil, err
 		}
 		platform = delegation.Platform
+		delegationKID = delegation.KID
 		if delegation.RegisteredClaims.ExpiresAt != nil {
 			delegationExpiresAt = delegation.RegisteredClaims.ExpiresAt.Time
 		}
@@ -261,6 +279,7 @@ func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
 		IsExpired:           isExpired,
 		GracePeriodDays:     v.gracePeriodDays,
 		Platform:            platform,
+		DelegationKID:       delegationKID,
 		DelegationExpiresAt: delegationExpiresAt,
 	}
 
