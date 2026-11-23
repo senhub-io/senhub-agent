@@ -311,3 +311,58 @@ func TestEdgeMetrics_JoinMatchesIPv4MappedLocalAddress(t *testing.T) {
 		t.Fatal("unmapped local address did not join a mapped gopsutil string")
 	}
 }
+
+func TestEdgeMetrics_RetiredSocketChurnAndCapAreBounded(t *testing.T) {
+	rows := []gnet.ConnectionStat{conn(statusEstablished, "10.0.0.5", 53000, "8.8.8.8", 443, 100)}
+	s, reg := edgeSource(rows)
+	reg.limit = 8
+	observeOK(t, s)
+	reg.collect([]netconn.Conn{nc("10.0.0.5", 53000, "8.8.8.8", 443, 1, 0, 0, 10, 0)})
+
+	t.Run("sockets of a retired edge that left the table are dropped", func(t *testing.T) {
+		s.connections = fakeConns(nil)
+		for i := 0; i <= earnWindow+1; i++ {
+			observeOK(t, s)
+		}
+		if len(reg.retiredTuples) == 0 {
+			t.Fatal("setup: expected a retained retired socket")
+		}
+		reg.collect(nil)
+		if len(reg.retiredTuples) != 0 || len(reg.socks) != 0 {
+			t.Errorf("not dropped: retired=%v socks=%v", reg.retiredTuples, reg.socks)
+		}
+	})
+
+	t.Run("churn past the cap evicts and counts", func(t *testing.T) {
+		before := reg.evicted
+		var batch []netconn.Conn
+		for i := 0; i < 50; i++ {
+			batch = append(batch, nc("10.0.0.5", uint16(40000+i), "8.8.8.8", 443, uint32(100+i), 0, 0, 1, 1))
+		}
+		s.connections = fakeConns(rows)
+		observeOK(t, s)
+		reg.mu.Lock()
+		for i := 0; i < 50; i++ {
+			reg.byTuple[tupleKey{laddr: "10.0.0.5", lport: uint32(40000 + i), raddr: "8.8.8.8", rport: 443}] = reg.byTupleAny()
+		}
+		reg.mu.Unlock()
+		reg.collect(batch)
+		if len(reg.socks) > reg.limit {
+			t.Errorf("socks = %d, cap %d", len(reg.socks), reg.limit)
+		}
+		if reg.evicted-before != 42 {
+			t.Errorf("evicted = %d, want 42", reg.evicted-before)
+		}
+		if got := capMap(map[int]int{1: 1, 2: 2, 3: 3}, 1); got != 2 {
+			t.Errorf("capMap dropped %d, want 2", got)
+		}
+	})
+}
+
+// byTupleAny returns any attributed edge; helper for the cap test.
+func (r *edgeRegistry) byTupleAny() edgeKey {
+	for k := range r.edges {
+		return k
+	}
+	return edgeKey{}
+}

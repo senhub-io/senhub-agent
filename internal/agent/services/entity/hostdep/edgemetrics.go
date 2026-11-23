@@ -90,7 +90,13 @@ type edgeRegistry struct {
 	// series instead of restarting at zero, which a consumer reads as a reset.
 	retiredAt map[edgeKey]time.Time
 	now       func() time.Time
+	// limit caps each of the socket maps; evicted counts what the cap dropped.
+	limit   int
+	evicted uint64
 }
+
+// maxTrackedSockets bounds the per-socket maps whatever the socket churn.
+const maxTrackedSockets = 65536
 
 // totalsRetention bounds how long a retired edge's totals are kept: longer than
 // the miss tolerance of the debounce at any sane cadence, short enough that
@@ -107,12 +113,21 @@ func newEdgeRegistry() *edgeRegistry {
 
 		retiredAt: map[edgeKey]time.Time{},
 		now:       time.Now,
+		limit:     maxTrackedSockets,
 	}
 }
 
 // sharedEdges is the registry the production source publishes to and
 // CollectEdgeMetrics reads; one per process because there is one host.
 var sharedEdges = newEdgeRegistry()
+
+// EdgeEvictions is how many socket entries the size cap has dropped so far; an
+// evicted socket may be counted again from its full value when next seen.
+func EdgeEvictions() uint64 {
+	sharedEdges.mu.Lock()
+	defer sharedEdges.mu.Unlock()
+	return sharedEdges.evicted
+}
 
 // CollectEdgeMetrics turns one socket-table read into per-edge metrics for the
 // edges hostdep currently emits. It returns nothing until hostdep has emitted
@@ -193,6 +208,7 @@ func (r *edgeRegistry) publish(emitted map[peerKey]edgeKey, deps []dependant) {
 			delete(retiredTuples, t)
 		}
 	}
+	r.evicted += capMap(retiredTuples, r.limit)
 	r.retiredTuples = retiredTuples
 }
 
@@ -210,6 +226,7 @@ func (r *edgeRegistry) collect(conns []netconn.Conn) []EdgeMetric {
 		n   int
 	}
 	rtts := map[edgeKey]rttSum{}
+	stillThere := map[tupleKey]edgeKey{}
 	seen := make(map[sockKey]sockState, len(r.socks))
 
 	for _, c := range conns {
@@ -223,6 +240,7 @@ func (r *edgeRegistry) collect(conns []netconn.Conn) []EdgeMetric {
 			if ek, retired = r.retiredTuples[t]; !retired {
 				continue
 			}
+			stillThere[t] = ek
 		}
 		sk := sockKey{inode: c.Inode}
 		if c.Inode == 0 {
@@ -274,6 +292,9 @@ func (r *edgeRegistry) collect(conns []netconn.Conn) []EdgeMetric {
 	}
 	// Sockets that did not appear are gone: forget them.
 	r.socks = seen
+	r.evicted += capMap(r.socks, r.limit)
+	// A retired edge's socket that left the table can never come back.
+	r.retiredTuples = stillThere
 
 	out := make([]EdgeMetric, 0, len(r.totals))
 	for ek, tot := range r.totals {
@@ -309,4 +330,20 @@ func nonNegDelta(cur, prev uint64) uint64 {
 		return 0
 	}
 	return cur - prev
+}
+
+// capMap evicts entries until m holds at most limit, and returns how many it
+// dropped. Which ones go is arbitrary: past the cap the host is churning more
+// sockets than we are willing to remember, and the only cost of forgetting one
+// is counting it again from its full value.
+func capMap[K comparable, V any](m map[K]V, limit int) uint64 {
+	var n uint64
+	for k := range m {
+		if len(m) <= limit {
+			break
+		}
+		delete(m, k)
+		n++
+	}
+	return n
 }
