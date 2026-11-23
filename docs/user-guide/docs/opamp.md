@@ -45,6 +45,8 @@ opamp:
     signing_keys: [{id: <id>, public_key: <base64>}]
 ```
 
+The endpoint, the tenant and the overlay key id and public key are those of your fleet server: copy them from its console rather than from this page. The values above are placeholders, and an agent given a wrong endpoint never connects.
+
 `tls.ca_file` is optional; the system store is used without it. A token is never written in clear; use a secret store reference.
 
 ## The signed overlay
