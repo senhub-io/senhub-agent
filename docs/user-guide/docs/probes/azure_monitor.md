@@ -3,6 +3,8 @@
 !!! warning
     **License: Pro** - Requires a Pro or Enterprise license.
 
+    Shipped in the `senhub-agent` edition only (package or MSI); the `senhub-agent-oss` edition does not contain this probe, nor `senhub-agent check azure`, which answers `unknown command or flag "check"` there.
+
 # Overview
 
 The Azure Monitor probe finds the Azure resources of one or more subscriptions and publishes their platform metrics, as Azure Monitor holds them, without a list to maintain. Resources are discovered through **Azure Resource Graph**, filtered by ARM type, resource group and tag; the metrics of each resource are then read through the Azure Monitor metrics API of Azure Resource Manager. Authentication is an Entra ID app registration (client credentials): nothing is installed on the monitored resources.
