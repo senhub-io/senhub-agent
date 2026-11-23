@@ -32,6 +32,7 @@ const doctorOutputTimeout = 8 * time.Second
 // function means the host cannot answer, and the check is skipped.
 type installProbe struct {
 	unit         func() (string, error)
+	dropIns      func() []string
 	binaryExists func(path string) bool
 	mainPID      func() (string, error)
 	exeLink      func(pid string) (string, error)

@@ -90,6 +90,10 @@ func checkInstall(d doctorDeps, cfg doctorConfig, st statusResult) []doctorCheck
 		serviceUser = installedServiceUser(unit)
 	}
 
+	if c := dependsOnCapsCheck(d, cfg, unit, unitErr, serviceUser); c != nil {
+		out = append(out, *c)
+	}
+
 	if bin := binaryCheck(d, st); bin != nil {
 		out = append(out, *bin)
 	}

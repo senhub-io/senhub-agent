@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -19,6 +21,17 @@ func platformInstallProbe() installProbe {
 				return "", fmt.Errorf("reading %s: %w", loadedUnitPath(), err)
 			}
 			return string(data), nil
+		},
+		dropIns: func() []string {
+			paths, _ := filepath.Glob(loadedUnitPath() + ".d/*.conf")
+			sort.Strings(paths)
+			var texts []string
+			for _, p := range paths {
+				if raw, err := os.ReadFile(p); err == nil { // #nosec G304 - a drop-in of the installed unit
+					texts = append(texts, string(raw))
+				}
+			}
+			return texts
 		},
 		binaryExists: func(path string) bool {
 			info, err := os.Stat(path)

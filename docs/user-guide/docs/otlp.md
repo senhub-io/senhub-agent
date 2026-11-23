@@ -367,7 +367,7 @@ traced to its cause from the agent log.
       interval: 60s            # heartbeat cadence; also the liveness backstop
       buffer_size: 256         # bounded queue; drop-oldest beyond
       depends_on_enabled: false  # opt-in (default false): outbound dependency
-                                 # edges. Needs root — see below
+                                 # edges. Needs root or two capabilities — see below
       depends_on_debounce: 3   # scrapes (not necessarily consecutive) before an outbound
                                # dependency edge is emitted (>= 1, default 3)
       depends_on_exclude_cidrs: []  # peer ranges dropped before anything is
@@ -447,17 +447,36 @@ it is this configuration.
 say "this service talks to that endpoint". It is off by default because mapping
 a host's connections can be privacy-sensitive.
 
-!!! warning "Outbound dependency discovery needs root"
+!!! warning "Outbound dependency discovery needs privileges"
 
     Mapping a socket to the process that owns it reads `/proc/<pid>/fd`, and
     only the owner may read it. The agent runs as a service account by
     default, so it can attribute its **own** connections and nothing else —
     every other service's dependencies are invisible.
 
-    On a non-root install the agent says so once at startup, naming the
-    counts and the account, and reports its view as failed rather than
-    reporting an empty graph as fact. Leave the option off, or run the agent
-    as root if you want the whole host's dependencies.
+    Two ways to see the whole host. Run the agent as root, or keep the
+    service account and give the unit two capabilities in a drop-in
+    (`systemctl edit senhub-agent`):
+
+    ```ini
+    [Service]
+    AmbientCapabilities=CAP_DAC_READ_SEARCH CAP_SYS_PTRACE
+    ```
+
+    then `systemctl restart senhub-agent`. The processes of other users
+    (databases, web servers, root daemons) are then named correctly. The
+    packaged unit grants neither, so a default install stays blind, as
+    described above.
+
+    On a non-root install without them the agent says so once at startup,
+    naming the counts and the account, and reports its view as failed rather
+    than reporting an empty graph as fact. `senhub-agent doctor` warns
+    (`install.depends_on_caps`) when `entities.depends_on` is on and the unit
+    and its drop-ins lack either capability.
+
+    A peer on a loopback address is kept when it listens on a service port,
+    so the graph shows what talks to what inside one host. A loopback peer on
+    an ephemeral port (the client side of a local connection) is dropped.
 
 `depends_on_debounce` controls how durable an outbound connection must be
 before it appears as a `depends_on` edge: a peer endpoint must be seen on
