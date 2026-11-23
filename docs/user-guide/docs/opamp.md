@@ -91,7 +91,7 @@ The block is decoded strictly: an unknown field, a wrong type or a malformed ver
 | `downgrade_msi` | A lower target on an MSI install: Windows Installer does not go back in place. |
 | `beta_msi` | A beta target on an MSI install: no beta MSI is published. |
 | `rolled_back:<version>` | The target is the version that failed to start on this agent and was restored. The memory lasts until another version installs successfully; `retry: true` lifts it. |
-| `not_replaceable` | This install cannot replace itself, for example a Linux install the service account cannot write (`.deb`, `.rpm`, tarball). |
+| `not_replaceable` | This install cannot replace itself, a tarball install, or a `.deb` or `.rpm` install whose root update unit is disabled (see [the root update unit](installation.md#the-root-update-unit)). |
 
 **What the agent reports.** In the agent description, refreshed at each change and present from the first one:
 

@@ -15,7 +15,7 @@ case "$1" in
             exit 0
         fi
         # dpkg purge only: removes what the operator and the agent created.
-        rm -rf /etc/senhub-agent /var/lib/senhub-agent /var/log/senhub-agent
+        rm -rf /etc/senhub-agent /var/lib/senhub-agent /var/lib/senhub-agent-update /var/log/senhub-agent
         if getent passwd senhub >/dev/null 2>&1; then
             userdel senhub >/dev/null 2>&1 || true
         fi

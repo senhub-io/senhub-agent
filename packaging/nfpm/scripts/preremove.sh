@@ -16,8 +16,13 @@ if [ "$1" = 0 ] && command -v rpm >/dev/null 2>&1; then
 fi
 
 if [ -d /run/systemd/system ]; then
+    systemctl stop senhub-agent-update.path || true
+    systemctl disable senhub-agent-update.path || true
     systemctl stop senhub-agent.service || true
     systemctl disable senhub-agent.service || true
 fi
+
+# Files an update keeps beside the binary; the package does not own them.
+rm -f /usr/bin/senhub-agent.previous /usr/bin/.senhub-agent.failed /usr/bin/.senhub-agent.new /usr/bin/.senhub-agent.old
 
 exit 0

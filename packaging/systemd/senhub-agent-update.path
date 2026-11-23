@@ -1,0 +1,13 @@
+[Unit]
+Description=SenHub Agent update request
+Documentation=https://github.com/senhub-io/senhub-agent
+
+[Path]
+# The service writes a version here when an update is driven from the SenHub
+# cloud or when a new version fails to start. The path unit only starts the
+# root service below; it reads nothing itself.
+PathExists=/var/lib/senhub-agent/update-request/request
+Unit=senhub-agent-update.service
+
+[Install]
+WantedBy=multi-user.target

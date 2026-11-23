@@ -1,0 +1,3 @@
+This file marks a package install whose service may ask senhub-agent-update.path
+for an update. Disable the path unit to take that away:
+  systemctl disable --now senhub-agent-update.path

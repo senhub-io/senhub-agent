@@ -100,6 +100,19 @@ fi
 
 systemctl daemon-reload || true
 
+# The root update path unit is enabled once per host, on the install or the
+# first upgrade that brings it. An operator who disables it afterwards keeps
+# it disabled: the marker records that the choice was offered.
+root_update_marker=/var/lib/senhub-agent/.root-update-0.7.2
+if [ ! -e "${root_update_marker}" ]; then
+    systemctl enable --now senhub-agent-update.path || true
+    mkdir -p /var/lib/senhub-agent
+    : > "${root_update_marker}"
+    chown senhub:senhub "${root_update_marker}" 2>/dev/null || true
+else
+    systemctl try-restart senhub-agent-update.path || true
+fi
+
 if [ "${fresh}" = 1 ] || [ "${migrated}" = 1 ]; then
     systemctl enable senhub-agent.service || true
     # restart, not start: an edition switch on rpm leaves the replaced

@@ -1,0 +1,58 @@
+[Unit]
+Description=SenHub Agent update, applied as root on the service's request
+Documentation=https://github.com/senhub-io/senhub-agent
+After=network-online.target
+Wants=network-online.target
+# At most six runs an hour: a service that keeps asking cannot turn this unit
+# into a download loop. (Start-rate limiting lives in [Unit], see #577.)
+StartLimitIntervalSec=3600
+StartLimitBurst=6
+
+[Service]
+Type=oneshot
+# `update-apply` takes no argument and no input but the request file, which it
+# audits before doing anything: owner, mode, type, size, content, then the
+# signed version list, the archive hash and its signature.
+ExecStart=/usr/bin/senhub-agent update-apply
+TimeoutStartSec=900
+User=root
+
+# Root's own state: the list sequence floor and the update lock, out of reach
+# of the service user (/var/lib/senhub-agent-update, 0700).
+StateDirectory=senhub-agent-update
+StateDirectoryMode=0700
+
+# Read-only system except what an update writes: the binary and the files kept
+# beside it (/usr/bin), and the service's state directory (request, rollback
+# markers).
+ProtectSystem=strict
+ReadWritePaths=/usr/bin /var/lib/senhub-agent
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true
+
+# DAC_OVERRIDE and FOWNER: read and remove the request in the service's
+# directory, write the rollback markers there. Nothing else is granted.
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_FOWNER
+AmbientCapabilities=
+
+ProtectHostname=true
+ProtectClock=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RemoveIPC=true
+UMask=0022
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+# The registry over HTTPS (inet, inet6, DNS stub), and systemd's private
+# socket to restart the service (unix).
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
