@@ -1002,3 +1002,60 @@ func TestFleetUpdate_MismatchedPairIsFetchedAgain(t *testing.T) {
 		t.Fatal("a list with the signature of another was accepted")
 	}
 }
+
+// A directive with retry is applied again after every restart. The retry
+// lifts the rolled-back memory once per revision, not once per restart.
+func TestFleetUpdate_RetryIsUsedOncePerRevision(t *testing.T) {
+	cleanUpdateState(t)
+	withRunningVersion(t, "0.7.1")
+	withInstallKind(t, KindZip)
+	f := newRegistryFake(t)
+	f.useOwnKey(t, list("0.7.2", "0.7.1"), nil)
+	u := f.updater(t, "windows", true)
+	writeRollback := func() {
+		rec := RolledBackRecord{FailedVersion: "0.7.2", RestoredVersion: "0.7.1", Outcome: OutcomeRestored}
+		if err := u.rollbackEnvFor(u.target).writeRolledBackRecord(rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// One cycle on a fresh process, the target failing to start each time.
+	cycle := func(rev uint64, retry bool) {
+		t.Helper()
+		resetStatusForTest()
+		writeRollback()
+		// The restart into the failed version ends in the rollback, which
+		// leaves no pending marker.
+		_ = os.Remove(filepath.Join(u.stateDir, pendingFileName))
+		if err := os.WriteFile(u.target, []byte("old binary"), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := u.updateForDirective(Directive{Auto: true, TargetVersion: "0.7.2", Retry: retry, Revision: rev}, f.srv.URL); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for i := 0; i < 3; i++ {
+		cycle(5, true)
+	}
+	if got := len(f.downloads()); got != 1 {
+		t.Fatalf("revision 5 applied 3 times: %d install attempts, want 1", got)
+	}
+	wantStatus(t, StateRolledBack, "0.7.2", "rolled_back:0.7.2")
+
+	cycle(6, true)
+	if got := len(f.downloads()); got != 2 {
+		t.Fatalf("a new revision with retry: %d attempts, want 2", got)
+	}
+	cycle(6, true)
+	cycle(6, true)
+	if got := len(f.downloads()); got != 2 {
+		t.Fatalf("revision 6 applied again: %d attempts, want 2", got)
+	}
+
+	for i := 0; i < 3; i++ {
+		cycle(7, false)
+	}
+	if got := len(f.downloads()); got != 2 {
+		t.Fatalf("retry false: %d attempts, want none more", got)
+	}
+}

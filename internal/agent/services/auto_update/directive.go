@@ -13,8 +13,13 @@ type Directive struct {
 	TargetVersion string
 	// AllowDowngrade permits a target lower than the running version.
 	AllowDowngrade bool
-	// Retry permits a target that failed to start on this agent.
+	// Retry permits a target that failed to start on this agent, once per
+	// Revision.
 	Retry bool
+	// Revision is the revision of the server setting the directive comes
+	// from. A directive applied again at the same revision (a restart, a
+	// resend) does not retry a second time.
+	Revision uint64
 }
 
 var (

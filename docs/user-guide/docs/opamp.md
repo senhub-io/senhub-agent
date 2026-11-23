@@ -76,7 +76,7 @@ A fleet server can turn the automatic update on or off for an agent and give it 
 | `auto` | Required. `true` turns the automatic update on, `false` turns it off: no check, no call to the registry. |
 | `target_version` | Optional, an exact `X.Y.Z` or `X.Y.Z-beta.N`. Absent, the agent follows the latest published stable version. Ignored when `auto` is `false`. |
 | `allow_downgrade` | Optional, default `false`. Required when the target is lower than the running version. |
-| `retry` | Optional, default `false`. Allows again a target that failed to start on this agent and was restored. |
+| `retry` | Optional, default `false`. Allows again a target that failed to start on this agent and was restored, once per overlay revision: the agent applies the block again after each restart, and a restart or a resend of the same revision does not retry again. A new revision with `retry: true` tries once more. |
 
 The block is decoded strictly: an unknown field, a wrong type or a malformed version is refused with `schema`, and so is a block sent together with `auto_update` (which pauses the update; with the `update` block, `update.auto` takes its place) or sent to an agent that does not announce v2.
 

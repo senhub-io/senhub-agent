@@ -127,8 +127,12 @@ type UpdateDirective struct {
 	TargetVersion string
 	// AllowDowngrade permits a target lower than the running version.
 	AllowDowngrade bool
-	// Retry permits a target that failed to start on this agent.
+	// Retry permits a target that failed to start on this agent, once per
+	// Revision.
 	Retry bool
+	// Revision is the overlay revision the directive comes from; a
+	// directive applied again at the same revision does not retry again.
+	Revision uint64
 }
 
 // UpdateStatus is the state of the updater and the way the agent was
