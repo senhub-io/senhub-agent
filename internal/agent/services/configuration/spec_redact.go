@@ -14,32 +14,51 @@ import (
 func maskSpecSecrets(data *LocalConfigurationData) {
 	for _, p := range data.Probes {
 		if s, ok := spec.For(p.Type); ok {
-			for _, path := range s.SecretPaths() {
-				maskSpecPath(p.Params, strings.Split(path, "."))
-			}
+			maskSecretPaths(p.Params, s)
 		}
 	}
 	for _, st := range data.Storage {
 		if o, ok := outputspec.For(st.Name); ok {
-			for _, path := range o.SecretPaths() {
-				maskSpecPath(st.Params, strings.Split(path, "."))
-			}
+			maskSecretPaths(st.Params, spec.Probe{Type: o.Type, Params: o.Params})
 		}
+	}
+}
+
+// maskSecretPaths masks every parameter the schema declares secret,
+// sparing the keys a secret mapping declares readable.
+func maskSecretPaths(params interface{}, s spec.Probe) {
+	for _, path := range s.SecretPaths() {
+		maskSpecPathKeeping(params, strings.Split(path, "."), s.ReadableKeysAt(path))
 	}
 }
 
 // maskSpecPath masks the value at the dotted path segs inside v.
 // Anything that is not a map is left untouched.
-func maskSpecPath(v interface{}, segs []string) {
+func maskSpecPath(v interface{}, segs []string) { maskSpecPathKeeping(v, segs, nil) }
+
+// maskSpecPathKeeping is maskSpecPath for a secret mapping that declares
+// some keys readable: those entries (compared without case) keep their
+// value, every other entry is masked.
+func maskSpecPathKeeping(v interface{}, segs []string, keep []string) {
 	switch m := v.(type) {
 	case map[string]interface{}:
-		maskSpecPathMap(m, segs)
+		maskSpecPathMap(m, segs, keep)
 	case map[interface{}]interface{}:
-		maskSpecPathIfaceMap(m, segs)
+		maskSpecPathIfaceMap(m, segs, keep)
 	}
 }
 
-func maskSpecPathMap(m map[string]interface{}, segs []string) {
+func keptKey(k interface{}, keep []string) bool {
+	name := fmt.Sprint(k)
+	for _, w := range keep {
+		if strings.EqualFold(name, w) {
+			return true
+		}
+	}
+	return false
+}
+
+func maskSpecPathMap(m map[string]interface{}, segs []string, keep []string) {
 	if len(segs) == 0 {
 		return
 	}
@@ -51,11 +70,15 @@ func maskSpecPathMap(m map[string]interface{}, segs []string) {
 		switch inner := val.(type) {
 		case map[string]interface{}:
 			for k := range inner {
-				inner[k] = "***"
+				if !keptKey(k, keep) {
+					inner[k] = "***"
+				}
 			}
 		case map[interface{}]interface{}:
 			for k := range inner {
-				inner[k] = "***"
+				if !keptKey(k, keep) {
+					inner[k] = "***"
+				}
 			}
 		default:
 			m[segs[0]] = "***"
@@ -68,12 +91,12 @@ func maskSpecPathMap(m map[string]interface{}, segs []string) {
 	}
 	switch c := child.(type) {
 	case map[string]interface{}:
-		maskSpecPathMap(c, segs[1:])
+		maskSpecPathMap(c, segs[1:], keep)
 	case map[interface{}]interface{}:
-		maskSpecPathIfaceMap(c, segs[1:])
+		maskSpecPathIfaceMap(c, segs[1:], keep)
 	case []interface{}:
 		for _, el := range c {
-			maskSpecPath(el, segs[1:])
+			maskSpecPathKeeping(el, segs[1:], keep)
 		}
 	}
 }
@@ -81,7 +104,7 @@ func maskSpecPathMap(m map[string]interface{}, segs []string) {
 // maskSpecPathIfaceMap handles maps produced by a YAML decoder as
 // map[interface{}]interface{}: keys are matched by fmt.Sprint(key) and
 // written back with the original key.
-func maskSpecPathIfaceMap(m map[interface{}]interface{}, segs []string) {
+func maskSpecPathIfaceMap(m map[interface{}]interface{}, segs []string, keep []string) {
 	if len(segs) == 0 {
 		return
 	}
@@ -105,11 +128,15 @@ func maskSpecPathIfaceMap(m map[interface{}]interface{}, segs []string) {
 		switch inner := val.(type) {
 		case map[string]interface{}:
 			for k := range inner {
-				inner[k] = "***"
+				if !keptKey(k, keep) {
+					inner[k] = "***"
+				}
 			}
 		case map[interface{}]interface{}:
 			for k := range inner {
-				inner[k] = "***"
+				if !keptKey(k, keep) {
+					inner[k] = "***"
+				}
 			}
 		default:
 			m[key] = "***"
@@ -119,12 +146,12 @@ func maskSpecPathIfaceMap(m map[interface{}]interface{}, segs []string) {
 	child := m[key]
 	switch c := child.(type) {
 	case map[string]interface{}:
-		maskSpecPathMap(c, segs[1:])
+		maskSpecPathMap(c, segs[1:], keep)
 	case map[interface{}]interface{}:
-		maskSpecPathIfaceMap(c, segs[1:])
+		maskSpecPathIfaceMap(c, segs[1:], keep)
 	case []interface{}:
 		for _, el := range c {
-			maskSpecPath(el, segs[1:])
+			maskSpecPathKeeping(el, segs[1:], keep)
 		}
 	}
 }

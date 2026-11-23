@@ -2,7 +2,6 @@ package configuration
 
 import (
 	"regexp"
-	"strings"
 
 	"senhub-agent.go/internal/agent/probes/spec"
 	"senhub-agent.go/internal/agent/services/data_store/outputspec"
@@ -62,9 +61,7 @@ func SanitizeStorageForLog(list []StorageConfig) []map[string]interface{} {
 func SanitizeProbeParamsForLog(probeType string, params map[string]interface{}) map[string]interface{} {
 	out := SanitizeParamsForLog(params)
 	if s, ok := spec.For(probeType); ok {
-		for _, p := range s.SecretPaths() {
-			maskSpecPath(out, strings.Split(p, "."))
-		}
+		maskSecretPaths(out, s)
 	}
 	return out
 }
@@ -74,9 +71,7 @@ func SanitizeProbeParamsForLog(probeType string, params map[string]interface{}) 
 func SanitizeOutputParamsForLog(outputType string, params map[string]interface{}) map[string]interface{} {
 	out := SanitizeParamsForLog(params)
 	if s, ok := outputspec.For(outputType); ok {
-		for _, p := range s.SecretPaths() {
-			maskSpecPath(out, strings.Split(p, "."))
-		}
+		maskSecretPaths(out, spec.Probe{Type: s.Type, Params: s.Params})
 	}
 	return out
 }

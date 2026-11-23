@@ -33,16 +33,20 @@ const (
 // params block. Secret fields are stored in the secret store by the
 // configurator and referenced from the fragment, never written in clear.
 type ParamSpec struct {
-	Key         string      `json:"key"`
-	Kind        ParamKind   `json:"kind"`
-	Required    bool        `json:"required,omitempty"`
-	Default     interface{} `json:"default,omitempty"`
-	Secret      bool        `json:"secret,omitempty"`
-	Description string      `json:"description,omitempty"`
-	Enum        []string    `json:"enum,omitempty"`
-	Group       string      `json:"group,omitempty"`
-	Example     string      `json:"example,omitempty"`
-	Fields      []ParamSpec `json:"fields,omitempty"`
+	Key      string      `json:"key"`
+	Kind     ParamKind   `json:"kind"`
+	Required bool        `json:"required,omitempty"`
+	Default  interface{} `json:"default,omitempty"`
+	Secret   bool        `json:"secret,omitempty"`
+	// ReadableKeys lists, for a secret mapping, the entries whose value
+	// is not a credential (a tenant header): configuration views and logs
+	// show them, and mask every other entry. Names compare without case.
+	ReadableKeys []string    `json:"readable_keys,omitempty"`
+	Description  string      `json:"description,omitempty"`
+	Enum         []string    `json:"enum,omitempty"`
+	Group        string      `json:"group,omitempty"`
+	Example      string      `json:"example,omitempty"`
+	Fields       []ParamSpec `json:"fields,omitempty"`
 	// AlsoAccepts lists alternative spellings the parser reads for the
 	// same meaning (tls.ca_cert for ca_file), so the guard test does not
 	// flag them and the configurator writes the canonical one.
@@ -211,6 +215,25 @@ func (s Probe) SecretPaths() []string {
 	}
 	walk("", s.Params)
 	return out
+}
+
+// ReadableKeysAt returns the readable keys declared on the secret
+// parameter at the dotted path, as SecretPaths names it.
+func (s Probe) ReadableKeysAt(path string) []string {
+	var found []string
+	var walk func(prefix string, params []ParamSpec)
+	walk = func(prefix string, params []ParamSpec) {
+		for _, p := range params {
+			if prefix+p.Key == path {
+				found = p.ReadableKeys
+			}
+			if p.Kind == KindBlock || p.Kind == KindBlockList {
+				walk(prefix+p.Key+".", p.Fields)
+			}
+		}
+	}
+	walk("", s.Params)
+	return found
 }
 
 // DeclaredKeys returns the flattened set of keys a spec declares, with
