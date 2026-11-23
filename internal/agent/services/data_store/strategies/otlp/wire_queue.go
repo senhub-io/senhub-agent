@@ -45,6 +45,9 @@ const (
 
 	metricsQueueDirName = "metricqueue"
 	tracesQueueDirName  = "tracequeue"
+	// logsRelayQueueDirName holds the relayed log batches, apart from the
+	// SDK-record dead-letter queue of logsQueueDirName.
+	logsRelayQueueDirName = "logrelayqueue"
 
 	// defaultMetricsQueueMaxBytes caps the metrics queue. A push is a full
 	// snapshot of the store, so a busy host writes one large request per
@@ -78,6 +81,10 @@ var (
 	metricsQueueKind = wireQueueKind{
 		signal: "metrics", dirName: metricsQueueDirName, prefix: "metric", unit: "data points",
 		fullReason: "metrics_queue_full", ageReason: "metrics_dropped_by_age", defaultMax: defaultMetricsQueueMaxBytes,
+	}
+	logsRelayQueueKind = wireQueueKind{
+		signal: "logs_relay", dirName: logsRelayQueueDirName, prefix: "logrelay", unit: "log records",
+		fullReason: "logs_queue_full", ageReason: "dropped_by_age", defaultMax: defaultLogsQueueMaxBytes,
 	}
 	tracesQueueKind = wireQueueKind{
 		signal: "traces", dirName: tracesQueueDirName, prefix: "trace", unit: "spans",

@@ -43,12 +43,32 @@ type exporters struct {
 	metric sdkmetric.Exporter
 	log    sdklog.Exporter
 	trace  *otlptrace.Exporter
+	// hints carries the throttle hint each signal's transport saw.
+	hints *hintSinks
+}
+
+// sink returns the throttle hint collector of one signal, nil when the
+// exporters were not built with one.
+func (e *exporters) sink(signal string) *hintSink {
+	if e == nil || e.hints == nil {
+		return nil
+	}
+	switch signal {
+	case "metrics":
+		return e.hints.metrics
+	case "logs":
+		return e.hints.logs
+	case "traces":
+		return e.hints.traces
+	}
+	return nil
 }
 
 // buildExporters constructs the OTel SDK exporters based on cfg.
 // Any of the three can be nil if its signal is disabled.
 func buildExporters(ctx context.Context, cfg Config, log *logger.ModuleLogger) (*exporters, error) {
-	exp := &exporters{}
+	exp := &exporters{hints: newHintSinks()}
+	ctx = withHintSinks(ctx, exp.hints)
 
 	// With fallback_endpoints configured, each signal's exporter is a
 	// failover decorator over one exporter per endpoint (#217). Traces
@@ -159,13 +179,25 @@ func newHTTPClient(tlsConf *tls.Config, timeout, idleConnTimeout time.Duration) 
 // it, for a signal whose failed exports are kept on disk. The idle timeout
 // is only overridden when one is configured, so the standard default holds
 // otherwise.
-func newWireHTTPClient(tlsConf *tls.Config, timeout, idleConnTimeout time.Duration) *http.Client {
+func newWireHTTPClient(tlsConf *tls.Config, timeout, idleConnTimeout time.Duration, hints *hintSink) *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = tlsConf
 	if idleConnTimeout > 0 {
 		transport.IdleConnTimeout = idleConnTimeout
 	}
-	return &http.Client{Transport: &wireRoundTripper{next: transport}, Timeout: timeout}
+	return &http.Client{Transport: &wireRoundTripper{next: transport, hints: hints}, Timeout: timeout}
+}
+
+// newHintHTTPClient is newHTTPClient with a hook that reads the server's
+// throttle hint, for the logs signal, whose queue stores records rather than
+// requests and so needs no wire capture.
+func newHintHTTPClient(tlsConf *tls.Config, timeout, idleConnTimeout time.Duration, hints *hintSink) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = tlsConf
+	if idleConnTimeout > 0 {
+		transport.IdleConnTimeout = idleConnTimeout
+	}
+	return &http.Client{Transport: &hintRoundTripper{next: transport, hints: hints}, Timeout: timeout}
 }
 
 // ── Metrics ──────────────────────────────────────────────────────────
@@ -196,7 +228,7 @@ func buildMetricExporterGRPC(ctx context.Context, cfg Config) (sdkmetric.Exporte
 		otlpmetricgrpc.WithTimeout(cfg.Timeout),
 	}
 	if cfg.Persistence.metricsQueuePath() != "" {
-		opts = append(opts, otlpmetricgrpc.WithDialOption(grpc.WithChainUnaryInterceptor(wireUnaryInterceptor())))
+		opts = append(opts, otlpmetricgrpc.WithDialOption(grpc.WithChainUnaryInterceptor(wireUnaryInterceptor(hintSinkFor(ctx, "metrics")))))
 	}
 	creds, insec, err := tlsCredentials(rt.tls)
 	if err != nil {
@@ -245,7 +277,7 @@ func buildMetricExporterHTTP(ctx context.Context, cfg Config) (sdkmetric.Exporte
 		opts = append(opts, otlpmetrichttp.WithTLSClientConfig(tlsConf))
 	}
 	if cfg.Persistence.metricsQueuePath() != "" {
-		opts = append(opts, otlpmetrichttp.WithHTTPClient(newWireHTTPClient(tlsConf, cfg.Timeout, cfg.IdleConnTimeout)))
+		opts = append(opts, otlpmetrichttp.WithHTTPClient(newWireHTTPClient(tlsConf, cfg.Timeout, cfg.IdleConnTimeout, hintSinkFor(ctx, "metrics"))))
 	} else if cfg.IdleConnTimeout > 0 {
 		opts = append(opts, otlpmetrichttp.WithHTTPClient(newHTTPClient(tlsConf, cfg.Timeout, cfg.IdleConnTimeout)))
 	}
@@ -304,6 +336,9 @@ func buildLogExporterGRPC(ctx context.Context, cfg Config) (sdklog.Exporter, err
 		otlploggrpc.WithEndpoint(rt.endpoint),
 		otlploggrpc.WithTimeout(cfg.Timeout),
 	}
+	if hints := hintSinkFor(ctx, "logs"); hints != nil && cfg.Persistence.logsQueuePath() != "" {
+		opts = append(opts, otlploggrpc.WithDialOption(grpc.WithChainUnaryInterceptor(hintInterceptor(hints))))
+	}
 	creds, insec, err := tlsCredentials(rt.tls)
 	if err != nil {
 		return nil, err
@@ -350,7 +385,9 @@ func buildLogExporterHTTP(ctx context.Context, cfg Config) (sdklog.Exporter, err
 	} else {
 		opts = append(opts, otlploghttp.WithTLSClientConfig(tlsConf))
 	}
-	if cfg.IdleConnTimeout > 0 {
+	if hints := hintSinkFor(ctx, "logs"); hints != nil && cfg.Persistence.logsQueuePath() != "" {
+		opts = append(opts, otlploghttp.WithHTTPClient(newHintHTTPClient(tlsConf, cfg.Timeout, cfg.IdleConnTimeout, hints)))
+	} else if cfg.IdleConnTimeout > 0 {
 		opts = append(opts, otlploghttp.WithHTTPClient(newHTTPClient(tlsConf, cfg.Timeout, cfg.IdleConnTimeout)))
 	}
 	if len(rt.headers) > 0 {
@@ -398,7 +435,7 @@ func buildTraceExporterGRPC(ctx context.Context, cfg Config) (*otlptrace.Exporte
 		otlptracegrpc.WithTimeout(cfg.Timeout),
 	}
 	if cfg.Persistence.tracesQueuePath() != "" {
-		opts = append(opts, otlptracegrpc.WithDialOption(grpc.WithChainUnaryInterceptor(wireUnaryInterceptor())))
+		opts = append(opts, otlptracegrpc.WithDialOption(grpc.WithChainUnaryInterceptor(wireUnaryInterceptor(hintSinkFor(ctx, "traces")))))
 	}
 	creds, insec, err := tlsCredentials(rt.tls)
 	if err != nil {
@@ -447,7 +484,7 @@ func buildTraceExporterHTTP(ctx context.Context, cfg Config) (*otlptrace.Exporte
 		opts = append(opts, otlptracehttp.WithTLSClientConfig(tlsConf))
 	}
 	if cfg.Persistence.tracesQueuePath() != "" {
-		opts = append(opts, otlptracehttp.WithHTTPClient(newWireHTTPClient(tlsConf, cfg.Timeout, cfg.IdleConnTimeout)))
+		opts = append(opts, otlptracehttp.WithHTTPClient(newWireHTTPClient(tlsConf, cfg.Timeout, cfg.IdleConnTimeout, hintSinkFor(ctx, "traces"))))
 	} else if cfg.IdleConnTimeout > 0 {
 		opts = append(opts, otlptracehttp.WithHTTPClient(newHTTPClient(tlsConf, cfg.Timeout, cfg.IdleConnTimeout)))
 	}

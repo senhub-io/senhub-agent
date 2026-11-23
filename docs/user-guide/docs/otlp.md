@@ -628,6 +628,24 @@ request the collector does not acknowledge. A probe never holds the agent for
 more than 4 seconds, so a collector that drops packets does not stop the
 exports that have to be written meanwhile.
 
+When the collector is up but overloaded and says so, the agent slows down
+instead of retrying on its own clock. It reads the wait the collector asks
+for: `Retry-After` on an HTTP 429 or 503 (a number of seconds or an HTTP
+date), or the `RetryInfo` of a gRPC `RESOURCE_EXHAUSTED` or `UNAVAILABLE`
+answer. Until that wait has passed, no export and no replay probe goes out;
+new data is kept on disk meanwhile, exactly as during an outage, and sent
+afterwards. A wait is never shorter than the retry clock above, and never
+longer than 10 minutes: a collector that asks for more is obeyed up to
+10 minutes, and the agent logs that once. A throttled export is not an
+export error. It is counted in `senhub.agent.otlp.throttled` (by `signal`),
+and the agent logs one warning per throttling episode, not one per batch. A
+collector that gives no wait is handled as above, on the retry clock.
+
+Third-party logs that the agent relays from an OTLP receiver are kept the
+same way, in a `logrelayqueue/` directory next to the others, sized and aged
+by `logs_queue_max_bytes` and `logs_queue_max_age`, and replayed in order.
+Its depth appears in `senhub.agent.otlp.queue.*` as `signal="logs_relay"`.
+
 Metrics are delivered in order: while a backlog waits, a new push is kept
 behind it instead of overtaking it, so a time-series store that refuses
 samples older than the newest it holds receives them oldest first. Replayed
@@ -657,10 +675,10 @@ Where the queues live:
 | Linux package (systemd) | `/var/lib/senhub-agent/otlp-queue` (`STATE_DIRECTORY`) |
 | Windows (MSI) | `C:\ProgramData\SenHub\otlp-queue` |
 | Container | `$SENHUB_STATE_DIR/otlp-queue` (default `/var/lib/senhub-agent/otlp-queue`) |
-| `persistence.path` set | `<path>/logqueue`, `<path>/metricqueue`, `<path>/tracequeue` |
+| `persistence.path` set | `<path>/logqueue`, `<path>/metricqueue`, `<path>/tracequeue`, `<path>/logrelayqueue` |
 
-Under `otlp-queue/` the three queues are the subdirectories `logqueue/`,
-`metricqueue/` and `tracequeue/`.
+Under `otlp-queue/` the queues are the subdirectories `logqueue/`,
+`metricqueue/`, `tracequeue/` and `logrelayqueue/`.
 
 Each queue is bounded two ways: a size cap, past which the oldest requests
 are evicted first, and an age limit (24 hours), swept at boot and every 10

@@ -164,7 +164,7 @@ func (f *httpSpanForwarder) forward(ctx context.Context, rs []*tracepb.ResourceS
 	// invisible from here (#819).
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("POST %s: unexpected status %d", f.url, resp.StatusCode)
+		return relayStatusError(f.url, resp)
 	}
 	var answer collectortracepb.ExportTraceServiceResponse
 	if proto.Unmarshal(respBody, &answer) == nil {
@@ -346,20 +346,29 @@ func (r *spansRelay) export(rs []*tracepb.ResourceSpans, spans int) {
 	}
 
 	if err := r.forwarder.forward(ctx, rs); err != nil {
-		agentstate.IncrementOTLPExportErrors("traces")
-		if r.queue != nil && r.queue.relayResult(err, marshal, spans) {
+		var kept, throttled bool
+		if r.queue != nil {
+			kept, throttled = r.queue.relayResult(err, marshal, spans)
+		}
+		if !throttled {
+			agentstate.IncrementOTLPExportErrors("traces")
+		}
+		switch {
+		case kept && throttled:
+			r.logger.Debug().Int("spans", spans).Msg("OTLP span relay: backend is throttling; batch kept on disk for replay")
+		case kept:
 			r.logger.Warn().
 				Str("error", redactSensitive(err.Error())).
 				Int("resource_spans", len(rs)).
 				Int("spans", spans).
 				Msg("OTLP span relay export failed; batch kept on disk for replay")
-			return
+		default:
+			r.logger.Warn().
+				Str("error", redactSensitive(err.Error())).
+				Int("resource_spans", len(rs)).
+				Int("spans", spans).
+				Msg("OTLP span relay export failed; batch dropped")
 		}
-		r.logger.Warn().
-			Str("error", redactSensitive(err.Error())).
-			Int("resource_spans", len(rs)).
-			Int("spans", spans).
-			Msg("OTLP span relay export failed; batch dropped")
 		return
 	}
 	if r.queue != nil {

@@ -143,15 +143,20 @@ func (s *wireSlot) request() ([]byte, error) {
 }
 
 // wireUnaryInterceptor is the gRPC half of the hook.
-func wireUnaryInterceptor() grpc.UnaryClientInterceptor {
+func wireUnaryInterceptor(hints *hintSink) grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		invoke := func() error {
+			err := invoker(ctx, method, req, reply, cc, opts...)
+			hints.observeError(err)
+			return err
+		}
 		s := wireSlotFrom(ctx)
 		if s == nil {
-			return invoker(ctx, method, req, reply, cc, opts...)
+			return invoke()
 		}
 		m, ok := req.(proto.Message)
 		if !ok {
-			return invoker(ctx, method, req, reply, cc, opts...)
+			return invoke()
 		}
 		if s.replay != nil {
 			proto.Reset(m)
@@ -159,25 +164,32 @@ func wireUnaryInterceptor() grpc.UnaryClientInterceptor {
 				return fmt.Errorf("stored request: %w", err)
 			}
 			s.markSubstituted()
-			return invoker(ctx, method, req, reply, cc, opts...)
+			return invoke()
 		}
 		s.setMessage(m)
 		if s.dry {
 			return errWireCaptured
 		}
-		return invoker(ctx, method, req, reply, cc, opts...)
+		return invoke()
 	}
 }
 
 // wireRoundTripper is the HTTP half of the hook.
 type wireRoundTripper struct {
-	next http.RoundTripper
+	next  http.RoundTripper
+	hints *hintSink
+}
+
+func (t *wireRoundTripper) send(req *http.Request) (*http.Response, error) {
+	resp, err := t.next.RoundTrip(req)
+	t.hints.observeResponse(resp)
+	return resp, err
 }
 
 func (t *wireRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	s := wireSlotFrom(req.Context())
 	if s == nil {
-		return t.next.RoundTrip(req)
+		return t.send(req)
 	}
 	if s.replay != nil {
 		raw := s.replay
@@ -201,14 +213,14 @@ func (t *wireRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 		out.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(raw)), nil }
 		out.ContentLength = int64(len(raw))
 		s.markSubstituted()
-		return t.next.RoundTrip(out)
+		return t.send(out)
 	}
 	s.setBody(req.GetBody, req.Header.Get("Content-Encoding") == "gzip")
 	if s.dry {
 		closeBody(req)
 		return nil, errWireCaptured
 	}
-	return t.next.RoundTrip(req)
+	return t.send(req)
 }
 
 func closeBody(req *http.Request) {

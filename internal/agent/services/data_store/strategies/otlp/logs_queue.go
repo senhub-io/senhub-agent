@@ -277,14 +277,18 @@ func newPersistentLogExporter(wrapped sdklog.Exporter, queue *logsQueue, log *lo
 	return e
 }
 
-// recordFailure counts a failed export and returns the classified error.
-func (e *persistentLogExporter) recordFailure(err error) error {
+// recordFailure counts a failed export and returns the classified error. A
+// throttle is counted apart (noteThrottle): the backend is up and asked for
+// less, which is not an export error.
+func (e *persistentLogExporter) recordFailure(err error, throttled bool) error {
 	// Count BEFORE persisting: a rejected batch that lands in the
 	// dead-letter queue is still a failed export. In production a
 	// receiver rejecting every logs batch with 400 never moved any
 	// counter — the pipeline died silently behind queue/replay churn
 	// (#820, tracked as #821).
-	agentstate.IncrementOTLPExportErrors("logs")
+	if !throttled {
+		agentstate.IncrementOTLPExportErrors("logs")
+	}
 	classified := classifyExportError(err)
 	agentstate.IncrementExportSendFailed("otlp", exporterrors.Reason(classified))
 	agentstate.RecordExportFailure("otlp/logs", redactSensitive(err.Error()))
@@ -331,7 +335,8 @@ func (e *persistentLogExporter) Export(ctx context.Context, records []sdklog.Rec
 	split := errors.As(raw, &se)
 	err := e.reporter.reportRejections(raw)
 	if err != nil {
-		classified := e.recordFailure(err)
+		throttled := exporterrors.IsRetryable(classifyExportError(err)) && e.noteThrottle(err)
+		classified := e.recordFailure(err, throttled)
 		e.markFailure()
 
 		if split {
@@ -347,11 +352,13 @@ func (e *persistentLogExporter) Export(ctx context.Context, records []sdklog.Rec
 			}
 			if len(se.undelivered) > 0 {
 				e.persist(se.undelivered)
-				e.warnThrottled(func(ev *zerolog.Event) {
-					ev.Str("error", redactSensitive(err.Error())).
-						Int("records", len(se.undelivered)).
-						Msg("OTLP logs export failed; batch persisted to dead-letter queue")
-				})
+				if !throttled {
+					e.warnThrottled(func(ev *zerolog.Event) {
+						ev.Str("error", redactSensitive(err.Error())).
+							Int("records", len(se.undelivered)).
+							Msg("OTLP logs export failed; batch persisted to dead-letter queue")
+					})
+				}
 			}
 			return err
 		}
@@ -374,11 +381,13 @@ func (e *persistentLogExporter) Export(ctx context.Context, records []sdklog.Rec
 		}
 
 		e.persist(records)
-		e.warnThrottled(func(ev *zerolog.Event) {
-			ev.Str("error", redactSensitive(err.Error())).
-				Int("records", len(records)).
-				Msg("OTLP logs export failed; batch persisted to dead-letter queue")
-		})
+		if !throttled {
+			e.warnThrottled(func(ev *zerolog.Event) {
+				ev.Str("error", redactSensitive(err.Error())).
+					Int("records", len(records)).
+					Msg("OTLP logs export failed; batch persisted to dead-letter queue")
+			})
+		}
 		return err
 	}
 	e.markSuccess()
@@ -402,8 +411,12 @@ func (e *persistentLogExporter) exportDirect(ctx context.Context, records []sdkl
 		return nil
 	}
 	if !errors.Is(ctx.Err(), context.Canceled) {
-		if classified := e.recordFailure(err); exporterrors.IsRetryable(classified) && (!split || len(se.undelivered) > 0) {
+		throttled := exporterrors.IsRetryable(classifyExportError(err)) && e.noteThrottle(err)
+		if classified := e.recordFailure(err, throttled); exporterrors.IsRetryable(classified) && (!split || len(se.undelivered) > 0) {
 			e.markFailure()
+		}
+		if throttled && !split {
+			err = &throttledError{err: err, wait: e.throttleRemaining()}
 		}
 	}
 	if split {
@@ -468,6 +481,7 @@ func newLogsReplayer(q *logsQueue, p *logsPipeline, exp *persistentLogExporter, 
 	r.run = r.replay
 	r.sweep = func() { q.sweepAged() }
 	r.afterStop = exp.closeRecovery
+	r.hold = exp.throttleRemaining
 	return r
 }
 
@@ -487,8 +501,13 @@ func (r *logsReplayer) replay() (int, error) {
 		r.logger.Info().Int("records", n).Msg("OTLP logs queue: replayed records")
 	}
 	if err != nil && r.logger != nil && r.ctx.Err() == nil {
-		r.logger.Warn().Err(err).Int("replayed", n).
-			Msg("OTLP logs queue: replay stopped, the backend did not acknowledge; remaining batches stay on disk")
+		if _, throttled := asThrottled(err); throttled {
+			r.logger.Debug().Err(err).Int("replayed", n).
+				Msg("OTLP logs queue: replay paused, the backend is throttling; remaining batches stay on disk")
+		} else {
+			r.logger.Warn().Err(err).Int("replayed", n).
+				Msg("OTLP logs queue: replay stopped, the backend did not acknowledge; remaining batches stay on disk")
+		}
 	}
 	return n, err
 }

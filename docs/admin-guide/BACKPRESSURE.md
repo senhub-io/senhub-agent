@@ -88,6 +88,21 @@ than `metrics_queue_max_age` / `traces_queue_max_age` are dropped
 [Logs, metrics and traces survive an outage](../user-guide/docs/otlp.md#logs-metrics-and-traces-survive-an-outage)
 for the sizing.
 
+A backend that answers with a throttle hint (HTTP 429 or 503 with
+`Retry-After`, gRPC `RESOURCE_EXHAUSTED` or `UNAVAILABLE` with `RetryInfo`) is
+not treated as down. The signals with a queue have the SDK retry turned off,
+so the queue's own retry clock (5 s doubling to 5 min) decides when to try
+again, and the hint stretches it: no live export and no replay probe is sent
+before the wait asked for has passed, capped at 10 minutes (a longer hint is
+cut and logged once); new batches go to disk meanwhile. A throttled export is
+counted in `senhub.agent.otlp.throttled` (by `signal`), not in
+`senhub.agent.otlp.export.errors`, and logs one warning per episode.
+
+Third-party logs relayed from an OTLP receiver have their own queue,
+`logrelayqueue/`, sized and aged by `logs_queue_max_bytes` and
+`logs_queue_max_age`, with the same guarantees as the metrics and traces
+queues.
+
 Defaults if a key is omitted: `max_store_size` 50000, `max_active_series_per_probe`
 10000, `memory_limit` 200/400 MiB @ 5s, `persistence` **off**, `max_concurrent_exports` 4.
 
