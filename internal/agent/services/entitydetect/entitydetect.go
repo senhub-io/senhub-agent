@@ -259,9 +259,16 @@ func (s *Service) startLocked(ctx context.Context) error {
 	if cfg.DependsOnEnabled || cfg.InboundCallersEnabled {
 		dep := hostdep.New(hostIDFn, cfg.DependsOnDebounce, cfg.DependsOnExcludeCIDRs)
 		if cfg.InboundCallersEnabled {
+			threshold := cfg.DependsOnDebounce
+			if threshold < 1 {
+				threshold = hostdep.DefaultThreshold
+			}
 			tracker := hostcaller.New(hostcaller.Config{
-				Threshold: cfg.DependsOnDebounce,
-				Public:    hostcaller.ParsePublicMode(cfg.InboundPublicAddresses),
+				Threshold: threshold,
+				OnInterfaceError: func(err error) {
+					s.logger.Warn().Err(err).Msg("host interface list unreadable; inbound callers are classified by address alone, so callers behind a container bridge may be reported")
+				},
+				Public: hostcaller.ParsePublicMode(cfg.InboundPublicAddresses),
 			})
 			dep.SetInboundSink(tracker.Observe)
 			s.unregisters = append(s.unregisters, hostcaller.Install(tracker))

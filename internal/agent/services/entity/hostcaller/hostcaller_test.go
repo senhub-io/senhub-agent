@@ -474,3 +474,120 @@ func TestInstallExportsTheMetricUntilRemoved(t *testing.T) {
 		t.Fatal("metric still exported after uninstall")
 	}
 }
+
+func newCappedTracker(s *sink, threshold, cap int) *Tracker {
+	return New(Config{Threshold: threshold, Public: PublicClear, Publish: s.publish, Cap: cap,
+		Interfaces: func() (gnet.InterfaceStatList, error) { return nil, nil }})
+}
+
+func TestLateAdmissionKeepsTheFirstSighting(t *testing.T) {
+	s := &sink{}
+	tr := newCappedTracker(s, 1, 1)
+	both := []hostdep.InboundRow{row(80, "10.0.0.1", 1), row(80, "10.0.0.2", 2)}
+	tr.Observe(testHost, both, at(0))
+	only2 := []hostdep.InboundRow{row(80, "10.0.0.2", 2)}
+	for i := 1; i <= hostdep.ForgetAfter(1)+1; i++ {
+		tr.Observe(testHost, only2, at(5*i))
+	}
+	seen := s.byEvent(EventSeen)
+	if len(seen) != 2 || seen[1].Attributes[attrClient] != "10.0.0.2" {
+		t.Fatalf("seen records: %+v", seen)
+	}
+	if !seen[1].Timestamp.Equal(at(0)) {
+		t.Errorf("late seen Timestamp = %v, want the first sighting %v", seen[1].Timestamp, at(0))
+	}
+	last := at(5 * (hostdep.ForgetAfter(1) + 1))
+	for i := 1; i <= hostdep.ForgetAfter(1)+1; i++ {
+		tr.Observe(testHost, nil, last.Add(time.Duration(5*i)*time.Minute))
+	}
+	gone := s.byEvent(EventGone)
+	if len(gone) != 2 {
+		t.Fatalf("%d gone records", len(gone))
+	}
+	if d, _ := gone[1].TypedAttributes[attrPresence].(float64); d != last.Sub(at(0)).Seconds() {
+		t.Errorf("presence.duration = %v, want %v", d, last.Sub(at(0)).Seconds())
+	}
+}
+
+func TestReadGapReportsTheSpanActuallyCovered(t *testing.T) {
+	s := &sink{}
+	tr := newTracker(s, 1, PublicClear, nil)
+	tr.Observe(testHost, []hostdep.InboundRow{row(80, "10.0.0.1", 1)}, at(0))
+	tr.Observe(testHost, []hostdep.InboundRow{row(80, "10.0.0.1", 1)}, at(5))
+	tr.Observe(testHost, []hostdep.InboundRow{row(80, "10.0.0.1", 1)}, at(180))
+	acts := s.byEvent(EventActivity)
+	if len(acts) != 1 {
+		t.Fatalf("%d activity records", len(acts))
+	}
+	if !acts[0].Timestamp.Equal(at(5)) {
+		t.Errorf("Timestamp = %v, want the end of the covered span %v", acts[0].Timestamp, at(5))
+	}
+	if d, _ := acts[0].TypedAttributes[attrWindow].(float64); d != 300 {
+		t.Errorf("window.duration = %v, want 300", acts[0].TypedAttributes[attrWindow])
+	}
+}
+
+func TestZeroThresholdFallsBackToHostdepDefault(t *testing.T) {
+	tr := New(Config{Threshold: 0})
+	if tr.threshold != hostdep.DefaultThreshold || tr.threshold < 1 {
+		t.Fatalf("threshold = %d", tr.threshold)
+	}
+}
+
+func TestUnreadableInterfaceListWarnsOnceAndFallsBackToAddress(t *testing.T) {
+	s := &sink{}
+	warned := 0
+	tr := New(Config{Threshold: 1, Publish: s.publish,
+		Interfaces:       func() (gnet.InterfaceStatList, error) { return nil, fmt.Errorf("netlink denied") },
+		OnInterfaceError: func(error) { warned++ }})
+	rows := []hostdep.InboundRow{row(80, "10.9.9.9", 1), row(80, "127.0.0.1", 2)}
+	tr.Observe(testHost, rows, at(0))
+	tr.Observe(testHost, rows, at(5))
+	if warned != 1 {
+		t.Errorf("warned %d times, want once", warned)
+	}
+	if c := classes(t, tr, 80); c[ClassEmitted] != 1 || c[ClassLocal] != 1 {
+		t.Errorf("classes = %v: address-only classification must still apply", c)
+	}
+}
+
+func TestPendingCallersHoldNoPlace(t *testing.T) {
+	s := &sink{}
+	tr := newCappedTracker(s, 3, 2)
+	var burst []hostdep.InboundRow
+	for i := 1; i <= 10; i++ {
+		burst = append(burst, row(80, fmt.Sprintf("10.0.1.%d", i), 1))
+	}
+	tr.Observe(testHost, burst, at(0))
+	steady := []hostdep.InboundRow{row(80, "10.0.9.1", 1), row(80, "10.0.9.2", 2)}
+	tr.Observe(testHost, steady, at(5))
+	tr.Observe(testHost, steady, at(10))
+	tr.Observe(testHost, steady, at(15))
+	seen := s.byEvent(EventSeen)
+	if len(seen) != 2 {
+		t.Fatalf("%d seen records, want the two steady callers: one-shot callers must not hold the places", len(seen))
+	}
+	if c := classes(t, tr, 80); c[ClassEmitted] != 2 {
+		t.Errorf("classes = %v", c)
+	}
+}
+
+func TestConfirmationBeyondFreePlacesGoesByFirstAppearanceThenAddress(t *testing.T) {
+	s := &sink{}
+	tr := newCappedTracker(s, 2, 2)
+	tr.Observe(testHost, []hostdep.InboundRow{row(80, "10.0.0.9", 1)}, at(0))
+	three := []hostdep.InboundRow{row(80, "10.0.0.9", 1), row(80, "10.0.0.3", 2), row(80, "10.0.0.2", 3)}
+	tr.Observe(testHost, three, at(5))
+	seen := s.byEvent(EventSeen)
+	if len(seen) != 1 || seen[0].Attributes[attrClient] != "10.0.0.9" {
+		t.Fatalf("seen = %+v, want only the earliest caller", seen)
+	}
+	tr.Observe(testHost, three, at(10))
+	seen = s.byEvent(EventSeen)
+	if len(seen) != 2 || seen[1].Attributes[attrClient] != "10.0.0.2" {
+		t.Fatalf("seen = %+v, want 10.0.0.2 second (same first appearance as .3, lower address)", seen)
+	}
+	if c := classes(t, tr, 80); c[ClassEmitted] != 2 || c[ClassOverCap] != 1 {
+		t.Errorf("classes = %v", c)
+	}
+}

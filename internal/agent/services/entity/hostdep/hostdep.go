@@ -70,6 +70,9 @@ const (
 	// The configured value comes from entities.depends_on_debounce; this is the
 	// fallback when the caller passes a non-positive threshold.
 	defaultThreshold = 3
+
+	// DefaultThreshold is defaultThreshold for the observers of the same read.
+	DefaultThreshold = defaultThreshold
 )
 
 // peerKey aggregates per distinct (dependent service, peer endpoint): many

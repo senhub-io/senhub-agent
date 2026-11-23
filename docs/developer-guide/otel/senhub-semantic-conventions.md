@@ -2273,10 +2273,15 @@ The client port and `network.peer.address` are never reported.
 `ObservedTimestamp` is the emission time on every record. A connection is
 distinguished by its local address and the caller's port, only to be counted.
 
-At most 32 callers per listener get records. The set is frozen once full; a
-place freed when a caller is gone goes to the next candidate by first
-appearance, then by address. A candidate admitted late counts from the read
-that admitted it.
+At most 32 callers per listener get records. A caller still inside the debounce
+holds no place: places are granted on confirmation, which is when `seen` is
+emitted. The set is frozen once full; when several callers confirm for fewer
+free places, or a place is freed by a `gone`, they go by first appearance, then
+by address. A caller admitted late keeps its first sighting as the `seen`
+Timestamp. A read gap longer than a window yields an `activity` record for the
+span actually covered (Timestamp at the last read, `window.duration` its length).
+If the interface list cannot be read, one warning is logged and callers are
+classified by address alone.
 
 Metric `senhub.listener.caller.count`, unit `{address}`, gauge: the distinct
 caller addresses of a listener at the last read, with `service.endpoint`,

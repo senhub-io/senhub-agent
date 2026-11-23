@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -547,19 +548,32 @@ func (s *EventSyncStrategy) startLogPump(parent context.Context) {
 					if !ok {
 						return
 					}
-					switch rec.ProducerProbeType {
-					default:
-						// Not an /event/insert producer — skip so other log
-						// sources (filetail, linux_logs, snmp_trap, …) never
-						// leak onto the legacy rail.
-						continue
-					case "syslog", "event":
+					if forwardsToEventRail(rec) {
 						s.convertAndEnqueue(rec)
 					}
 				}
 			}
 		}()
 	})
+}
+
+// callerEventPrefix names the inbound-caller records, which belong to the
+// OTLP log rail only.
+const callerEventPrefix = "senhub.listener.caller."
+
+// forwardsToEventRail reports whether a log record is an /event/insert
+// producer's. Every other log source (filetail, linux_logs, snmp_trap, …)
+// is skipped so it never leaks onto the legacy rail, and the inbound-caller
+// records are refused by name whatever probe type they claim.
+func forwardsToEventRail(rec agentstate.LogRecord) bool {
+	if strings.HasPrefix(rec.EventName, callerEventPrefix) {
+		return false
+	}
+	switch rec.ProducerProbeType {
+	case "syslog", "event":
+		return true
+	}
+	return false
 }
 
 // Shutdown performs a graceful shutdown of the sync strategy

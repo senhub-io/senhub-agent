@@ -68,6 +68,9 @@ func ParsePublicMode(v string) PublicMode {
 const (
 	// MaxCallersPerListener bounds the callers that get records per listener.
 	MaxCallersPerListener = 32
+	// maxPendingFactor bounds, per listener, the callers followed while
+	// they wait for the debounce or for a place, as a multiple of the cap.
+	maxPendingFactor = 8
 	// ActivityWindow is the cadence of senhub.listener.caller.activity.
 	ActivityWindow = 15 * time.Minute
 
@@ -107,6 +110,9 @@ type Config struct {
 	Publish func(agentstate.LogRecord)
 	// Interfaces lists the host interfaces; nil means gnet.Interfaces.
 	Interfaces func() (gnet.InterfaceStatList, error)
+	// OnInterfaceError is called once, the first time the interface list
+	// cannot be read. Callers are then classified by address alone.
+	OnInterfaceError func(error)
 	// Cap and Window override the package defaults; zero keeps them.
 	Cap    int
 	Window time.Duration
@@ -129,9 +135,8 @@ type caller struct {
 }
 
 type listener struct {
-	port     uint32
-	tracked  map[netip.Addr]*caller
-	overflow map[netip.Addr]time.Time
+	port    uint32
+	tracked map[netip.Addr]*caller
 }
 
 type classCounts struct{ emitted, overCap, public, local int }
@@ -143,12 +148,15 @@ type Tracker struct {
 	public     PublicMode
 	publish    func(agentstate.LogRecord)
 	interfaces func() (gnet.InterfaceStatList, error)
+	onIfaceErr func(error)
+	ifaceWarn  sync.Once
 	maxCallers int
 	window     time.Duration
 
 	mu        sync.Mutex
 	hostID    string
 	listeners map[uint32]*listener
+	lastRead  time.Time
 	winStart  time.Time
 	winEnd    time.Time
 	counts    map[uint32]classCounts
@@ -161,13 +169,14 @@ func New(cfg Config) *Tracker {
 		public:     cfg.Public,
 		publish:    cfg.Publish,
 		interfaces: cfg.Interfaces,
+		onIfaceErr: cfg.OnInterfaceError,
 		maxCallers: cfg.Cap,
 		window:     cfg.Window,
 		listeners:  map[uint32]*listener{},
 		counts:     map[uint32]classCounts{},
 	}
 	if t.threshold < 1 {
-		t.threshold = 3
+		t.threshold = hostdep.DefaultThreshold
 	}
 	t.forget = hostdep.ForgetAfter(t.threshold)
 	if t.public == "" {
@@ -203,11 +212,16 @@ func (t *Tracker) Observe(hostID string, rows []hostdep.InboundRow, now time.Tim
 	t.hostID = hostID
 
 	t.rollWindow(now)
+	t.lastRead = now
 
 	var ifc *ifaceView
 	bridged := func(addr netip.Addr, localIP string) bool {
 		if ifc == nil {
-			ifc = newIfaceView(t.interfaces)
+			var err error
+			ifc, err = newIfaceView(t.interfaces)
+			if err != nil && t.onIfaceErr != nil {
+				t.ifaceWarn.Do(func() { t.onIfaceErr(err) })
+			}
 		}
 		return ifc.bridged(addr, localIP)
 	}
@@ -236,7 +250,7 @@ func (t *Tracker) Observe(hostID string, rows []hostdep.InboundRow, now time.Tim
 	}
 	for port := range byPort {
 		if _, ok := t.listeners[port]; !ok {
-			t.listeners[port] = &listener{port: port, tracked: map[netip.Addr]*caller{}, overflow: map[netip.Addr]time.Time{}}
+			t.listeners[port] = &listener{port: port, tracked: map[netip.Addr]*caller{}}
 		}
 	}
 
@@ -249,7 +263,7 @@ func (t *Tracker) Observe(hostID string, rows []hostdep.InboundRow, now time.Tim
 	for _, port := range ports {
 		l := t.listeners[port]
 		c := t.observeListener(l, byPort[port], now)
-		if len(l.tracked) == 0 && len(l.overflow) == 0 && c == (classCounts{}) {
+		if len(l.tracked) == 0 && c == (classCounts{}) {
 			delete(t.listeners, port)
 			continue
 		}
@@ -283,10 +297,6 @@ func (t *Tracker) observeListener(l *listener, present map[netip.Addr]*presence,
 			c.misses = 0
 			c.last = now
 			c.record(p)
-			if !c.asserted && c.hits >= t.threshold {
-				c.asserted = true
-				t.emit(EventSeen, l, addr, c.first, now, p.count, nil)
-			}
 			continue
 		}
 		c.misses++
@@ -300,53 +310,91 @@ func (t *Tracker) observeListener(l *listener, present map[netip.Addr]*presence,
 		}
 	}
 
-	type candidate struct {
-		addr  netip.Addr
-		first time.Time
-	}
-	var cands []candidate
-	for addr := range loggable {
+	// A new caller starts pending and holds no place: places are granted on
+	// confirmation only, so a burst of one-shot callers cannot fill them. The
+	// pending set is bounded so a scan cannot grow it without limit.
+	for _, addr := range sortedPresence(loggable) {
 		if _, held := l.tracked[addr]; held {
 			continue
 		}
-		first, ok := l.overflow[addr]
-		if !ok {
-			first = now
-		}
-		cands = append(cands, candidate{addr, first})
-	}
-	sort.Slice(cands, func(i, j int) bool {
-		if !cands[i].first.Equal(cands[j].first) {
-			return cands[i].first.Before(cands[j].first)
-		}
-		return cands[i].addr.Compare(cands[j].addr) < 0
-	})
-	l.overflow = map[netip.Addr]time.Time{}
-	free := t.maxCallers - len(l.tracked)
-	for _, cd := range cands {
-		if free <= 0 {
-			l.overflow[cd.addr] = cd.first
+		if len(l.tracked) >= maxPendingFactor*t.maxCallers {
 			continue
 		}
-		free--
-		p := loggable[cd.addr]
 		c := &caller{first: now, last: now, hits: 1}
-		c.record(p)
-		l.tracked[cd.addr] = c
-		if t.threshold <= 1 {
-			c.asserted = true
-			t.emit(EventSeen, l, cd.addr, c.first, now, p.count, nil)
-		}
+		c.record(loggable[addr])
+		l.tracked[addr] = c
 	}
 
+	// Confirmation: the callers that reached the threshold, earliest first
+	// appearance first, then by address, up to the places left.
+	confirmed := 0
+	var ready []netip.Addr
+	for addr, c := range l.tracked {
+		switch {
+		case c.asserted:
+			confirmed++
+		case c.hits >= t.threshold && loggable[addr] != nil:
+			ready = append(ready, addr)
+		}
+	}
+	sort.Slice(ready, func(i, j int) bool {
+		a, b := l.tracked[ready[i]], l.tracked[ready[j]]
+		if !a.first.Equal(b.first) {
+			return a.first.Before(b.first)
+		}
+		return ready[i].Compare(ready[j]) < 0
+	})
+	for _, addr := range ready {
+		if confirmed >= t.maxCallers {
+			break
+		}
+		confirmed++
+		c := l.tracked[addr]
+		c.asserted = true
+		t.emit(EventSeen, l, addr, c.first, now, loggable[addr].count, nil)
+	}
+
+	// Classes: a confirmed caller is emitted. A pending one is emitted while
+	// a place remains for it, over_cap once none does; one the bounded set
+	// could not hold is over_cap.
+	free := t.maxCallers - confirmed
+	var pending []netip.Addr
 	for addr := range loggable {
-		if _, held := l.tracked[addr]; held {
+		c, held := l.tracked[addr]
+		switch {
+		case held && c.asserted:
+			counts.emitted++
+		case held:
+			pending = append(pending, addr)
+		default:
+			counts.overCap++
+		}
+	}
+	sort.Slice(pending, func(i, j int) bool {
+		a, b := l.tracked[pending[i]], l.tracked[pending[j]]
+		if !a.first.Equal(b.first) {
+			return a.first.Before(b.first)
+		}
+		return pending[i].Compare(pending[j]) < 0
+	})
+	for range pending {
+		if free > 0 {
+			free--
 			counts.emitted++
 		} else {
 			counts.overCap++
 		}
 	}
 	return counts
+}
+
+func sortedPresence(m map[netip.Addr]*presence) []netip.Addr {
+	out := make([]netip.Addr, 0, len(m))
+	for a := range m {
+		out = append(out, a)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Compare(out[j]) < 0 })
+	return out
 }
 
 func (c *caller) record(p *presence) {
@@ -372,7 +420,14 @@ func (t *Tracker) rollWindow(now time.Time) {
 	if now.Before(t.winEnd) {
 		return
 	}
-	dur := t.winEnd.Sub(t.winStart).Seconds()
+	// After a gap of more than a window between two reads, the data ends at
+	// the last read, not at the window boundary: report the span actually
+	// covered instead of claiming a full window.
+	end := t.winEnd
+	if !now.Before(t.winEnd.Add(t.window)) && t.lastRead.After(t.winStart) {
+		end = t.lastRead
+	}
+	dur := end.Sub(t.winStart).Seconds()
 	ports := make([]uint32, 0, len(t.listeners))
 	for port := range t.listeners {
 		ports = append(ports, port)
@@ -383,7 +438,7 @@ func (t *Tracker) rollWindow(now time.Time) {
 		for _, addr := range sortedAddrs(l.tracked) {
 			c := l.tracked[addr]
 			if c.asserted && len(c.winConns) > 0 {
-				t.emit(EventActivity, l, addr, t.winEnd, now, c.winLast, map[string]any{
+				t.emit(EventActivity, l, addr, end, now, c.winLast, map[string]any{
 					attrObserved: int64(len(c.winConns)),
 					attrMax:      int64(c.winMax),
 					attrWindow:   dur,

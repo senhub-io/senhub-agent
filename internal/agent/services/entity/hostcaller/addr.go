@@ -56,11 +56,14 @@ type ifaceView struct {
 	bridgePrefixes []netip.Prefix
 }
 
-func newIfaceView(read func() (gnet.InterfaceStatList, error)) *ifaceView {
+// newIfaceView returns an empty view and the error when the list cannot be
+// read: callers are then judged by their address alone, which keeps them
+// reported rather than silently dropping every private caller of the host.
+func newIfaceView(read func() (gnet.InterfaceStatList, error)) (*ifaceView, error) {
 	v := &ifaceView{bridgeIPs: map[string]bool{}}
 	ifaces, err := read()
 	if err != nil {
-		return v
+		return v, err
 	}
 	for _, ifc := range ifaces {
 		if !entity.IsContainerBridgeIface(ifc.Name) {
@@ -78,7 +81,7 @@ func newIfaceView(read func() (gnet.InterfaceStatList, error)) *ifaceView {
 			}
 		}
 	}
-	return v
+	return v, nil
 }
 
 // bridged reports a caller that reached the host through a container bridge:
