@@ -37,6 +37,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 
 	gnet "github.com/shirou/gopsutil/v3/net"
 	"github.com/shirou/gopsutil/v3/process"
@@ -69,6 +70,9 @@ const (
 	// The configured value comes from entities.depends_on_debounce; this is the
 	// fallback when the caller passes a non-positive threshold.
 	defaultThreshold = 3
+
+	// DefaultThreshold is defaultThreshold for the observers of the same read.
+	DefaultThreshold = defaultThreshold
 )
 
 // peerKey aggregates per distinct (dependent service, peer endpoint): many
@@ -131,12 +135,19 @@ type Source struct {
 	agentID     func() string                               // nil → agentstate.GetAgentInstanceID
 	selfPID     func() int32                                // nil → os.Getpid
 	ephemeral   func() (uint32, uint32)                     // nil → the OS dynamic port range
+	now         func() time.Time                            // nil → time.Now
 	threshold   int
 	exclude     []*net.IPNet // peer endpoints in these ranges are dropped (privacy)
 	// onBlind is called once, the first time the source finds it cannot
 	// attribute any socket but its own. Nil-safe.
 	onBlind  func(observed, unattributable int)
 	blindOne sync.Once
+
+	// inbound receives the inbound rows of every successful socket read.
+	// noOutbound turns the dependency edges off, for an agent that wants
+	// only the inbound rows: the read is shared, the edges are not.
+	inbound    InboundSink
+	noOutbound bool
 
 	mu     sync.Mutex
 	streak map[peerKey]streakState // debounce position per peer endpoint
@@ -178,6 +189,60 @@ func New(hostID func() string, threshold int, exclude []*net.IPNet) *Source {
 // /proc/<pid>/fd and that is owner-only. Nil-safe; call before Observe.
 func (s *Source) OnBlind(fn func(observed, unattributable int)) { s.onBlind = fn }
 
+// InboundRow is one established connection whose local port is one of this
+// host's listening ports: someone connected to a local listener.
+type InboundRow struct {
+	LocalPort  uint32
+	LocalIP    string
+	CallerIP   string
+	CallerPort uint32
+}
+
+// InboundSink receives the inbound rows of one successful socket read, with
+// the host id and the time of the read.
+type InboundSink func(hostID string, rows []InboundRow, now time.Time)
+
+// SetInboundSink registers the consumer of the inbound rows. They come from
+// the read Observe already does, so no second scan of the socket table is
+// made. Nil-safe; call before Observe.
+func (s *Source) SetInboundSink(sink InboundSink) { s.inbound = sink }
+
+// DisableOutbound keeps the socket read and the inbound sink but makes
+// Observe return no dependency edge. Call before Observe.
+func (s *Source) DisableOutbound() { s.noOutbound = true }
+
+// inboundRows applies the direction rule of scrape from the other side: an
+// ESTABLISHED row whose local port is in the LISTEN set is inbound.
+func inboundRows(conns []gnet.ConnectionStat) []InboundRow {
+	listenPorts := listenPortSet(conns)
+	var rows []InboundRow
+	for _, c := range conns {
+		if c.Status != statusEstablished || !listenPorts[c.Laddr.Port] {
+			continue
+		}
+		if c.Raddr.IP == "" || c.Raddr.Port == 0 {
+			continue
+		}
+		rows = append(rows, InboundRow{
+			LocalPort:  c.Laddr.Port,
+			LocalIP:    c.Laddr.IP,
+			CallerIP:   c.Raddr.IP,
+			CallerPort: c.Raddr.Port,
+		})
+	}
+	return rows
+}
+
+func listenPortSet(conns []gnet.ConnectionStat) map[uint32]bool {
+	ports := map[uint32]bool{}
+	for _, c := range conns {
+		if c.Status == statusListen {
+			ports[c.Laddr.Port] = true
+		}
+	}
+	return ports
+}
+
 // excluded reports whether a peer IP falls in any operator-excluded range.
 func (s *Source) excluded(ip string) bool {
 	if len(s.exclude) == 0 {
@@ -212,6 +277,17 @@ func (s *Source) Observe() (entity.Observation, bool) {
 	hostID := s.hostID()
 	if hostID == "" {
 		return entity.Observation{}, false
+	}
+
+	if s.inbound != nil {
+		nowFn := s.now
+		if nowFn == nil {
+			nowFn = time.Now
+		}
+		s.inbound(hostID, inboundRows(conns), nowFn())
+	}
+	if s.noOutbound {
+		return entity.Observation{}.WithScope(entity.ScopeHostDep), true
 	}
 
 	// Owners by uid, read only when a socket's owner could not be read
@@ -317,9 +393,14 @@ const earnWindow = 15
 // that really ends stays in the graph for the width of the window. A
 // sampler cannot tell "gone" from "not sampled" faster than the
 // phenomenon's own rhythm.
-func (s *Source) forgetAfter(streakState) int {
-	if s.threshold > earnWindow {
-		return s.threshold
+func (s *Source) forgetAfter(streakState) int { return ForgetAfter(s.threshold) }
+
+// ForgetAfter is the miss tolerance for a given debounce threshold. Other
+// observers of the same socket read use it so that "present", "absent" and
+// "gone" mean the same thing wherever the table is looked at.
+func ForgetAfter(threshold int) int {
+	if threshold > earnWindow {
+		return threshold
 	}
 	return earnWindow
 }
@@ -342,12 +423,7 @@ func hasAttributableDependant(deps []dependant) bool {
 // keep (only the pids it named this scrape), which the caller swaps in under the
 // lock.
 func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string, priorLRU map[int32]nameEntry, view *uidView) (deps []dependant, lru map[int32]nameEntry, unattributable int) {
-	listenPorts := map[uint32]bool{}
-	for _, c := range conns {
-		if c.Status == statusListen {
-			listenPorts[c.Laddr.Port] = true
-		}
-	}
+	listenPorts := listenPortSet(conns)
 	nameFn := s.procName
 	if nameFn == nil {
 		nameFn = processName

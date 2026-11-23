@@ -2249,6 +2249,62 @@ paths of the `event` probe — which accepts textual severities such as EMERG,
 ERR, WARNING — use an equivalent table, with the same numeric
 values on the OTel output.
 
+### Inbound callers of local listeners (`hostcaller`)
+
+Who connects to a local listener is reported as log records and one metric,
+never as entities or relations: callers are workstations, clients and external
+addresses, which belong in a log store, not in the topology. Off by default
+(`entities.inbound_callers.enabled`). The rows come from the socket read
+`hostdep` already does (an ESTABLISHED row whose local port is in the LISTEN
+set), so there is one read, not two. The resource carries `host.id`.
+
+Common keys of every record, identical byte for byte to the Toise
+`service.listener` identity that `hostsvc` mints (`<host.id>:<port>/<transport>`,
+`entity.ListenerEndpoint`):
+
+| Key | Type | Meaning |
+|---|---|---|
+| `service.endpoint` | string | The listener, `<host.id>:<port>/tcp` |
+| `network.transport` | string | `tcp` |
+| `server.port` | int | The listening port |
+| `client.address` | string | The caller. Absent for a public address when `public_addresses` is `truncated` |
+| `senhub.listener.caller.address.prefix` | string | `/24` (IPv4) or `/48` (IPv6) of a public caller, only in `truncated` mode |
+| `network.type` | string | `ipv4` or `ipv6` |
+| `senhub.listener.caller.connection.count` | int | Connections open at the triggering read, not a total. `0` on `gone` |
+
+The client port and `network.peer.address` are never reported.
+
+| `event.name` | When | Timestamp | Extra keys |
+|---|---|---|---|
+| `senhub.listener.caller.seen` | The caller has been observed on `depends_on.debounce` reads | First read that saw it, before the debounce | |
+| `senhub.listener.caller.gone` | The caller has been missing past the miss tolerance of `depends_on` (`hostdep.ForgetAfter`) | Last read that saw it | `senhub.listener.caller.presence.duration` (s, double): first to last read that saw it, the tolerated absences at the end excluded |
+| `senhub.listener.caller.activity` | One per caller and per 15-minute window (aligned on the clock) | End of the window | `senhub.listener.caller.connection.observed` (int, distinct connections seen in the window), `senhub.listener.caller.connection.max` (int, most at one read), `senhub.listener.caller.window.duration` (s, double; shorter for the first window after a start) |
+
+`ObservedTimestamp` is the emission time on every record. A connection is
+distinguished by its local address and the caller's port, only to be counted.
+
+At most 32 callers per listener get records. A caller still inside the debounce
+holds no place: places are granted on confirmation, which is when `seen` is
+emitted. The set is frozen once full; when several callers confirm for fewer
+free places, or a place is freed by a `gone`, they go by first appearance, then
+by address. A caller admitted late keeps its first sighting as the `seen`
+Timestamp. A read gap longer than a window yields an `activity` record for the
+span actually covered (Timestamp at the last read, `window.duration` its length).
+If the interface list cannot be read, one warning is logged and callers are
+classified by address alone.
+
+Metric `senhub.listener.caller.count`, unit `{address}`, gauge: the distinct
+caller addresses of a listener at the last read, with `service.endpoint`,
+`network.transport` and `senhub.listener.caller.class`. The four classes
+partition the addresses, so their sum is the distinct total:
+
+| Class | Addresses counted |
+|---|---|
+| `emitted` | Tracked: they have records, or will once the debounce is met. In `clear` and `truncated` modes this includes public addresses |
+| `over_cap` | Beyond the cap of 32: counted, no record |
+| `public` | Public addresses in `count` mode only: counted, no record |
+| `local` | Loopback, link-local, wildcard, multicast, default Docker and Podman bridges, any address that reaches the host through a container bridge, veth or CNI interface or that sits in the network of one: never reported |
+
 ## 6ter. Entity events — the wire contract and filtering
 
 The entity rail follows the **merged OTel entity-events spec** (the embedded

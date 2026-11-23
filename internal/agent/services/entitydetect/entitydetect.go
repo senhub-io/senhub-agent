@@ -26,6 +26,7 @@ import (
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/entity"
+	"senhub-agent.go/internal/agent/services/entity/hostcaller"
 	"senhub-agent.go/internal/agent/services/entity/hostdep"
 	"senhub-agent.go/internal/agent/services/entity/hostiface"
 	"senhub-agent.go/internal/agent/services/entity/hostnet"
@@ -67,6 +68,13 @@ type Config struct {
 	DependsOnEnabled      bool
 	DependsOnDebounce     int
 	DependsOnExcludeCIDRs []*net.IPNet
+
+	// InboundCallersEnabled reports the callers of the host's listeners as
+	// log records and a metric. Off by default; needs the detector, whose
+	// cycle is the clock of the socket read, and an OTLP logs signal.
+	InboundCallersEnabled bool
+	// InboundPublicAddresses is clear, truncated or count; empty is clear.
+	InboundPublicAddresses string
 
 	// NeighborsEnabled gates the ARP/NDP neighbour source. Off by
 	// default: network.neighbor consumers are not deployed everywhere.
@@ -248,8 +256,26 @@ func (s *Service) startLocked(ctx context.Context) error {
 		s.unregisters = append(s.unregisters, entity.RegisterSource(hostnet.NewNeighborSource(hostIDFn)))
 	}
 
-	if cfg.DependsOnEnabled {
+	if cfg.DependsOnEnabled || cfg.InboundCallersEnabled {
 		dep := hostdep.New(hostIDFn, cfg.DependsOnDebounce, cfg.DependsOnExcludeCIDRs)
+		if cfg.InboundCallersEnabled {
+			threshold := cfg.DependsOnDebounce
+			if threshold < 1 {
+				threshold = hostdep.DefaultThreshold
+			}
+			tracker := hostcaller.New(hostcaller.Config{
+				Threshold: threshold,
+				OnInterfaceError: func(err error) {
+					s.logger.Warn().Err(err).Msg("host interface list unreadable; inbound callers are classified by address alone, so callers behind a container bridge may be reported")
+				},
+				Public: hostcaller.ParsePublicMode(cfg.InboundPublicAddresses),
+			})
+			dep.SetInboundSink(tracker.Observe)
+			s.unregisters = append(s.unregisters, hostcaller.Install(tracker))
+		}
+		if !cfg.DependsOnEnabled {
+			dep.DisableOutbound()
+		}
 		// Mapping a socket to its owning process reads /proc/<pid>/fd,
 		// which is owner-only: a non-root daemon sees every other
 		// service's connections with no owner and can emit nothing for
@@ -334,6 +360,7 @@ func (s *Service) startLocked(ctx context.Context) error {
 	s.logger.Info().
 		Dur("interval", cfg.Interval).
 		Bool("depends_on", cfg.DependsOnEnabled).
+		Bool("inbound_callers", cfg.InboundCallersEnabled).
 		Bool("neighbors", cfg.NeighborsEnabled).
 		Bool("neighbors_resolves_to", cfg.NeighborsResolvesTo).
 		Bool("aggregation", cfg.AggregationEnabled).

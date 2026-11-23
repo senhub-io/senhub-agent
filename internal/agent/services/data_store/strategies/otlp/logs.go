@@ -161,7 +161,14 @@ func (p *logsPipeline) emit(ctx context.Context, rec agentstate.LogRecord) {
 	}
 	var apiRec log.Record
 	apiRec.SetTimestamp(rec.Timestamp)
-	apiRec.SetObservedTimestamp(rec.Timestamp)
+	if rec.ObservedTimestamp.IsZero() {
+		apiRec.SetObservedTimestamp(rec.Timestamp)
+	} else {
+		apiRec.SetObservedTimestamp(rec.ObservedTimestamp)
+	}
+	if rec.EventName != "" {
+		apiRec.SetEventName(rec.EventName)
+	}
 	// Whatever its source wrote as text, the record leaves with an OTel
 	// number; a number the source set is never overridden.
 	severity := rec.Severity
@@ -182,7 +189,22 @@ func (p *logsPipeline) emit(ctx context.Context, rec agentstate.LogRecord) {
 		attrs = append(attrs, attribute.String("senhub.probe.type", rec.ProducerProbeType))
 	}
 	for k, v := range rec.Attributes {
+		if _, typed := rec.TypedAttributes[k]; typed {
+			continue
+		}
 		attrs = append(attrs, attribute.String(k, v))
+	}
+	for k, v := range rec.TypedAttributes {
+		switch n := v.(type) {
+		case int64:
+			attrs = append(attrs, attribute.Int64(k, n))
+		case int:
+			attrs = append(attrs, attribute.Int64(k, int64(n)))
+		case float64:
+			attrs = append(attrs, attribute.Float64(k, n))
+		case bool:
+			attrs = append(attrs, attribute.Bool(k, n))
+		}
 	}
 	if len(attrs) > 0 {
 		apiRec.AddAttributes(attrs...)
@@ -230,11 +252,23 @@ func (p *logsPipeline) rebuildEventLogs(ctx context.Context, prs []persistedLogR
 			apiRec.SetSeverityText(pr.SeverityText)
 		}
 		apiRec.SetBody(attribute.StringValue(pr.Body))
-		if len(pr.Attributes) > 0 {
-			attrs := make([]attribute.KeyValue, 0, len(pr.Attributes))
-			for k, v := range pr.Attributes {
-				attrs = append(attrs, attribute.String(k, v))
-			}
+		if pr.EventName != "" {
+			apiRec.SetEventName(pr.EventName)
+		}
+		attrs := make([]attribute.KeyValue, 0, len(pr.Attributes)+len(pr.IntAttributes)+len(pr.FloatAttributes)+len(pr.BoolAttributes))
+		for k, v := range pr.Attributes {
+			attrs = append(attrs, attribute.String(k, v))
+		}
+		for k, v := range pr.IntAttributes {
+			attrs = append(attrs, attribute.Int64(k, v))
+		}
+		for k, v := range pr.FloatAttributes {
+			attrs = append(attrs, attribute.Float64(k, v))
+		}
+		for k, v := range pr.BoolAttributes {
+			attrs = append(attrs, attribute.Bool(k, v))
+		}
+		if len(attrs) > 0 {
 			apiRec.AddAttributes(attrs...)
 		}
 		lg.Emit(ctx, apiRec)

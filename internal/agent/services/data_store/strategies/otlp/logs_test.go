@@ -309,3 +309,84 @@ func resetLogChannel() {
 	ch := agentstate.SubscribeLogs(1)
 	agentstate.UnsubscribeLogs(ch)
 }
+
+func TestLogsPipeline_EventNameTypedAttributesAndObservedTime(t *testing.T) {
+	pipe, exp := newTestLogsPipeline(t, 10, 1024, 10*time.Millisecond)
+	defer pipe.shutdown(context.Background())
+
+	fact := time.Unix(1700000000, 0)
+	emitted := fact.Add(10 * time.Minute)
+	pipe.emit(context.Background(), agentstate.LogRecord{
+		Timestamp:         fact,
+		ObservedTimestamp: emitted,
+		Severity:          agentstate.LogSeverityInfo,
+		Body:              "senhub.listener.caller.seen",
+		EventName:         "senhub.listener.caller.seen",
+		Attributes:        map[string]string{"client.address": "10.1.1.1", "server.port": "443"},
+		TypedAttributes:   map[string]any{"server.port": int64(443), "window": 900.0},
+	})
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && len(exp.snapshot()) == 0 {
+		time.Sleep(20 * time.Millisecond)
+	}
+	got := exp.snapshot()
+	if len(got) != 1 {
+		t.Fatalf("got %d records", len(got))
+	}
+	rec := got[0]
+	if rec.EventName() != "senhub.listener.caller.seen" {
+		t.Errorf("EventName = %q", rec.EventName())
+	}
+	if !rec.Timestamp().Equal(fact) || !rec.ObservedTimestamp().Equal(emitted) {
+		t.Errorf("Timestamp=%v Observed=%v", rec.Timestamp(), rec.ObservedTimestamp())
+	}
+	seen := map[string]attribute.Value{}
+	n := 0
+	rec.WalkAttributes(func(kv attribute.KeyValue) bool {
+		seen[string(kv.Key)] = kv.Value
+		n++
+		return true
+	})
+	if v := seen["server.port"]; v.Type() != attribute.INT64 || v.AsInt64() != 443 {
+		t.Errorf("server.port = %v, want int 443", v)
+	}
+	if v := seen["window"]; v.Type() != attribute.FLOAT64 || v.AsFloat64() != 900 {
+		t.Errorf("window = %v, want float 900", v)
+	}
+	if v := seen["client.address"]; v.AsString() != "10.1.1.1" {
+		t.Errorf("client.address = %v", v)
+	}
+	if n != 3 {
+		t.Errorf("%d attributes, want 3: the string copy of a typed key must not ride along", n)
+	}
+}
+
+func TestPersistedEventLogKeepsNameAndTypes(t *testing.T) {
+	pipe, _ := newTestLogsPipeline(t, 10, 1024, time.Hour)
+	defer pipe.shutdown(context.Background())
+
+	prs := []persistedLogRecord{{
+		TimestampUnixNano:         time.Unix(1700000000, 0).UnixNano(),
+		ObservedTimestampUnixNano: time.Unix(1700000600, 0).UnixNano(),
+		SeverityNumber:            int(log.SeverityInfo),
+		Body:                      "senhub.listener.caller.activity",
+		EventName:                 "senhub.listener.caller.activity",
+		Attributes:                map[string]string{"client.address": "10.1.1.1"},
+		IntAttributes:             map[string]int64{"server.port": 443},
+		FloatAttributes:           map[string]float64{"senhub.listener.caller.window.duration": 900},
+	}}
+	recs := pipe.rebuildEventLogs(context.Background(), prs)
+	if len(recs) != 1 {
+		t.Fatalf("%d records rebuilt", len(recs))
+	}
+	back, ok := serializeEventLog(recs[0])
+	if !ok {
+		t.Fatal("rebuilt record is not an event log")
+	}
+	if back.EventName != prs[0].EventName || back.IntAttributes["server.port"] != 443 || back.FloatAttributes["senhub.listener.caller.window.duration"] != 900 || back.Attributes["client.address"] != "10.1.1.1" {
+		t.Errorf("round trip lost something: %+v", back)
+	}
+	if back.ObservedTimestampUnixNano != prs[0].ObservedTimestampUnixNano {
+		t.Errorf("observed timestamp lost: %d", back.ObservedTimestampUnixNano)
+	}
+}
