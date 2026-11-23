@@ -25,6 +25,7 @@ import (
 
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/common"
+	"senhub-agent.go/internal/agent/services/ebpfclient"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/entity/hostcaller"
 	"senhub-agent.go/internal/agent/services/entity/hostdep"
@@ -75,6 +76,10 @@ type Config struct {
 	InboundCallersEnabled bool
 	// InboundPublicAddresses is clear, truncated or count; empty is clear.
 	InboundPublicAddresses string
+
+	// EBPFEnabled lets the dependency source consult the senhub-ebpf helper
+	// when its socket exists. On by default; harmless without the helper.
+	EBPFEnabled bool
 
 	// NeighborsEnabled gates the ARP/NDP neighbour source. Off by
 	// default: network.neighbor consumers are not deployed everywhere.
@@ -287,6 +292,22 @@ func (s *Service) startLocked(ctx context.Context) error {
 				Int("unattributable", unattributable).
 				Msg("outbound dependencies could not be attributed to a process; the agent may lack the privilege to read them")
 		})
+		if cfg.EBPFEnabled {
+			var lastMu sync.Mutex
+			lastErr := ""
+			dep.SetEBPF(ebpfclient.New(""), func(err error) {
+				if ebpfclient.IsAbsent(err) {
+					return
+				}
+				lastMu.Lock()
+				repeat := lastErr == err.Error()
+				lastErr = err.Error()
+				lastMu.Unlock()
+				if !repeat {
+					s.logger.Warn().Err(err).Msg("the senhub-ebpf helper socket exists but does not answer; sockets of other users stay unattributed")
+				}
+			})
+		}
 		s.unregisters = append(s.unregisters, entity.RegisterSource(dep))
 	}
 
@@ -361,6 +382,7 @@ func (s *Service) startLocked(ctx context.Context) error {
 		Dur("interval", cfg.Interval).
 		Bool("depends_on", cfg.DependsOnEnabled).
 		Bool("inbound_callers", cfg.InboundCallersEnabled).
+		Bool("ebpf", cfg.EBPFEnabled).
 		Bool("neighbors", cfg.NeighborsEnabled).
 		Bool("neighbors_resolves_to", cfg.NeighborsResolvesTo).
 		Bool("aggregation", cfg.AggregationEnabled).

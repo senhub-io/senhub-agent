@@ -93,6 +93,9 @@ type edgeRegistry struct {
 	// limit caps each of the socket maps; evicted counts what the cap dropped.
 	limit   int
 	evicted uint64
+	// ebpfRetrans is the helper's retransmission count per socket four-tuple
+	// at the last scrape; nil when no helper answers.
+	ebpfRetrans map[tupleKey]uint64
 }
 
 // maxTrackedSockets bounds the per-socket maps whatever the socket churn.
@@ -212,6 +215,13 @@ func (r *edgeRegistry) publish(emitted map[peerKey]edgeKey, deps []dependant) {
 	r.retiredTuples = retiredTuples
 }
 
+// setEBPFRetransmits replaces the helper's per-socket retransmission counts.
+func (r *edgeRegistry) setEBPFRetransmits(m map[tupleKey]uint64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.ebpfRetrans = m
+}
+
 func (r *edgeRegistry) collect(conns []netconn.Conn) []EdgeMetric {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -256,6 +266,12 @@ func (r *edgeRegistry) collect(conns []netconn.Conn) []EdgeMetric {
 			continue
 		}
 		cur := sockState{retrans: uint64(c.Retransmits), sent: c.BytesSent, received: c.BytesReceived}
+		// The helper counts every retransmitted segment from the connection's
+		// start; the larger of the two counts is the better one, and neither
+		// is ever added to the other.
+		if n := r.ebpfRetrans[t]; n > cur.retrans {
+			cur.retrans = n
+		}
 		if !live {
 			// Not attributed now (edge retired, or between two attributions):
 			// keep the baseline untouched so the growth in between is added

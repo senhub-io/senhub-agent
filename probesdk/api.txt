@@ -595,6 +595,7 @@ type senhub-agent.go/internal/agent/services/configuration.EntitiesAggregationCo
 type senhub-agent.go/internal/agent/services/configuration.EntitiesConfig struct
   field Aggregation *senhub-agent.go/internal/agent/services/configuration.EntitiesAggregationConfig `yaml:"aggregation,omitempty"`
   field DependsOn *senhub-agent.go/internal/agent/services/configuration.EntitiesDependsOnConfig `yaml:"depends_on,omitempty"`
+  field EBPF *senhub-agent.go/internal/agent/services/configuration.EntitiesEBPFConfig `yaml:"ebpf,omitempty"`
   field Enabled bool `yaml:"enabled"`
   field InboundCallers *senhub-agent.go/internal/agent/services/configuration.EntitiesInboundCallersConfig `yaml:"inbound_callers,omitempty"`
   field Interval string `yaml:"interval,omitempty"`
@@ -603,6 +604,8 @@ type senhub-agent.go/internal/agent/services/configuration.EntitiesDependsOnConf
   field Debounce int `yaml:"debounce,omitempty"`
   field Enabled bool `yaml:"enabled"`
   field ExcludeCIDRs []string `yaml:"exclude_cidrs,omitempty"`
+type senhub-agent.go/internal/agent/services/configuration.EntitiesEBPFConfig struct
+  field Enabled *bool `yaml:"enabled,omitempty"`
 type senhub-agent.go/internal/agent/services/configuration.EntitiesInboundCallersConfig struct
   field Enabled bool `yaml:"enabled"`
   field PublicAddresses string `yaml:"public_addresses,omitempty"`
