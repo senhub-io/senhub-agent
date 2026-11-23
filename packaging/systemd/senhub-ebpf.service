@@ -1,0 +1,62 @@
+[Unit]
+Description=SenHub eBPF helper — owners and retransmissions of TCP connections for the agent
+Documentation=https://github.com/senhub-io/senhub-agent
+# Shipped disabled. Turn it on with: systemctl enable --now senhub-ebpf
+# It needs kernel 5.8 or newer with BTF; elsewhere it logs why and stops.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=senhub-ebpf
+# The agent's group: it owns the socket the agent reads (mode 0660).
+Group=senhub
+ExecStart=/usr/local/bin/senhub-ebpf
+# A refusal (exit 3: kernel or BTF unsupported, exit 4: capabilities missing)
+# cannot be cured by trying again; every other failure is retried.
+Restart=on-failure
+RestartSec=5
+RestartPreventExitStatus=3 4
+
+# /run/senhub-ebpf/ebpf.sock, reachable by the senhub group only.
+RuntimeDirectory=senhub-ebpf
+RuntimeDirectoryMode=0750
+
+# Exactly the two capabilities a kernel 5.8+ asks to load tracing programs.
+# CAP_SYS_ADMIN is never granted, and that is why kernels older than 5.8
+# (RHEL 8 and its 4.18) are unsupported rather than served with it.
+AmbientCapabilities=CAP_BPF CAP_PERFMON
+CapabilityBoundingSet=CAP_BPF CAP_PERFMON
+NoNewPrivileges=true
+
+# Kernels 5.8 to 5.10 charge BPF memory to the locked-memory limit.
+LimitMEMLOCK=infinity
+MemoryMax=50M
+TasksMax=64
+
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RemoveIPC=true
+UMask=0027
+# Only its own unix socket: no network sockets at all.
+RestrictAddressFamilies=AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service bpf
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

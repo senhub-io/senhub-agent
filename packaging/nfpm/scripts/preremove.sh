@@ -18,6 +18,8 @@ fi
 if [ -d /run/systemd/system ]; then
     systemctl stop senhub-agent.service || true
     systemctl disable senhub-agent.service || true
+    systemctl stop senhub-ebpf.service || true
+    systemctl disable senhub-ebpf.service || true
 fi
 
 exit 0

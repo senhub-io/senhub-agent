@@ -4,6 +4,7 @@
 # The agent is a static Go binary on purpose (CGO_ENABLED=0): it runs on any
 # distribution and in scratch or musl containers, with no shared libraries.
 statically-linked-binary [usr/bin/senhub-agent]
+statically-linked-binary [usr/bin/senhub-ebpf]
 
 # The scripts call systemctl directly, each time guarded by the presence of a
 # running systemd (/run/systemd/system). The packages are built with nFPM, not

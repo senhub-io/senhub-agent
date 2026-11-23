@@ -120,6 +120,7 @@ nav:
   - OTLP / OpenTelemetry: otlp.md
   - OpAMP remote management: opamp.md
   - Topology: topology.md
+  - eBPF connection owners: ebpf.md
   - Probes:
       - Overview: probes/index.md
       - CPU: probes/cpu.md

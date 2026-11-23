@@ -40,6 +40,15 @@ if ! getent passwd "${SENHUB_USER}" >/dev/null 2>&1; then
         --shell /usr/sbin/nologin "${SENHUB_USER}"
 fi
 
+# The eBPF helper runs as its own user, in the senhub group so that the agent
+# can read its socket. The unit is shipped disabled; the user exists either way.
+EBPF_USER="senhub-ebpf"
+if ! getent passwd "${EBPF_USER}" >/dev/null 2>&1; then
+    useradd --system --gid "${SENHUB_USER}" \
+        --home-dir /nonexistent --no-create-home \
+        --shell /usr/sbin/nologin "${EBPF_USER}"
+fi
+
 # System-log read access for the filetail probe (syslog:adm 0640 on
 # Debian and Ubuntu). Not every distribution has the group, and the
 # join is never worth failing an install for.
