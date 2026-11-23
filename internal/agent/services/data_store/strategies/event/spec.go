@@ -14,6 +14,9 @@ func init() {
 			{Key: "server_url", Kind: spec.KindString, Required: true, Group: "connection", Description: "Base URL of the event intake; /event/insert is appended", Example: "https://events.example.com"},
 			{Key: "queue_size", Kind: spec.KindInt, Default: 1000, Group: "delivery", Description: "Records held before the oldest are dropped"},
 			{Key: "sync_interval", Kind: spec.KindDuration, Default: "30s", Group: "delivery", Description: "Push cadence"},
+			{Key: "backlog_path", Kind: spec.KindString, Group: "delivery", Description: "Directory holding events the intake has not acknowledged; empty means event-queue under the agent state directory"},
+			{Key: "backlog_max_bytes", Kind: spec.KindInt, Default: 134217728, Group: "delivery", Description: "Disk cap of the undelivered events, in bytes; the oldest are dropped past it"},
+			{Key: "backlog_max_age", Kind: spec.KindDuration, Default: "24h", Group: "delivery", Description: "Undelivered events older than this are dropped"},
 		},
 	})
 }

@@ -354,6 +354,7 @@ storage:
       server_url: "https://eu-west-1.intake.senhub.io"
       queue_size: 1000
       sync_interval: 30s
+      backlog_max_age: 24h
 ```
 
 | Parameter | Storage | Default | Description |
@@ -363,6 +364,17 @@ storage:
 | `data_retention_period` | `prtg` | `2m` | How long a pushed value stays valid. A value older than this is dropped rather than sent, so a stalled probe reports no data instead of a stale reading |
 | `queue_size` | `event` | `1000` | Events held in memory awaiting a push. Past it the oldest are dropped and counted |
 | `sync_interval` | `event` | `30s` | How often the queue is flushed. A large batch is flushed earlier on its own |
+| `backlog_path` | `event` | `event-queue` under the agent state directory | Directory where events the intake has not acknowledged are kept |
+| `backlog_max_bytes` | `event` | `134217728` (128 MiB) | Disk cap of the undelivered events. Past it the oldest are dropped and counted |
+| `backlog_max_age` | `event` | `24h` | Undelivered events older than this are dropped and counted |
+
+### Events during an intake outage
+
+When the intake does not answer (network failure, timeout, 5xx, 408, 429, 401, 403), the `event` storage writes the events it could not deliver to disk, one file per batch, in `event-queue` under the agent state directory (`backlog_path` moves it). A restart during the outage loses nothing: the agent replays the files, oldest first, as soon as the intake answers, and deletes a file only after the intake has acknowledged it. Each event carries its `senhub_event_id` from the first attempt, so the intake can recognise a copy sent twice.
+
+The backlog is bounded. With the defaults it holds about 190,000 events (128 MiB at roughly 0.7 KB per event): four hours of a host emitting 13 events per second, and a day of a quieter one. Past the size cap or `backlog_max_age`, the oldest events are dropped, counted in `senhub.agent.push.buffer.dropped` (`strategy="event"`), and logged in a single warning. A batch the intake refuses for good (for example a 422) is dropped and counted, not kept. When the agent stops, the final flush stops at the shutdown deadline and whatever it did not send stays on disk for the next start.
+
+If the directory cannot be written, the agent logs one warning at start and keeps undelivered events in memory only (bounded, lost on restart), as before.
 
 ## Cache Section
 
