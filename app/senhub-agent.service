@@ -30,9 +30,14 @@ Restart=always
 RestartSec=5
 
 # State and runtime directories (created/managed by systemd, 0750).
+# The modes are the ones the packages create (0750); left to the default 0755,
+# systemd warns at every start that the existing directory differs.
 StateDirectory=senhub-agent
+StateDirectoryMode=0750
 LogsDirectory=senhub-agent
+LogsDirectoryMode=0750
 ConfigurationDirectory=senhub-agent
+ConfigurationDirectoryMode=0750
 
 # Hardening — the agent reads host metrics, so it needs broad read
 # access but should not be able to write outside its own directories.

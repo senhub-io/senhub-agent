@@ -3,10 +3,11 @@ Description=SenHub Agent update, applied as root on the service's request
 Documentation=https://github.com/senhub-io/senhub-agent
 After=network-online.target
 Wants=network-online.target
-# At most six runs an hour: a service that keeps asking cannot turn this unit
-# into a download loop. (Start-rate limiting lives in [Unit], see #577.)
-StartLimitIntervalSec=3600
-StartLimitBurst=6
+# No systemd start limit: hitting it would fail the path unit for good, and
+# no later request would ever be handled. The limit is in update-apply, which
+# refuses more than six attempts in the last hour (rate_limited) and recovers
+# by itself; a rollback is never refused for it.
+StartLimitIntervalSec=0
 
 [Service]
 Type=oneshot
@@ -15,6 +16,10 @@ Type=oneshot
 # signed version list, the archive hash and its signature.
 ExecStart=/usr/bin/senhub-agent update-apply
 TimeoutStartSec=900
+# At most one run every two seconds, whatever the service writes: a request
+# is deleted by the first thing update-apply does, so nothing retriggers the
+# path unit, and this keeps even a hostile writer to a trickle.
+ExecStopPost=-/usr/bin/sleep 2
 User=root
 
 # Root's own state: the list sequence floor and the update lock, out of reach

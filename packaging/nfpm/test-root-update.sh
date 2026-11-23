@@ -66,11 +66,13 @@ expect_refused() {
     x "[ ! -e $REQ ] && [ ! -L $REQ ]" || { ok=0; why="$why; request not deleted"; }
     [ "$(x "sha256sum /usr/bin/senhub-agent | cut -d' ' -f1")" = "$BIN_SHA" ] || { ok=0; why="$why; binary changed"; }
     x "[ ! -e /usr/bin/senhub-agent.previous ] && ! ls /usr/bin/.senhub-agent-update-* >/dev/null 2>&1" || { ok=0; why="$why; leftovers in /usr/bin"; }
+    [ "$(echo "$out" | grep -c 'Starting senhub-agent-update.service')" = 1 ] || { ok=0; why="$why; not exactly one start of the unit"; }
+    x "systemctl is-active senhub-agent-update.path" >/dev/null || { ok=0; why="$why; path unit not active"; }
     echo "$out" | grep -q "Downloading update archive" && { ok=0; why="$why; an archive was downloaded"; }
     [ "$(x "sha256sum /etc/shadow | cut -d' ' -f1")" = "$SHADOW_SHA" ] || { ok=0; why="$why; /etc/shadow changed"; }
     [ $ok = 1 ] && verdict ok "$name" "$(echo "$out" | grep "$pattern" | tail -1 | cut -c1-160)" || verdict FAIL "$name" "$why"
-    x "systemctl reset-failed $UNIT senhub-agent-update.path; journalctl --rotate; journalctl --vacuum-time=1s" >/dev/null 2>&1
-    sleep 1
+    x "rm -f /var/lib/senhub-agent-update/attempts.json; journalctl --rotate; journalctl --vacuum-time=1s" >/dev/null 2>&1
+    sleep 3
 }
 
 # 1 the other user cannot even write there; a file he owns is refused if one lands there
@@ -115,19 +117,31 @@ expect_refused "rollback with no install by the unit" "step=rollback"
 write_as senhub 'rollback\n' 640
 expect_refused "rollback forged through the version request" "malformed request content"
 
-# 7 six refusals within the hour have used the start limit: a seventh start is not made
-sleep 1
-x "systemctl reset-failed $UNIT senhub-agent-update.path" >/dev/null 2>&1
+# 7 a burst: six runs are handled, the rest are rate_limited, every request is one
+# start of the unit, and the path unit never dies (no systemd start limit)
+x "rm -f /var/lib/senhub-agent-update/attempts.json; journalctl --rotate; journalctl --vacuum-time=1s" >/dev/null 2>&1
+sleep 2
 for n in 1 2 3 4 5 6 7 8 9 10; do
-    write_as senhub 'x\n' 640; sleep 1.5
+    write_as senhub 'x\n' 640; sleep 3.5
 done
-starts=$(x "journalctl -u $UNIT --no-pager -o cat | grep -c 'Root update refused'")
-limit=$(x "systemctl show -p Result --value $UNIT; systemctl show -p Result --value senhub-agent-update.path" | tr '\n' ' ')
-if [ "$starts" -le 6 ] && echo "$limit" | grep -q limit; then
-    verdict ok "start limit stops a flood of requests" "10 requests, $starts runs, result: $limit"
+out=$(x "journalctl -u $UNIT --no-pager -o cat")
+starts=$(echo "$out" | grep -c 'Starting senhub-agent-update.service')
+handled=$(echo "$out" | grep -c 'step=request')
+limited=$(echo "$out" | grep -c 'reason=rate_limited')
+if [ "$starts" = 10 ] && [ "$handled" = 6 ] && [ "$limited" = 4 ] && x "systemctl is-active senhub-agent-update.path" >/dev/null; then
+    verdict ok "burst of 10: 6 handled, 4 rate_limited, one start each, path unit active" "starts=$starts handled=$handled limited=$limited"
 else
-    verdict FAIL "start limit stops a flood of requests" "10 requests, $starts runs, result: $limit"
+    verdict FAIL "burst of 10" "starts=$starts handled=$handled limited=$limited path=$(x 'systemctl is-active senhub-agent-update.path')"
 fi
+x "[ ! -e $REQ ]" && verdict ok "no request left after the burst" || verdict FAIL "no request left after the burst"
+res=$(x "cat /var/lib/senhub-agent/update-result.json; stat -c ' %a %U' /var/lib/senhub-agent/update-result.json")
+echo "$res" | grep -q 'rate_limited' && echo "$res" | grep -q ' 644 root' \
+    && verdict ok "result file for the service: refused/rate_limited, 0644" "$res" || verdict FAIL "result file for the service" "$res"
+write_as senhub '99.9.9\n' 640; sleep 4
+[ "$(x "journalctl -u $UNIT --no-pager -o cat | grep -c 'reason=rate_limited'")" = 5 ] && verdict ok "a later request inside the window is refused" || verdict FAIL "a later request inside the window is refused"
+x "systemctl is-active senhub-agent-update.path" >/dev/null && verdict ok "path unit still active" || verdict FAIL "path unit still active"
+x "systemctl restart senhub-agent; sleep 3; journalctl -u senhub-agent --no-pager -o cat | grep -ci 'mode is different'" | grep -qx 0 \
+    && verdict ok "no ConfigurationDirectory mode warning at service start" || verdict FAIL "mode warning at service start"
 [ "$(x "sha256sum /usr/bin/senhub-agent | cut -d' ' -f1")" = "$BIN_SHA" ] && verdict ok "binary never changed" || verdict FAIL "binary never changed"
 
 # 7b symlinks planted by the service user before a (re)install: root follows none
