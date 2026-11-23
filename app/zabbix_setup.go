@@ -148,6 +148,9 @@ func (s *zabbixSetup) importTemplates() error {
 		"items":          map[string]bool{"createMissing": true, "updateExisting": true},
 		"discoveryRules": map[string]bool{"createMissing": true, "updateExisting": true},
 		"valueMaps":      map[string]bool{"createMissing": true, "updateExisting": true},
+		// Without this rule the server leaves the dashboards of the 7.0
+		// export out, without a word. Named so on every line since 5.4.
+		"templateDashboards": map[string]bool{"createMissing": true, "updateExisting": true},
 	}
 	if s.hostGroupsOnly {
 		rules["groups"] = map[string]bool{"createMissing": true}

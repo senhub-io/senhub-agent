@@ -247,3 +247,40 @@ func TestZabbixBefore(t *testing.T) {
 		}
 	}
 }
+
+// The server leaves out whatever an import rule does not name. The
+// dashboards of the 7.0 export were written by the generator and dropped
+// by the server, so a host showed charts nowhere under its Dashboards menu.
+func TestTheImportAsksForTheTemplateDashboards(t *testing.T) {
+	var rules map[string]map[string]bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var envelope struct {
+			Params struct {
+				Rules map[string]map[string]bool `json:"rules"`
+			} `json:"params"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&envelope); err != nil {
+			t.Errorf("reading the request: %v", err)
+		}
+		rules = envelope.Params.Rules
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"jsonrpc": "2.0", "result": true, "id": 1}); err != nil {
+			t.Errorf("answering the API call: %v", err)
+		}
+	}))
+	defer srv.Close()
+
+	for _, hostGroupsOnly := range []bool{false, true} {
+		rules = nil
+		s := &zabbixSetup{
+			api: newZabbixAPI(srv.URL, "token"), out: &bytes.Buffer{}, hostGroupsOnly: hostGroupsOnly,
+			templates: map[string][]byte{"cpu": []byte("zabbix_export: {}")},
+		}
+		if err := s.importTemplates(); err != nil {
+			t.Fatal(err)
+		}
+		got := rules["templateDashboards"]
+		if !got["createMissing"] || !got["updateExisting"] {
+			t.Errorf("hostGroupsOnly=%v: rules = %v, want templateDashboards created and updated", hostGroupsOnly, rules)
+		}
+	}
+}
