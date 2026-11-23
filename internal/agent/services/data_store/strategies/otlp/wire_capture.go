@@ -126,16 +126,18 @@ func (s *wireSlot) request() ([]byte, error) {
 			return nil, fmt.Errorf("re-read request body: %w", err)
 		}
 		defer rc.Close()
-		var r io.Reader = rc
-		if gz {
-			zr, err := gzip.NewReader(rc)
-			if err != nil {
-				return nil, fmt.Errorf("request body: %w", err)
-			}
-			defer zr.Close()
-			r = zr
+		if !gz {
+			return io.ReadAll(rc)
 		}
-		return io.ReadAll(r)
+		zr, err := gzip.NewReader(rc)
+		if err != nil {
+			return nil, fmt.Errorf("request body: %w", err)
+		}
+		out, err := io.ReadAll(zr)
+		if closeErr := zr.Close(); err == nil {
+			err = closeErr
+		}
+		return out, err
 	}
 	return nil, errors.New("no request captured")
 }
