@@ -887,6 +887,64 @@ otlp:
     enabled: true
 ```
 
+### Elastic
+
+Elastic takes OTLP in two ways, depending on where the stack runs.
+
+**Elastic Cloud (Serverless or Elastic Cloud Hosted)** exposes a managed
+OTLP endpoint. Copy its address from the Elastic Cloud console (Serverless:
+*Manage* > *Application endpoints* > *OpenTelemetry*; Hosted: *Managed
+OTLP*) and create an API key with the `event:write` privilege on the `apm`
+application. The header value is `ApiKey`, a space, then the encoded key:
+
+```yaml
+otlp:
+  protocol: http
+  endpoint: "my-deployment.ingest.eu-west-1.aws.elastic.cloud:443"
+  tls:
+    enabled: true
+  headers:
+    Authorization: "ApiKey ${env:ELASTIC_API_KEY}"
+  signals:
+    metrics:
+      enabled: true
+    logs:
+      enabled: true
+```
+
+The managed endpoint is not available on self-managed, ECE or ECK
+clusters.
+
+**Self-managed Elastic** receives OTLP through an Elastic Agent (EDOT
+Collector) running in gateway mode, which writes to Elasticsearch. Its OTLP
+receiver listens on 4317 (gRPC) and 4318 (HTTP). When the gateway checks
+callers with the `apikeyauth` extension, the agent sends an Elasticsearch
+API key with the `config_agent:read` privilege on the `apm` application,
+in the same `ApiKey` form:
+
+```yaml
+otlp:
+  protocol: grpc
+  endpoint: "elastic-gateway.internal:4317"
+  tls:
+    enabled: true
+    ca_file: /etc/ssl/private/elastic-gateway-ca.pem
+  headers:
+    Authorization: "ApiKey ${env:ELASTIC_API_KEY}"
+```
+
+Leave out `headers` if the gateway does not authenticate its callers. Use a
+different API key from the one the gateway uses to write to Elasticsearch.
+
+Temporality stays at the default, `cumulative`: Elasticsearch 9.5 and later
+store both delta and cumulative metrics natively (on Elastic Cloud Hosted,
+use 9.5.3 or later). Older stacks store delta counters as gauges and do not
+support cumulative histograms.
+
+Data lands in the `metrics-generic.otel-default`,
+`logs-generic.otel-default` and `traces-generic.otel-default` data streams;
+in Kibana, open *Discover* on one of them to see what the agent sent.
+
 ## Agent self-observability
 
 The agent's existing `senhub_agent_*` metrics (uptime, probe counts,
