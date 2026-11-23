@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
+	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 )
@@ -39,6 +40,8 @@ const DefaultPriority = 7
 // on each consecutive fast failure up to the max so a crash-looping journalctl
 // cannot spin. A reader that stayed up at least journalHealthyUptime before
 // dying is treated as an isolated death and resets the backoff to the minimum.
+const probeTypeName = "linux_logs"
+
 const (
 	journalRestartBackoffMin = 1 * time.Second
 	journalRestartBackoffMax = 60 * time.Second
@@ -131,7 +134,7 @@ func NewLinuxLogsProbe(config map[string]interface{}, baseLogger *logger.Logger)
 	}
 
 	moduleLogger.Debug().
-		Any("config", parsed).
+		Any("config", configuration.SanitizeProbeParamsForLog(probeTypeName, config)).
 		Msg("Creating new linux_logs probe")
 
 	return &LinuxLogsProbe{

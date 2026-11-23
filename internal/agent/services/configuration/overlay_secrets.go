@@ -27,6 +27,8 @@ func resolveManagedParams(in map[string]any) (ProbeConfigParams, error) {
 				if err != nil {
 					return nil, fmt.Errorf("managed parameter %q: unresolved fleet secret: %w", k, err)
 				}
+				// Masked in every log line from now on, as for a file reference.
+				RecordSubstituted(resolved)
 				out[k] = resolved
 			} else if strings.Contains(val, "${") {
 				return nil, fmt.Errorf("managed parameter %q: only ${secret:fleet.<name>} references are allowed", k)

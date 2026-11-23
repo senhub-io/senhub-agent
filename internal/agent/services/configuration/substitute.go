@@ -67,7 +67,27 @@ func Substitute(v interface{}) error {
 	if rv.Kind() != reflect.Ptr {
 		return fmt.Errorf("Substitute requires a pointer; got %T", v)
 	}
-	return walk(rv.Elem())
+	return walk(rv.Elem(), nil)
+}
+
+// substituteLoaded is Substitute for the configuration loader: it also
+// records the values the references resolved to, so the log sanitizers can
+// mask them whatever their key. The set replaces the previous one only once
+// the whole walk succeeded.
+func substituteLoaded(v interface{}) error {
+	if v == nil {
+		return nil
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Ptr {
+		return fmt.Errorf("Substitute requires a pointer; got %T", v)
+	}
+	rec := &recorder{}
+	if err := walk(rv.Elem(), rec); err != nil {
+		return err
+	}
+	substituted.rotate(rec.values)
+	return nil
 }
 
 // walk dispatches by reflect.Kind, recursing into composite types
@@ -76,13 +96,13 @@ func Substitute(v interface{}) error {
 // reflect.Value and write back through the parent — the indirection
 // is necessary because reflect cannot SetString on a value that
 // doesn't have a home in memory.
-func walk(v reflect.Value) error {
+func walk(v reflect.Value, rec *recorder) error {
 	switch v.Kind() {
 	case reflect.Ptr:
 		if v.IsNil() {
 			return nil
 		}
-		return walk(v.Elem())
+		return walk(v.Elem(), rec)
 
 	case reflect.Interface:
 		if v.IsNil() {
@@ -94,7 +114,7 @@ func walk(v reflect.Value) error {
 		// and Set() it back. substituteInterface handles the round
 		// trip: read concrete → mutate → repack → write back if v is
 		// settable.
-		return substituteInterface(v)
+		return substituteInterface(v, rec)
 
 	case reflect.Struct:
 		for i := 0; i < v.NumField(); i++ {
@@ -104,7 +124,7 @@ func walk(v reflect.Value) error {
 				// skipping is the safe call.
 				continue
 			}
-			if err := walk(v.Field(i)); err != nil {
+			if err := walk(v.Field(i), rec); err != nil {
 				return err
 			}
 		}
@@ -119,7 +139,7 @@ func walk(v reflect.Value) error {
 			val := iter.Value()
 			tmp := reflect.New(val.Type()).Elem()
 			tmp.Set(val)
-			if err := walk(tmp); err != nil {
+			if err := walk(tmp, rec); err != nil {
 				return err
 			}
 			v.SetMapIndex(iter.Key(), tmp)
@@ -127,7 +147,7 @@ func walk(v reflect.Value) error {
 
 	case reflect.Slice, reflect.Array:
 		for i := 0; i < v.Len(); i++ {
-			if err := walk(v.Index(i)); err != nil {
+			if err := walk(v.Index(i), rec); err != nil {
 				return err
 			}
 		}
@@ -138,7 +158,7 @@ func walk(v reflect.Value) error {
 			// rather than silently dropping the substitution.
 			return fmt.Errorf("string at %s is not settable; pass a pointer to Substitute", v.Type())
 		}
-		out, err := substituteString(v.String())
+		out, err := substituteStringRec(v.String(), rec)
 		if err != nil {
 			return err
 		}
@@ -157,11 +177,11 @@ func walk(v reflect.Value) error {
 // holder back to the original interface via Set(). v itself must
 // be settable for the write-back; non-settable interface positions
 // (e.g. the top of a non-pointer call) are a programmer error.
-func substituteInterface(v reflect.Value) error {
+func substituteInterface(v reflect.Value, rec *recorder) error {
 	concrete := v.Elem()
 	holder := reflect.New(concrete.Type()).Elem()
 	holder.Set(concrete)
-	if err := walk(holder); err != nil {
+	if err := walk(holder, rec); err != nil {
 		return err
 	}
 	if v.CanSet() {
@@ -186,7 +206,9 @@ func substituteInterface(v reflect.Value) error {
 // env-only expander.
 func SubstituteString(s string) (string, error) { return substituteString(s) }
 
-func substituteString(s string) (string, error) {
+func substituteString(s string) (string, error) { return substituteStringRec(s, nil) }
+
+func substituteStringRec(s string, rec *recorder) (string, error) {
 	if !strings.Contains(s, "${") && !strings.Contains(s, "$$") {
 		return s, nil // fast path — no references, no escape
 	}
@@ -206,10 +228,13 @@ func substituteString(s string) (string, error) {
 		kind, ref, dflt := groups[1], groups[2], groups[3]
 		hasDefault := strings.Contains(match, ":-")
 
-		value, err := resolveReference(kind, ref, dflt, hasDefault)
+		value, fromDefault, err := resolveReference(kind, ref, dflt, hasDefault)
 		if err != nil {
 			firstErr = err
 			return match
+		}
+		if !fromDefault {
+			rec.add(value)
 		}
 		return value
 	})
@@ -228,47 +253,53 @@ func substituteString(s string) (string, error) {
 // dflt because an explicit empty default (`${env:X:-}`) is different
 // from "no default specified" (`${env:X}`) — only the latter is
 // allowed to resolve to "" when env is unset.
-func resolveReference(kind, ref, dflt string, hasDefault bool) (string, error) {
+func resolveReference(kind, ref, dflt string, hasDefault bool) (value string, fromDefault bool, err error) {
 	switch kind {
 	case "env":
 		if val, ok := os.LookupEnv(ref); ok {
-			return val, nil
+			return val, false, nil
 		}
 		// Missing env var: explicit default wins, otherwise empty
 		// string. This matches POSIX shell `${X-}` semantics and is
 		// the convention every operator who has ever written a
 		// `docker-compose.yml` already knows.
 		if hasDefault {
-			return dflt, nil
+			return dflt, true, nil
 		}
-		return "", nil
+		return "", false, nil
 
 	case "file":
-		data, err := os.ReadFile(ref) // #nosec G304 - file path comes from the operator's config; this is the documented mechanism
-		if err != nil {
+		data, rerr := os.ReadFile(ref) // #nosec G304 - file path comes from the operator's config; this is the documented mechanism
+		if rerr != nil {
 			if hasDefault {
-				return dflt, nil
+				return dflt, true, nil
 			}
-			return "", fmt.Errorf("reading ${file:%s}: %w", ref, err)
+			return "", false, fmt.Errorf("reading ${file:%s}: %w", ref, rerr)
 		}
 		// Trim trailing whitespace/newlines — operators routinely
 		// store secrets with a trailing newline from `echo "secret" > file`
 		// and that newline would corrupt anything appended to the
 		// resolved value (URLs, headers, DSNs).
-		return strings.TrimSpace(string(data)), nil
+		return strings.TrimSpace(string(data)), false, nil
 
 	case "secret":
 		// Resolve against the active OS-native secret backend. The value is
 		// returned to the caller and placed into the params map as a plain
 		// string; it is never logged here, and a resolution error names only
 		// the secret, never a value (see secret.Resolve).
-		return secret.Resolve(ref, dflt, hasDefault)
+		resolved, serr := secret.Resolve(ref, dflt, hasDefault)
+		if serr != nil {
+			return "", false, serr
+		}
+		// secret.Resolve does not say whether the default was used; a
+		// resolved value equal to the default is treated as the default.
+		return resolved, hasDefault && resolved == dflt, nil
 
 	default:
 		// Unreachable by construction (regex restricts kind to
 		// env|file), but defensively reported instead of silently
 		// emitting the literal match — silent skips are the design
 		// failure this package exists to avoid.
-		return "", fmt.Errorf("unknown substitution kind %q in ${%s:%s}", kind, kind, ref)
+		return "", false, fmt.Errorf("unknown substitution kind %q in ${%s:%s}", kind, kind, ref)
 	}
 }

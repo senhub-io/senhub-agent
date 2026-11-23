@@ -12,11 +12,14 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
 // Default values
+const probeTypeName = "event"
+
 const (
 	DefaultAddress      = "127.0.0.1"
 	DefaultPort         = 5656
@@ -91,7 +94,7 @@ func NewEventProbe(config map[string]interface{}, baseLogger *logger.Logger) (ty
 	moduleLogger := logger.NewModuleLogger(baseLogger, "probe.event")
 
 	moduleLogger.Debug().
-		Any("config", parsedConfig).
+		Any("config", configuration.SanitizeProbeParamsForLog(probeTypeName, config)).
 		Msg("Creating new Event probe")
 
 	return &EventProbe{

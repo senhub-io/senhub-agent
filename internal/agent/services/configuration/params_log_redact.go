@@ -127,11 +127,11 @@ func sanitizeValueForLog(key string, v interface{}) interface{} {
 		}
 		return s
 	case string:
-		return logredact.String(t)
+		return logredact.String(maskSubstituted(t))
 	case []string:
 		s := make([]string, len(t))
 		for i, vv := range t {
-			s[i] = logredact.String(vv)
+			s[i] = logredact.String(maskSubstituted(vv))
 		}
 		return s
 	default:
