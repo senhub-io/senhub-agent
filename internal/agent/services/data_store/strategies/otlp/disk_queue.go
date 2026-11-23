@@ -59,7 +59,17 @@ type diskQueue struct {
 	// oldestAt is when the batch that has waited longest was queued, so
 	// how late the rail is running can be read without touching the disk.
 	oldestAt time.Time
+
+	// evicted* accumulate what the size cap took since the last warning, so
+	// a queue that evicts on every write says it once per evictWarnInterval
+	// with the totals instead of once per batch.
+	evictedUnits   int
+	evictedBatches int
+	lastEvictWarn  time.Time
 }
+
+// evictWarnInterval spaces the size-cap eviction warnings of one queue.
+const evictWarnInterval = time.Minute
 
 // pending reports how many units wait on disk and how long the oldest
 // has waited. A zero duration means nothing is waiting.
@@ -169,6 +179,7 @@ func (q *diskQueue) setMaxAge(d time.Duration) {
 func (q *diskQueue) sweepAged() int {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	q.warnEvictedLocked(true)
 	if q.maxAge <= 0 {
 		return 0
 	}
@@ -302,17 +313,35 @@ func (q *diskQueue) evictLocked() {
 		}
 		q.records -= dropped
 		agentstate.AddOTLPDropped(q.fullReason, dropped)
-		if q.logger != nil {
-			q.logger.Warn().Str("file", name).Int("dropped", dropped).
-				Msg(q.label + " over size cap; evicted oldest batch")
-		}
+		q.evictedUnits += dropped
+		q.evictedBatches++
 	}
+	q.warnEvictedLocked(false)
 	if q.sizeBytes < 0 {
 		q.sizeBytes = 0
 	}
 	if q.records < 0 {
 		q.records = 0
 	}
+}
+
+// warnEvictedLocked emits the size-cap warning for what was evicted since
+// the last one, at most once per evictWarnInterval unless force is set (the
+// periodic sweep forces it, so nothing stays unreported). Caller holds mu.
+func (q *diskQueue) warnEvictedLocked(force bool) {
+	if q.evictedBatches == 0 {
+		return
+	}
+	now := q.now()
+	if !force && now.Sub(q.lastEvictWarn) < evictWarnInterval {
+		return
+	}
+	if q.logger != nil {
+		q.logger.Warn().Int("dropped", q.evictedUnits).Int("batches", q.evictedBatches).
+			Msg(q.label + " over size cap; evicted the oldest " + q.unit)
+	}
+	q.evictedUnits, q.evictedBatches = 0, 0
+	q.lastEvictWarn = now
 }
 
 // resyncLocked recomputes the counters from the files on disk. Caller holds mu.
