@@ -15,14 +15,14 @@ Regenerate with `make third-party-notices`.
 | Licence | Components |
 |---|---|
 | Apache-2.0 | 58 |
-| MIT | 39 |
+| MIT | 40 |
 | BSD-3-Clause | 28 |
 | BSD-2-Clause | 7 |
 | MPL-2.0 | 3 |
 | ISC | 1 |
 | Zlib | 1 |
 
-Total: 137 components.
+Total: 138 components.
 
 ## Detail
 
@@ -41,6 +41,7 @@ Total: 137 components.
 | `github.com/billgraziano/dpapi` | v0.5.0 | MIT |
 | `github.com/cenkalti/backoff/v5` | v5.0.3 | MIT |
 | `github.com/cespare/xxhash/v2` | v2.3.0 | MIT |
+| `github.com/cilium/ebpf` | v0.22.0 | MIT |
 | `github.com/coreos/go-systemd/v22` | v22.7.0 | Apache-2.0 |
 | `github.com/davecgh/go-spew` | v1.1.2-0.20180830191138-d8f796af33cc | ISC |
 | `github.com/digitalocean/go-smbios` | v0.0.0-20180907143718-390a4f403a8e | Apache-2.0 |
@@ -103,7 +104,7 @@ Total: 137 components.
 | `github.com/shopspring/decimal` | v1.4.0 | MIT |
 | `github.com/sijms/go-ora/v2` | v2.9.0 | MIT |
 | `github.com/sleepinggenius2/gosmi` | v0.4.4 | MIT |
-| `github.com/spf13/pflag` | v1.0.9 | BSD-3-Clause |
+| `github.com/spf13/pflag` | v1.0.10 | BSD-3-Clause |
 | `github.com/tklauser/go-sysconf` | v0.3.12 | BSD-3-Clause |
 | `github.com/tklauser/numcpus` | v0.6.1 | Apache-2.0 |
 | `github.com/toise-dev/toise/pkg/emit` | v0.16.0 | Apache-2.0 |

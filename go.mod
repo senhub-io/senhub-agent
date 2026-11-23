@@ -6,6 +6,7 @@ require (
 	filippo.io/age v1.3.1
 	github.com/alexflint/go-arg v1.6.1
 	github.com/avast/retry-go/v4 v4.7.0
+	github.com/cilium/ebpf v0.22.0
 	github.com/digitalocean/go-smbios v0.0.0-20180907143718-390a4f403a8e
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-ole/go-ole v1.3.0
@@ -126,7 +127,6 @@ require (
 
 require (
 	filippo.io/hpke v0.4.0 // indirect
-	github.com/cilium/ebpf v0.22.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect

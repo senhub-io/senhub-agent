@@ -45,12 +45,14 @@ def linked_modules():
     livres, pour que le fichier ne depende pas de la machine qui le genere.
     """
     out = ""
-    for goos in ("linux", "windows"):
+    # Le compagnon eBPF (cmd/senhub-ebpf) n'existe que sous Linux.
+    for goos, package in (("linux", "./cmd/agent"), ("linux", "./cmd/senhub-ebpf"),
+                          ("windows", "./cmd/agent")):
         env = dict(os.environ, GOOS=goos)
         out += subprocess.run(
             ["go", "list", "-deps", "-f",
              "{{if .Module}}{{.Module.Path}}\t{{.Module.Version}}\t{{.Module.Dir}}{{end}}",
-             "./cmd/agent"],
+             package],
             cwd=ROOT, capture_output=True, text=True, check=True, env=env).stdout
     seen = {}
     for line in out.splitlines():
