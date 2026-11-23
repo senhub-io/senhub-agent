@@ -14,15 +14,15 @@ Regenerate with `make third-party-notices`.
 
 | Licence | Components |
 |---|---|
-| Apache-2.0 | 58 |
-| MIT | 40 |
+| Apache-2.0 | 69 |
+| MIT | 38 |
 | BSD-3-Clause | 28 |
 | BSD-2-Clause | 7 |
 | MPL-2.0 | 3 |
 | ISC | 1 |
 | Zlib | 1 |
 
-Total: 138 components.
+Total: 147 components.
 
 ## Detail
 
@@ -52,9 +52,20 @@ Total: 138 components.
 | `github.com/go-logr/logr` | v1.4.4 | Apache-2.0 |
 | `github.com/go-logr/stdr` | v1.2.2 | Apache-2.0 |
 | `github.com/go-ole/go-ole` | v1.3.0 | MIT |
-| `github.com/go-openapi/jsonpointer` | v0.21.0 | Apache-2.0 |
-| `github.com/go-openapi/jsonreference` | v0.20.2 | Apache-2.0 |
-| `github.com/go-openapi/swag` | v0.23.0 | Apache-2.0 |
+| `github.com/go-openapi/jsonpointer` | v1.0.0 | Apache-2.0 |
+| `github.com/go-openapi/jsonreference` | v1.0.0 | Apache-2.0 |
+| `github.com/go-openapi/swag` | v0.28.0 | Apache-2.0 |
+| `github.com/go-openapi/swag/cmdutils` | v0.28.0 | Apache-2.0 |
+| `github.com/go-openapi/swag/conv` | v0.28.0 | Apache-2.0 |
+| `github.com/go-openapi/swag/fileutils` | v0.28.0 | Apache-2.0 |
+| `github.com/go-openapi/swag/jsonutils` | v0.28.0 | Apache-2.0 |
+| `github.com/go-openapi/swag/loading` | v0.28.0 | Apache-2.0 |
+| `github.com/go-openapi/swag/mangling` | v0.28.0 | Apache-2.0 |
+| `github.com/go-openapi/swag/netutils` | v0.28.0 | Apache-2.0 |
+| `github.com/go-openapi/swag/pools` | v0.28.0 | Apache-2.0 |
+| `github.com/go-openapi/swag/stringutils` | v0.28.0 | Apache-2.0 |
+| `github.com/go-openapi/swag/typeutils` | v0.28.0 | Apache-2.0 |
+| `github.com/go-openapi/swag/yamlutils` | v0.28.0 | Apache-2.0 |
 | `github.com/go-sql-driver/mysql` | v1.10.0 | MPL-2.0 |
 | `github.com/goburrow/modbus` | v0.1.0 | BSD-2-Clause |
 | `github.com/goburrow/serial` | v0.1.0 | MIT |
@@ -67,7 +78,7 @@ Total: 138 components.
 | `github.com/google/uuid` | v1.6.0 | BSD-3-Clause |
 | `github.com/gorilla/mux` | v1.8.1 | BSD-3-Clause |
 | `github.com/gosnmp/gosnmp` | v1.43.2 | BSD-3-Clause |
-| `github.com/grpc-ecosystem/grpc-gateway/v2` | v2.29.0 | BSD-3-Clause |
+| `github.com/grpc-ecosystem/grpc-gateway/v2` | v2.30.0 | BSD-3-Clause |
 | `github.com/hashicorp/go-uuid` | v1.0.3 | MPL-2.0 |
 | `github.com/hashicorp/go-version` | v1.9.0 | MPL-2.0 |
 | `github.com/jackc/pgpassfile` | v1.0.0 | MIT |
@@ -79,11 +90,9 @@ Total: 138 components.
 | `github.com/jcmturner/gofork` | v1.7.6 | BSD-3-Clause |
 | `github.com/jcmturner/gokrb5/v8` | v8.4.4 | Apache-2.0 |
 | `github.com/jcmturner/rpc/v2` | v2.0.3 | Apache-2.0 |
-| `github.com/josharian/intern` | v1.0.0 | MIT |
 | `github.com/json-iterator/go` | v1.1.12 | MIT |
 | `github.com/kardianos/service` | v1.2.4 | Zlib |
 | `github.com/klauspost/compress` | v1.20.2 | Apache-2.0 |
-| `github.com/mailru/easyjson` | v0.7.7 | MIT |
 | `github.com/mattn/go-colorable` | v0.1.14 | MIT |
 | `github.com/mattn/go-isatty` | v0.0.22 | MIT |
 | `github.com/microsoft/go-mssqldb` | v1.10.0 | BSD-3-Clause |
@@ -119,24 +128,24 @@ Total: 138 components.
 | `go.opentelemetry.io/auto/sdk` | v1.2.1 | Apache-2.0 |
 | `go.opentelemetry.io/collector/featuregate` | v1.59.0 | Apache-2.0 |
 | `go.opentelemetry.io/collector/pdata` | v1.59.0 | Apache-2.0 |
-| `go.opentelemetry.io/otel` | v1.45.0 | Apache-2.0 |
-| `go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc` | v0.21.0 | Apache-2.0 |
-| `go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp` | v0.21.0 | Apache-2.0 |
-| `go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc` | v1.45.0 | Apache-2.0 |
-| `go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp` | v1.45.0 | Apache-2.0 |
-| `go.opentelemetry.io/otel/exporters/otlp/otlptrace` | v1.45.0 | Apache-2.0 |
-| `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc` | v1.45.0 | Apache-2.0 |
-| `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp` | v1.45.0 | Apache-2.0 |
-| `go.opentelemetry.io/otel/log` | v0.21.0 | Apache-2.0 |
-| `go.opentelemetry.io/otel/metric` | v1.45.0 | Apache-2.0 |
-| `go.opentelemetry.io/otel/sdk` | v1.45.0 | Apache-2.0 |
-| `go.opentelemetry.io/otel/sdk/log` | v0.21.0 | Apache-2.0 |
-| `go.opentelemetry.io/otel/sdk/metric` | v1.45.0 | Apache-2.0 |
-| `go.opentelemetry.io/otel/trace` | v1.45.0 | Apache-2.0 |
+| `go.opentelemetry.io/otel` | v1.47.0 | Apache-2.0 |
+| `go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc` | v0.23.0 | Apache-2.0 |
+| `go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp` | v0.23.0 | Apache-2.0 |
+| `go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc` | v1.47.0 | Apache-2.0 |
+| `go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp` | v1.47.0 | Apache-2.0 |
+| `go.opentelemetry.io/otel/exporters/otlp/otlptrace` | v1.47.0 | Apache-2.0 |
+| `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc` | v1.47.0 | Apache-2.0 |
+| `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp` | v1.47.0 | Apache-2.0 |
+| `go.opentelemetry.io/otel/log` | v1.47.0 | Apache-2.0 |
+| `go.opentelemetry.io/otel/metric` | v1.47.0 | Apache-2.0 |
+| `go.opentelemetry.io/otel/sdk` | v1.47.0 | Apache-2.0 |
+| `go.opentelemetry.io/otel/sdk/log` | v1.47.0 | Apache-2.0 |
+| `go.opentelemetry.io/otel/sdk/metric` | v1.47.0 | Apache-2.0 |
+| `go.opentelemetry.io/otel/trace` | v1.47.0 | Apache-2.0 |
 | `go.opentelemetry.io/proto/otlp` | v1.11.0 | Apache-2.0 |
 | `go.uber.org/multierr` | v1.11.0 | MIT |
 | `go.yaml.in/yaml/v2` | v2.4.3 | Apache-2.0 |
-| `go.yaml.in/yaml/v3` | v3.0.4 | MIT |
+| `go.yaml.in/yaml/v3` | v3.0.5 | MIT |
 | `golang.org/x/crypto` | v0.58.0 | BSD-3-Clause |
 | `golang.org/x/net` | v0.62.0 | BSD-3-Clause |
 | `golang.org/x/oauth2` | v0.36.0 | BSD-3-Clause |
@@ -145,10 +154,10 @@ Total: 138 components.
 | `golang.org/x/term` | v0.47.0 | BSD-3-Clause |
 | `golang.org/x/text` | v0.43.0 | BSD-3-Clause |
 | `golang.org/x/time` | v0.14.0 | BSD-3-Clause |
-| `google.golang.org/genproto/googleapis/api` | v0.0.0-20260803160001-6ac0973c030d | Apache-2.0 |
-| `google.golang.org/genproto/googleapis/rpc` | v0.0.0-20260803160001-6ac0973c030d | Apache-2.0 |
+| `google.golang.org/genproto/googleapis/api` | v0.0.0-20260928230214-8a89bd6388cc | Apache-2.0 |
+| `google.golang.org/genproto/googleapis/rpc` | v0.0.0-20260928230214-8a89bd6388cc | Apache-2.0 |
 | `google.golang.org/grpc` | v1.83.2 | Apache-2.0 |
-| `google.golang.org/protobuf` | v1.36.12-0.20260120151049-f2248ac996af | BSD-3-Clause |
+| `google.golang.org/protobuf` | v1.36.12 | BSD-3-Clause |
 | `gopkg.in/evanphx/json-patch.v4` | v4.13.0 | BSD-3-Clause |
 | `gopkg.in/inf.v0` | v0.9.1 | BSD-3-Clause |
 | `gopkg.in/mcuadros/go-syslog.v2` | v2.3.0 | MIT |
