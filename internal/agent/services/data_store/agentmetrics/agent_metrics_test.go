@@ -261,6 +261,28 @@ func TestBuildAgentRecords_CacheDroppedEmittedPerReason(t *testing.T) {
 	}
 }
 
+func TestBuildAgentRecords_LicenseInvalidIsZeroAfterAValidLicense(t *testing.T) {
+	agentstate.ResetLicenseInvalidForTest()
+	t.Cleanup(agentstate.ResetLicenseInvalidForTest)
+
+	agentstate.ClearLicenseInvalid()
+
+	got := map[string]float64{}
+	for _, r := range BuildAgentRecords(AgentMetricsSnapshot{StartTime: time.Now()}) {
+		if r.Name == "senhub.agent.license.invalid" {
+			got[r.Attributes["reason"]] = r.Value
+		}
+	}
+	for _, reason := range []string{"validation_failed", "binding_mismatch", "expired_no_grace"} {
+		v, ok := got[reason]
+		if !ok {
+			t.Errorf("license.invalid{reason=%s} absent after a valid licence", reason)
+		} else if v != 0 {
+			t.Errorf("license.invalid{reason=%s} = %v, want 0", reason, v)
+		}
+	}
+}
+
 func TestBuildAgentRecords_OTLPReceiverIngestEmittedPerSignal(t *testing.T) {
 	agentstate.ResetOTLPReceiverCountersForTest()
 	t.Cleanup(agentstate.ResetOTLPReceiverCountersForTest)
