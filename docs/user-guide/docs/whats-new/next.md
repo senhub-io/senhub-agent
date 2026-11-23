@@ -36,5 +36,7 @@ Nothing released yet since 0.7.1. Changes land here as they are merged.
 
 - **`zabbix setup` now imports the template dashboards.** On Zabbix 7.0 and later the command imported the templates but not their dashboards, so the **Dashboards** menu of a host stayed empty although the documentation promised one dashboard per template. Re-run `zabbix setup` against an existing server to add them. The widgets are also headed with the chart name ("CPU utilization") instead of the raw `{#PROBE}: CPU utilization` macro text.
 
+- **`zabbix setup --host` links the templates of a probe added after a host registered.** The autoregistration action only runs when a host first registers, so a probe enabled later on a registered host got no template and no data in Zabbix. `zabbix setup --probe <type> --host <name>` now links, on the hosts you name, the templates of the run that they do not link yet, keeps what they already link, and touches no other host; `--dry-run` shows what it would link.
+
 <div class="rn-filter"></div>
 - **A value read from `${secret:}`, `${env:}` or `${file:}` never appears in the agent log.** The "Configuration changes detected" and "Starting new probe" lines masked only keys recognised by name (`password`, `bearer_token`...): a secret under a neutral key such as `x_ref`, or inside a URL, was written in clear. The agent now masks every value that came from a reference, whatever its key, including in the parameters of managed probes. A value taken from the `:-default` part of a reference is written in the file, not secret, and stays visible.
