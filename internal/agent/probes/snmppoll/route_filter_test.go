@@ -125,8 +125,8 @@ func TestRouteCountersFiltered(t *testing.T) {
 		obs := entity.Observation{Entities: []entity.Entity{deviceEntity("dev1", nil, entity.ScopeSNMPIFMIB)}}
 		applyRouteCounters(&obs, "dev1", 2, filtered, 500)
 		a := obs.Entities[0].Attributes
-		if a[attrRoutesFiltered] != int64(filtered) || a[attrRoutesOmitted] != int64(2) || a[attrRoutesLimit] != int64(500) {
-			t.Errorf("counters = %v, want filtered=%d omitted=2 limit=500", a, filtered)
+		if a[attrRoutesFiltered] != int64(filtered) || a[attrRoutesTruncated] != true || a[attrRoutesLimit] != int64(500) {
+			t.Errorf("counters = %v, want filtered=%d truncated limit=500", a, filtered)
 		}
 	}
 }
