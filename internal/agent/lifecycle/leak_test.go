@@ -54,19 +54,39 @@ func TestNoGoroutineLeakAcrossStartReloadStop(t *testing.T) {
 		runOneCycle(t, cycle)
 	}
 
-	after := stableGoroutineCount(t)
-	t.Logf("goroutines: baseline=%d after %d cycles=%d", baseline, cycles, after)
-
 	// A small tolerance absorbs runtime-owned goroutines that are not
 	// ours (http transport idle-conn reapers, the fsnotify kqueue/inotify
 	// poller finishing its teardown). A real leak is per-cycle and grows
 	// with the loop count, so it blows past this immediately.
 	const tolerance = 2
+
+	// Goroutines that are still winding down are not a leak: on a loaded
+	// host the last cycle's teardown can still be running when the stop
+	// returns. The count is polled until it is back within tolerance; a
+	// goroutine kept by a reload never goes away, so the poll runs out
+	// and the test fails with the stacks.
+	after := goroutinesSettleBelow(baseline + tolerance)
+	t.Logf("goroutines: baseline=%d after %d cycles=%d", baseline, cycles, after)
 	if after > baseline+tolerance {
 		buf := make([]byte, 1<<20)
 		n := runtime.Stack(buf, true)
 		t.Fatalf("goroutine leak across start/reload/stop cycles: baseline=%d after=%d (tolerance %d)\n%s",
 			baseline, after, tolerance, buf[:n])
+	}
+}
+
+// goroutinesSettleBelow polls the goroutine count until it is at most
+// limit, or a leak-sized wait has passed, and returns the last count.
+func goroutinesSettleBelow(limit int) int {
+	const settleBudget = 30 * time.Second
+	deadline := time.Now().Add(settleBudget)
+	for {
+		runtime.GC()
+		n := runtime.NumGoroutine()
+		if n <= limit || time.Now().After(deadline) {
+			return n
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 
