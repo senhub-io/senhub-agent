@@ -115,7 +115,7 @@ reads them, so they apply with a configuration of your own too (see
 | `SENHUB_HTTP_BIND` | No | `0.0.0.0` | Address the console and the PRTG, Nagios and Prometheus endpoints listen on. The container's own loopback is reachable by no one, so the image listens on every address and relies on the container network; `127.0.0.1` keeps them inside the container |
 | `SENHUB_CONFIG_DIR` | No | `/etc/senhub-agent` | Where the configuration is read and written |
 | `SENHUB_STATE_DIR` | No | `/var/lib/senhub-agent` | Where the identity, the key, the bookmarks and the logs queue (`otlp-queue/`) live |
-| `SENHUB_LOG_QUEUE` | No | `true` | `false` stops the agent keeping failed log batches, metric pushes and trace spans on disk during an OTLP outage |
+| `SENHUB_LOG_QUEUE` | No | `true` | `false` stops the agent keeping failed log batches (and the checkpoint) on disk during an OTLP outage |
 | `SENHUB_LOG_QUEUE_RETENTION` | No | `24h` | Age after which a queued log batch is dropped; `0` = no limit |
 | `SENHUB_LOG_QUEUE_MAX_BYTES` | No | `134217728` (128 MiB) | Disk cap of the logs queue, in bytes or with a suffix (`64MiB`). The queue lives in the state directory: put it on a persistent volume (a File Share on Container Apps) for logs to survive a restart; see [Logs, metrics and traces survive an outage](otlp.md#logs-metrics-and-traces-survive-an-outage) |
 | `SENHUB_METRIC_QUEUE` | No | `true` | `false` stops the agent keeping failed metric pushes on disk during an OTLP outage |

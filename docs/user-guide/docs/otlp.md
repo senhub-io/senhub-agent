@@ -675,7 +675,8 @@ logs, in data points for metrics and in spans for traces:
 | Traces | `traces_queue_max_bytes` (64 MiB) | `traces_queue_full` | `traces_queue_max_age` (24 h) | `traces_dropped_by_age` |
 
 If the directory is not writable the agent logs one warning and runs without
-any of the queues; each signal then keeps the SDK's own retry.
+any of the queues; each signal then keeps the SDK's own retry. A request that a
+queue could not write (full disk) is counted as `queue_write_failed`.
 
 Sizing the metrics queue. A metrics push is one point per active series, and
 the queue keeps one request per push, compressed on disk. Measured on a
@@ -689,13 +690,14 @@ trade-off is the disk the state directory must be able to give up during an
 outage. The default 256 MiB protects the disk first: past it the oldest
 requests are evicted, the newest are kept, and the loss is counted.
 
-Environment variables, which win over the file. `SENHUB_LOG_QUEUE` is the
-historical name of the master switch: `false` turns every queue off, as
-`persistence.enabled: false` does. The other two switch off one signal.
+Environment variables, which win over the file. Each queue has its own
+switch: `SENHUB_LOG_QUEUE=false` turns off the logs queue (and the checkpoint),
+`SENHUB_METRIC_QUEUE=false` the metrics queue, `SENHUB_TRACE_QUEUE=false` the
+traces queue. `persistence.enabled: false` in the file turns all three off.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `SENHUB_LOG_QUEUE` | `true` | `false` turns the queues off (logs, metrics and traces) |
+| `SENHUB_LOG_QUEUE` | `true` | `false` turns off the logs queue and the checkpoint |
 | `SENHUB_LOG_QUEUE_RETENTION` | `24h` | Maximum age of a queued log batch, a duration such as `6h`; `0` = no limit |
 | `SENHUB_LOG_QUEUE_MAX_BYTES` | `134217728` | Logs disk cap, in bytes or with a suffix (`64MiB`) |
 | `SENHUB_METRIC_QUEUE` | `true` | `false` turns the metrics queue off |
