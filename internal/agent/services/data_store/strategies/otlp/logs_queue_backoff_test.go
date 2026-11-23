@@ -6,7 +6,7 @@ import (
 )
 
 func TestNextReplayDelay_Sequence(t *testing.T) {
-	want := []time.Duration{10, 20, 40, 80, 160, 300, 300}
+	want := []time.Duration{10, 20, 40, 60, 60}
 	cur := replayFirstDelay
 	for i, w := range want {
 		cur = nextReplayDelay(cur, replayFirstDelay, replayMaxDelay, true)
@@ -46,7 +46,7 @@ func TestLogsQueueAck_BackoffGapsOnInjectedClock(t *testing.T) {
 			return 0
 		}
 	}
-	want := []int{5, 10, 20, 40, 80, 160, 300, 300}
+	want := []int{5, 10, 20, 40, 60, 60, 60}
 	for i, w := range want {
 		if got := next(); got != time.Duration(w)*time.Second {
 			t.Fatalf("gap %d = %v, want %ds", i, got, w)

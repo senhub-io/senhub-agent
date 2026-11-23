@@ -274,6 +274,7 @@ func newPersistentLogExporter(wrapped sdklog.Exporter, queue *logsQueue, log *lo
 		reporter: newPartialSuccessReporter(log, "export"),
 	}
 	e.exporterHealth.init("otlp/logs", log)
+	e.backlog = queue.hasFiles
 	return e
 }
 
@@ -409,7 +410,7 @@ func (e *persistentLogExporter) exportDirect(ctx context.Context, records []sdkl
 	split := errors.As(raw, &se)
 	err := e.reporter.reportRejections(raw)
 	if err == nil {
-		e.markSuccessSince(started)
+		e.markReplaySuccess(started)
 		return nil
 	}
 	if !errors.Is(ctx.Err(), context.Canceled) {
@@ -443,9 +444,9 @@ func (e *persistentLogExporter) persist(records []sdklog.Record) bool {
 		return true
 	}
 	if err := e.queue.enqueue(batch); err != nil {
-		if e.logger != nil {
-			e.logger.Warn().Err(err).Int("records", len(batch)).Msg("OTLP logs queue: enqueue failed; records lost")
-		}
+		e.warnThrottled(func(ev *zerolog.Event) {
+			ev.Err(err).Int("records", len(batch)).Msg("OTLP logs queue: enqueue failed; records lost")
+		})
 		e.lostRecords.Add(int64(len(batch)))
 		return false
 	}

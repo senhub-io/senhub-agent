@@ -56,6 +56,8 @@ type exporterHealth struct {
 	// hints is the throttle hint the signal's transport saw; nil when the
 	// transport has no hook (the relays carry theirs in the error).
 	hints *hintSink
+	// backlog reports whether anything waits on disk.
+	backlog func() bool
 	// throttledUntilNs is when the server asked the agent to try again, as
 	// a unix time; live exports and replay probes both wait for it.
 	throttledUntilNs atomic.Int64
@@ -151,7 +153,13 @@ func (h *exporterHealth) markSuccess() { h.markSuccessSince(h.now()) }
 // wait the hint asked for: it was already in flight when the server said
 // slow down, so it proves nothing about the pace the server now wants. Live
 // exports stay held and newer batches do not overtake the backlog.
-func (h *exporterHealth) markSuccessSince(started time.Time) {
+func (h *exporterHealth) markSuccessSince(started time.Time) { h.recordSuccess(started, true) }
+
+// markReplaySuccess is markSuccessSince for the replayer's own exports, which
+// must not start another replay behind themselves.
+func (h *exporterHealth) markReplaySuccess(started time.Time) { h.recordSuccess(started, false) }
+
+func (h *exporterHealth) recordSuccess(started time.Time, kickBacklog bool) {
 	agentstate.RecordExportSuccess(h.successKey)
 	h.lastSuccessNs.Store(h.now().UnixNano())
 	if noted := h.throttleNotedNs.Load(); noted != 0 && started.UnixNano() < noted && h.throttleRemaining() > 0 {
@@ -161,7 +169,11 @@ func (h *exporterHealth) markSuccessSince(started time.Time) {
 	h.throttled.Store(false)
 	h.capWarned.Store(false)
 	// Export succeeded: if we were unhealthy, the backend just recovered.
-	if h.healthy.CompareAndSwap(false, true) {
+	// A live export that gets through while a backlog waits says the same,
+	// whatever the health flag held, so the backlog is not left for the
+	// retry clock.
+	recovered := h.healthy.CompareAndSwap(false, true)
+	if recovered || (kickBacklog && h.backlog != nil && h.backlog()) {
 		h.runRecovered()
 	}
 }
@@ -275,7 +287,7 @@ func (h *exporterHealth) warnThrottled(emit func(*zerolog.Event)) {
 // the gap doubles up to replayMaxDelay for as long as the backend stays down.
 const (
 	replayFirstDelay = 5 * time.Second
-	replayMaxDelay   = 5 * time.Minute
+	replayMaxDelay   = time.Minute
 	// replayExportTimeout bounds one replayed batch.
 	replayExportTimeout = 10 * time.Second
 )
