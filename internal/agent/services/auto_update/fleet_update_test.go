@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +15,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"aead.dev/minisign"
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/configuration"
@@ -147,10 +150,21 @@ func (f *registryFake) useOwnKey(t *testing.T, stable, beta []VersionMetadata) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return body, prehashedSignature(t, priv, body)
+		return body, nil
 	}
 	f.stable, f.stableSig = sign(stable)
 	f.beta, f.betaSig = sign(beta)
+	signList := func(body []byte, channel string) []byte {
+		r := minisign.NewReader(bytes.NewReader(body))
+		_, _ = io.Copy(io.Discard, r)
+		return r.SignWithComments(priv, "senhub-releases channel="+channel+" seq=1795000000", "test")
+	}
+	if f.stable != nil {
+		f.stableSig = signList(f.stable, "stable")
+	}
+	if f.beta != nil {
+		f.betaSig = signList(f.beta, "beta")
+	}
 	f.archive = releaseArchive(t, randomBinary(t, 1536*1024))
 	f.archiveSig = prehashedSignature(t, priv, f.archive)
 }
@@ -336,24 +350,110 @@ func TestFleetUpdate_TargetNotPublished(t *testing.T) {
 	}
 }
 
-// Vector 6, with the bench vectors: the good list is used, the tampered one
-// carries the signature of another list and is refused as a signature fault.
+// Vector 6, with the bench vectors: the good lists are used, every other one
+// is refused.
 func TestFleetUpdate_BenchVectors(t *testing.T) {
 	withBenchKey(t)
-	good, goodSig := vector(t, "releases.json"), vector(t, "releases.json.minisig")
-	if err := verifyListSignature(good, goodSig); err != nil {
-		t.Fatalf("good stable list refused: %v", err)
+	read := func(name string) ([]byte, []byte) {
+		return vector(t, name), vector(t, strings.TrimSuffix(name, ".json")+".json.minisig")
 	}
-	beta, betaSig := vector(t, "beta-releases.json"), vector(t, "beta-releases.json.minisig")
-	if err := verifyListSignature(beta, betaSig); err != nil {
-		t.Fatalf("good beta list refused: %v", err)
+	cases := []struct {
+		file    string
+		channel string
+		seq     int64
+		wantErr string
+	}{
+		{"releases.json", "stable", 1795000000, ""},
+		{"beta-releases.json", "beta", 1795000000, ""},
+		{"old-seq-releases.json", "stable", 1794000000, ""},
+		{"tampered-releases.json", "stable", 0, "verification failed"},
+		{"wrong-channel-releases.json", "stable", 0, "signed for the beta channel"},
+		{"no-comment-releases.json", "stable", 0, "missing or malformed"},
+		{"malformed-comment-releases.json", "stable", 0, "missing or malformed"},
+		{"releases.json", "beta", 0, "signed for the stable channel"},
 	}
-	bad, badSig := vector(t, "tampered-releases.json"), vector(t, "tampered-releases.json.minisig")
-	if err := verifyListSignature(bad, badSig); err == nil {
-		t.Fatal("tampered list accepted")
+	for _, c := range cases {
+		list, sig := read(c.file)
+		seq, err := verifyListSignature(list, sig, c.channel)
+		if c.wantErr == "" {
+			if err != nil || seq != c.seq {
+				t.Errorf("%s: seq %d, err %v; want seq %d", c.file, seq, err, c.seq)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), c.wantErr) {
+			t.Errorf("%s: err %v, want %q", c.file, err, c.wantErr)
+		}
 	}
-	if err := verifyListSignature(good, vector(t, "beta-releases.json.minisig")); err == nil {
+	good, _ := read("releases.json")
+	if _, err := verifyListSignature(good, vector(t, "beta-releases.json.minisig"), "stable"); err == nil {
 		t.Fatal("a list verified with the signature of another list")
+	}
+}
+
+// The seq floor is kept per channel, durably, and a fresh state accepts the
+// first valid list.
+func TestFleetUpdate_ListSeqFloor(t *testing.T) {
+	cleanUpdateState(t)
+	withRunningVersion(t, "0.7.1")
+	withInstallKind(t, KindZip)
+	f := newRegistryFake(t)
+	f.useBenchLists(t)
+	u := f.updater(t, "windows", true)
+	u.dryRun = true
+
+	// A fresh state accepts the old list.
+	f.stable, f.stableSig = vector(t, "old-seq-releases.json"), vector(t, "old-seq-releases.json.minisig")
+	if _, err := u.updateForDirective(Directive{Auto: true, TargetVersion: "0.7.1"}, f.srv.URL); err != nil {
+		t.Fatal(err)
+	}
+	if got := CurrentStatus(); got.State == StateFailed {
+		t.Fatalf("a fresh state refused the first valid list: %+v", got)
+	}
+
+	// The newer list is accepted and raises the floor.
+	f.stable, f.stableSig = vector(t, "releases.json"), vector(t, "releases.json.minisig")
+	if _, err := u.updateForDirective(Directive{Auto: true, TargetVersion: "0.7.2"}, f.srv.URL); err != nil {
+		t.Fatal(err)
+	}
+	wantStatus(t, StateDownloading, "0.7.2", "")
+
+	// The old list is now a replay, even from a new process on the same state.
+	f.stable, f.stableSig = vector(t, "old-seq-releases.json"), vector(t, "old-seq-releases.json.minisig")
+	u2 := f.updater(t, "windows", true)
+	u2.stateDir = u.stateDir
+	u2.dryRun = true
+	if _, err := u2.updateForDirective(Directive{Auto: true, TargetVersion: "0.7.1"}, f.srv.URL); err != nil {
+		t.Fatal(err)
+	}
+	wantStatus(t, StateFailed, "0.7.1", ReasonSignature)
+
+	// The beta channel has its own floor.
+	f.beta, f.betaSig = vector(t, "beta-releases.json"), vector(t, "beta-releases.json.minisig")
+	if _, err := u2.updateForDirective(Directive{Auto: true, TargetVersion: "0.7.3-beta.1"}, f.srv.URL); err != nil {
+		t.Fatal(err)
+	}
+	wantStatus(t, StateDownloading, "0.7.3-beta.1", "")
+}
+
+func TestFleetUpdate_BadCommentListsAreSignatureFailures(t *testing.T) {
+	for _, name := range []string{"wrong-channel", "no-comment", "malformed-comment"} {
+		t.Run(name, func(t *testing.T) {
+			cleanUpdateState(t)
+			withRunningVersion(t, "0.7.1")
+			withInstallKind(t, KindZip)
+			f := newRegistryFake(t)
+			f.useBenchLists(t)
+			f.stable, f.stableSig = vector(t, name+"-releases.json"), vector(t, name+"-releases.json.minisig")
+			u := f.updater(t, "windows", true)
+			if _, err := u.updateForDirective(Directive{Auto: true}, f.srv.URL); err != nil {
+				t.Fatal(err)
+			}
+			wantStatus(t, StateFailed, "", ReasonSignature)
+			if len(f.downloads()) != 0 {
+				t.Error("an archive was downloaded after a refused list")
+			}
+		})
 	}
 }
 

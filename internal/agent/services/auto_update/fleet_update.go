@@ -2,9 +2,12 @@ package auto_update
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -261,30 +264,99 @@ func (a *autoUpdate) fetchSignedList(registry, path string) ([]VersionMetadata, 
 	if err != nil {
 		return nil, err
 	}
-	if err := verifyListSignature(body, sig); err != nil {
+	channel := listChannel(path)
+	seq, err := verifyListSignature(body, sig, channel)
+	if err != nil {
 		return nil, fmt.Errorf("%s: %w", listURL, err)
 	}
 	var list []VersionMetadata
 	if err := json.Unmarshal(body, &list); err != nil {
 		return nil, fmt.Errorf("decoding %s: %w", listURL, err)
 	}
+	if err := a.acceptListSeq(channel, seq); err != nil {
+		return nil, fmt.Errorf("%s: %w", listURL, err)
+	}
 	return list, nil
 }
 
-// verifyListSignature checks a version list against the embedded key. The
-// release tool signs it prehashed (mode ED); a legacy signature is accepted
-// as the archives accept it.
-func verifyListSignature(list, signature []byte) error {
+func listChannel(path string) string {
+	if path == VERSION_METADATA_LIST_BETA_PATH {
+		return "beta"
+	}
+	return "stable"
+}
+
+// listCommentRe is the trusted comment of a signed list: the channel it
+// belongs to and the publication time, which grows with each publication.
+var listCommentRe = regexp.MustCompile(`^senhub-releases channel=(stable|beta) seq=(\d{1,18})$`)
+
+// verifyListSignature checks a version list against the embedded key and
+// returns the seq of its trusted comment. The release tool signs it
+// prehashed (mode ED); a legacy signature is accepted as the archives accept
+// it. minisign's verification covers the trusted comment, so the channel and
+// the seq cannot be changed without the key. The comment must be exactly
+// "senhub-releases channel=<stable|beta> seq=<integer>" and name the channel
+// of the path the list was fetched from.
+func verifyListSignature(list, signature []byte, channel string) (int64, error) {
 	pub, err := embeddedSigningKey()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	var sig minisign.Signature
 	if err := sig.UnmarshalText(signature); err != nil {
-		return fmt.Errorf("signature is unreadable: %w", err)
+		return 0, fmt.Errorf("signature is unreadable: %w", err)
 	}
 	if !minisign.Verify(pub, list, signature) {
-		return fmt.Errorf("minisign signature verification failed")
+		return 0, fmt.Errorf("minisign signature verification failed")
+	}
+	m := listCommentRe.FindStringSubmatch(sig.TrustedComment)
+	if m == nil {
+		return 0, fmt.Errorf("trusted comment %q is missing or malformed", sig.TrustedComment)
+	}
+	if m[1] != channel {
+		return 0, fmt.Errorf("list is signed for the %s channel, fetched as %s", m[1], channel)
+	}
+	seq, err := strconv.ParseInt(m[2], 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("trusted comment seq: %w", err)
+	}
+	return seq, nil
+}
+
+const listSeqFileName = "update-list-seq.json"
+
+// acceptListSeq refuses a list older than the newest one accepted for its
+// channel and records a newer one durably in the state directory. A fresh
+// state accepts the first valid list.
+func (a *autoUpdate) acceptListSeq(channel string, seq int64) error {
+	env := a.rollbackEnvFor("")
+	path := filepath.Join(env.stateDir, listSeqFileName)
+	floors := map[string]int64{}
+	if env.stateDir != "" {
+		data, err := env.fs.ReadFile(path)
+		switch {
+		case err == nil:
+			if jerr := json.Unmarshal(data, &floors); jerr != nil {
+				a.logger.Warn().Err(jerr).Str("path", path).Msg("List sequence record unreadable; treating the state as fresh")
+				floors = map[string]int64{}
+			}
+		case !errors.Is(err, os.ErrNotExist):
+			a.logger.Warn().Err(err).Str("path", path).Msg("List sequence record unreadable; treating the state as fresh")
+		}
+	}
+	if seq < floors[channel] {
+		return fmt.Errorf("list seq %d is older than the %d already accepted for the %s channel", seq, floors[channel], channel)
+	}
+	if seq == floors[channel] || env.stateDir == "" {
+		return nil
+	}
+	floors[channel] = seq
+	data, err := json.Marshal(floors)
+	if err == nil {
+		err = env.fs.WriteFileAtomic(path, data)
+	}
+	if err != nil {
+		a.logger.Warn().Err(err).Str("path", path).Msg("Could not record the list sequence; a replayed older list would not be noticed after a restart")
 	}
 	return nil
 }
