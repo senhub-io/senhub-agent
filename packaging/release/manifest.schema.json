@@ -55,8 +55,8 @@
         "arch": { "enum": ["amd64", "arm64"] },
         "edition": { "enum": ["full", "oss"] },
         "kind": {
-          "description": "zip: the binary archive the auto-updater reads; msi: Windows installer; deb and rpm: Linux packages (also served by the apt and rpm repositories).",
-          "enum": ["zip", "msi", "deb", "rpm"]
+          "description": "zip: the binary archive the auto-updater reads; msi: Windows installer; deb and rpm: Linux packages (also served by the apt and rpm repositories); native: a helper binary shipped next to the agent (jt400runner).",
+          "enum": ["zip", "msi", "deb", "rpm", "native"]
         },
         "url": { "description": "GitHub release asset URL.", "type": "string", "format": "uri" },
         "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },

@@ -72,7 +72,7 @@ out" reads both and picks the higher `version`.
 | `commit` | The commit of the open source repository the release is tagged at. |
 | `complete` | `true` when every ZIP and MSI carries its signature and, on a stable release, both MSIs are there. |
 | `signing_pending` | The ZIPs and MSIs that have no signature yet. |
-| `artifacts[].kind` | `zip` (the archive the auto-updater reads), `msi`, `deb`, `rpm`. |
+| `artifacts[].kind` | `zip` (the archive the auto-updater reads), `msi`, `deb`, `rpm`, `native` (a helper binary shipped next to the agent: `jt400runner-linux-amd64` and `-arm64`). |
 | `artifacts[].edition` | `full` or `oss`. |
 | `artifacts[].os`, `arch` | `linux` or `windows`; `amd64` or `arm64` (an RPM built for `x86_64` or `aarch64` is listed as `amd64` or `arm64`). |
 | `artifacts[].url` | The GitHub release asset. |

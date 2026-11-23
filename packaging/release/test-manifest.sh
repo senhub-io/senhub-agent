@@ -43,7 +43,7 @@ CONFORMS='
   and (.artifacts | length > 0)
   and (.artifacts | all(
         (.os | IN("linux","windows")) and (.arch | IN("amd64","arm64"))
-        and (.edition | IN("full","oss")) and (.kind | IN("zip","msi","deb","rpm"))
+        and (.edition | IN("full","oss")) and (.kind | IN("zip","msi","deb","rpm","native"))
         and (.url | startswith("https://")) and (.sha256 | sha)
         and (.size | type == "number" and . >= 0 and . == floor)
         and (.minisig_url == null or (.minisig_url | startswith("https://")))
@@ -60,7 +60,7 @@ check "stable manifest conforms" "$CONFORMS" "$WORK/stable.json"
 # shellcheck disable=SC2016
 check "schema enums match the assertions" '
   (.properties.channel.enum == ["stable","beta"])
-  and ."$defs".artifact.properties.kind.enum == ["zip","msi","deb","rpm"]
+  and ."$defs".artifact.properties.kind.enum == ["zip","msi","deb","rpm","native"]
   and ."$defs".artifact.properties.os.enum == ["linux","windows"]
   and ."$defs".artifact.properties.arch.enum == ["amd64","arm64"]
   and ."$defs".artifact.properties.edition.enum == ["full","oss"]
@@ -69,12 +69,16 @@ check "schema enums match the assertions" '
 
 check "beta identity" '.version == "0.6.2-beta.1" and .channel == "beta"
   and .commit == "aac44564b4536f978a79d63d4492ebe52a53c408"' "$WORK/beta.json"
-check "beta lists 6 zips and 8 packages, no helper files" '
-  (.artifacts | length) == 14
+check "beta lists 6 zips, 8 packages and the 2 jt400runner binaries, no metadata" '
+  (.artifacts | length) == 16
   and ([.artifacts[] | select(.kind == "zip")] | length) == 6
   and ([.artifacts[] | select(.kind == "deb")] | length) == 4
   and ([.artifacts[] | select(.kind == "rpm")] | length) == 4
-  and ([.artifacts[].name | select(test("jt400|metadata|releases|minisig"))] | length) == 0' "$WORK/beta.json"
+  and ([.artifacts[] | select(.kind == "native") | .name] | sort) == ["jt400runner-linux-amd64","jt400runner-linux-arm64"]
+  and ([.artifacts[].name | select(test("metadata|releases|minisig"))] | length) == 0' "$WORK/beta.json"
+check "jt400runner carries size and sha256 from the release, linux only" '
+  [.artifacts[] | select(.kind == "native")]
+  | all(.os == "linux" and .edition == "full" and (.sha256 | test("^[0-9a-f]{64}$")) and .size > 0)' "$WORK/beta.json"
 check "beta is incomplete until the Windows zips are signed" '
   .complete == false
   and (.signing_pending | sort) == ["senhub-agent-oss-windows-amd64.zip","senhub-agent-windows-amd64.zip"]' "$WORK/beta.json"

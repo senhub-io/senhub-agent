@@ -9,8 +9,10 @@
 # The release JSON is what `gh api repos/senhub-io/senhub-agent/releases/tags/<tag>`
 # returns. The manifest goes to stdout. --image and --chart can be repeated.
 #
-# Assets that are not an installable file (metadata.json, releases.json,
-# jt400runner-*, the .minisig files themselves) are not listed.
+# Assets that are not an artifact of the release (metadata.json,
+# releases.json, the .minisig files themselves) are not listed. The
+# jt400runner-* native helper binaries are, with kind "native", so that a
+# verdict on "the artefacts of the manifest" covers them.
 set -euo pipefail
 
 die() { echo "gen-manifest: $*" >&2; exit 1; }
@@ -50,6 +52,8 @@ def classify:
       {os: "windows", arch: "amd64", kind: "msi"}
     elif ($n | test("^senhub-agent(-oss)?_[^ ]+_(amd64|arm64)\\.deb$")) then
       {os: "linux", arch: ($n | capture("_(?<a>amd64|arm64)\\.deb$").a), kind: "deb"}
+    elif ($n | test("^jt400runner-linux-(amd64|arm64)$")) then
+      ($n | capture("-(?<os>linux)-(?<arch>amd64|arm64)$")) + {kind: "native"}
     elif ($n | test("^senhub-agent(-oss)?-[^ ]+\\.(x86_64|aarch64)\\.rpm$")) then
       {os: "linux", arch: (if ($n | test("\\.x86_64\\.rpm$")) then "amd64" else "arm64" end), kind: "rpm"}
     else null end;
