@@ -161,13 +161,14 @@ otlp:
   # disk and restored at boot, so cumulative counters continue
   # instead of resetting.
   persistence:
-    enabled: true                 # default true: the logs queue is on in the
-                                  # state directory; the checkpoint stays off
-                                  # until `path` is set; enabled: false turns
-                                  # both off
-    path: /var/lib/senhub-agent/otlp   # checkpoint and logs queue directory;
-                                  # empty = no checkpoint, queue in the state
-                                  # directory (see "Logs survive an outage")
+    enabled: true                 # default true: the logs, metrics and traces
+                                  # queues are on in the state directory; the
+                                  # checkpoint stays off until `path` is set;
+                                  # enabled: false turns everything off
+    path: /var/lib/senhub-agent/otlp   # checkpoint and queues directory;
+                                  # empty = no checkpoint, queues in the state
+                                  # directory (see "Logs, metrics and traces
+                                  # survive an outage")
     interval: 30s                 # default 30s
     # Disk cap for the logs dead-letter queue, which holds batches
     # the receiver could not take during an outage. Past it the
@@ -176,6 +177,13 @@ otlp:
     # Batches that waited longer than this are dropped, at boot and
     # every 10 minutes. 0 = no age limit.
     logs_queue_max_age: 24h       # default 24h
+    # The same two bounds for the metrics and traces queues, which keep
+    # the export requests the collector did not take. 0 keeps the default
+    # size; 0 age = no age limit.
+    metrics_queue_max_bytes: 268435456   # default 256 MiB
+    metrics_queue_max_age: 24h    # default 24h
+    traces_queue_max_bytes: 67108864     # default 64 MiB
+    traces_queue_max_age: 24h     # default 24h
 
   # Resource attributes attached to every emitted batch. Defaults
   # are derived from agent identity if omitted.
@@ -594,61 +602,112 @@ are dropped and counted in `senhub.agent.self_logs.dropped`
 variable `SENHUB_SELF_LOGS` turns it on: `warn` sends warnings and above, `error`
 errors and above. Unset (or `off`), nothing is sent.
 
-### Logs survive an outage
+<a id="logs-survive-an-outage"></a>
 
-When the collector cannot take a batch of event logs, the agent keeps it
-on disk and sends it again. A batch is deleted from disk only after the
-collector has acknowledged it, so a failed or interrupted attempt never
+### Logs, metrics and traces survive an outage
+
+When the collector cannot take an export, the agent keeps it on disk and
+sends it again. Each signal has its own queue, with its own bounds.
+
+- **Event logs**: the batch is kept as a list of records.
+- **Metrics**: each push that fails is kept as the OTLP request the agent
+  built, with its own timestamps. The history between the first failure and
+  the recovery reaches the collector, not only the last value.
+- **Traces**: each request of spans that fails is kept the same way.
+
+In every case a file is deleted from disk only after the collector has
+acknowledged that exact request, so a failed or interrupted attempt never
 removes anything. This is on by default on every install; nothing to set.
 
-While the collector is known to be down, new batches go straight to disk
+While the collector is known to be down, new exports go straight to disk
 and the agent does not try the network for each one. It probes the
 collector on a retry clock of 5, 10, 20, 40, 80 and 160 seconds, then every 5
 minutes; the clock starts again at 5 seconds after the next outage. As soon as
-one export succeeds it sends the backlog, oldest first, stopping at the first batch the collector does not acknowledge.
+one export succeeds it sends the backlog, oldest first, stopping at the first
+request the collector does not acknowledge. A probe never holds the agent for
+more than 4 seconds, so a collector that drops packets does not stop the
+exports that have to be written meanwhile.
 
-| Situation | Event logs | Entity events | Metrics |
-|---|---|---|---|
-| Collector down, agent running | Kept on disk, sent in order once the collector answers | Re-sent at the next heartbeat | Last value of each series kept in memory |
-| Agent stopped normally (restart, upgrade) during an outage | The records still in memory are written to disk in the first second of the stop, without trying a collector that is down, then sent at the next boot with the rest | Re-sent at the next heartbeat | Lost unless `persistence.path` is set |
-| Agent restarted, collector still down | Kept on disk, probed on the retry clock | Re-sent at the next heartbeat | Lost unless `persistence.path` is set |
-| Agent killed or host crashed (kill -9, power cut) | Batches already on disk are kept; records not yet on disk are lost: at most the batch interval (5 s by default) plus one export timeout (4 s), so under 10 s of logs | Re-sent | Same as above |
-| Outage longer than 24 hours or past 128 MiB | The oldest batches are dropped and counted | Re-sent | Same as above |
+Metrics are delivered in order: while a backlog waits, a new push is kept
+behind it instead of overtaking it, so a time-series store that refuses
+samples older than the newest it holds receives them oldest first. Replayed
+points keep the timestamps they were collected with, and the last-value store
+that feeds new pushes is not touched by a replay. After an outage the live
+values go on as before; the points replayed between are the history.
 
-Delivery is at-least-once: if the collector received a batch but its
-acknowledgement was lost, the batch is sent again, so a record can arrive
-twice. Records replayed after an outage can also arrive after newer ones;
+| Situation | Event logs | Entity events | Metrics | Traces |
+|---|---|---|---|---|
+| Collector down, agent running | Kept on disk, sent in order once the collector answers | Re-sent at the next heartbeat | Every push kept on disk with its timestamps, sent in order once the collector answers | Spans kept on disk, sent once the collector answers |
+| Agent stopped normally (restart, upgrade) during an outage | The records still in memory are written to disk in the first second of the stop, without trying a collector that is down, then sent at the next boot with the rest | Re-sent at the next heartbeat | A last push of the current values is written to disk, then sent at the next boot with the rest | The spans still in memory are written to disk, then sent at the next boot |
+| Agent restarted, collector still down | Kept on disk, probed on the retry clock | Re-sent at the next heartbeat | Kept on disk, probed on the retry clock; nothing is collected while the agent is stopped | Kept on disk, probed on the retry clock |
+| Agent killed or host crashed (kill -9, power cut) | Batches already on disk are kept; records not yet on disk are lost: at most the batch interval (5 s by default) plus one export timeout (4 s), so under 10 s of logs | Re-sent | Requests already on disk are kept; the values collected since the last push are lost unless `persistence.path` is set | Requests already on disk are kept; the spans of the current batch are lost (the trace batch interval) |
+| Outage longer than 24 hours or past the size cap (128 MiB logs, 256 MiB metrics, 64 MiB traces) | The oldest batches are dropped and counted | Re-sent | The oldest requests are dropped and counted | The oldest requests are dropped and counted |
+
+Delivery is at-least-once: if the collector received a request but its
+acknowledgement was lost, the request is sent again, so a record or a point
+can arrive twice. Replayed logs and spans can also arrive after newer ones;
 they keep their original timestamp, so order by the record timestamp and
-deduplicate on timestamp, body and attributes if duplicates matter.
+deduplicate on timestamp, body and attributes (logs) or on series and
+timestamp (metrics) if duplicates matter.
 
-Where the queue lives:
+Where the queues live:
 
 | Install | Directory |
 |---|---|
 | Linux package (systemd) | `/var/lib/senhub-agent/otlp-queue` (`STATE_DIRECTORY`) |
 | Windows (MSI) | `C:\ProgramData\SenHub\otlp-queue` |
 | Container | `$SENHUB_STATE_DIR/otlp-queue` (default `/var/lib/senhub-agent/otlp-queue`) |
-| `persistence.path` set | `<path>/logqueue` |
+| `persistence.path` set | `<path>/logqueue`, `<path>/metricqueue`, `<path>/tracequeue` |
 
-The queue is bounded two ways: `logs_queue_max_bytes` (128 MiB, oldest
-batches evicted first) and `logs_queue_max_age` (24 hours). Each sweep that
-drops aged batches logs one warning with the count, and the records are
-counted in `senhub.agent.otlp.dropped` with `reason="dropped_by_age"`
-(`logs_queue_full` for the size cap). During an outage the queue can use up
-to 128 MiB of the state directory. If the directory is not writable the
-agent logs one warning and runs without the queue.
+Under `otlp-queue/` the three queues are the subdirectories `logqueue/`,
+`metricqueue/` and `tracequeue/`.
 
-Environment variables, which win over the file:
+Each queue is bounded two ways: a size cap, past which the oldest requests
+are evicted first, and an age limit (24 hours), swept at boot and every 10
+minutes. Each sweep that drops aged requests logs one warning with the count.
+What is dropped is counted in `senhub.agent.otlp.dropped`, in records for
+logs, in data points for metrics and in spans for traces:
+
+| Queue | Size cap (default) | Size reason | Age limit (default) | Age reason |
+|---|---|---|---|---|
+| Logs | `logs_queue_max_bytes` (128 MiB) | `logs_queue_full` | `logs_queue_max_age` (24 h) | `dropped_by_age` |
+| Metrics | `metrics_queue_max_bytes` (256 MiB) | `metrics_queue_full` | `metrics_queue_max_age` (24 h) | `metrics_dropped_by_age` |
+| Traces | `traces_queue_max_bytes` (64 MiB) | `traces_queue_full` | `traces_queue_max_age` (24 h) | `traces_dropped_by_age` |
+
+If the directory is not writable the agent logs one warning and runs without
+any of the queues; each signal then keeps the SDK's own retry.
+
+Sizing the metrics queue. A metrics push is one point per active series, and
+the queue keeps one request per push, compressed on disk. Measured on a
+synthetic snapshot of 5,000 series, a 1 MB request takes 54 KB (about 11
+bytes per point); real attributes compress less well, so plan 20 bytes per
+point. For an outage of H hours: `series × (3600 / push interval in seconds)
+× H × 20 bytes`. At the default 30-second interval, 5,000 series for 4 hours
+take about 48 MiB; for 24 hours, about 290 MiB, over the default cap. A
+busy host that must keep a full day raises `metrics_queue_max_bytes`; the
+trade-off is the disk the state directory must be able to give up during an
+outage. The default 256 MiB protects the disk first: past it the oldest
+requests are evicted, the newest are kept, and the loss is counted.
+
+Environment variables, which win over the file. `SENHUB_LOG_QUEUE` is the
+historical name of the master switch: `false` turns every queue off, as
+`persistence.enabled: false` does. The other two switch off one signal.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `SENHUB_LOG_QUEUE` | `true` | `false` turns the queue off |
-| `SENHUB_LOG_QUEUE_RETENTION` | `24h` | Maximum age of a queued batch, a duration such as `6h`; `0` = no limit |
-| `SENHUB_LOG_QUEUE_MAX_BYTES` | `134217728` | Disk cap, in bytes or with a suffix (`64MiB`) |
+| `SENHUB_LOG_QUEUE` | `true` | `false` turns the queues off (logs, metrics and traces) |
+| `SENHUB_LOG_QUEUE_RETENTION` | `24h` | Maximum age of a queued log batch, a duration such as `6h`; `0` = no limit |
+| `SENHUB_LOG_QUEUE_MAX_BYTES` | `134217728` | Logs disk cap, in bytes or with a suffix (`64MiB`) |
+| `SENHUB_METRIC_QUEUE` | `true` | `false` turns the metrics queue off |
+| `SENHUB_METRIC_QUEUE_RETENTION` | `24h` | Maximum age of a queued metrics request; `0` = no limit |
+| `SENHUB_METRIC_QUEUE_MAX_BYTES` | `268435456` | Metrics disk cap, in bytes or with a suffix (`512MiB`) |
+| `SENHUB_TRACE_QUEUE` | `true` | `false` turns the traces queue off |
+| `SENHUB_TRACE_QUEUE_RETENTION` | `24h` | Maximum age of a queued traces request; `0` = no limit |
+| `SENHUB_TRACE_QUEUE_MAX_BYTES` | `67108864` | Traces disk cap, in bytes or with a suffix (`128MiB`) |
 
 In a container the state directory must be on a persistent volume (a
 mounted volume, or an Azure Files share on Container Apps); without it the
-queue disappears with the container and only survives an outage, not a
+queues disappear with the container and only survive an outage, not a
 restart.
 
 ### Exports larger than the collector accepts

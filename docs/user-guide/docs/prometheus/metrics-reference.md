@@ -67,10 +67,14 @@ Emitted when an OTLP output is configured.
 | `senhub_agent_otlp_checkpoint_size_bytes` | gauge | Size in bytes of the most recently written OTLP checkpoint file. 0 when persistence disabled or no save has succeeded yet. |
 | `senhub_agent_otlp_dropped_log_records_total` | counter | Cumulative count of log records dropped due to subscriber backpressure on the agent log channel. |
 | `senhub_agent_otlp_dropped_span_batches_total` | counter | Cumulative count of received span batches dropped due to backpressure on the agent span channel (the trace relay could not keep up). |
-| `senhub_agent_otlp_dropped_total` | counter | Records dropped before or during an OTLP export, by `reason`: `store_cap`, `probe_cardinality`, `memory_soft_limit`, `memory_hard_limit`, `staleness` (metrics); `logs_queue_full`, `dropped_by_age` (logs queue limits); `receiver_rejected` (the receiver refused the records on their merits); `record_too_large` (a single log record larger than the receiver accepts). Every reason is emitted from start at 0. |
+| `senhub_agent_otlp_dropped_total` | counter | Records dropped before or during an OTLP export, by `reason`: `store_cap`, `probe_cardinality`, `memory_soft_limit`, `memory_hard_limit`, `staleness` (metrics); `logs_queue_full`, `dropped_by_age` (logs queue limits); `metrics_queue_full`, `metrics_dropped_by_age`, `traces_queue_full`, `traces_dropped_by_age` (metrics and traces queue limits, in data points and spans); `receiver_rejected` (the receiver refused the records on their merits); `record_too_large` (a single log record larger than the receiver accepts). Every reason is emitted from start at 0. |
 | `senhub_agent_otlp_endpoint_switches_total` | counter | Cumulative endpoint failover switches (the active OTLP endpoint changed). Rising means the primary is flapping. |
 | `senhub_agent_otlp_export_duration_seconds` | gauge | Wall-clock duration of the most recent successful OTLP metrics export. |
 | `senhub_agent_otlp_logs_pushed_total` | counter | Cumulative count of log records emitted via OTLP/gRPC. |
+| `senhub_agent_otlp_queue_bytes` | gauge | Bytes currently held by the on-disk queue of a signal, by `signal` (`metrics`, `traces`). |
+| `senhub_agent_otlp_queue_queued_total` | counter | Cumulative data points or spans written to the signal's queue after a failed export, by `signal`. |
+| `senhub_agent_otlp_queue_records` | gauge | Data points (metrics) or spans (traces) currently held in the signal's on-disk queue, awaiting replay, by `signal`. |
+| `senhub_agent_otlp_queue_replayed_total` | counter | Cumulative data points or spans the backend acknowledged after a replay, by `signal`. |
 | `senhub_agent_otlp_logs_queue_bytes` | gauge | Bytes currently held by the on-disk logs dead-letter queue. |
 | `senhub_agent_otlp_logs_queue_records` | gauge | Event-log records currently held in the on-disk dead-letter queue (awaiting replay). 0 when the backend is healthy or persistence is disabled. |
 | `senhub_agent_otlp_logs_queued_total` | counter | Cumulative event-log records written to the dead-letter queue after a failed export. |

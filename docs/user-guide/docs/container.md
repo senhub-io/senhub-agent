@@ -83,7 +83,7 @@ From 0.6.3 the agent is tested with the state directory (`/var/lib/senhub-agent`
 
 Use SMB. It is the default Azure Files protocol on Container Apps and the tested one. NFS shares on Azure Files require a premium storage account and a virtual network; they are not tested with the agent.
 
-Size the share from the logs queue: it is capped by `SENHUB_LOG_QUEUE_MAX_BYTES` (default 128 MiB) with a 24 h retention. Plan the share accordingly, a few hundred MiB per collector. A queued line takes about 290 bytes on disk: the default 128 MiB holds a 3-hour backend outage up to about 43 lines per second (measured: 3 hours at 20 lines per second, no line lost or duplicated, the backlog drained in about two minutes after recovery). For a busier collector, raise `SENHUB_LOG_QUEUE_MAX_BYTES` to rate × outage × 300 bytes; the `records.volume` metric of the Container Apps probe gives the rate.
+Size the share from the queues: logs are capped by `SENHUB_LOG_QUEUE_MAX_BYTES` (default 128 MiB), metrics by `SENHUB_METRIC_QUEUE_MAX_BYTES` (256 MiB) and traces by `SENHUB_TRACE_QUEUE_MAX_BYTES` (64 MiB), each with a 24 h retention. Plan the share accordingly, half a GiB per collector. A queued line takes about 290 bytes on disk: the default 128 MiB holds a 3-hour backend outage up to about 43 lines per second (measured: 3 hours at 20 lines per second, no line lost or duplicated, the backlog drained in about two minutes after recovery). For a busier collector, raise `SENHUB_LOG_QUEUE_MAX_BYTES` to rate × outage × 300 bytes; the `records.volume` metric of the Container Apps probe gives the rate.
 
 Use one collector per share directory. Two agents must not share the same state directory.
 
@@ -115,9 +115,15 @@ reads them, so they apply with a configuration of your own too (see
 | `SENHUB_HTTP_BIND` | No | `0.0.0.0` | Address the console and the PRTG, Nagios and Prometheus endpoints listen on. The container's own loopback is reachable by no one, so the image listens on every address and relies on the container network; `127.0.0.1` keeps them inside the container |
 | `SENHUB_CONFIG_DIR` | No | `/etc/senhub-agent` | Where the configuration is read and written |
 | `SENHUB_STATE_DIR` | No | `/var/lib/senhub-agent` | Where the identity, the key, the bookmarks and the logs queue (`otlp-queue/`) live |
-| `SENHUB_LOG_QUEUE` | No | `true` | `false` stops the agent keeping failed log batches on disk during an OTLP outage |
+| `SENHUB_LOG_QUEUE` | No | `true` | `false` stops the agent keeping failed log batches, metric pushes and trace spans on disk during an OTLP outage |
 | `SENHUB_LOG_QUEUE_RETENTION` | No | `24h` | Age after which a queued log batch is dropped; `0` = no limit |
-| `SENHUB_LOG_QUEUE_MAX_BYTES` | No | `134217728` (128 MiB) | Disk cap of the logs queue, in bytes or with a suffix (`64MiB`). The queue lives in the state directory: put it on a persistent volume (a File Share on Container Apps) for logs to survive a restart; see [Logs survive an outage](otlp.md#logs-survive-an-outage) |
+| `SENHUB_LOG_QUEUE_MAX_BYTES` | No | `134217728` (128 MiB) | Disk cap of the logs queue, in bytes or with a suffix (`64MiB`). The queue lives in the state directory: put it on a persistent volume (a File Share on Container Apps) for logs to survive a restart; see [Logs, metrics and traces survive an outage](otlp.md#logs-metrics-and-traces-survive-an-outage) |
+| `SENHUB_METRIC_QUEUE` | No | `true` | `false` stops the agent keeping failed metric pushes on disk during an OTLP outage |
+| `SENHUB_METRIC_QUEUE_RETENTION` | No | `24h` | Age after which a queued metrics request is dropped; `0` = no limit |
+| `SENHUB_METRIC_QUEUE_MAX_BYTES` | No | `268435456` (256 MiB) | Disk cap of the metrics queue, in bytes or with a suffix (`512MiB`) |
+| `SENHUB_TRACE_QUEUE` | No | `true` | `false` stops the agent keeping failed trace exports on disk during an OTLP outage |
+| `SENHUB_TRACE_QUEUE_RETENTION` | No | `24h` | Age after which a queued traces request is dropped; `0` = no limit |
+| `SENHUB_TRACE_QUEUE_MAX_BYTES` | No | `67108864` (64 MiB) | Disk cap of the traces queue, in bytes or with a suffix (`128MiB`) |
 | `SENHUB_HOST_ID` | No | kept in the state directory | Gives the host a stable identity across the re-creation of its container, so a new container is the same host in the graph and not a new one. 32 hexadecimal characters, dashes optional. One value per host: an example or blank value (all zeros, `01234567-89ab-cdef-…`) is refused at start, and the host entity is marked `senhub.host.id.source=configuration`. The agent itself reads it, so it also applies to the binary run outside this image (several containers on one VM would otherwise all report the VM's DMI identity); a value it cannot use is named in the log at start |
 | `SENHUB_AGENT_KEY` | No | kept in the state directory | Agent identity, a UUID. One value per instance; with `SENHUB_HOST_ID` it lets a container without a volume keep one identity |
 | `SENHUB_PROBES` | No | - | YAML of the probes to run, as a `probes.d` file would hold it. For one probe at a time, the `SENHUB_PROBE_<NAME>_*` variables are shorter, see [Probes from variables](#probes-from-variables) |

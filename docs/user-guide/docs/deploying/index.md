@@ -51,7 +51,7 @@ The same facts hold on every page; they are stated once here.
 | A licence is a file, `license.jwt`, next to `agent.yaml`. The agent reads it at start. Without one, the free tier runs. | [Configuration](../configuration.md), [License](../license/index.md) |
 | A secret is referenced, not written: `${file:/path}`, `${env:NAME}` or `${secret:NAME}`. | [Environment and file substitution](../configuration.md#environment-and-file-substitution), [Secret store](../secret-store.md) |
 | A probe can be declared from the environment: `SENHUB_PROBE_<NAME>_TYPE`, `SENHUB_PROBE_<NAME>_<PARAM>`, and `SENHUB_PROBE_<NAME>_<PARAM>_FILE` to read a secret from a file. | [Probes from environment variables](../configuration.md#configuring-probes-from-environment-variables) |
-| Failed log batches are kept on disk during a collector outage, in `otlp-queue/` of the state directory (up to 128 MiB and 24 hours by default). Give that directory a volume wherever the disk is not kept. | [Logs survive an outage](../otlp.md#logs-survive-an-outage) |
+| Failed log batches, metric pushes and trace spans are kept on disk during a collector outage, in `otlp-queue/` of the state directory (up to 128 MiB of logs, 256 MiB of metrics and 64 MiB of traces, 24 hours each, by default). Give that directory a volume wherever the disk is not kept. | [Logs, metrics and traces survive an outage](../otlp.md#logs-metrics-and-traces-survive-an-outage) |
 | Release tags carry no `v` prefix: `0.6.1`, not `v0.6.1`. | [Installation](../installation.md#direct-download-urls) |
 
 ## Two rules for a fleet
