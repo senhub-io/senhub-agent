@@ -115,12 +115,19 @@ func (t *overlayTarget) AddProbe(p extension.ManagedProbe) bool {
 		return false
 	}
 	params := make(ProbeConfigParams, len(p.Params)+1)
+	rec := &recorder{}
 	for k, v := range p.Params {
-		params[k] = v
+		resolved, err := resolveManagedValue(v, rec)
+		if err != nil {
+			log.Warn().Str("probe", p.Name).Str("param", k).Err(err).Msg("Managed probe refused: a reference in its parameters does not resolve")
+			return false
+		}
+		params[k] = resolved
 	}
 	if p.Interval != 0 {
 		params["interval"] = p.Interval
 	}
+	RecordSubstituted(rec.list()...)
 	idx := len(t.cfg.Probes)
 	t.undo = append(t.undo, func() {
 		t.cfg.Probes = append(t.cfg.Probes[:idx], t.cfg.Probes[idx+1:]...)
@@ -213,4 +220,40 @@ func wholeSeconds(v interface{}) (int, bool) {
 		}
 	}
 	return 0, false
+}
+
+// resolveManagedValue resolves ${env:}, ${file:} and ${secret:} references in
+// the string leaves of a managed probe parameter, copying the maps and slices
+// it walks so the extension's own data is never written. The resolved values
+// go to rec so the log sanitizers mask them.
+func resolveManagedValue(v any, rec *recorder) (any, error) {
+	switch t := v.(type) {
+	case string:
+		if !substitutionPattern.MatchString(t) {
+			return t, nil
+		}
+		return substituteStringRec(t, rec)
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		for k, vv := range t {
+			r, err := resolveManagedValue(vv, rec)
+			if err != nil {
+				return nil, err
+			}
+			out[k] = r
+		}
+		return out, nil
+	case []any:
+		out := make([]any, len(t))
+		for i, vv := range t {
+			r, err := resolveManagedValue(vv, rec)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = r
+		}
+		return out, nil
+	default:
+		return v, nil
+	}
 }

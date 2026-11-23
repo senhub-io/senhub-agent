@@ -13,10 +13,13 @@ import (
 
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/utils/netbind"
 )
+
+const probeTypeName = "syslog"
 
 const (
 	DefaultPort     = 514
@@ -78,7 +81,7 @@ func NewSyslogProbe(config map[string]interface{}, baseLogger *logger.Logger) (t
 	}
 
 	moduleLogger.Debug().
-		Any("config", parsedConfig).
+		Any("config", configuration.SanitizeProbeParamsForLog(probeTypeName, config)).
 		Msg("Creating new syslog probe")
 
 	return &SyslogProbe{
