@@ -86,6 +86,7 @@ type EventSyncStrategy struct {
 	backlog     *eventBacklog
 	backlogOnce sync.Once
 	lastWarnAt  atomic.Int64 // unix nanoseconds of the last backlog write warning
+	unwarned    atomic.Int64 // events lost to write failures since that warning
 
 	// persistMu serialises every write of the backlog from the sync path
 	// and from Shutdown, so the order on disk is the order of arrival:
@@ -683,10 +684,11 @@ func (s *EventSyncStrategy) persist(events []eventtypes.EventDataPoint, durable 
 	}
 	if err := s.backlog.append(events, durable); err != nil {
 		agentstate.IncrementPushBufferDropped("event", len(events))
+		s.unwarned.Add(int64(len(events)))
 		now := time.Now().UnixNano()
 		last := s.lastWarnAt.Load()
 		if now-last >= int64(backlogWarnEvery) && s.lastWarnAt.CompareAndSwap(last, now) {
-			s.logger.Warn().Err(err).Int("dropped_events", len(events)).
+			s.logger.Warn().Err(err).Int64("dropped_events", s.unwarned.Swap(0)).
 				Msg("Event backlog could not be written; events dropped")
 		}
 	}

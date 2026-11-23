@@ -80,6 +80,13 @@ type eventBacklog struct {
 	// seconds. Tests read it to tell that cost from an overrun.
 	writeNanos atomic.Int64
 
+	// Drops are reported in aggregate: every append may evict, and a
+	// warning per eviction is one line per batch for as long as an outage
+	// lasts. The counters wait here until warnEvery has passed.
+	warnEvery  time.Duration
+	lastWarn   time.Time
+	unreported dropTally
+
 	mu sync.Mutex
 	// readFailures counts, per file, the replay rounds that could not read it.
 	readFailures map[uint64]int
@@ -87,6 +94,13 @@ type eventBacklog struct {
 	entries      []backlogEntry // ascending seq
 	size         int64
 }
+
+// dropTally is what was evicted since the last warning.
+type dropTally struct {
+	agedEvents, sizedEvents, agedBatches, sizedBatches int
+}
+
+func (d dropTally) empty() bool { return d.agedEvents+d.sizedEvents == 0 }
 
 // errBatchRefused is returned by a replay send function to say the intake
 // refused the batch on its merits: the file is removed and counted dropped.
@@ -115,7 +129,7 @@ func newEventBacklog(dir string, maxBytes int64, maxAge time.Duration, log *logg
 	if maxAge <= 0 {
 		maxAge = DefaultBacklogMaxAge
 	}
-	b := &eventBacklog{dir: dir, maxBytes: maxBytes, maxAge: maxAge, logger: log, now: time.Now, readFn: os.ReadFile, readFailures: map[uint64]int{}}
+	b := &eventBacklog{dir: dir, maxBytes: maxBytes, maxAge: maxAge, logger: log, now: time.Now, readFn: os.ReadFile, warnEvery: backlogWarnEvery, readFailures: map[uint64]int{}}
 	b.recover()
 	return b
 }
@@ -277,7 +291,7 @@ func (b *eventBacklog) append(events []eventtypes.EventDataPoint, durable bool) 
 // until the size cap holds. One warning per call, however many files go.
 func (b *eventBacklog) enforceLocked() {
 	cutoff := b.now().Add(-b.maxAge)
-	var agedEvents, sizedEvents, agedFiles, sizedFiles int
+	var tally dropTally
 	for len(b.entries) > 0 {
 		head := b.entries[0]
 		byAge := head.savedAt.Before(cutoff)
@@ -291,20 +305,36 @@ func (b *eventBacklog) enforceLocked() {
 		b.entries = b.entries[1:]
 		b.size -= head.size
 		if byAge {
-			agedEvents += head.count
-			agedFiles++
+			tally.agedEvents += head.count
+			tally.agedBatches++
 		} else {
-			sizedEvents += head.count
-			sizedFiles++
+			tally.sizedEvents += head.count
+			tally.sizedBatches++
 		}
 	}
-	if agedEvents+sizedEvents == 0 {
+	if !tally.empty() {
+		agentstate.IncrementPushBufferDropped("event", tally.agedEvents+tally.sizedEvents)
+		b.unreported.agedEvents += tally.agedEvents
+		b.unreported.sizedEvents += tally.sizedEvents
+		b.unreported.agedBatches += tally.agedBatches
+		b.unreported.sizedBatches += tally.sizedBatches
+	}
+	b.warnLocked()
+}
+
+// warnLocked emits the one warning for the drops accumulated since the
+// last one, at most once per warnEvery. The counter above is exact; this
+// line is the human-readable summary.
+func (b *eventBacklog) warnLocked() {
+	if b.unreported.empty() || b.now().Sub(b.lastWarn) < b.warnEvery {
 		return
 	}
-	agentstate.IncrementPushBufferDropped("event", agedEvents+sizedEvents)
+	d := b.unreported
+	b.unreported = dropTally{}
+	b.lastWarn = b.now()
 	b.logger.Warn().
-		Int("dropped_by_age", agedEvents).Int("batches_by_age", agedFiles).
-		Int("dropped_by_size", sizedEvents).Int("batches_by_size", sizedFiles).
+		Int("dropped_by_age", d.agedEvents).Int("batches_by_age", d.agedBatches).
+		Int("dropped_by_size", d.sizedEvents).Int("batches_by_size", d.sizedBatches).
 		Dur("max_age", b.maxAge).Int64("max_bytes", b.maxBytes).
 		Msg("Event backlog over its limits; oldest events dropped")
 }

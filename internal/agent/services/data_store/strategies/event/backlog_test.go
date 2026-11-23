@@ -14,8 +14,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	"senhub-agent.go/internal/agent/services/agentstate"
+
 	"senhub-agent.go/internal/agent/services/configuration"
+	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/server"
 	eventtypes "senhub-agent.go/internal/agent/types/event"
 )
@@ -736,5 +739,101 @@ func TestShutdownOwnsParkingOrder(t *testing.T) {
 	}
 	if !sameStrings(got, names("m", 0, 8)) {
 		t.Fatalf("on-disk order = %v, want m000..m007 (in-flight batch first, then the buffer)", got)
+	}
+}
+
+// captureLogger returns a module logger whose lines land in the returned
+// buffer, and a function counting those that contain a text.
+func captureLogger() (*logger.ModuleLogger, func(string) int) {
+	var buf lockedBuffer
+	base := zerolog.New(&buf)
+	return logger.NewModuleLogger(&base, "strategy.event"), func(text string) int {
+		return strings.Count(buf.String(), text)
+	}
+}
+
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
+}
+
+// TestBacklogEvictionWarnsOncePerMinute: a cap hit on every append used to
+// log one line per eviction, 66 in ten minutes on the container bench.
+func TestBacklogEvictionWarnsOncePerMinute(t *testing.T) {
+	agentstate.ResetPushBufferDroppedForTest()
+	log, lines := captureLogger()
+	clock := time.Unix(1_700_000_000, 0)
+
+	probe := newEventBacklog(t.TempDir(), 0, 0, log)
+	_ = probe.append(batchOf("x", 0, 10), true)
+	_, one := probe.pending()
+
+	b := newEventBacklog(t.TempDir(), one*5/2, time.Hour, log)
+	b.now = func() time.Time { return clock }
+	const batches = 60
+	for i := 0; i < batches; i++ {
+		clock = clock.Add(time.Second)
+		if err := b.append(batchOf("b", i*10, 10), true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 58 evictions in 60 s: the first one is reported, the rest wait.
+	if got := lines("over its limits"); got != 1 {
+		t.Fatalf("%d warnings for evictions inside one minute, want 1", got)
+	}
+
+	clock = clock.Add(2 * time.Minute)
+	b.sweep()
+	if got := lines("over its limits"); got != 2 {
+		t.Fatalf("%d warnings after the minute, want 2 (the summary of the rest)", got)
+	}
+	clock = clock.Add(2 * time.Minute)
+	b.sweep()
+	if got := lines("over its limits"); got != 2 {
+		t.Fatalf("a sweep with nothing new warned again: %d lines", got)
+	}
+	// The counter stays exact whatever the log says.
+	if d := agentstate.GetPushBufferDropped()["event"]; d != uint64(batches-2)*10 {
+		t.Fatalf("dropped counter = %d, want %d", d, (batches-2)*10)
+	}
+}
+
+func TestBacklogWriteFailureWarnsOncePerMinute(t *testing.T) {
+	agentstate.ResetPushBufferDroppedForTest()
+	dir := t.TempDir()
+	s := newDurableStrategy(t, dir, nil)
+	log, lines := captureLogger()
+	s.logger = log
+	s.backlog.logger = log
+	// Replace the directory by a file: every append fails.
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 20; i++ {
+		s.persist(batchOf("m", i*3, 3), true)
+	}
+	if got := lines("could not be written"); got != 1 {
+		t.Fatalf("%d write-failure warnings in a burst, want 1", got)
+	}
+	if d := agentstate.GetPushBufferDropped()["event"]; d != 60 {
+		t.Fatalf("dropped counter = %d, want 60", d)
+	}
+	if s.unwarned.Load() != 57 {
+		t.Fatalf("unreported events = %d, want the 57 behind the first warning", s.unwarned.Load())
 	}
 }
