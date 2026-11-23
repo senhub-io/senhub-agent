@@ -189,8 +189,10 @@ func (q *wireQueue) readRequest(name string) (request []byte, units int, err err
 	if err != nil {
 		return nil, 0, fmt.Errorf("queue file payload: %w", err)
 	}
-	defer zr.Close()
 	request, err = io.ReadAll(zr)
+	if closeErr := zr.Close(); err == nil {
+		err = closeErr
+	}
 	if err != nil {
 		return nil, 0, fmt.Errorf("queue file payload: %w", err)
 	}
