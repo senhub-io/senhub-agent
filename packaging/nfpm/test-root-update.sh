@@ -109,6 +109,12 @@ expect_refused "FIFO as request" "not a regular file"
 write_as senhub '99.9.9\n' 640
 expect_refused "unknown version" "Root update refused"
 
+# 6b a rollback the root unit never made, and one forged through the version request
+x "su -s /bin/sh senhub -c 'printf \"rollback\\n\" > /var/lib/senhub-agent/update-request/.t && mv /var/lib/senhub-agent/update-request/.t /var/lib/senhub-agent/update-request/rollback'"
+expect_refused "rollback with no install by the unit" "step=rollback"
+write_as senhub 'rollback\n' 640
+expect_refused "rollback forged through the version request" "malformed request content"
+
 # 7 six refusals within the hour have used the start limit: a seventh start is not made
 sleep 1
 x "systemctl reset-failed $UNIT senhub-agent-update.path" >/dev/null 2>&1
@@ -123,6 +129,19 @@ else
     verdict FAIL "start limit stops a flood of requests" "10 requests, $starts runs, result: $limit"
 fi
 [ "$(x "sha256sum /usr/bin/senhub-agent | cut -d' ' -f1")" = "$BIN_SHA" ] && verdict ok "binary never changed" || verdict FAIL "binary never changed"
+
+# 7b symlinks planted by the service user before a (re)install: root follows none
+x "echo KEEP > /root/victim1; echo KEEP > /root/victim2; echo KEEP > /root/victim3; chmod 600 /root/victim1 /root/victim2 /root/victim3"
+VICTIMS=$(x "stat -c '%U:%a' /root/victim1 /root/victim2 /root/victim3; sha256sum /root/victim1 /root/victim2 /root/victim3" | sha256sum)
+x "rm -f /var/lib/senhub-agent/.default-probes-0.6.4 /var/lib/senhub-agent-update/.root-update-0.7.2 /etc/senhub-agent/probes.d/05-services.yaml /etc/senhub-agent/probes.d/06-swarm.yaml"
+x "su -s /bin/sh senhub -c 'ln -s /root/victim1 /var/lib/senhub-agent/.default-probes-0.6.4; ln -s /root/victim2 /var/lib/senhub-agent/.root-update-0.7.2; ln -s /root/victim3 /etc/senhub-agent/probes.d/05-services.yaml'"
+x "DEBIAN_FRONTEND=noninteractive apt-get install --reinstall -y -qq /pkgs/$(basename "$PKG")" >/dev/null 2>&1
+[ "$(x "stat -c '%U:%a' /root/victim1 /root/victim2 /root/victim3; sha256sum /root/victim1 /root/victim2 /root/victim3" | sha256sum)" = "$VICTIMS" ] \
+    && verdict ok "planted symlinks (marker, default fragment) not followed by postinst" || verdict FAIL "planted symlinks not followed by postinst"
+x "[ -L /var/lib/senhub-agent/.default-probes-0.6.4 ] && [ -L /etc/senhub-agent/probes.d/05-services.yaml ]" \
+    && verdict ok "planted links left as they were" || verdict FAIL "planted links left as they were"
+x "[ -f /var/lib/senhub-agent-update/.root-update-0.7.2 ] && [ ! -L /var/lib/senhub-agent-update/.root-update-0.7.2 ] && [ \"\$(stat -c %U:%a /var/lib/senhub-agent-update)\" = root:700 ]" \
+    && verdict ok "root marker written in the root-only directory" || verdict FAIL "root marker written in the root-only directory"
 
 # 8 the unit is sandboxed as designed
 x "systemd-analyze security $UNIT --no-pager 2>/dev/null | tail -1" || true
