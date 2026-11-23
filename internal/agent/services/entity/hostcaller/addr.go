@@ -54,18 +54,29 @@ func truncate(a netip.Addr) string {
 type ifaceView struct {
 	bridgeIPs      map[string]bool
 	bridgePrefixes []netip.Prefix
+	// ownIPs are every address of the host: a caller using one of them is
+	// the host itself (a process connecting to its own non-loopback address).
+	ownIPs map[netip.Addr]bool
 }
 
 // newIfaceView returns an empty view and the error when the list cannot be
 // read: callers are then judged by their address alone, which keeps them
 // reported rather than silently dropping every private caller of the host.
 func newIfaceView(read func() (gnet.InterfaceStatList, error)) (*ifaceView, error) {
-	v := &ifaceView{bridgeIPs: map[string]bool{}}
+	v := &ifaceView{bridgeIPs: map[string]bool{}, ownIPs: map[netip.Addr]bool{}}
 	ifaces, err := read()
 	if err != nil {
 		return v, err
 	}
 	for _, ifc := range ifaces {
+		for _, a := range ifc.Addrs {
+			raw := strings.TrimSpace(a.Addr)
+			if p, err := netip.ParsePrefix(raw); err == nil {
+				v.ownIPs[p.Addr().WithZone("").Unmap()] = true
+			} else if ip, ok := parseAddr(raw); ok {
+				v.ownIPs[ip] = true
+			}
+		}
 		if !entity.IsContainerBridgeIface(ifc.Name) {
 			continue
 		}
@@ -97,4 +108,9 @@ func (v *ifaceView) bridged(caller netip.Addr, localIP string) bool {
 		}
 	}
 	return false
+}
+
+// own reports a caller address that belongs to this host.
+func (v *ifaceView) own(caller netip.Addr) bool {
+	return v.ownIPs[caller]
 }
