@@ -91,6 +91,12 @@ All metrics include the `interface` tag to identify the specific network interfa
     interval: 60
 ```
 
+### Per-edge connection metrics (Linux)
+
+When `tcp_stats` is on and the host dependency source is enabled (`entities.depends_on_enabled`), the probe also reports, for each outbound dependency the agent publishes, the telemetry of the sockets behind it: `senhub.connection.rtt` (mean smoothed round-trip time, in seconds, over the edge's established connections), `senhub.connection.retransmits` (segments retransmitted) and `senhub.connection.io` (bytes, with `network.io.direction` = `transmit` or `receive`). The two counters only grow for as long as the edge exists, although the connections behind it come and go; a connection first seen by the agent counts with the bytes it had already exchanged.
+
+Each series carries the keys of the dependency edge and nothing else: `service.instance.id`, `server.address`, `server.port`, `network.transport`, plus `host.id` when the target is a service on this host. The client port is never an attribute. A dependency excluded by the privacy filter, or not yet published, has no metrics, and its series stop when the dependency is retired. Other platforms report nothing.
+
 ## Interface Detection
 
 The probe automatically detects and monitors valid network interfaces based on platform-specific criteria:
@@ -534,5 +540,9 @@ series' tags.
 | `senhub.system.network.tcp.segments.retransmitted` | `tcp_retrans_segs` | TCP Retransmitted Segments | # | Cumulative number of retransmitted TCP segments since host start |
 | `senhub.system.network.tcp.resets.sent` | `tcp_out_rsts` | TCP Outbound Resets | # | Cumulative number of TCP reset segments sent since host start |
 | `senhub.system.network.tcp.listen.overflows` | `tcp_listen_overflows` | TCP Listen Overflows | # | Cumulative number of TCP listen queue overflows since host start |
+| `senhub.connection.rtt` | `edge_rtt` | Edge RTT {service.instance.id} to {server.address}:{server.port} | s | Mean smoothed round-trip time of the established TCP connections of one outbound dependency edge, in seconds |
+| `senhub.connection.retransmits` | `edge_retransmits` | Edge Retransmits {service.instance.id} to {server.address}:{server.port} | # | Cumulative TCP segments retransmitted on one outbound dependency edge |
+| `senhub.connection.io` | `edge_bytes_sent` | Edge Bytes Sent {service.instance.id} to {server.address}:{server.port} | bytes | Cumulative bytes sent on one outbound dependency edge |
+| `senhub.connection.io` | `edge_bytes_received` | Edge Bytes Received {service.instance.id} to {server.address}:{server.port} | bytes | Cumulative bytes received on one outbound dependency edge |
 
 <!-- schema:metrics:end -->

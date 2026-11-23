@@ -214,6 +214,16 @@ Host-wide, cumulative since boot; no interface attribute. Linux reads `/proc/net
 
 Attribute: `senhub.network.tcp.open.direction` ∈ {`active`, `passive`}.
 
+#### 4.3.3 SenHub extensions: per-edge connection metrics (Linux)
+
+Telemetry of the sockets behind a `depends_on` edge published by the host dependency source, read from the sock_diag `tcp_info` of the same socket table as the state counts. Attributes are exactly the edge's identity keys (`service.instance.id`, `server.address`, `server.port`, `network.transport`, and `host.id` when the target endpoint is host-local); never the client port. Only edges currently emitted (after the debounce and the exclusion filter) have series, and a series ends with its edge. Counters add, per scrape, the non-negative growth of each socket since the previous scrape; a socket seen for the first time contributes its current value, and a value that goes down adds nothing.
+
+| Metric | Unit | Type | Meaning |
+|---|---|---|---|
+| `senhub.connection.rtt` | `s` | Gauge | Mean smoothed round-trip time (`tcpi_rtt`) over the edge's established sockets that carry `tcp_info` |
+| `senhub.connection.retransmits` | `{segment}` | Counter | Segments retransmitted (`tcpi_total_retrans`) |
+| `senhub.connection.io` | `By` | Counter | Bytes sent and received, by `network.io.direction` ∈ {`transmit`, `receive`} |
+
 ### 4.4 Probe `logicaldisk` (filesystem + disk I/O)
 
 **Primary source:** [OTel system-metrics §Filesystem](https://opentelemetry.io/docs/specs/semconv/system/system-metrics/) and `§Disk`
