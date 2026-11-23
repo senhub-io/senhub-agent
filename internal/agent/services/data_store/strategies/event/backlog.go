@@ -37,6 +37,9 @@ const (
 	// replayFilesPerSync bounds the batches replayed by one sync, so the
 	// live buffer keeps being served while a large backlog drains.
 	replayFilesPerSync = 20
+	// maxReadFailures is how many replay rounds a file may fail to be
+	// read (an I/O error, not a decoding one) before it is given up.
+	maxReadFailures = 5
 )
 
 // backlogBatch is the on-disk envelope: one file per batch the intake did
@@ -67,11 +70,15 @@ type eventBacklog struct {
 	maxAge   time.Duration
 	logger   *logger.ModuleLogger
 	now      func() time.Time
+	// readFn reads a queue file; a field so a test can inject an I/O error.
+	readFn func(string) ([]byte, error)
 
-	mu      sync.Mutex
-	seq     uint64
-	entries []backlogEntry // ascending seq
-	size    int64
+	mu sync.Mutex
+	// readFailures counts, per file, the replay rounds that could not read it.
+	readFailures map[uint64]int
+	seq          uint64
+	entries      []backlogEntry // ascending seq
+	size         int64
 }
 
 // errBatchRefused is returned by a replay send function to say the intake
@@ -101,7 +108,7 @@ func newEventBacklog(dir string, maxBytes int64, maxAge time.Duration, log *logg
 	if maxAge <= 0 {
 		maxAge = DefaultBacklogMaxAge
 	}
-	b := &eventBacklog{dir: dir, maxBytes: maxBytes, maxAge: maxAge, logger: log, now: time.Now}
+	b := &eventBacklog{dir: dir, maxBytes: maxBytes, maxAge: maxAge, logger: log, now: time.Now, readFn: os.ReadFile, readFailures: map[uint64]int{}}
 	b.recover()
 	return b
 }
@@ -141,9 +148,13 @@ func (b *eventBacklog) recover() {
 			b.size += info.Size()
 		case errors.Is(readErr, errBacklogNewerVersion):
 			unknown++
-		default:
+		case errors.Is(readErr, errBacklogCorrupt):
 			corrupt++
 			_ = os.Remove(filepath.Join(b.dir, e.Name()))
+		default:
+			// An I/O error says nothing about the content: leave the file.
+			b.logger.Warn().Err(readErr).Str("file", e.Name()).
+				Msg("Event backlog: a file could not be read at start; left in place")
 		}
 	}
 	sort.Slice(b.entries, func(i, j int) bool { return b.entries[i].seq < b.entries[j].seq })
@@ -154,20 +165,30 @@ func (b *eventBacklog) recover() {
 	}
 }
 
-var errBacklogNewerVersion = errors.New("backlog file version is newer than supported")
+var (
+	errBacklogNewerVersion = errors.New("backlog file version is newer than supported")
+	// errBacklogIO marks a failure to read the file at all (descriptor
+	// exhaustion, permissions, a lock): the content may be fine.
+	errBacklogIO = errors.New("backlog file could not be read")
+	// errBacklogCorrupt marks content that is not a valid batch.
+	errBacklogCorrupt = errors.New("backlog file is corrupt")
+)
 
 func (b *eventBacklog) readFile(name string) (backlogBatch, error) {
 	var batch backlogBatch
-	data, err := os.ReadFile(filepath.Join(b.dir, name)) // #nosec G304 - name built from the index
+	data, err := b.readFn(filepath.Join(b.dir, name)) // #nosec G304 - name built from the index
 	if err != nil {
-		return batch, err
+		if errors.Is(err, os.ErrNotExist) {
+			return batch, err
+		}
+		return batch, fmt.Errorf("%w: %w", errBacklogIO, err)
 	}
 	// UseNumber keeps integers exact: a float64 round trip would alter
 	// values above 2^53 between the first send and the replay.
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
 	if err := dec.Decode(&batch); err != nil {
-		return backlogBatch{}, err
+		return backlogBatch{}, fmt.Errorf("%w: %w", errBacklogCorrupt, err)
 	}
 	if batch.Version > backlogFileVersion {
 		return backlogBatch{}, fmt.Errorf("%w: %d > %d", errBacklogNewerVersion, batch.Version, backlogFileVersion)
@@ -305,13 +326,19 @@ func (b *eventBacklog) drain(ctx context.Context, limit int, send func(context.C
 			if errors.Is(err, os.ErrNotExist) {
 				continue // evicted meanwhile
 			}
-			b.logger.Warn().Err(err).Str("file", e.name).
-				Msg("Event backlog: skipping a file that cannot be read")
-			if !errors.Is(err, errBacklogNewerVersion) {
+			switch {
+			case errors.Is(err, errBacklogCorrupt):
+				b.logger.Warn().Err(err).Str("file", e.name).
+					Msg("Event backlog: removing a corrupt file")
 				b.remove(e.seq, false)
+			case errors.Is(err, errBacklogIO):
+				b.noteReadFailure(e)
 			}
 			continue
 		}
+		b.mu.Lock()
+		delete(b.readFailures, e.seq)
+		b.mu.Unlock()
 		switch sendErr := send(ctx, batch.Events); {
 		case sendErr == nil:
 			sent += len(batch.Events)
@@ -323,6 +350,21 @@ func (b *eventBacklog) drain(ctx context.Context, limit int, send func(context.C
 		}
 	}
 	return sent, nil
+}
+
+// noteReadFailure keeps a file that could not be read this round, and
+// gives it up, counted and logged once, after maxReadFailures rounds.
+func (b *eventBacklog) noteReadFailure(e backlogEntry) {
+	b.mu.Lock()
+	b.readFailures[e.seq]++
+	n := b.readFailures[e.seq]
+	b.mu.Unlock()
+	if n < maxReadFailures {
+		return
+	}
+	b.logger.Warn().Str("file", e.name).Int("events", e.count).Int("rounds", n).
+		Msg("Event backlog: giving up on a file that cannot be read; its events are dropped")
+	b.remove(e.seq, true)
 }
 
 // remove deletes the file of seq from disk and index; countDropped records
@@ -339,6 +381,7 @@ func (b *eventBacklog) remove(seq uint64, countDropped bool) {
 			return
 		}
 		b.entries = append(b.entries[:i], b.entries[i+1:]...)
+		delete(b.readFailures, seq)
 		b.size -= e.size
 		if countDropped {
 			agentstate.IncrementPushBufferDropped("event", e.count)

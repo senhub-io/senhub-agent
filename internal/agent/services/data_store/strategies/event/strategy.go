@@ -47,9 +47,6 @@ const (
 	DefaultFirstRetryDelay = 5 * time.Second
 	// DefaultFirstRetryJitter spreads first resends from many agents.
 	DefaultFirstRetryJitter = 2 * time.Second
-	// shutdownPersistGrace is how long Shutdown waits, past its own
-	// deadline, for an interrupted sync to put its batch on disk.
-	shutdownPersistGrace = 500 * time.Millisecond
 	// backlogWarnEvery spaces the warnings about a backlog that cannot
 	// be written.
 	backlogWarnEvery = time.Minute
@@ -89,6 +86,15 @@ type EventSyncStrategy struct {
 	backlog     *eventBacklog
 	backlogOnce sync.Once
 	lastWarnAt  atomic.Int64 // unix nanoseconds of the last backlog write warning
+
+	// persistMu serialises every write of the backlog from the sync path
+	// and from Shutdown, so the order on disk is the order of arrival:
+	// the batch a sync holds, then the buffer. inflight is that batch
+	// while its send is under way; closing means Shutdown has taken over
+	// and no sync may write any more.
+	persistMu sync.Mutex
+	inflight  []eventtypes.EventDataPoint
+	closing   bool
 
 	// syncCtx bounds the background syncs. Shutdown cancels it when its
 	// own deadline passes, so a sync stuck on an intake that does not
@@ -573,24 +579,28 @@ func (s *EventSyncStrategy) doSyncDurable(ctx context.Context) error {
 	}
 	if err != nil {
 		s.recordSendFailure(err)
-		s.parkBuffer()
+		s.handOff(nil)
 		return fmt.Errorf("replaying the event backlog: %w", err)
 	}
 
+	s.persistMu.Lock()
 	events, size := s.collectBatch(nil)
+	s.inflight = events
+	s.persistMu.Unlock()
 	if len(events) == 0 {
 		return nil
 	}
 	err = s.sendWithRetry(ctx, events)
 	if err == nil {
+		s.clearInflight()
 		s.recordSynced(len(events), size)
 		return nil
 	}
 	if !s.keepAfterFailure(ctx, events, err) {
+		s.clearInflight()
 		return nil
 	}
-	s.persist(events)
-	s.parkBuffer()
+	s.handOff(events)
 	return fmt.Errorf("failed to sync events after %d attempts: %w", s.retryAttempts, err)
 }
 
@@ -668,7 +678,7 @@ func (s *EventSyncStrategy) replayBatch(ctx context.Context, events []eventtypes
 // persist puts a batch on disk. A write failure loses the batch, counted,
 // with at most one warning a minute.
 func (s *EventSyncStrategy) persist(events []eventtypes.EventDataPoint) {
-	if len(events) == 0 {
+	if len(events) == 0 || s.backlog == nil {
 		return
 	}
 	if err := s.backlog.append(events); err != nil {
@@ -682,9 +692,44 @@ func (s *EventSyncStrategy) persist(events []eventtypes.EventDataPoint) {
 	}
 }
 
+func (s *EventSyncStrategy) clearInflight() {
+	s.persistMu.Lock()
+	s.inflight = nil
+	s.persistMu.Unlock()
+}
+
+// handOff is how a sync gives the backlog the batch it could not deliver,
+// then the buffer. After Shutdown has taken over it writes nothing: the
+// batch is still in inflight and Shutdown puts it on disk, in order.
+func (s *EventSyncStrategy) handOff(events []eventtypes.EventDataPoint) {
+	s.persistMu.Lock()
+	defer s.persistMu.Unlock()
+	if s.closing {
+		return
+	}
+	s.persist(events)
+	s.inflight = nil
+	s.parkBuffer()
+}
+
+// takeOver is the one write Shutdown makes: the batch an interrupted sync
+// still holds, then the buffer. It also bars every later write of a sync.
+func (s *EventSyncStrategy) takeOver() {
+	s.persistMu.Lock()
+	defer s.persistMu.Unlock()
+	s.closing = true
+	s.persist(s.inflight)
+	s.inflight = nil
+	s.parkBuffer()
+}
+
 // parkBuffer moves what the in-memory buffer holds onto disk. Bounded by
 // the buffer capacity, so a producer faster than the disk cannot hold it.
+// The caller holds persistMu. Without a backlog it does nothing.
 func (s *EventSyncStrategy) parkBuffer() {
+	if s.backlog == nil {
+		return
+	}
 	for i := 0; i <= cap(s.buffer)/max(s.syncTriggerSize, 1)+1; i++ {
 		events, _ := s.collectBatch(nil)
 		if len(events) == 0 {
@@ -720,7 +765,7 @@ func (s *EventSyncStrategy) sendEvents(ctx context.Context, events []eventtypes.
 	if poster, ok := s.server.(server.ContextStreamPoster); ok {
 		response, err = poster.PostStreamContext(ctx, "/event/insert", string(eventsJSON))
 	} else {
-		response, err = s.server.PostStream("/event/insert", string(eventsJSON))
+		response, err = postStreamAbandonable(ctx, s.server, string(eventsJSON))
 	}
 	if err != nil {
 		// The far end was not reached. Keep the batch.
@@ -859,15 +904,14 @@ func (s *EventSyncStrategy) Shutdown(ctx context.Context) error {
 		s.stopOnce.Do(func() { close(s.tickerStop) })
 	}
 
-	// Wait for ongoing sync to complete. At the deadline it is cancelled,
-	// which makes it hand its batch to the backlog; the grace lets that
-	// write finish.
+	// Wait for ongoing sync to complete. At the deadline it is cancelled
+	// and Shutdown writes what it holds, itself and in order; the sync
+	// writes nothing from then on.
 	for s.syncInProgress.Load() {
 		select {
 		case <-ctx.Done():
 			s.syncCancel()
-			s.awaitSyncEnd(shutdownPersistGrace)
-			s.parkBuffer()
+			s.takeOver()
 			return ctx.Err()
 		case <-time.After(100 * time.Millisecond):
 			s.logger.Debug().Msg("Waiting for ongoing sync to complete")
@@ -886,21 +930,12 @@ func (s *EventSyncStrategy) Shutdown(ctx context.Context) error {
 			break
 		}
 	}
-	if s.backlog != nil {
-		s.parkBuffer()
-	}
+	s.takeOver()
 	s.syncCancel()
 	if syncErr != nil {
 		return syncErr
 	}
 	return nil
-}
-
-func (s *EventSyncStrategy) awaitSyncEnd(grace time.Duration) {
-	deadline := time.Now().Add(grace)
-	for s.syncInProgress.Load() && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
 }
 
 // retryDelayFor is the wait before the next attempt, n being the number of
@@ -913,4 +948,31 @@ func (s *EventSyncStrategy) retryDelayFor(n uint, err error, c *retry.Config) ti
 		return s.firstRetryDelay + mrand.N(s.firstRetryJitter)
 	}
 	return retry.CombineDelay(retry.BackOffDelay, retry.RandomDelay)(n, err, c)
+}
+
+// postStreamAbandonable runs a PostStream that cannot take a context so
+// that cancelling ctx returns at once. The call itself ends on the client
+// timeout; if it answers late its response is closed unread. The intake
+// may have stored the batch, which the event ids absorb on the resend.
+func postStreamAbandonable(ctx context.Context, srv server.Server, body string) (*http.Response, error) {
+	type result struct {
+		resp *http.Response
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		resp, err := srv.PostStream("/event/insert", body)
+		done <- result{resp, err}
+	}()
+	select {
+	case r := <-done:
+		return r.resp, r.err
+	case <-ctx.Done():
+		go func() {
+			if r := <-done; r.resp != nil && r.resp.Body != nil {
+				_ = r.resp.Body.Close()
+			}
+		}()
+		return nil, ctx.Err()
+	}
 }

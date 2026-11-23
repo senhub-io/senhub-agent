@@ -586,3 +586,142 @@ func TestParseBacklogParams(t *testing.T) {
 		})
 	}
 }
+
+func TestBacklogKeepsFileOnTransientReadError(t *testing.T) {
+	agentstate.ResetPushBufferDroppedForTest()
+	dir := t.TempDir()
+	log := newDurableStrategy(t, t.TempDir(), nil).logger
+	b := newEventBacklog(dir, 0, 0, log)
+	if err := b.append(batchOf("m", 0, 3)); err != nil {
+		t.Fatal(err)
+	}
+	ioErr := fmt.Errorf("too many open files")
+	failing := true
+	b.readFn = func(path string) ([]byte, error) {
+		if failing {
+			return nil, ioErr
+		}
+		return os.ReadFile(path)
+	}
+	var got []string
+	send := func(_ context.Context, ev []eventtypes.EventDataPoint) error {
+		for _, e := range ev {
+			got = append(got, e["message"].(string))
+		}
+		return nil
+	}
+
+	for round := 0; round < maxReadFailures-1; round++ {
+		if _, err := b.drain(context.Background(), 10, send); err != nil {
+			t.Fatalf("round %d: a read error must skip the file, not fail the drain: %v", round, err)
+		}
+		if countBacklogFiles(dir) != 1 {
+			t.Fatalf("round %d: a transient read error destroyed a deliverable batch", round)
+		}
+	}
+	failing = false
+	if _, err := b.drain(context.Background(), 10, send); err != nil {
+		t.Fatal(err)
+	}
+	if !sameStrings(got, names("m", 0, 3)) || countBacklogFiles(dir) != 0 {
+		t.Fatalf("batch not delivered after the I/O error cleared: %v", got)
+	}
+	if d := agentstate.GetPushBufferDropped()["event"]; d != 0 {
+		t.Fatalf("dropped = %d, want 0", d)
+	}
+}
+
+func TestBacklogGivesUpOnPersistentReadError(t *testing.T) {
+	agentstate.ResetPushBufferDroppedForTest()
+	dir := t.TempDir()
+	log := newDurableStrategy(t, t.TempDir(), nil).logger
+	b := newEventBacklog(dir, 0, 0, log)
+	_ = b.append(batchOf("m", 0, 3))
+	b.readFn = func(string) ([]byte, error) { return nil, fmt.Errorf("permission denied") }
+	send := func(context.Context, []eventtypes.EventDataPoint) error { return nil }
+	for round := 0; round < maxReadFailures; round++ {
+		_, _ = b.drain(context.Background(), 10, send)
+	}
+	if countBacklogFiles(dir) != 0 {
+		t.Fatal("a file unreadable for good must be given up after the bounded rounds")
+	}
+	if d := agentstate.GetPushBufferDropped()["event"]; d != 3 {
+		t.Fatalf("dropped = %d, want 3 counted", d)
+	}
+}
+
+func TestShutdownWithBacklogDisabledDoesNotPanic(t *testing.T) {
+	blocker := filepath.Join(t.TempDir(), "afile")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := newDurableStrategy(t, filepath.Join(blocker, "q"), nil)
+	if s.backlog != nil {
+		t.Fatal("backlog should be disabled")
+	}
+	enqueueNamed(s, "m", 0, 3)
+	s.syncInProgress.Store(true) // a sync is "running": Shutdown takes the deadline branch
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := s.Shutdown(ctx); err == nil {
+		t.Fatal("expected the context error")
+	}
+}
+
+// blockingIntake does not implement ContextStreamPoster and ignores
+// cancellation: it answers only when released.
+type blockingIntake struct {
+	release chan struct{}
+}
+
+func (b *blockingIntake) Get(string) (*http.Response, error)       { return nil, fmt.Errorf("unused") }
+func (b *blockingIntake) Post(string, any) (*http.Response, error) { return nil, fmt.Errorf("unused") }
+func (b *blockingIntake) PostStream(string, string) (*http.Response, error) {
+	<-b.release
+	return nil, fmt.Errorf("connection reset")
+}
+
+// TestShutdownOwnsParkingOrder: the intake ignores the context, so the
+// sync goroutine stays stuck past Shutdown. The in-flight batch must still
+// land on disk first, then the buffer, and nothing may be written once
+// Shutdown has returned.
+func TestShutdownOwnsParkingOrder(t *testing.T) {
+	dir := t.TempDir()
+	s := newDurableStrategy(t, dir, nil)
+	intake := &blockingIntake{release: make(chan struct{})}
+	s.server = intake
+
+	enqueueNamed(s, "m", 0, 5)
+	s.triggerSync()
+	time.Sleep(100 * time.Millisecond) // the goroutine holds the 5 events, stuck in the send
+	enqueueNamed(s, "m", 5, 3)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_ = s.Shutdown(ctx)
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("Shutdown took %s against an intake that ignores the context", elapsed)
+	}
+	filesAtReturn := countBacklogFiles(dir)
+
+	close(intake.release) // the stuck goroutine now wakes up
+	time.Sleep(300 * time.Millisecond)
+	if got := countBacklogFiles(dir); got != filesAtReturn {
+		t.Fatalf("files on disk went from %d to %d after Shutdown returned", filesAtReturn, got)
+	}
+
+	var got []string
+	b := newEventBacklog(dir, 0, 0, s.logger)
+	if _, err := b.drain(context.Background(), 100, func(_ context.Context, ev []eventtypes.EventDataPoint) error {
+		for _, e := range ev {
+			got = append(got, e["message"].(string))
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !sameStrings(got, names("m", 0, 8)) {
+		t.Fatalf("on-disk order = %v, want m000..m007 (in-flight batch first, then the buffer)", got)
+	}
+}
