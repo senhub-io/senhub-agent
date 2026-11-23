@@ -764,6 +764,8 @@ auto_update:
 | `url` | SenHub releases | Update server URL. The **base** the agent appends to — a value carrying `/releases` or `/download` makes every derived URL double it |
 | `version` | `latest` | Target the periodic updater tracks. `latest` resolves the newest stable; an explicit version pins to it |
 
+**Precedence.** A fleet server connected through OpAMP can push an `update` block (see [Updates driven by the server](opamp.md#updates-driven-by-the-server-v2)). While that block is in force it replaces `enabled` and `version` of this file: `auto: true` turns updates on even when `enabled: false`, and its `target_version` replaces `version`. `url` and `include_beta` always stay local. When the server stops sending the block, or the overlay is withdrawn, this file rules again at once, without a restart. A Linux install the service cannot write answers such a target with `not_replaceable`.
+
 Even with `enabled: false`, the agent checks for new versions at startup and logs a message if an update is available. Use `sudo /usr/local/bin/senhub-agent update --list` to see available versions and `sudo /usr/local/bin/senhub-agent update <version>` to install manually.
 
 ## Validating Configuration

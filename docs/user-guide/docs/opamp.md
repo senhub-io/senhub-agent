@@ -61,6 +61,49 @@ The agent publishes its catalogue of probe types and parameters. The server can 
 
 `auto_update: paused` from the server suspends the agent's hourly update check. Withdrawing the overlay, disabling OpAMP, or stopping the service resumes it. The pause is kept across a restart while the stored overlay verifies.
 
+## Updates driven by the server (v2)
+
+A fleet server can turn the automatic update on or off for an agent and give it the version to run. The agent announces `io.senhub.update-control/v2` besides `io.senhub.update-control/v1`; a server sends the `update` block only to an agent that announces v2.
+
+```json
+"update": { "auto": true, "target_version": "0.7.2", "allow_downgrade": false, "retry": false }
+```
+
+| Field | Meaning |
+|---|---|
+| `auto` | Required. `true` turns the automatic update on, `false` turns it off: no check, no call to the registry. |
+| `target_version` | Optional, an exact `X.Y.Z` or `X.Y.Z-beta.N`. Absent, the agent follows the latest published stable version. Ignored when `auto` is `false`. |
+| `allow_downgrade` | Optional, default `false`. Required when the target is lower than the running version. |
+| `retry` | Optional, default `false`. Allows again a target that failed to start on this agent and was restored. |
+
+The block is decoded strictly: an unknown field, a wrong type or a malformed version is refused with `schema`, and so is a block sent together with `auto_update` (which pauses the update; with the `update` block, `update.auto` takes its place) or sent to an agent that does not announce v2.
+
+**Precedence.** While an accepted block is in force it replaces `auto_update.enabled` and `auto_update.version` of the local file. `auto_update.url` and `auto_update.include_beta` stay local. The agent checks within a second of accepting the block, without waiting for the hourly check. When a later revision no longer carries the block, or the overlay is withdrawn or expires, the agent goes back to the local file at once, without a restart: if the file says `enabled: true` and `latest`, it resumes following the latest version by itself. The block is kept across a restart with the rest of the overlay, and `senhub.overlay.applied` echoes the accepted block.
+
+**Which versions are allowed.** The agent reads the registry list (`/releases/releases.json`, or `/releases/beta/releases.json` for a beta target, whatever `include_beta` says) and the detached signature published next to it (`releases.json.minisig`). It checks that signature against the key built into the agent before using the list. A list that cannot be fetched or whose signature does not verify refuses the target with the reason `signature`. A version is allowed while the signed list names it. The packages themselves still come from the registry, checked by SHA-256, minisign signature and, for an MSI, Authenticode; the server signs no package.
+
+**Refusals.** A refused block leaves the agent as it was and shows in `senhub.update.state` and `senhub.update.reason`.
+
+| Code | Meaning |
+|---|---|
+| `target_not_published` | The target is not in the signed list. |
+| `downgrade_not_allowed` | The target is lower than the running version and `allow_downgrade` is not set. Versions are ordered by semantic versioning 2.0: `0.7.2-beta.3` is lower than `0.7.2`. |
+| `downgrade_msi` | A lower target on an MSI install: Windows Installer does not go back in place. |
+| `beta_msi` | A beta target on an MSI install: no beta MSI is published. |
+| `rolled_back:<version>` | The target is the version that failed to start on this agent and was restored. The memory lasts until another version installs successfully; `retry: true` lifts it. |
+| `not_replaceable` | This install cannot replace itself, for example a Linux install the service account cannot write (`.deb`, `.rpm`, tarball). |
+
+**What the agent reports.** In the agent description, refreshed at each change and present from the first one:
+
+| Attribute | Value |
+|---|---|
+| `senhub.update.state` | `idle`, `checking`, `downloading`, `installing`, `failed` or `rolled_back`. |
+| `senhub.update.target` | The version aimed at; empty when none. |
+| `senhub.update.reason` | A code from the table above, or `download`, `signature`, `install` when an attempt failed. |
+| `senhub.install.kind` | `msi`, `zip`, `deb`, `rpm`, `tarball` or `unknown`. |
+
+`service.version` stays the running version; after a successful installation the agent restarts and the new version is reported. The install kind comes from what the installers leave behind: the MSI registry marker, any other Windows install as `zip`, and on Linux a binary owned by a package (known to `dpkg` or `rpm`, as `/usr/bin/senhub-agent` is) as `deb` or `rpm`, otherwise `tarball`.
+
 ## Adopting a local probe (v2)
 
 Adoption lets the server take over a probe that is already defined in your local file. The server sends a managed probe with the same name and type as the local one, marked as adopting it. From then on the server's definition runs and the local copy is inert: the agent does not start it. The local file is not modified. Withdrawing the overlay (an empty overlay) or disabling OpAMP brings the local probe back as it was written.
