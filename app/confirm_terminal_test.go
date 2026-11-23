@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -92,8 +93,8 @@ func TestConfirmationRefusalExitsNonZero(t *testing.T) {
 			cmd.Stdout = &stdout
 			cmd.Stderr = &stderr
 			err := cmd.Run()
-			exitErr, ok := err.(*exec.ExitError)
-			if !ok || exitErr.ExitCode() != cliexit.Failure {
+			var exitErr *exec.ExitError
+			if !errors.As(err, &exitErr) || exitErr.ExitCode() != cliexit.Failure {
 				t.Fatalf("err = %v, want exit code %d\nstdout: %s\nstderr: %s", err, cliexit.Failure, stdout.String(), stderr.String())
 			}
 			if !strings.Contains(stderr.String(), tc.want) {
