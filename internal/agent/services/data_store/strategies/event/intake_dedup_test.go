@@ -1,6 +1,7 @@
 package event
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"strings"
@@ -56,7 +57,7 @@ func TestIntakeDuplicatesReplyIsSuccess(t *testing.T) {
 
 	enqueueEvents(t, s, 3)
 
-	if err := s.doSync(); err != nil {
+	if err := s.doSync(context.Background()); err != nil {
 		t.Fatalf("first doSync returned error: %v", err)
 	}
 	if s.failedEvents.Len() != 0 {
@@ -66,7 +67,7 @@ func TestIntakeDuplicatesReplyIsSuccess(t *testing.T) {
 		t.Fatalf("PostStream called %d times, want 1", got)
 	}
 
-	if err := s.doSync(); err != nil {
+	if err := s.doSync(context.Background()); err != nil {
 		t.Fatalf("second doSync returned error: %v", err)
 	}
 	if got := intake.attempts.Load(); got != 1 {

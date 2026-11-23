@@ -1,6 +1,7 @@
 package event
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"strings"
@@ -84,7 +85,7 @@ func TestOutageKeepsRetryBacklogBounded(t *testing.T) {
 		enqueueEvents(t, s, 10)
 		// A 503 is retryable, so doSync surfaces the error and keeps the
 		// batch. That is the branch under test.
-		if err := s.doSync(); err == nil {
+		if err := s.doSync(context.Background()); err == nil {
 			t.Fatalf("cycle %d: doSync should surface a retryable failure", cycle)
 		}
 		if n := s.failedEvents.Len(); n > backlogCap {
@@ -115,7 +116,7 @@ func TestOutageKeepsRetryBacklogBounded(t *testing.T) {
 	// on the next sync.
 	intake.status = http.StatusAccepted
 
-	if err := s.doSync(); err != nil {
+	if err := s.doSync(context.Background()); err != nil {
 		t.Fatalf("doSync after recovery: %v", err)
 	}
 	if n := s.failedEvents.Len(); n != 0 {
@@ -140,7 +141,7 @@ func TestPermanentRejectionDropsBatch(t *testing.T) {
 
 	enqueueEvents(t, s, 5)
 
-	if err := s.doSync(); err != nil {
+	if err := s.doSync(context.Background()); err != nil {
 		t.Fatalf("doSync should not surface a permanent rejection as an error, got: %v", err)
 	}
 

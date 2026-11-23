@@ -9,6 +9,7 @@ import (
 	"io"
 	mrand "math/rand/v2"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,6 +22,7 @@ import (
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/data_store/pushqueue"
 	"senhub-agent.go/internal/agent/services/exporterrors"
+	"senhub-agent.go/internal/agent/services/instanceid"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/services/server"
 	"senhub-agent.go/internal/agent/types/datapoint"
@@ -46,6 +48,9 @@ const (
 	DefaultFirstRetryDelay = 5 * time.Second
 	// DefaultFirstRetryJitter spreads first resends from many agents.
 	DefaultFirstRetryJitter = 2 * time.Second
+	// backlogWarnEvery spaces the warnings about a backlog that cannot
+	// be written.
+	backlogWarnEvery = time.Minute
 )
 
 // EventSyncStrategyParams holds the configuration for the event sync strategy
@@ -54,6 +59,14 @@ type EventSyncStrategyParams struct {
 	ServerURLFull string        // Full URL including the endpoint path
 	QueueSize     int           // Size of the event buffer
 	SyncInterval  time.Duration // Interval between syncs
+
+	// BacklogPath is the directory holding undelivered batches; empty
+	// means event-queue under the agent state directory.
+	BacklogPath string
+	// BacklogMaxBytes caps the disk used by undelivered batches.
+	BacklogMaxBytes int64
+	// BacklogMaxAge drops undelivered batches older than this.
+	BacklogMaxAge time.Duration
 }
 
 // EventSyncStrategy implements the SyncStrategy interface for event synchronization
@@ -68,6 +81,28 @@ type EventSyncStrategy struct {
 	// — every failed sync appended the whole batch with no cap, so an
 	// intake outage grew it until the process died (#287).
 	failedEvents *pushqueue.Bounded[eventtypes.EventDataPoint]
+	// backlog is the durable retry queue. nil until Start has proved the
+	// directory writable, and for good when it is not: the strategy then
+	// runs on failedEvents alone.
+	backlog     *eventBacklog
+	backlogOnce sync.Once
+	lastWarnAt  atomic.Int64 // unix nanoseconds of the last backlog write warning
+	unwarned    atomic.Int64 // events lost to write failures since that warning
+
+	// persistMu serialises every write of the backlog from the sync path
+	// and from Shutdown, so the order on disk is the order of arrival:
+	// the batch a sync holds, then the buffer. inflight is that batch
+	// while its send is under way; closing means Shutdown has taken over
+	// and no sync may write any more.
+	persistMu sync.Mutex
+	inflight  []eventtypes.EventDataPoint
+	closing   bool
+
+	// syncCtx bounds the background syncs. Shutdown cancels it when its
+	// own deadline passes, so a sync stuck on an intake that does not
+	// answer gives its batch to the backlog instead of being abandoned.
+	syncCtx    context.Context
+	syncCancel context.CancelFunc
 
 	syncTriggerSize  int   // Number of events that triggers a sync
 	syncTriggerBytes int64 // Size in bytes that triggers a sync
@@ -141,7 +176,11 @@ func NewEventSyncStrategy(
 			config.SyncInterval = duration
 		}
 	}
+	if err := parseBacklogParams(storageConfig, &config); err != nil {
+		return nil, err
+	}
 
+	syncCtx, syncCancel := context.WithCancel(context.Background())
 	strategy := &EventSyncStrategy{
 		buffer:           make(chan eventtypes.EventDataPoint, config.QueueSize),
 		failedEvents:     pushqueue.NewDefault[eventtypes.EventDataPoint]("event"),
@@ -156,6 +195,8 @@ func NewEventSyncStrategy(
 		firstRetryJitter: DefaultFirstRetryJitter,
 		syncTriggerSize:  DefaultChunkSize,
 		syncTriggerBytes: MaxMessageSize / 2, // Trigger at 50% of max message size
+		syncCtx:          syncCtx,
+		syncCancel:       syncCancel,
 	}
 
 	// Initialize atomic values
@@ -211,7 +252,76 @@ func ValidateParams(params configuration.StorageConfigParams) (EventSyncStrategy
 		config.SyncInterval = duration
 	}
 
+	if err := parseBacklogParams(params, &config); err != nil {
+		return config, err
+	}
+
 	return config, nil
+}
+
+// parseBacklogParams reads the three keys of the durable backlog.
+func parseBacklogParams(params configuration.StorageConfigParams, config *EventSyncStrategyParams) error {
+	if v, ok := params["backlog_path"].(string); ok {
+		config.BacklogPath = v
+	}
+	if raw, ok := params["backlog_max_bytes"]; ok {
+		var n int64
+		switch v := raw.(type) {
+		case int:
+			n = int64(v)
+		case int64:
+			n = v
+		case uint64:
+			n = int64(v)
+		case float64:
+			n = int64(v)
+		default:
+			return fmt.Errorf("backlog_max_bytes must be a number of bytes, got %T", raw)
+		}
+		if n < 0 {
+			return fmt.Errorf("backlog_max_bytes must be positive, got %d", n)
+		}
+		config.BacklogMaxBytes = n
+	}
+	if raw, ok := params["backlog_max_age"]; ok {
+		str, isStr := raw.(string)
+		if !isStr {
+			return fmt.Errorf("backlog_max_age must be a duration such as 24h, got %T", raw)
+		}
+		d, err := time.ParseDuration(str)
+		if err != nil {
+			return fmt.Errorf("invalid backlog_max_age: %w", err)
+		}
+		if d < 0 {
+			return fmt.Errorf("backlog_max_age must be positive, got %s", str)
+		}
+		config.BacklogMaxAge = d
+	}
+	return nil
+}
+
+// openBacklog starts the durable retry queue. A directory that cannot be
+// written leaves the strategy on its in-memory backlog, with one warning:
+// an agent whose state directory is read-only still has to push events.
+func (s *EventSyncStrategy) openBacklog() {
+	s.backlogOnce.Do(func() {
+		dir := s.config.BacklogPath
+		if dir == "" {
+			dir = filepath.Join(instanceid.OwnStateDir(), backlogDirName)
+		}
+		if err := prepareBacklogDir(dir); err != nil {
+			s.logger.Warn().Err(err).Str("path", dir).
+				Msg("Event backlog disabled: the directory is not writable; undelivered events are kept in memory only and lost on restart")
+			return
+		}
+		b := newEventBacklog(dir, s.config.BacklogMaxBytes, s.config.BacklogMaxAge, s.logger)
+		b.sweep()
+		pending, size := b.pending()
+		s.logger.Info().Str("path", dir).Int64("max_bytes", b.maxBytes).Dur("max_age", b.maxAge).
+			Int("pending_events", pending).Int64("pending_bytes", size).
+			Msg("Event backlog active: undelivered events are kept on disk and replayed when the intake answers")
+		s.backlog = b
+	})
 }
 
 // ValidateConfigParams validates the provided configuration parameters
@@ -352,33 +462,39 @@ func (s *EventSyncStrategy) triggerSync() {
 	if s.syncInProgress.CompareAndSwap(false, true) {
 		go func() {
 			defer s.syncInProgress.Store(false)
-			if err := s.doSync(); err != nil {
-				s.logger.Error().
-					Err(err).
-					Msg("Sync failed, events preserved for retry")
+			for {
+				before := s.backlogFiles()
+				if err := s.doSync(s.syncCtx); err != nil {
+					s.logger.Error().
+						Err(err).
+						Msg("Sync failed, events preserved for retry")
+					return
+				}
+				// A backlog that is draining is served again at once rather
+				// than one slice per tick; no progress ends the loop.
+				if after := s.backlogFiles(); after == 0 || after >= before {
+					return
+				}
 			}
 		}()
 	}
 }
 
-// doSync performs the actual synchronization with chunking and error handling
-func (s *EventSyncStrategy) doSync() error {
-	var events []eventtypes.EventDataPoint
-	var currentBatchSize int64
-
-	// First handle any previously failed events
-	if retryBacklog := s.failedEvents.Sync(); len(retryBacklog) > 0 {
-		s.logger.Info().
-			Int("count", len(retryBacklog)).
-			Msg("Processing previously failed events")
-		events = append(events, retryBacklog...)
+// backlogFiles is the number of batches waiting on disk.
+func (s *EventSyncStrategy) backlogFiles() int {
+	if s.backlog == nil {
+		return 0
 	}
+	return s.backlog.files()
+}
 
-	// Collect events up to chunk limits. The breaks must exit the
-	// LOOP, not just the select: an unlabeled break here caused an
-	// infinite busy-spin once a batch exceeded the size limit — the
-	// same event was re-received and put back forever, with
-	// syncInProgress stuck true and the event pipeline dead (#261).
+// collectBatch takes the next batch off the buffer, within the chunk
+// limits. The breaks must exit the LOOP, not just the select: an unlabeled
+// break here caused an infinite busy-spin once a batch exceeded the size
+// limit — the same event was re-received and put back forever, with
+// syncInProgress stuck true and the event pipeline dead (#261).
+func (s *EventSyncStrategy) collectBatch(events []eventtypes.EventDataPoint) ([]eventtypes.EventDataPoint, int64) {
+	var currentBatchSize int64
 collect:
 	for len(events) < s.syncTriggerSize && len(s.buffer) > 0 {
 		select {
@@ -404,23 +520,103 @@ collect:
 
 	// currentSize tracks bytes RESIDENT in the buffer: subtract what
 	// this collection drained, regardless of the send outcome —
-	// failed events move to failedEvents (outside the buffer) and
+	// failed events move to the backlog (outside the buffer) and
 	// must not keep inflating the size-based sync trigger.
 	s.currentSize.Add(-currentBatchSize)
+	return events, currentBatchSize
+}
 
+// doSync performs the actual synchronization with chunking and error
+// handling. ctx bounds every network call: past it nothing more is sent
+// and what was not acknowledged goes to the backlog.
+func (s *EventSyncStrategy) doSync(ctx context.Context) error {
+	if s.backlog != nil {
+		return s.doSyncDurable(ctx)
+	}
+
+	var events []eventtypes.EventDataPoint
+
+	// First handle any previously failed events
+	if retryBacklog := s.failedEvents.Sync(); len(retryBacklog) > 0 {
+		s.logger.Info().
+			Int("count", len(retryBacklog)).
+			Msg("Processing previously failed events")
+		events = append(events, retryBacklog...)
+	}
+
+	events, currentBatchSize := s.collectBatch(events)
 	if len(events) == 0 {
 		return nil
 	}
 
-	// Try to send events with retry mechanism. RetryIf keeps the short
-	// in-tick retry for a transport blip but skips it entirely for a
-	// payload the intake refused on its merits: three attempts and two
-	// seconds of sleep inside the scheduler tick buy nothing when the
-	// same bytes get the same rejection.
-	err := retry.Do(
+	err := s.sendWithRetry(ctx, events)
+	if err == nil {
+		s.recordSynced(len(events), currentBatchSize)
+		return nil
+	}
+	if !s.keepAfterFailure(ctx, events, err) {
+		return nil
+	}
+
+	// Preserve failed events for next sync attempt. The backlog is
+	// bounded: past the cap the oldest events go, which is what an
+	// outage longer than the queue depth costs.
+	if abortErr := s.failedEvents.AbortSync(events); abortErr != nil {
+		s.logger.Error().Err(abortErr).Msg("failed to queue events for retry")
+	}
+	return fmt.Errorf("failed to sync events after %d attempts: %w", s.retryAttempts, err)
+}
+
+// doSyncDurable is doSync with the on-disk backlog: queued batches are
+// replayed first, in order, then the live batch is sent. While the intake
+// does not answer, everything held in memory is moved to disk so that a
+// restart loses nothing.
+func (s *EventSyncStrategy) doSyncDurable(ctx context.Context) error {
+	s.backlog.sweep()
+
+	replayed, err := s.backlog.drain(ctx, replayFilesPerSync, s.replayBatch)
+	if replayed > 0 {
+		s.logger.Info().Int("events", replayed).Msg("Replayed events from the backlog")
+		agentstate.RecordExportSuccess("event")
+	}
+	if err != nil {
+		s.recordSendFailure(err)
+		s.handOff(ctx, nil)
+		return fmt.Errorf("replaying the event backlog: %w", err)
+	}
+
+	s.persistMu.Lock()
+	events, size := s.collectBatch(nil)
+	s.inflight = events
+	s.persistMu.Unlock()
+	if len(events) == 0 {
+		return nil
+	}
+	err = s.sendWithRetry(ctx, events)
+	if err == nil {
+		s.clearInflight()
+		s.recordSynced(len(events), size)
+		return nil
+	}
+	if !s.keepAfterFailure(ctx, events, err) {
+		s.clearInflight()
+		return nil
+	}
+	s.handOff(ctx, events)
+	return fmt.Errorf("failed to sync events after %d attempts: %w", s.retryAttempts, err)
+}
+
+// sendWithRetry sends one batch with the short in-tick retry. RetryIf
+// keeps it for a transport blip but skips it entirely for a payload the
+// intake refused on its merits: three attempts and two seconds of sleep
+// inside the scheduler tick buy nothing when the same bytes get the same
+// rejection.
+func (s *EventSyncStrategy) sendWithRetry(ctx context.Context, events []eventtypes.EventDataPoint) error {
+	return retry.Do(
 		func() error {
-			return s.sendEvents(events)
+			return s.sendEvents(ctx, events)
 		},
+		retry.Context(ctx),
 		retry.Attempts(s.retryAttempts),
 		retry.Delay(s.retryDelay),
 		retry.DelayType(s.retryDelayFor),
@@ -433,46 +629,128 @@ collect:
 				Msg("Retrying event sync")
 		}),
 	)
+}
 
-	if err != nil {
-		agentstate.IncrementExportSendFailed("event", exporterrors.Reason(err))
-		agentstate.RecordExportFailure("event", err.Error())
+func (s *EventSyncStrategy) recordSendFailure(err error) {
+	agentstate.IncrementExportSendFailed("event", exporterrors.Reason(err))
+	agentstate.RecordExportFailure("event", err.Error())
+}
 
-		if !exporterrors.IsRetryable(err) {
-			// Nothing a later tick can change. Keeping the batch would
-			// pin it at the head of the retry backlog forever, so the
-			// backlog never drains and every tick re-sends bytes the
-			// intake already refused.
-			s.logger.Warn().
-				Err(err).
-				Int("dropped_events", len(events)).
-				Msg("unrecoverable error from intake; discarding events (no retry)")
-			agentstate.IncrementPushBufferDropped("event", len(events))
-			return nil
-		}
-
-		// Preserve failed events for next sync attempt. The backlog is
-		// bounded: past the cap the oldest events go, which is what an
-		// outage longer than the queue depth costs.
-		if abortErr := s.failedEvents.AbortSync(events); abortErr != nil {
-			s.logger.Error().Err(abortErr).Msg("failed to queue events for retry")
-		}
-		return fmt.Errorf("failed to sync events after %d attempts: %w", s.retryAttempts, err)
-	}
-
+func (s *EventSyncStrategy) recordSynced(count int, size int64) {
 	s.logger.Debug().
-		Int("events_sent", len(events)).
-		Int64("batch_size_bytes", currentBatchSize).
+		Int("events_sent", count).
+		Int64("batch_size_bytes", size).
 		Msg("Successfully synced events")
 	agentstate.RecordExportSuccess("event")
+}
 
-	return nil
+// keepAfterFailure records a failed send and says whether the batch must
+// be kept. A batch the intake refused on its merits is dropped and counted:
+// kept, it would pin the head of the backlog forever, so the backlog never
+// drains and every tick re-sends bytes the intake already refused.
+func (s *EventSyncStrategy) keepAfterFailure(ctx context.Context, events []eventtypes.EventDataPoint, err error) bool {
+	s.recordSendFailure(err)
+	if ctx.Err() != nil || exporterrors.IsRetryable(err) {
+		return true
+	}
+	s.logger.Warn().
+		Err(err).
+		Int("dropped_events", len(events)).
+		Msg("unrecoverable error from intake; discarding events (no retry)")
+	agentstate.IncrementPushBufferDropped("event", len(events))
+	return false
+}
+
+// replayBatch sends one queued batch once. The next tick is the retry, long
+// after the first-resend delay the intake needs to see the ids it stored.
+func (s *EventSyncStrategy) replayBatch(ctx context.Context, events []eventtypes.EventDataPoint) error {
+	err := s.sendEvents(ctx, events)
+	if err == nil {
+		return nil
+	}
+	if ctx.Err() == nil && !exporterrors.IsRetryable(err) {
+		s.recordSendFailure(err)
+		s.logger.Warn().Err(err).Int("dropped_events", len(events)).
+			Msg("unrecoverable error from intake; discarding a queued batch (no retry)")
+		return errBatchRefused
+	}
+	return err
+}
+
+// persist puts a batch on disk. A write failure loses the batch, counted,
+// with at most one warning a minute.
+func (s *EventSyncStrategy) persist(events []eventtypes.EventDataPoint, durable bool) {
+	if len(events) == 0 || s.backlog == nil {
+		return
+	}
+	if err := s.backlog.append(events, durable); err != nil {
+		agentstate.IncrementPushBufferDropped("event", len(events))
+		s.unwarned.Add(int64(len(events)))
+		now := time.Now().UnixNano()
+		last := s.lastWarnAt.Load()
+		if now-last >= int64(backlogWarnEvery) && s.lastWarnAt.CompareAndSwap(last, now) {
+			s.logger.Warn().Err(err).Int64("dropped_events", s.unwarned.Swap(0)).
+				Msg("Event backlog could not be written; events dropped")
+		}
+	}
+}
+
+func (s *EventSyncStrategy) clearInflight() {
+	s.persistMu.Lock()
+	s.inflight = nil
+	s.persistMu.Unlock()
+}
+
+// handOff is how a sync gives the backlog the batch it could not deliver,
+// then the buffer. After Shutdown has taken over it writes nothing: the
+// batch is still in inflight and Shutdown puts it on disk, in order.
+func (s *EventSyncStrategy) handOff(ctx context.Context, events []eventtypes.EventDataPoint) {
+	s.persistMu.Lock()
+	defer s.persistMu.Unlock()
+	if s.closing {
+		return
+	}
+	// Past the deadline the write must be quick: no fsync (see append).
+	durable := ctx.Err() == nil
+	s.persist(events, durable)
+	s.inflight = nil
+	s.parkBuffer(durable)
+}
+
+// takeOver is the one write Shutdown makes: the batch an interrupted sync
+// still holds, then the buffer. It also bars every later write of a sync.
+func (s *EventSyncStrategy) takeOver() {
+	s.persistMu.Lock()
+	defer s.persistMu.Unlock()
+	s.closing = true
+	s.persist(s.inflight, false)
+	s.inflight = nil
+	s.parkBuffer(false)
+}
+
+// parkBuffer moves what the in-memory buffer holds onto disk. Bounded by
+// the buffer capacity, so a producer faster than the disk cannot hold it.
+// The caller holds persistMu. Without a backlog it does nothing.
+func (s *EventSyncStrategy) parkBuffer(durable bool) {
+	if s.backlog == nil {
+		return
+	}
+	for i := 0; i <= cap(s.buffer)/max(s.syncTriggerSize, 1)+1; i++ {
+		events, _ := s.collectBatch(nil)
+		if len(events) == 0 {
+			return
+		}
+		s.persist(events, durable)
+	}
 }
 
 // sendEvents sends a batch of events to the server
-func (s *EventSyncStrategy) sendEvents(events []eventtypes.EventDataPoint) error {
+func (s *EventSyncStrategy) sendEvents(ctx context.Context, events []eventtypes.EventDataPoint) error {
 	if len(events) == 0 {
 		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return exporterrors.Transport("sending events", err)
 	}
 
 	// Marshal all events as a single JSON array
@@ -488,7 +766,12 @@ func (s *EventSyncStrategy) sendEvents(events []eventtypes.EventDataPoint) error
 		Int("payload_size", len(eventsJSON)).
 		Msg("Sending batch of events")
 
-	response, err := s.server.PostStream("/event/insert", string(eventsJSON))
+	var response *http.Response
+	if poster, ok := s.server.(server.ContextStreamPoster); ok {
+		response, err = poster.PostStreamContext(ctx, "/event/insert", string(eventsJSON))
+	} else {
+		response, err = postStreamAbandonable(ctx, s.server, string(eventsJSON))
+	}
 	if err != nil {
 		// The far end was not reached. Keep the batch.
 		return exporterrors.Transport("sending events", err)
@@ -527,6 +810,7 @@ func (s *EventSyncStrategy) Start(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	s.openBacklog()
 	s.tickerOnce.Do(func() {
 		s.ticker = time.NewTicker(s.config.SyncInterval)
 		s.tickerStop = make(chan struct{})
@@ -535,6 +819,7 @@ func (s *EventSyncStrategy) Start(ctx context.Context) error {
 		// double-closing.
 		context.AfterFunc(ctx, func() {
 			s.stopOnce.Do(func() { close(s.tickerStop) })
+			s.syncCancel()
 		})
 		s.logger.Info().
 			Dur("interval", s.config.SyncInterval).
@@ -637,18 +922,38 @@ func (s *EventSyncStrategy) Shutdown(ctx context.Context) error {
 		s.stopOnce.Do(func() { close(s.tickerStop) })
 	}
 
-	// Wait for ongoing sync to complete
+	// Wait for ongoing sync to complete. At the deadline it is cancelled
+	// and Shutdown writes what it holds, itself and in order; the sync
+	// writes nothing from then on.
 	for s.syncInProgress.Load() {
 		select {
 		case <-ctx.Done():
+			s.syncCancel()
+			s.takeOver()
 			return ctx.Err()
 		case <-time.After(100 * time.Millisecond):
 			s.logger.Debug().Msg("Waiting for ongoing sync to complete")
 		}
 	}
 
-	// Final sync of remaining events
-	return s.doSync()
+	// Final sync of remaining events, until the buffer and the backlog
+	// are empty or ctx ends. Whatever is left is on disk.
+	var syncErr error
+	for ctx.Err() == nil {
+		before := len(s.buffer) + s.backlogFiles()
+		if syncErr = s.doSync(ctx); syncErr != nil {
+			break
+		}
+		if after := len(s.buffer) + s.backlogFiles(); after == 0 || after >= before {
+			break
+		}
+	}
+	s.takeOver()
+	s.syncCancel()
+	if syncErr != nil {
+		return syncErr
+	}
+	return nil
 }
 
 // retryDelayFor is the wait before the next attempt, n being the number of
@@ -661,4 +966,31 @@ func (s *EventSyncStrategy) retryDelayFor(n uint, err error, c *retry.Config) ti
 		return s.firstRetryDelay + mrand.N(s.firstRetryJitter)
 	}
 	return retry.CombineDelay(retry.BackOffDelay, retry.RandomDelay)(n, err, c)
+}
+
+// postStreamAbandonable runs a PostStream that cannot take a context so
+// that cancelling ctx returns at once. The call itself ends on the client
+// timeout; if it answers late its response is closed unread. The intake
+// may have stored the batch, which the event ids absorb on the resend.
+func postStreamAbandonable(ctx context.Context, srv server.Server, body string) (*http.Response, error) {
+	type result struct {
+		resp *http.Response
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		resp, err := srv.PostStream("/event/insert", body)
+		done <- result{resp, err}
+	}()
+	select {
+	case r := <-done:
+		return r.resp, r.err
+	case <-ctx.Done():
+		go func() {
+			if r := <-done; r.resp != nil && r.resp.Body != nil {
+				_ = r.resp.Body.Close()
+			}
+		}()
+		return nil, ctx.Err()
+	}
 }

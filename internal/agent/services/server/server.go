@@ -3,6 +3,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -141,6 +142,20 @@ func (s *server) Post(urlPath string, data any) (*http.Response, error) {
 // use the retry-enabled client: the event payload can be replayed only if
 // the caller can guarantee idempotency, so retries are left to the caller.
 func (s *server) PostStream(urlPath string, streamBody string) (*http.Response, error) {
+	return s.PostStreamContext(context.Background(), urlPath, streamBody)
+}
+
+// ContextStreamPoster is implemented by the server returned from
+// NewServer. It is separate from Server so existing fakes of that
+// interface keep compiling; a caller that wants its request abandoned at
+// a deadline asserts for it.
+type ContextStreamPoster interface {
+	PostStreamContext(ctx context.Context, urlPath string, streamBody string) (*http.Response, error)
+}
+
+// PostStreamContext is PostStream with a context that cancels the request,
+// including the wait for the answer and the read of its body.
+func (s *server) PostStreamContext(ctx context.Context, urlPath string, streamBody string) (*http.Response, error) {
 	fullUrl, err := url.JoinPath(s.url, urlPath)
 	if err != nil {
 		return nil, exporterrors.Configuration("failed to join URL path", err)
@@ -151,6 +166,7 @@ func (s *server) PostStream(urlPath string, streamBody string) (*http.Response, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream request: %w", err)
 	}
+	req = req.WithContext(ctx)
 
 	req.Header.Set("Content-Type", "application/stream+json")
 	res, err := s.httpNoRetry.Do(req)

@@ -1,6 +1,7 @@
 package event
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -107,7 +108,7 @@ func TestEventIDSetOnceAndKeptAcrossResend(t *testing.T) {
 	enqueueEvents(t, s, 3)
 
 	// First doSync fails (response lost), batch requeued.
-	if err := s.doSync(); err == nil {
+	if err := s.doSync(context.Background()); err == nil {
 		t.Fatal("first doSync should fail because response is lost")
 	}
 	if s.failedEvents.Len() != 3 {
@@ -115,7 +116,7 @@ func TestEventIDSetOnceAndKeptAcrossResend(t *testing.T) {
 	}
 
 	// Second doSync succeeds.
-	if err := s.doSync(); err != nil {
+	if err := s.doSync(context.Background()); err != nil {
 		t.Fatalf("second doSync should succeed, got: %v", err)
 	}
 

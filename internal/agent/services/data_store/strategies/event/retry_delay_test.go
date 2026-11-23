@@ -1,6 +1,7 @@
 package event
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -96,7 +97,7 @@ func TestFirstRetryDoesNotRaceIntakeVisibility(t *testing.T) {
 		s.firstRetryJitter = 0
 
 		enqueueEvents(t, s, n)
-		if err := s.doSync(); err != nil {
+		if err := s.doSync(context.Background()); err != nil {
 			t.Fatalf("doSync: %v", err)
 		}
 		return intake.stored

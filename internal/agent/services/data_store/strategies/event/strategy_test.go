@@ -103,7 +103,7 @@ func TestDoSync_OversizedBatchTerminates(t *testing.T) {
 	s.currentSize.Store(150)
 
 	done := make(chan error, 1)
-	go func() { done <- s.doSync() }()
+	go func() { done <- s.doSync(context.Background()) }()
 	select {
 	case err := <-done:
 		if err != nil {
@@ -138,7 +138,7 @@ func TestDoSync_OversizedBatchTerminates(t *testing.T) {
 
 func runSync(s *EventSyncStrategy) chan error {
 	done := make(chan error, 1)
-	go func() { done <- s.doSync() }()
+	go func() { done <- s.doSync(context.Background()) }()
 	return done
 }
 

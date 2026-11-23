@@ -109,7 +109,8 @@ func init() {
 	}, nil)
 
 	data_store.RegisterKnownParams("event", []string{
-		"queue_size", "server_url", "sync_interval",
+		"backlog_max_age", "backlog_max_bytes", "backlog_path", "queue_size",
+		"server_url", "sync_interval",
 	}, nil)
 
 	data_store.RegisterKnownParams("zabbix", []string{
