@@ -10,7 +10,6 @@ import (
 	"github.com/rs/zerolog"
 
 	"senhub-agent.go/internal/agent/services/configuration/secret"
-	"senhub-agent.go/internal/agent/services/extension"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
