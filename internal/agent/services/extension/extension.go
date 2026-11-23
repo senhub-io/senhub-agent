@@ -97,12 +97,53 @@ type Host interface {
 	// periodic update check. It does not survive a restart: the caller
 	// re-applies it from its persisted state.
 	SetAutoUpdatePaused(paused bool)
+	// SetUpdateDirective puts in force the update setting a server pushes:
+	// it replaces auto_update.enabled and auto_update.version of the local
+	// file, while the registry URL and include_beta stay local. nil removes
+	// it and the local file rules again, with no restart. A directive that
+	// changes the setting triggers a check at once. It does not survive a
+	// restart: the caller re-applies it from its persisted state.
+	SetUpdateDirective(d *UpdateDirective)
+	// UpdateStatus returns what the updater reports now, and how this agent
+	// was installed. The install kind is known before the updater starts.
+	UpdateStatus() UpdateStatus
+	// OnUpdateStatusChange registers fn, called on its own goroutine after
+	// each change of the update status; it reads the status again itself.
+	OnUpdateStatusChange(fn func())
 	// ProbeCatalog lists every registered probe type with its parameter specs.
 	ProbeCatalog() []CatalogProbe
 	// FleetSecrets is the agent's secret store restricted to the names a
 	// fleet server may manage: every name is stored under "fleet.". It
 	// returns an error when no secret backend is available on this host.
 	FleetSecrets() (FleetSecretStore, error)
+}
+
+// UpdateDirective is an update setting pushed by a server.
+type UpdateDirective struct {
+	// Auto turns the automatic update on or off.
+	Auto bool
+	// TargetVersion is an exact X.Y.Z or X.Y.Z-beta.N; empty means the
+	// latest published stable version.
+	TargetVersion string
+	// AllowDowngrade permits a target lower than the running version.
+	AllowDowngrade bool
+	// Retry permits a target that failed to start on this agent.
+	Retry bool
+}
+
+// UpdateStatus is the state of the updater and the way the agent was
+// installed.
+type UpdateStatus struct {
+	// State is idle, checking, downloading, installing, failed or
+	// rolled_back.
+	State string
+	// Target is the version aimed at, empty when none.
+	Target string
+	// Reason is the refusal code or failure reason; empty unless State is
+	// failed or rolled_back.
+	Reason string
+	// InstallKind is msi, zip, deb, rpm, tarball or unknown.
+	InstallKind string
 }
 
 // FleetSecretStore gives an extension access to the secrets a fleet server

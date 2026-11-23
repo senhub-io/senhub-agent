@@ -45,6 +45,11 @@ type (
 	ManagedProbe = iextension.ManagedProbe
 	CatalogProbe = iextension.CatalogProbe
 	CatalogParam = iextension.CatalogParam
+	// UpdateDirective is the update setting a server pushes through
+	// Host.SetUpdateDirective; UpdateStatus is what Host.UpdateStatus
+	// reports.
+	UpdateDirective = iextension.UpdateDirective
+	UpdateStatus    = iextension.UpdateStatus
 )
 
 // Check line levels for `config check`.

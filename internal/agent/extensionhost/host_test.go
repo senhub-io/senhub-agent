@@ -13,6 +13,7 @@ import (
 
 	"senhub-agent.go/internal/agent/lifecycle"
 	"senhub-agent.go/internal/agent/services/agentstate"
+	"senhub-agent.go/internal/agent/services/auto_update"
 	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/exporthook"
@@ -338,5 +339,25 @@ func TestHostStateDirCreatesTheDirectoryOwnerOnly(t *testing.T) {
 	}
 	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o700 {
 		t.Errorf("state dir mode = %o, want 700", info.Mode().Perm())
+	}
+}
+
+func TestHostUpdateDirectiveAndStatus(t *testing.T) {
+	h := &host{deps: Deps{Logger: nopLogger()}, name: "x"}
+	t.Cleanup(func() { auto_update.SetDirective(nil) })
+
+	h.SetUpdateDirective(&extension.UpdateDirective{Auto: true, TargetVersion: "0.7.2", AllowDowngrade: true, Retry: true})
+	d := auto_update.CurrentDirective()
+	if d == nil || !d.Auto || d.TargetVersion != "0.7.2" || !d.AllowDowngrade || !d.Retry {
+		t.Fatalf("directive = %+v", d)
+	}
+	h.SetUpdateDirective(nil)
+	if auto_update.CurrentDirective() != nil {
+		t.Error("a nil directive must remove the one in force")
+	}
+
+	st := h.UpdateStatus()
+	if st.State == "" || st.InstallKind == "" {
+		t.Errorf("status = %+v, want a state and an install kind before the updater starts", st)
 	}
 }

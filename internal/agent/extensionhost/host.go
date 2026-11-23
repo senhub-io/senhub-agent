@@ -206,6 +206,31 @@ func (h *host) SetAutoUpdatePaused(paused bool) {
 	}
 }
 
+func (h *host) SetUpdateDirective(d *extension.UpdateDirective) {
+	if d == nil {
+		auto_update.SetDirective(nil)
+		return
+	}
+	auto_update.SetDirective(&auto_update.Directive{
+		Auto:           d.Auto,
+		TargetVersion:  d.TargetVersion,
+		AllowDowngrade: d.AllowDowngrade,
+		Retry:          d.Retry,
+	})
+}
+
+func (h *host) UpdateStatus() extension.UpdateStatus {
+	st := auto_update.CurrentStatus()
+	return extension.UpdateStatus{
+		State:       st.State,
+		Target:      st.Target,
+		Reason:      st.Reason,
+		InstallKind: auto_update.InstallKind(),
+	}
+}
+
+func (h *host) OnUpdateStatusChange(fn func()) { auto_update.OnStatusChange(fn) }
+
 func (h *host) ProbeCatalog() []extension.CatalogProbe {
 	specs := probes.RegisteredProbeSpecs()
 	out := make([]extension.CatalogProbe, 0, len(specs))

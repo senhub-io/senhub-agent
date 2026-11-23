@@ -240,12 +240,15 @@ alias Host = senhub-agent.go/internal/agent/services/extension.Host
   imethod Identity() senhub-agent.go/internal/agent/services/extension.Identity
   imethod Logger() *senhub-agent.go/internal/agent/services/logger.Logger
   imethod OnConfigChange(fn func())
+  imethod OnUpdateStatusChange(fn func())
   imethod ProbeCatalog() []senhub-agent.go/internal/agent/services/extension.CatalogProbe
   imethod PublishStatus(status map[string]any)
   imethod ReloadConfig() error
   imethod SetAutoUpdatePaused(paused bool)
   imethod SetLogLevel(level string) error
+  imethod SetUpdateDirective(d *senhub-agent.go/internal/agent/services/extension.UpdateDirective)
   imethod StateDir() string
+  imethod UpdateStatus() senhub-agent.go/internal/agent/services/extension.UpdateStatus
 alias Identity = senhub-agent.go/internal/agent/services/extension.Identity
   field Edition string
   field InstanceID string
@@ -298,6 +301,16 @@ func Register(e senhub-agent.go/probesdk/extension.Extension)
 alias Service = senhub-agent.go/internal/agent/services/extension.Service
   imethod Shutdown(ctx context.Context) error
   imethod Start(ctx context.Context) error
+alias UpdateDirective = senhub-agent.go/internal/agent/services/extension.UpdateDirective
+  field AllowDowngrade bool
+  field Auto bool
+  field Retry bool
+  field TargetVersion string
+alias UpdateStatus = senhub-agent.go/internal/agent/services/extension.UpdateStatus
+  field InstallKind string
+  field Reason string
+  field State string
+  field Target string
 func ValidFleetSecretName(name string) bool
 == senhub-agent.go/probesdk/license (package license) ==
 func GetFreeTierProbes() []string
@@ -683,12 +696,15 @@ type senhub-agent.go/internal/agent/services/extension.Host interface
   imethod Identity() senhub-agent.go/internal/agent/services/extension.Identity
   imethod Logger() *senhub-agent.go/internal/agent/services/logger.Logger
   imethod OnConfigChange(fn func())
+  imethod OnUpdateStatusChange(fn func())
   imethod ProbeCatalog() []senhub-agent.go/internal/agent/services/extension.CatalogProbe
   imethod PublishStatus(status map[string]any)
   imethod ReloadConfig() error
   imethod SetAutoUpdatePaused(paused bool)
   imethod SetLogLevel(level string) error
+  imethod SetUpdateDirective(d *senhub-agent.go/internal/agent/services/extension.UpdateDirective)
   imethod StateDir() string
+  imethod UpdateStatus() senhub-agent.go/internal/agent/services/extension.UpdateStatus
 type senhub-agent.go/internal/agent/services/extension.Identity struct
   field Edition string
   field InstanceID string
@@ -723,6 +739,16 @@ type senhub-agent.go/internal/agent/services/extension.ProbeHealth struct
 type senhub-agent.go/internal/agent/services/extension.Service interface
   imethod Shutdown(ctx context.Context) error
   imethod Start(ctx context.Context) error
+type senhub-agent.go/internal/agent/services/extension.UpdateDirective struct
+  field AllowDowngrade bool
+  field Auto bool
+  field Retry bool
+  field TargetVersion string
+type senhub-agent.go/internal/agent/services/extension.UpdateStatus struct
+  field InstallKind string
+  field Reason string
+  field State string
+  field Target string
 type senhub-agent.go/internal/agent/services/governance.Governance struct
   field Criticality string
   field Datacenter string
