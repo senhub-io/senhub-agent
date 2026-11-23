@@ -140,7 +140,7 @@ startup, not one at a time.
 `retries` matters on a congested link: UDP loses packets, and each
 attempt costs one `timeout` before the device counts as unanswered.
 `topology_interval` is a slower rail, independent of `interval`: the
-topology is swept at most once per `topology_interval`, inside a poll
+topology is swept once per `topology_interval` (a poll cycle that starts up to a tenth of `interval` early still sweeps), inside a poll
 cycle. A sweep stops its walks once it has run for `interval` (30
 seconds at least) and still reads the device identity. It stops at its
 first read that times out when the device has answered nothing yet, so
@@ -338,9 +338,10 @@ at any time.
 The filter runs first, then at most `max_routes` routes are published per
 device (500 by default). Connected and default routes are always kept, outside
 the bound. The device entity carries `senhub.routes.filtered` (routes the
-filter left out), `senhub.routes.limit` and `senhub.routes.omitted` (routes the
-bound left out), so a table cut by the bound is never mistaken for a complete
-one. A device carrying a full Internet table
+filter left out), `senhub.routes.limit` and `senhub.routes.truncated` (true while the bound
+cuts the table), so a table cut by the bound is never mistaken for a complete
+one. The exact count stays in the agent log line `route table bound: some
+routes omitted`. A device carrying a full Internet table
 is not meant to be inventoried route by route.
 
 #### Learned neighbours

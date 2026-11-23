@@ -26,6 +26,7 @@ const zabbixUsage = `Usage: senhub-agent zabbix template [--probe <type> ...] [-
        senhub-agent zabbix setup --url <frontend> [--token-file <path>]
                                  [--group <name>] [--metadata <string>]
                                  [--action-name <name>] [--probe <type> ...] [--all-probes]
+                                 [--host <name> ...]
                                  [--discovery-delay <interval> | --no-discovery-delay]
                                  [--prefix <key prefix>] [--version 6.0|7.0] [--dry-run]
 
@@ -41,6 +42,13 @@ Without --probe it links the probes every machine runs (the ones their
 definition marks universal); naming others adds them, --all-probes
 links every template of the platform, and a template whose probe an agent does not run only
 contributes discovery rules that never answer.
+The action only links templates when a host first registers. A probe
+enabled later on a host that is already registered gets no template from
+it: re-run setup naming the probe and the host, --probe <type> --host
+<name>, and the templates of the run are linked on that host, those it
+already links left alone and no other host touched. --host takes the
+host's technical name and can be repeated; with --dry-run it only says
+what it would link.
 After it, a machine needs nothing but the agent and two lines naming the
 server. Run it once, as an administrator; a deployed agent never holds
 an API token. Re-running it is safe: every step is idempotent, which is

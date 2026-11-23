@@ -112,7 +112,13 @@ type zabbixSetup struct {
 	// groups: its import rule for them is named groups.
 	hostGroupsOnly bool
 	linked         []string
-	out            io.Writer // nil means standard output
+	// templateByName maps the name of each template read back by
+	// templateIDs to its id.
+	templateByName map[string]string
+	// hosts are the already registered hosts the operator named, resolved
+	// by resolveHosts.
+	hosts []existingHost
+	out   io.Writer // nil means standard output
 }
 
 // blind reports that the run can describe but not look: a dry run given
@@ -148,6 +154,9 @@ func (s *zabbixSetup) importTemplates() error {
 		"items":          map[string]bool{"createMissing": true, "updateExisting": true},
 		"discoveryRules": map[string]bool{"createMissing": true, "updateExisting": true},
 		"valueMaps":      map[string]bool{"createMissing": true, "updateExisting": true},
+		// Without this rule the server leaves the dashboards of the 7.0
+		// export out, without a word. Named so on every line since 5.4.
+		"templateDashboards": map[string]bool{"createMissing": true, "updateExisting": true},
 	}
 	if s.hostGroupsOnly {
 		rules["groups"] = map[string]bool{"createMissing": true}
@@ -219,9 +228,13 @@ func (s *zabbixSetup) templateIDs(names []string) ([]string, error) {
 		return nil, err
 	}
 	ids := make([]string, 0, len(found))
+	if s.templateByName == nil {
+		s.templateByName = map[string]string{}
+	}
 	for _, t := range found {
 		ids = append(ids, t.TemplateID)
 		s.linked = append(s.linked, t.Host)
+		s.templateByName[t.Host] = t.TemplateID
 	}
 	return ids, nil
 }
@@ -376,6 +389,7 @@ func runZabbixSetup(args []string) {
 		discoveryDelay           = "5m"
 		dryRun                   bool
 		probes                   []string
+		hostNames                []string
 		allProbes                bool
 		opts                     = template.Options{}
 	)
@@ -410,6 +424,8 @@ func runZabbixSetup(args []string) {
 			probes = append(probes, value())
 		case "--all-probes":
 			allProbes = true
+		case "--host":
+			hostNames = append(hostNames, value())
 		case "--prefix":
 			opts.Prefix = value()
 		case "--version":
@@ -479,6 +495,14 @@ func runZabbixSetup(args []string) {
 		}
 	}
 
+	// Resolved before the first write, so a mistyped host name changes nothing.
+	if len(hostNames) > 0 {
+		if err := s.resolveHosts(hostNames); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(cliexit.Failure)
+		}
+	}
+
 	groupID, err := s.ensureGroup()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -530,6 +554,10 @@ func runZabbixSetup(args []string) {
 			}
 		}
 		if err := s.ensureAction(actionName+" ("+platform+")", metadata+" "+platform, groupID, ids); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(cliexit.Failure)
+		}
+		if err := s.linkExistingHosts(platform, names); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(cliexit.Failure)
 		}

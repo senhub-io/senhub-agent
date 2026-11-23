@@ -14,7 +14,7 @@ const (
 	attrRouteProtocol     = "route.protocol"
 	attrRouteProtocolCode = "network.route.protocol.code"
 	attrRouteType         = "route.type"
-	attrRoutesOmitted     = "senhub.routes.omitted"
+	attrRoutesTruncated   = "senhub.routes.truncated"
 	attrRoutesLimit       = "senhub.routes.limit"
 	attrRoutesFiltered    = "senhub.routes.filtered"
 )
@@ -347,7 +347,7 @@ func applyRouteCounters(obs *entity.Observation, deviceID string, omitted, filte
 			if obs.Entities[i].Attributes == nil {
 				obs.Entities[i].Attributes = map[string]any{}
 			}
-			obs.Entities[i].Attributes[attrRoutesOmitted] = int64(omitted)
+			obs.Entities[i].Attributes[attrRoutesTruncated] = omitted > 0
 			obs.Entities[i].Attributes[attrRoutesLimit] = int64(limit)
 			obs.Entities[i].Attributes[attrRoutesFiltered] = int64(filtered)
 			return

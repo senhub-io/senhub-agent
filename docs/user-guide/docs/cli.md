@@ -481,6 +481,7 @@ senhub-agent zabbix setup --url https://zabbix.example.com --dry-run
 | `--token-file PATH` | File holding the API token. Preferred: a token on the command line is visible to every process on the machine |
 | `--token VALUE` | API token. Read after `--token-file` and before `SENHUB_ZABBIX_TOKEN` |
 | `--probe TYPE` | Probe whose template is linked to every host that registers. Repeatable. Without it, the probes every machine runs: cpu, memory, network, logicaldisk, process |
+| `--host NAME` | Also link the templates of this run on this already registered host (its technical name), those it does not link yet, and touch no other host. Repeatable |
 | `--group NAME` | Host group the registering hosts join |
 | `--metadata STRING` | Host metadata the autoregistration action matches on; must equal the agent's `host_metadata` |
 | `--action-name NAME` | Name of the autoregistration action it writes |

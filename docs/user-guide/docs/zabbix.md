@@ -733,6 +733,7 @@ are; `--version 8.0` is not needed and does not exist.
 senhub-agent zabbix setup --url <frontend> [--token-file <path>]
                           [--group <name>] [--metadata <string>]
                           [--action-name <name>] [--probe <type> ...] [--all-probes]
+                          [--host <name> ...]
                           [--discovery-delay <interval> | --no-discovery-delay]
                           [--prefix <key prefix>] [--version 6.0|7.0] [--dry-run]
 ```
@@ -746,6 +747,7 @@ senhub-agent zabbix setup --url <frontend> [--token-file <path>]
 | `--action-name` | `Autoregistration — SenHub Agent` | Name of the autoregistration action |
 | `--probe` | the probes every machine runs | Also import and link the template of this probe type; repeat for several. `hyperv` and `mssql` are linked this way, since only some hosts run them |
 | `--all-probes` | | Import and link every template that carries an item on the platform |
+| `--host` | | Also link the templates of this run on this host, already registered; its technical name as the host page shows it. Repeatable. See [A host already registered](#a-host-already-registered-keeps-the-templates-it-was-given) |
 | `--discovery-delay` | `5m` | Interval set on the discovery rules of the imported templates |
 | `--no-discovery-delay` | | Leave the discovery rules at the template's interval (1 hour) |
 | `--prefix` | `senhub` | Key prefix; must match the output's `key_prefix` |
@@ -774,6 +776,19 @@ afterwards. Re-running `zabbix setup` after an upgrade refreshes the
 content of every template, and hosts already linked to them receive the
 change. A template the action links for the first time, because you
 named a new probe with `--probe`, reaches only the hosts that register
-from then on. For the hosts already there, link it yourself: select them
-under **Data collection > Hosts**, then **Mass update > Templates >
-Link**.
+from then on. For the hosts already there, name them with `--host`:
+
+```bash
+senhub-agent zabbix setup --url https://zabbix.example.com --token-file ~/.zbx-token \
+  --probe azure_container_apps --host web-01
+```
+
+Name every probe your hosts should get when they register, the ones
+already in use included: the action is replaced with the set of that
+run. The command
+links, on each named host, the templates of the run that the host does
+not link yet. It keeps what the host already links, leaves every other
+host alone, and finds the platform (Linux or Windows) of the host from
+the templates it already carries. Add `--dry-run` to read what it would
+link. Without `--host`, select the hosts under **Data collection >
+Hosts**, then **Mass update > Templates > Link**.

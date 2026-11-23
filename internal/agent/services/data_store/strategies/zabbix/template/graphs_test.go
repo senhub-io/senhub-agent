@@ -188,3 +188,23 @@ func TestEveryDeclaredChartResolvesSomewhere(t *testing.T) {
 		}
 	}
 }
+
+// A graph prototype widget with no name of its own is headed with the
+// prototype's name, macros unresolved: "{#PROBE}: CPU utilization".
+func TestADashboardWidgetIsHeadedWithTheChartNameAndNoMacro(t *testing.T) {
+	exp, err := Generate(graphDefinition(), Options{Platform: "linux", Version: "7.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tpl := exp.ZabbixExport.Templates[0]
+	var got []string
+	for _, w := range tpl.Dashboards[0].Pages[0].Widgets {
+		if w.Name == "" || strings.Contains(w.Name, "{#") {
+			t.Errorf("widget name = %q, want the chart name without macros", w.Name)
+		}
+		got = append(got, w.Name)
+	}
+	if joined := strings.Join(got, "|"); !strings.Contains(joined, "Traffic") || !strings.Contains(joined, "Speed") {
+		t.Errorf("widget names = %v, want the declared chart names", got)
+	}
+}

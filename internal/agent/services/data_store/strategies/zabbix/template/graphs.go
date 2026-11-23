@@ -33,6 +33,9 @@ type GraphPrototype struct {
 	UUID       string      `yaml:"uuid"`
 	Name       string      `yaml:"name"`
 	GraphItems []GraphItem `yaml:"graph_items"`
+	// title is the chart as the definition names it, without the macros
+	// of its rule: what a dashboard widget is headed with.
+	title string
 }
 
 type GraphItem struct {
@@ -78,7 +81,7 @@ func graphPrototypes(template string, def transformers.ProbeDefinition, placed m
 			if len(series[0].macros) > 0 {
 				name += " (" + strings.Join(series[0].macros, ", ") + ")"
 			}
-			gp := GraphPrototype{UUID: uid("graph", template, name), Name: name}
+			gp := GraphPrototype{UUID: uid("graph", template, name), Name: name, title: g.Name}
 			for i, pl := range series {
 				gi := GraphItem{Color: graphColors[i%len(graphColors)], Item: GraphItemRef{Host: template, Key: pl.key}}
 				if i > 0 {
@@ -108,6 +111,7 @@ type DashboardPage struct {
 
 type Widget struct {
 	Type   string        `yaml:"type"`
+	Name   string        `yaml:"name,omitempty"`
 	X      string        `yaml:"x,omitempty"`
 	Y      string        `yaml:"y,omitempty"`
 	Width  string        `yaml:"width"`
@@ -142,6 +146,7 @@ func dashboardOf(tpl Template, title string, opts Options) []Dashboard {
 			i := len(widgets)
 			widgets = append(widgets, Widget{
 				Type:   "graphprototype",
+				Name:   g.title,
 				X:      xOf(i),
 				Y:      yOf(i),
 				Width:  "36",

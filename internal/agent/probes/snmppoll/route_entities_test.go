@@ -228,8 +228,8 @@ func TestSelectRoutes_Bound(t *testing.T) {
 	applyRouteCounters(&obs, "dev1", omitted, 0, 500)
 
 	dev := obs.Entities[0]
-	if got := dev.Attributes[attrRoutesOmitted]; got != int64(203) {
-		t.Errorf("senhub.routes.omitted = %v, want 203", got)
+	if got := dev.Attributes[attrRoutesTruncated]; got != true {
+		t.Errorf("senhub.routes.truncated = %v, want true", got)
 	}
 	if got := dev.Attributes[attrRoutesLimit]; got != int64(500) {
 		t.Errorf("senhub.routes.limit = %v, want 500", got)
@@ -255,8 +255,8 @@ func TestRouteCountersZeroWhenNoOmission(t *testing.T) {
 	applyRouteCounters(&obs, "dev1", 0, 0, 500)
 
 	dev := obs.Entities[0]
-	if got := dev.Attributes[attrRoutesOmitted]; got != int64(0) {
-		t.Errorf("senhub.routes.omitted = %v, want 0", got)
+	if got := dev.Attributes[attrRoutesTruncated]; got != false {
+		t.Errorf("senhub.routes.truncated = %v, want false", got)
 	}
 	if got := dev.Attributes[attrRoutesLimit]; got != int64(500) {
 		t.Errorf("senhub.routes.limit = %v, want 500", got)

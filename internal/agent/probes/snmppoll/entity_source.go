@@ -578,11 +578,20 @@ func (s *snmpEntitySource) InterfaceNames() map[string]string {
 	return s.ifNames
 }
 
+// sweepSlack is how much earlier than topologyInterval a poll cycle may start
+// and still sweep. The cycle that falls one interval after a sweep starts a
+// few milliseconds before or after that instant; without the slack it was
+// skipped about half the time, the sweep period doubled, and an interface
+// absent for one interval could fall between two sweeps and never be deleted.
+func (s *snmpEntitySource) sweepSlack() time.Duration {
+	return s.cfg.Interval / 10
+}
+
 // maybeSweep refreshes the cached snapshot when topologyInterval has elapsed,
 // reusing the probe's already-connected client. Called from Collect.
 func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 	s.mu.Lock()
-	due := (s.lastSweep.IsZero() || now.Sub(s.lastSweep) >= s.interval) && !now.Before(s.retryAt)
+	due := (s.lastSweep.IsZero() || now.Sub(s.lastSweep) >= s.interval-s.sweepSlack()) && !now.Before(s.retryAt)
 	s.mu.Unlock()
 	if !due {
 		return
@@ -643,9 +652,14 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 	s.deviceID = res.deviceID
 	s.ifNames = res.ifNames
 	s.selectedIfaces = keepSelectionIfStale(s.selectedIfaces, res)
+	sinceLast := now.Sub(s.lastSweep)
 	s.lastSweep = now
 	s.swept = true
 	s.mu.Unlock()
+
+	s.moduleLogger.Debug().Str("target", s.cfg.Target).Str("device_id", res.deviceID).
+		Int("interfaces", len(res.ifaces)).Bool("partial", res.partial).Dur("since_previous_sweep", sinceLast).
+		Msg("topology sweep stored")
 
 	if !res.partial {
 		s.recordExcludedRoutes(res.deviceID, res.routesFiltered)
