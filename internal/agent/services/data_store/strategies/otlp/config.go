@@ -109,8 +109,12 @@ const (
 	DefaultPersistenceInterval = 30 * time.Second
 
 	// DefaultLogsQueueMaxAge is how long a failed log batch waits on disk
-	// before the sweep drops it.
-	DefaultLogsQueueMaxAge = 24 * time.Hour
+	// before the sweep drops it. The metrics and traces queues keep their
+	// requests as long for the same reason: a day is what an outage the
+	// operator has not yet noticed can last over a weekend night.
+	DefaultLogsQueueMaxAge    = 24 * time.Hour
+	DefaultMetricsQueueMaxAge = 24 * time.Hour
+	DefaultTracesQueueMaxAge  = 24 * time.Hour
 
 	// defaultLogsQueueSubdir is the directory, under the state directory,
 	// that holds the queue when persistence.path is not set.
@@ -436,6 +440,24 @@ type PersistenceConfig struct {
 	// signal (#217). 0 = built-in default (128 MiB). Beyond it the oldest
 	// batches are evicted (reason="logs_queue_full").
 	LogsQueueMaxBytes int64
+
+	// MetricsQueueEnabled and TracesQueueEnabled switch one signal's queue
+	// off while the others stay on (SENHUB_METRIC_QUEUE, SENHUB_TRACE_QUEUE).
+	// Default true; Enabled above is the master switch.
+	MetricsQueueEnabled bool
+	TracesQueueEnabled  bool
+	// MetricsQueueMaxBytes caps the metrics request queue; 0 = built-in
+	// default (256 MiB). Beyond it the oldest requests are evicted
+	// (reason="metrics_queue_full").
+	MetricsQueueMaxBytes int64
+	// MetricsQueueMaxAge drops queued requests older than this; 0 = no age
+	// limit (reason="metrics_dropped_by_age").
+	MetricsQueueMaxAge time.Duration
+	// TracesQueueMaxBytes caps the traces request queue; 0 = built-in
+	// default (64 MiB), reason="traces_queue_full".
+	TracesQueueMaxBytes int64
+	// TracesQueueMaxAge is the traces counterpart, reason="traces_dropped_by_age".
+	TracesQueueMaxAge time.Duration
 }
 
 // MemoryLimitConfig configures the OTLP strategy's heap pressure
@@ -576,10 +598,14 @@ func defaultConfig() Config {
 			CheckInterval: DefaultMemoryLimitCheckPeriod,
 		},
 		Persistence: PersistenceConfig{
-			Enabled:         true,
-			Path:            "",
-			Interval:        DefaultPersistenceInterval,
-			LogsQueueMaxAge: DefaultLogsQueueMaxAge,
+			Enabled:             true,
+			Path:                "",
+			Interval:            DefaultPersistenceInterval,
+			LogsQueueMaxAge:     DefaultLogsQueueMaxAge,
+			MetricsQueueEnabled: true,
+			TracesQueueEnabled:  true,
+			MetricsQueueMaxAge:  DefaultMetricsQueueMaxAge,
+			TracesQueueMaxAge:   DefaultTracesQueueMaxAge,
 		},
 		MaxConcurrentExports: DefaultMaxConcurrentExports,
 	}
@@ -995,6 +1021,31 @@ func parsePersistence(raw interface{}, out *PersistenceConfig) error {
 		}
 		out.LogsQueueMaxAge = d
 	}
+	for _, q := range []struct {
+		signal string
+		bytes  *int64
+		age    *time.Duration
+	}{
+		{"metrics", &out.MetricsQueueMaxBytes, &out.MetricsQueueMaxAge},
+		{"traces", &out.TracesQueueMaxBytes, &out.TracesQueueMaxAge},
+	} {
+		if v, ok := readInt(m[q.signal+"_queue_max_bytes"]); ok {
+			if v < 0 {
+				return fmt.Errorf("%s_queue_max_bytes must be >= 0, got %d", q.signal, v)
+			}
+			*q.bytes = int64(v)
+		}
+		if v, ok := m[q.signal+"_queue_max_age"].(string); ok && v != "" {
+			d, err := time.ParseDuration(v)
+			if err != nil {
+				return fmt.Errorf("%s_queue_max_age: %w", q.signal, err)
+			}
+			if d < 0 {
+				return fmt.Errorf("%s_queue_max_age must be >= 0 (0 = no age limit), got %v", q.signal, d)
+			}
+			*q.age = d
+		}
+	}
 	return nil
 }
 
@@ -1021,6 +1072,43 @@ func applyLogQueueEnv(out *PersistenceConfig) error {
 			return fmt.Errorf("SENHUB_LOG_QUEUE_MAX_BYTES: %w", err)
 		}
 		out.LogsQueueMaxBytes = n
+	}
+	return applyWireQueueEnv(out)
+}
+
+// applyWireQueueEnv reads SENHUB_METRIC_QUEUE* and SENHUB_TRACE_QUEUE*, the
+// metrics and traces counterparts of the SENHUB_LOG_QUEUE* variables.
+func applyWireQueueEnv(out *PersistenceConfig) error {
+	for _, q := range []struct {
+		prefix  string
+		enabled *bool
+		bytes   *int64
+		age     *time.Duration
+	}{
+		{"SENHUB_METRIC_QUEUE", &out.MetricsQueueEnabled, &out.MetricsQueueMaxBytes, &out.MetricsQueueMaxAge},
+		{"SENHUB_TRACE_QUEUE", &out.TracesQueueEnabled, &out.TracesQueueMaxBytes, &out.TracesQueueMaxAge},
+	} {
+		if v := strings.TrimSpace(os.Getenv(q.prefix)); v != "" {
+			b, err := strconv.ParseBool(v)
+			if err != nil {
+				return fmt.Errorf("%s must be true or false, got %q", q.prefix, v)
+			}
+			*q.enabled = b
+		}
+		if v := strings.TrimSpace(os.Getenv(q.prefix + "_RETENTION")); v != "" {
+			d, err := time.ParseDuration(v)
+			if err != nil || d < 0 {
+				return fmt.Errorf("%s_RETENTION must be a duration such as 24h, got %q", q.prefix, v)
+			}
+			*q.age = d
+		}
+		if v := strings.TrimSpace(os.Getenv(q.prefix + "_MAX_BYTES")); v != "" {
+			n, err := parseByteSize(v)
+			if err != nil {
+				return fmt.Errorf("%s_MAX_BYTES: %w", q.prefix, err)
+			}
+			*q.bytes = n
+		}
 	}
 	return nil
 }
@@ -1051,6 +1139,12 @@ func parseByteSize(raw string) (int64, error) {
 // persistence.path when set, else under the agent state directory.
 // Empty means the queue is off.
 func (p PersistenceConfig) logsQueuePath() string {
+	return p.queueBase()
+}
+
+// queueBase is the directory the queues live under, empty when persistence
+// is off. Each signal keeps its files in its own subdirectory.
+func (p PersistenceConfig) queueBase() string {
 	if !p.Enabled {
 		return ""
 	}
@@ -1058,6 +1152,22 @@ func (p PersistenceConfig) logsQueuePath() string {
 		return p.Path
 	}
 	return filepath.Join(instanceid.OwnStateDir(), defaultLogsQueueSubdir)
+}
+
+// metricsQueuePath is where the metrics request queue lives; empty means off.
+func (p PersistenceConfig) metricsQueuePath() string {
+	if !p.MetricsQueueEnabled {
+		return ""
+	}
+	return p.queueBase()
+}
+
+// tracesQueuePath is where the traces request queue lives; empty means off.
+func (p PersistenceConfig) tracesQueuePath() string {
+	if !p.TracesQueueEnabled {
+		return ""
+	}
+	return p.queueBase()
 }
 
 func parseMemoryLimit(raw interface{}, out *MemoryLimitConfig) error {

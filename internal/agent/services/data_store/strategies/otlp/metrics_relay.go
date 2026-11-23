@@ -185,6 +185,9 @@ type metricsRelay struct {
 	forwarder metricBatchForwarder
 	enricher  *relayEnricher
 	logger    *logger.ModuleLogger
+	// queue keeps a batch the collector did not take on disk, to be replayed
+	// with the agent's own metric pushes. nil when the queue is off.
+	queue *wireChannel
 
 	mu         sync.Mutex
 	subscribed <-chan []*metricpb.ResourceMetrics
@@ -334,14 +337,35 @@ func (r *metricsRelay) export(rm []*metricpb.ResourceMetrics, points int) {
 	// Resource is what makes its records attributable downstream.
 	rm = r.enricher.enrichMetrics(rm)
 
+	marshal := func() ([]byte, error) {
+		return proto.Marshal(&collectormetricspb.ExportMetricsServiceRequest{ResourceMetrics: rm})
+	}
+	if r.queue != nil && r.queue.relayAdmit() == relayKeep {
+		if r.queue.keepRelayed(marshal, points) {
+			r.logger.Debug().Int("points", points).Msg("OTLP metric relay: batch kept on disk for replay")
+		}
+		return
+	}
+
 	if err := r.forwarder.forward(ctx, rm); err != nil {
 		agentstate.IncrementOTLPExportErrors("metrics")
+		if r.queue != nil && r.queue.relayResult(err, marshal, points) {
+			r.logger.Warn().
+				Str("error", redactSensitive(err.Error())).
+				Int("resource_metrics", len(rm)).
+				Int("points", points).
+				Msg("OTLP metric relay export failed; batch kept on disk for replay")
+			return
+		}
 		r.logger.Warn().
 			Str("error", redactSensitive(err.Error())).
 			Int("resource_metrics", len(rm)).
 			Int("points", points).
 			Msg("OTLP metric relay export failed; batch dropped")
 		return
+	}
+	if r.queue != nil {
+		r.queue.markSuccess()
 	}
 	agentstate.IncrementOTLPMetricsRelayed(points)
 	r.logger.Debug().

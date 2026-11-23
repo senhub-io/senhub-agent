@@ -77,6 +77,10 @@ func (c *failoverCore) do(attempt func(idx int) error) error {
 		if err := attempt(idx); err == nil {
 			c.markActive(idx)
 			return nil
+		} else if errors.Is(err, errWireCaptured) {
+			// An encoding pass for the disk queue, not an attempt: it says
+			// nothing about this endpoint.
+			return err
 		} else {
 			c.states[idx].downUntil.Store(time.Now().Add(c.cooldown).UnixNano())
 			lastErr = err
@@ -91,6 +95,8 @@ func (c *failoverCore) do(attempt func(idx int) error) error {
 				c.states[idx].downUntil.Store(0)
 				c.markActive(idx)
 				return nil
+			} else if errors.Is(err, errWireCaptured) {
+				return err
 			} else {
 				lastErr = err
 			}

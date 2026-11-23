@@ -707,6 +707,44 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Description: "Cumulative endpoint failover switches (the active OTLP endpoint changed). Rising means the primary is flapping.",
 		},
 	)
+	for _, signal := range agentstate.OTLPQueuedSignals {
+		q := agentstate.GetOTLPQueueStats(signal)
+		attrs := map[string]string{"signal": signal}
+		records = append(records,
+			otelmapper.OtelRecord{
+				Name:        "senhub.agent.otlp.queue.records",
+				Unit:        "{record}",
+				Type:        "gauge",
+				Attributes:  attrs,
+				Value:       float64(q.Records),
+				Description: "Data points (metrics) or spans (traces) currently held in the signal's on-disk queue, awaiting replay. 0 when the backend is healthy or the queue is off.",
+			},
+			otelmapper.OtelRecord{
+				Name:        "senhub.agent.otlp.queue.bytes",
+				Unit:        "By",
+				Type:        "gauge",
+				Attributes:  attrs,
+				Value:       float64(q.Bytes),
+				Description: "Bytes currently held by the signal's on-disk queue.",
+			},
+			otelmapper.OtelRecord{
+				Name:        "senhub.agent.otlp.queue.queued",
+				Unit:        "{record}",
+				Type:        "counter",
+				Attributes:  attrs,
+				Value:       float64(q.Queued),
+				Description: "Cumulative data points or spans written to the signal's queue after a failed export.",
+			},
+			otelmapper.OtelRecord{
+				Name:        "senhub.agent.otlp.queue.replayed",
+				Unit:        "{record}",
+				Type:        "counter",
+				Attributes:  attrs,
+				Value:       float64(q.Replayed),
+				Description: "Cumulative data points or spans the backend acknowledged after a replay from the signal's queue.",
+			},
+		)
+	}
 	for stage, n := range agentstate.GetOTLPCheckpointErrorsByStage() {
 		records = append(records, otelmapper.OtelRecord{
 			Name:        "senhub.agent.otlp.checkpoint.errors",
