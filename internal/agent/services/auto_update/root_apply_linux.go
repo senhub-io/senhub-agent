@@ -137,21 +137,9 @@ func RootApply(opts RootApplyOptions) error {
 		downloadWait:  opts.DownloadWait,
 		listRetryWait: opts.ListRetryWait,
 	}
-	registry := a.GetRegistryUrl(opts.Registry)
-	list, err := a.admissibleVersions(registry, version)
-	if err != nil {
-		wrapped := fmt.Errorf("list could not be verified: %w", err)
-		log.Error().Err(wrapped).Str("step", "list").Msg("Root update refused")
-		return &RootApplyError{Step: "list", Err: wrapped}
-	}
-
-	// Step published
-	if !publishes(list, version) {
-		err := fmt.Errorf("version %s is not published in the signed list", version)
-		log.Error().Err(err).Str("step", "published").Msg("Root update refused")
-		return &RootApplyError{Step: "published", Err: err}
-	}
-
+	// Steps current and downgrade come first: both are decided from the
+	// version strings alone, so a lower or equal request is answered locally,
+	// without contacting the registry.
 	// Step current
 	if canonicalVersion(version) == canonicalVersion(cliArgs.Version) {
 		log.Info().Str("version", version).Msg("Requested version is already installed")
@@ -168,6 +156,21 @@ func RootApply(opts RootApplyOptions) error {
 		}
 		log.Error().Err(err).Str("step", "downgrade").Msg("Root update refused")
 		return &RootApplyError{Step: "downgrade", Err: err}
+	}
+
+	registry := a.GetRegistryUrl(opts.Registry)
+	list, err := a.admissibleVersions(registry, version)
+	if err != nil {
+		wrapped := fmt.Errorf("list could not be verified: %w", err)
+		log.Error().Err(wrapped).Str("step", "list").Msg("Root update refused")
+		return &RootApplyError{Step: "list", Err: wrapped}
+	}
+
+	// Step published
+	if !publishes(list, version) {
+		err := fmt.Errorf("version %s is not published in the signed list", version)
+		log.Error().Err(err).Str("step", "published").Msg("Root update refused")
+		return &RootApplyError{Step: "published", Err: err}
 	}
 
 	// Step install
