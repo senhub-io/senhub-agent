@@ -17,6 +17,11 @@ import (
 // what lets any other output subscribe to them (#932).
 func TestDetectionRunsWithoutAnyOTLPOutput(t *testing.T) {
 	events := entity.SubscribeEvents(16)
+	// A subscriber nobody drains fills up, and the next publish then waits
+	// out publishWait on it: every orphan a test leaves behind adds a second
+	// to the first event of the tests that follow it, which a loaded suite
+	// turns into a timeout.
+	t.Cleanup(func() { entity.UnsubscribeEvents(events) })
 
 	svc := New(Config{
 		Enabled:         true,
@@ -117,6 +122,11 @@ func TestNeitherSourceMeansNoDetection(t *testing.T) {
 // keep the choice it made at start.
 func TestReconfigureStartsDetectionOnARunningAgent(t *testing.T) {
 	events := entity.SubscribeEvents(16)
+	// A subscriber nobody drains fills up, and the next publish then waits
+	// out publishWait on it: every orphan a test leaves behind adds a second
+	// to the first event of the tests that follow it, which a loaded suite
+	// turns into a timeout.
+	t.Cleanup(func() { entity.UnsubscribeEvents(events) })
 	svc := New(Config{Enabled: false}, logger.NewLogger(&cliArgs.ParsedArgs{Env: "test"}))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
