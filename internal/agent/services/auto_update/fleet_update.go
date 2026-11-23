@@ -139,10 +139,10 @@ func (a *autoUpdate) updateForDirective(d Directive, registryUrl string) (bool, 
 	if kind == KindMSI && IsBetaVersion(target) {
 		return refuse(StateFailed, target, CodeBetaMSI, nil)
 	}
-	if !d.Retry {
-		if rec, _ := readRolledBack(osRollbackFS{}, stateDir); rec != nil {
-			same := canonicalVersion(rec.FailedVersion) == canonicalVersion(target)
-			if same || (!explicit && !isNewer(target, rec.FailedVersion)) {
+	if rec, _ := readRolledBack(osRollbackFS{}, stateDir); rec != nil {
+		same := canonicalVersion(rec.FailedVersion) == canonicalVersion(target)
+		if same || (!explicit && !isNewer(target, rec.FailedVersion)) {
+			if !a.consumeRetry(stateDir, d, target) {
 				return refuse(StateRolledBack, target, codeRolledBackPrefix+canonicalVersion(rec.FailedVersion), nil)
 			}
 		}
@@ -200,6 +200,45 @@ func (a *autoUpdate) msiInstaller() func(msiURL, version string) error {
 		return a.installMSI
 	}
 	return a.applyMsiUpdate
+}
+
+const retryConsumedFileName = "update-retry-consumed.json"
+
+type retryConsumed struct {
+	Revision uint64 `json:"revision"`
+	Version  string `json:"version"`
+}
+
+// consumeRetry reports whether the retry of the directive may lift the
+// rolled-back memory now. It may once per revision and version: the
+// directive is applied again after every restart, and a target that keeps
+// failing to start would otherwise be tried again and again until the
+// service manager gives up. The use is recorded before the install starts.
+func (a *autoUpdate) consumeRetry(stateDir string, d Directive, target string) bool {
+	if !d.Retry {
+		return false
+	}
+	path := filepath.Join(stateDir, retryConsumedFileName)
+	fs := osRollbackFS{}
+	want := retryConsumed{Revision: d.Revision, Version: canonicalVersion(target)}
+	if data, err := fs.ReadFile(path); err == nil {
+		var prev retryConsumed
+		if json.Unmarshal(data, &prev) == nil && prev == want {
+			a.logger.Info().Uint64("revision", d.Revision).Str("target", target).
+				Msg("Retry already used for this revision; the rolled-back version stays refused")
+			return false
+		}
+	}
+	data, err := json.Marshal(want)
+	if err == nil {
+		err = fs.WriteFileAtomic(path, data)
+	}
+	if err != nil {
+		// Without the record a restart would retry again: refuse instead.
+		a.logger.Warn().Err(err).Str("path", path).Msg("Could not record the use of retry; not retrying")
+		return false
+	}
+	return true
 }
 
 func isNewer(candidate, base string) bool {

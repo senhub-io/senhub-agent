@@ -305,6 +305,7 @@ alias UpdateDirective = senhub-agent.go/internal/agent/services/extension.Update
   field AllowDowngrade bool
   field Auto bool
   field Retry bool
+  field Revision uint64
   field TargetVersion string
 alias UpdateStatus = senhub-agent.go/internal/agent/services/extension.UpdateStatus
   field InstallKind string
@@ -743,6 +744,7 @@ type senhub-agent.go/internal/agent/services/extension.UpdateDirective struct
   field AllowDowngrade bool
   field Auto bool
   field Retry bool
+  field Revision uint64
   field TargetVersion string
 type senhub-agent.go/internal/agent/services/extension.UpdateStatus struct
   field InstallKind string

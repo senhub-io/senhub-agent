@@ -216,6 +216,7 @@ func (h *host) SetUpdateDirective(d *extension.UpdateDirective) {
 		TargetVersion:  d.TargetVersion,
 		AllowDowngrade: d.AllowDowngrade,
 		Retry:          d.Retry,
+		Revision:       d.Revision,
 	})
 }
 
