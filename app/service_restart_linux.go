@@ -18,23 +18,22 @@ func restartServiceAfterUpdate(startIfStopped bool) (string, error) {
 	return newServiceRestarter(startIfStopped, func(pid string) (string, error) { return os.Readlink("/proc/" + pid + "/exe") }).run()
 }
 
-// restartServiceAfterRootUpdate is the restart of the root update unit. That
-// unit holds no capability, and reading /proc/<pid>/exe of a process of
-// another user needs CAP_SYS_PTRACE, which is more than an update is worth. The
-// command line of the service is world-readable and names the binary it was
-// started from; the restart check still demands a new process that stays up.
+// rootUpdateBinary is the binary the root update unit installs and the
+// packaged service runs.
+const rootUpdateBinary = "/usr/bin/senhub-agent"
+
+// restartServiceAfterRootUpdate is the restart of the root update unit. It
+// takes no string from the service, which runs as an unprivileged user and
+// controls its own /proc/<pid>/cmdline: the binary it names for the version
+// line, and the one it checks is on disk, is the fixed path just installed.
+// Reading /proc/<pid>/exe instead would need CAP_SYS_PTRACE. The restart still
+// demands a new process that stays up.
 func restartServiceAfterRootUpdate(startIfStopped bool) (string, error) {
-	return newServiceRestarter(startIfStopped, func(pid string) (string, error) {
-		raw, err := os.ReadFile("/proc/" + pid + "/cmdline")
-		if err != nil {
-			return "", err
-		}
-		exe, _, _ := strings.Cut(string(raw), "\x00")
-		if exe == "" {
-			return "", fmt.Errorf("process %s has no command line", pid)
-		}
-		return exe, nil
-	}).run()
+	return newRootServiceRestarter(startIfStopped, rootUpdateBinary).run()
+}
+
+func newRootServiceRestarter(startIfStopped bool, binary string) serviceRestarter {
+	return newServiceRestarter(startIfStopped, func(string) (string, error) { return binary, nil })
 }
 
 func newServiceRestarter(startIfStopped bool, exePath func(pid string) (string, error)) serviceRestarter {
