@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
@@ -41,7 +40,7 @@ type tracesPipeline struct {
 //   - WithResource: same Resource as metrics/logs (service.name etc.)
 //   - WithSampler: parent-based(traceID-ratio) — production-friendly
 func buildTracesPipeline(
-	exporter *otlptrace.Exporter,
+	exporter sdktrace.SpanExporter,
 	res *resource.Resource,
 	cfg TracesSignal,
 	scopeVersion string,

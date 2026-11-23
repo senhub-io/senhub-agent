@@ -199,6 +199,9 @@ type spansRelay struct {
 	forwarder spanForwarder
 	enricher  *relayEnricher
 	logger    *logger.ModuleLogger
+	// queue keeps a batch the collector did not take on disk, to be replayed
+	// with the agent's own spans. nil when the queue is off.
+	queue *wireChannel
 
 	mu         sync.Mutex
 	subscribed <-chan []*tracepb.ResourceSpans
@@ -332,14 +335,35 @@ func (r *spansRelay) export(rs []*tracepb.ResourceSpans, spans int) {
 	// telemetry in the backend (#294). No-op when enrichment is disabled.
 	rs = r.enricher.enrichSpans(rs)
 
+	marshal := func() ([]byte, error) {
+		return proto.Marshal(&collectortracepb.ExportTraceServiceRequest{ResourceSpans: rs})
+	}
+	if r.queue != nil && r.queue.relayAdmit() == relayKeep {
+		if r.queue.keepRelayed(marshal, spans) {
+			r.logger.Debug().Int("spans", spans).Msg("OTLP span relay: batch kept on disk for replay")
+		}
+		return
+	}
+
 	if err := r.forwarder.forward(ctx, rs); err != nil {
 		agentstate.IncrementOTLPExportErrors("traces")
+		if r.queue != nil && r.queue.relayResult(err, marshal, spans) {
+			r.logger.Warn().
+				Str("error", redactSensitive(err.Error())).
+				Int("resource_spans", len(rs)).
+				Int("spans", spans).
+				Msg("OTLP span relay export failed; batch kept on disk for replay")
+			return
+		}
 		r.logger.Warn().
 			Str("error", redactSensitive(err.Error())).
 			Int("resource_spans", len(rs)).
 			Int("spans", spans).
 			Msg("OTLP span relay export failed; batch dropped")
 		return
+	}
+	if r.queue != nil {
+		r.queue.markSuccess()
 	}
 	agentstate.IncrementOTLPSpansRelayed(spans)
 	r.logger.Debug().

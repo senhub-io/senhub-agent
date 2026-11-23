@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/agentstate"
@@ -52,7 +53,7 @@ type OTLPSyncStrategy struct {
 	// registry resolves probe types to YAML definitions consumed by
 	// otelmapper.Resolve. Each strategy carries its own — definitions
 	// are read-only after load and cheap enough to duplicate.
-	registry *transformers.TransformerRegistry
+	registry otelmapper.DefinitionLookup
 
 	// resource is the OTel Resource (service.name, service.instance.id,
 	// service.version, deployment.environment, operator extras, plus the
@@ -102,6 +103,17 @@ type OTLPSyncStrategy struct {
 	// metricsHealth tracks the outcome of the metric pushes; Shutdown reads
 	// it to decide whether a last export is worth attempting.
 	metricsHealth metricsHealth
+
+	// metricsChan, metricsReplayer are the on-disk queue of the metric push
+	// requests and its retry clock; nil when the queue is off. tracesChan,
+	// tracesReplayer are the same for the trace signal.
+	metricsChan     *wireChannel
+	metricsReplayer *wireReplayer
+	tracesChan      *wireChannel
+	tracesReplayer  *wireReplayer
+	// spanExporter is what the trace pipeline exports through: the queue's
+	// decorator when the queue is on, else the SDK exporter itself.
+	spanExporter sdktrace.SpanExporter
 
 	// entityPump emits entity/relation events on the OTLP log signal; the
 	// entity Detector goroutine produces them. Both nil/zero unless
@@ -340,7 +352,23 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 	buildCtx, cancel := context.WithTimeout(ctx, s.cfg.Timeout)
 	defer cancel()
 
-	exp, err := buildExporters(buildCtx, s.cfg, s.logger)
+	// The queues share one directory. A state directory the service account
+	// cannot use is found here, once, and every signal keeps its SDK retry
+	// instead of a queue that cannot write.
+	exporterCfg := s.cfg
+	queuesUsable := s.cfg.Persistence.anyQueue()
+	if queuesUsable && (s.cfg.Metrics.Enabled || s.cfg.Logs.Enabled || s.cfg.Traces.Enabled) {
+		if err := prepareQueueDir(s.cfg.Persistence.queueBase()); err != nil {
+			s.logger.Warn().Err(err).Str("path", s.cfg.Persistence.queueBase()).
+				Msg("OTLP queues disabled: the directory is not writable; failed log batches, metric pushes and trace spans are not kept across an outage")
+			queuesUsable = false
+			exporterCfg.Persistence.Enabled = false
+			exporterCfg.Persistence.MetricsQueueEnabled = false
+			exporterCfg.Persistence.TracesQueueEnabled = false
+		}
+	}
+
+	exp, err := buildExporters(buildCtx, exporterCfg, s.logger)
 	if err != nil {
 		return fmt.Errorf("build exporters: %w", err)
 	}
@@ -386,6 +414,11 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 		s.chkpt.start(ctx)
 	}
 
+	if queuesUsable {
+		s.startMetricsQueue()
+		s.startTracesQueue()
+	}
+
 	if s.cfg.Metrics.Enabled {
 		s.startMetricsPusher()
 	}
@@ -399,18 +432,13 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 		s.exporters.log = newSplittingLogExporter(s.exporters.log, s.cfg.Logs.MaxExportBytes, s.logger)
 	}
 	var logExp *persistentLogExporter
-	if queuePath := s.cfg.Persistence.logsQueuePath(); queuePath != "" && s.cfg.Logs.Enabled && s.exporters.log != nil {
-		if err := prepareQueueDir(queuePath); err != nil {
-			s.logger.Warn().Err(err).Str("path", queuePath).
-				Msg("OTLP logs queue disabled: the directory is not writable; failed log batches are not kept across an outage")
-		} else {
-			s.logsQueue = newLogsQueue(queuePath, s.cfg.Persistence.LogsQueueMaxBytes, s.logger)
-			s.logsQueue.setMaxAge(s.cfg.Persistence.LogsQueueMaxAge)
-			s.logsQueue.announce()
-			logExp = newPersistentLogExporter(s.exporters.log, s.logsQueue, s.logger)
-			s.exporters.log = logExp
-			s.logExporter = logExp
-		}
+	if queuePath := s.cfg.Persistence.logsQueuePath(); queuePath != "" && queuesUsable && s.cfg.Logs.Enabled && s.exporters.log != nil {
+		s.logsQueue = newLogsQueue(queuePath, s.cfg.Persistence.LogsQueueMaxBytes, s.logger)
+		s.logsQueue.setMaxAge(s.cfg.Persistence.LogsQueueMaxAge)
+		s.logsQueue.announce()
+		logExp = newPersistentLogExporter(s.exporters.log, s.logsQueue, s.logger)
+		s.exporters.log = logExp
+		s.logExporter = logExp
 	}
 	if logExp == nil && s.exporters.log != nil {
 		s.exporters.log = &reportingLogExporter{Exporter: s.exporters.log, reporter: s.psReporter}
@@ -443,7 +471,11 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 	s.noticeEntitiesOff()
 
 	if s.cfg.Traces.Enabled && s.exporters.trace != nil {
-		s.traces = buildTracesPipeline(s.exporters.trace, s.resource, s.cfg.Traces, cliArgs.Version)
+		spanExp := sdktrace.SpanExporter(s.exporters.trace)
+		if s.spanExporter != nil {
+			spanExp = s.spanExporter
+		}
+		s.traces = buildTracesPipeline(spanExp, s.resource, s.cfg.Traces, cliArgs.Version)
 	}
 
 	// Verbatim relay for INGESTED logs, gated by the same signals.logs
@@ -460,6 +492,7 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 			s.logger.Warn().Err(relayErr).Msg("OTLP metric relay unavailable; ingested metrics will be exported under the agent resource")
 		} else {
 			s.metricsRelay = relay
+			relay.queue = s.metricsChan
 			relay.start()
 		}
 	}
@@ -485,6 +518,7 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 			s.logger.Warn().Err(relayErr).Msg("OTLP span relay unavailable; received spans will not be forwarded")
 		} else {
 			s.spansRelay = relay
+			relay.queue = s.tracesChan
 			relay.start()
 		}
 	}
@@ -655,6 +689,16 @@ func (s *OTLPSyncStrategy) doPush(parent context.Context, extraRecords []otelmap
 	)
 	exportDuration := time.Since(exportStart)
 	span.SetAttributes(attribute.Int("otlp.records_count", count))
+	if errors.Is(err, errExportQueued) {
+		// The request is on disk, and the backend was not asked: this is
+		// neither a delivery nor a new failure.
+		span.SetStatus(codes.Error, "kept on disk for replay")
+		s.logger.Debug().Dur("duration", exportDuration).Msg("OTLP metrics push kept on disk for replay")
+		if s.metricsChan != nil && s.metricsChan.backendDown() {
+			s.metricsHealth.markFailure()
+		}
+		return
+	}
 	if err != nil {
 		// Span status is also exported via OTLP — redact the same way.
 		redacted := redactSensitive(err.Error())
@@ -870,6 +914,7 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	// First of all, before anything slower can spend the stop budget: hand
 	// the log records still held in memory to the disk queue.
 	s.flushLogsToQueue()
+	s.stopWireQueues()
 
 	// Stop the periodic ticker and wait for the goroutine to exit. We
 	// do this BEFORE the final push to avoid a race where both the
@@ -968,7 +1013,7 @@ func (s *OTLPSyncStrategy) Shutdown(ctx context.Context) error {
 	// Drain — final push of whatever sits in the store. Failures here
 	// are best-effort: we still want to close the exporters even if
 	// the last push fails (collector down, etc.).
-	if s.exporters.metric != nil && s.cfg.Metrics.Enabled && !backendDown {
+	if s.exporters.metric != nil && s.cfg.Metrics.Enabled && (!backendDown || s.metricsChan != nil) {
 		s.pushDrain(ctx)
 	}
 
@@ -1077,4 +1122,71 @@ func processUsername() string {
 // so the next push no longer exports them.
 func (s *OTLPSyncStrategy) ForgetProbes(probeNames []string) {
 	s.store.forgetProbes(probeNames)
+}
+
+// startMetricsQueue keeps the metric pushes the backend did not take on disk
+// and replays them, in order, when it answers again. A push is a request of
+// the SDK exporter; the queue stores it as built, so replayed points keep
+// their own start and end times and the store, which only feeds new pushes,
+// is neither read nor written by a replay.
+func (s *OTLPSyncStrategy) startMetricsQueue() {
+	path := s.cfg.Persistence.metricsQueuePath()
+	if path == "" || !s.cfg.Metrics.Enabled || s.exporters.metric == nil {
+		return
+	}
+	q := newWireQueue(metricsQueueKind, path, s.cfg.Persistence.MetricsQueueMaxBytes, s.logger)
+	q.setMaxAge(s.cfg.Persistence.MetricsQueueMaxAge)
+	q.announce()
+	ch := newWireChannel("metrics", q, true, false, s.logger)
+	if window := 3 * s.cfg.Metrics.Interval; window > ch.recentSuccess {
+		ch.recentSuccess = window
+	}
+	s.exporters.metric = newPersistentMetricExporter(s.exporters.metric, ch)
+	s.metricsChan = ch
+	s.metricsReplayer = s.startWireReplayer(ch)
+}
+
+// startTracesQueue is startMetricsQueue for the span export.
+func (s *OTLPSyncStrategy) startTracesQueue() {
+	path := s.cfg.Persistence.tracesQueuePath()
+	if path == "" || !s.cfg.Traces.Enabled || s.exporters.trace == nil {
+		return
+	}
+	q := newWireQueue(tracesQueueKind, path, s.cfg.Persistence.TracesQueueMaxBytes, s.logger)
+	q.setMaxAge(s.cfg.Persistence.TracesQueueMaxAge)
+	q.announce()
+	ch := newWireChannel("traces", q, false, true, s.logger)
+	s.spanExporter = newPersistentSpanExporter(s.exporters.trace, ch)
+	s.tracesChan = ch
+	s.tracesReplayer = s.startWireReplayer(ch)
+}
+
+// startWireReplayer starts the retry clock of one queue and replays what the
+// previous run left behind.
+func (s *OTLPSyncStrategy) startWireReplayer(ch *wireChannel) *wireReplayer {
+	rp := newWireReplayer(ch, s.logger)
+	ch.setOnRecovered(func() { _, _ = rp.replay() })
+	ch.setOnQueued(rp.kick)
+	rp.start()
+	go func() { _, _ = rp.replay() }()
+	return rp
+}
+
+// stopWireQueues ends the replay of the metrics and traces queues and tells
+// their exporters to stop trying a backend that is down or unproven: what is
+// exported from here on goes to disk and is replayed at the next start.
+func (s *OTLPSyncStrategy) stopWireQueues() {
+	for _, side := range []struct {
+		ch *wireChannel
+		rp **wireReplayer
+	}{{s.metricsChan, &s.metricsReplayer}, {s.tracesChan, &s.tracesReplayer}} {
+		if side.ch == nil {
+			continue
+		}
+		if *side.rp != nil {
+			(*side.rp).stop()
+			*side.rp = nil
+		}
+		side.ch.beginShutdown(logsShutdownFlushBudget)
+	}
 }

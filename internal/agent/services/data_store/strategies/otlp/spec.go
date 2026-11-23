@@ -78,12 +78,16 @@ func init() {
 				{Key: "hard_mib", Kind: spec.KindInt, Default: 400},
 				{Key: "check_interval", Kind: spec.KindDuration, Default: "5s"},
 			}},
-			{Key: "persistence", Kind: spec.KindBlock, Group: "memory", Description: "On-disk checkpoint of the store and dead-letter queue of the logs", Fields: []spec.ParamSpec{
+			{Key: "persistence", Kind: spec.KindBlock, Group: "memory", Description: "On-disk checkpoint of the store and dead-letter queues of the logs, metrics and traces", Fields: []spec.ParamSpec{
 				{Key: "enabled", Kind: spec.KindBool, Default: true},
 				{Key: "path", Kind: spec.KindString, Description: "Directory of the checkpoint and the logs queue; empty = no checkpoint, logs queue in the agent state directory", Example: "/var/lib/senhub-agent/otlp"},
 				{Key: "interval", Kind: spec.KindDuration, Default: "30s"},
 				{Key: "logs_queue_max_bytes", Kind: spec.KindInt, Default: 134217728},
 				{Key: "logs_queue_max_age", Kind: spec.KindDuration, Default: "24h", Description: "Queued log batches older than this are dropped; 0 = no age limit"},
+				{Key: "metrics_queue_max_bytes", Kind: spec.KindInt, Default: 268435456, Description: "Disk cap of the metrics request queue; the oldest requests are evicted past it"},
+				{Key: "metrics_queue_max_age", Kind: spec.KindDuration, Default: "24h", Description: "Queued metric requests older than this are dropped; 0 = no age limit"},
+				{Key: "traces_queue_max_bytes", Kind: spec.KindInt, Default: 67108864, Description: "Disk cap of the traces request queue; the oldest requests are evicted past it"},
+				{Key: "traces_queue_max_age", Kind: spec.KindDuration, Default: "24h", Description: "Queued trace requests older than this are dropped; 0 = no age limit"},
 			}},
 		},
 	})

@@ -25,7 +25,8 @@ func TestMain(m *testing.M) {
 
 func clearQueueEnv(t *testing.T) {
 	t.Helper()
-	for _, k := range []string{"SENHUB_LOG_QUEUE", "SENHUB_LOG_QUEUE_RETENTION", "SENHUB_LOG_QUEUE_MAX_BYTES"} {
+	for _, k := range []string{"SENHUB_LOG_QUEUE", "SENHUB_LOG_QUEUE_RETENTION", "SENHUB_LOG_QUEUE_MAX_BYTES",
+		"SENHUB_METRIC_QUEUE", "SENHUB_TRACE_QUEUE"} {
 		t.Setenv(k, "")
 	}
 }
@@ -238,6 +239,8 @@ func TestStrategyStart_DisabledNoDirCreated(t *testing.T) {
 	state := t.TempDir()
 	t.Setenv("STATE_DIRECTORY", state)
 	t.Setenv("SENHUB_LOG_QUEUE", "false")
+	t.Setenv("SENHUB_METRIC_QUEUE", "false")
+	t.Setenv("SENHUB_TRACE_QUEUE", "false")
 	s := newTestStrategy(t, nil)
 	if err := s.Start(context.Background()); err != nil {
 		t.Fatalf("Start: %v", err)

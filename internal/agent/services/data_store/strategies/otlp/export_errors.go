@@ -30,11 +30,11 @@ import (
 // merits does not belong in it, and is dropped once, counted, and
 // logged. Everything else is persisted, which is what the queue is for.
 //
-// The metrics signal needs no equivalent branch: its durability is the
-// LWW checkpoint, a last-value-wins STATE store rather than a backlog of
-// batches. A rejected push is superseded by the next cycle's values on
-// its own, so "drop" is already what happens and adding a class check
-// there would change nothing.
+// The metrics and traces signals have the same queue now (wire_queue.go)
+// and the same rule: a request the receiver refuses on its merits is
+// dropped once and counted, never queued. The LWW checkpoint behind the
+// metrics store is a different thing, a last-value state, and needs no
+// such branch.
 
 // classifyExportError maps an OTel SDK export error onto the shared
 // taxonomy.
