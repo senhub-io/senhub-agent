@@ -172,9 +172,6 @@ var DiscriminantTagsRegistry = map[string][]string{
 		"error_bucket", // per directory-sync export-error bucket
 	},
 	"exchange_online": {"service_display_name"}, // per Exchange service-health entry
-	// SharePoint Online: one point per service state, issue class, collection
-	// step/state, site facet, file state and link scope; per-site series by id.
-	"sharepoint_online": {"service_state", "issue_classification", "collection_step", "collection_state", "site_state", "site_inactivity", "file_state", "sharing_link_scope", "site_id", "site_url", "site_name", "lot"},
 	// azure_container_apps used to report one application per instance.
 	// Since subscription discovery it follows every application a
 	// credential can read, so its state metrics are split by application

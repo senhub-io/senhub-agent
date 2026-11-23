@@ -48,8 +48,6 @@ var paidProbes = map[string]bool{
 	"azure_monitor":   true,
 	"azure_log_query": true,
 	"entra_id":        true,
-	// SharePoint Online in a Microsoft 365 tenant, read through Graph.
-	"sharepoint_online": true,
 	// Active / synthetic checks.
 	"ping_gateway": true,
 	"ping_webapp":  true,

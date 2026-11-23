@@ -127,7 +127,6 @@ Source of truth: the `paidProbes` map in `internal/agent/services/license/probe_
 - **vsphere_ha** - VMware vSphere cluster / HA monitoring
 - **ad_hybrid** - Active Directory hybrid-identity monitoring
 - **exchange_online** - Microsoft Exchange Online / Microsoft 365 mail monitoring
-- **sharepoint_online** - SharePoint Online service health in a Microsoft 365 tenant, read through Microsoft Graph
 - **azure_container_apps** - Azure Container Apps console log stream (stdout/stderr of every replica), read through ARM without touching the container
 - **ping_gateway** - Gateway connectivity monitoring
 - **ping_webapp** - Web application availability

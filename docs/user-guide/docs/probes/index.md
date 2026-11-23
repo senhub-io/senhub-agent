@@ -651,13 +651,6 @@ Each probe targets one class of system and turns its state into typed metrics an
     <span class="probe-desc">Credential expiry, directory sync, users, licences and security posture of a tenant</span>
   </a>
 
-  <a href="sharepoint_online/" class="probe-card" data-family="cloud" data-tier="pro">
-    <img class="probe-logo probe-logo-si" src="../assets/probe-logos/azure_container_apps.svg" alt="" loading="lazy">
-    <span class="probe-name">SharePoint Online</span>
-    <span class="probe-tier-badge pro">Pro</span>
-    <span class="probe-desc">Service health, site storage, files and sharing of SharePoint Online in a Microsoft 365 tenant</span>
-  </a>
-
 </div>
 
 <p class="catalog-empty" id="catalog-empty" style="display:none">No probes match your search.</p>

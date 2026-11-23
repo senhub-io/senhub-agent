@@ -39,9 +39,9 @@ PRTG, Nagios, Zabbix, Prometheus or any OpenTelemetry backend.
 - **Paid probes** (Pro/Enterprise licence, in the `senhub-agent` edition
   only, not in `senhub-agent-oss`): Citrix, NetScaler, Veeam, Redfish,
   IBM i, Dell PowerStore, SQL Server and Oracle high availability, vSphere
-  and Hyper-V HA, Active Directory hybrid, Entra ID, Exchange Online,
-  SharePoint Online, Azure Monitor, Azure Log Query, Azure Container Apps
-  and Container App Jobs, synthetic web checks.
+  and Hyper-V HA, Active Directory hybrid, Entra ID, Exchange Online, Azure
+  Monitor, Azure Log Query, Azure Container Apps and Container App Jobs,
+  synthetic web checks.
 
 ## Outputs
 
