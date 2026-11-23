@@ -61,8 +61,10 @@ var DiscriminantTagsRegistry = map[string][]string{
 	"memory": {},       // System-level only, no instances
 	// process: one series per running process identified by pid+name;
 	// aggregate (process.count) is discriminated by name only.
-	"process":     {"process.pid", "process.name"},
-	"network":     {"interface", "adapter", "state"},  // Interfaces; state splits the host TCP connection counts
+	"process": {"process.pid", "process.name"},
+	// Interfaces; state splits the host TCP connection counts; the rest is the
+	// identity of an outbound dependency edge (per-edge connection metrics).
+	"network":     {"interface", "adapter", "state", "service.instance.id", "server.address", "server.port", "network.transport", "host.id"},
 	"logicaldisk": {"drive", "mount_point", "device"}, // Different drives/volumes
 	"os_updates":  {},                                 // System-level; one series per metric, no instances
 

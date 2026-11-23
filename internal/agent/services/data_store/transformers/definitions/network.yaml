@@ -263,10 +263,106 @@ metrics:
       unit: "{connection}"
       type: counter
 
+  - name: edge_rtt
+    channel: edge_rtt_{service.instance.id}_{server.address}_{server.port}
+    display_name: Edge RTT {service.instance.id} to {server.address}:{server.port}
+    unit: "s"
+    prtg_skip: true
+    multi_instance_labels: ["service.instance.id", "server.address", "server.port", "network.transport", "host.id"]
+    category: connections
+    description: Mean smoothed round-trip time of the established TCP connections of one outbound dependency edge, in seconds
+    platforms: ["linux"]
+    otel:
+      name: senhub.connection.rtt
+      unit: "s"
+      type: gauge
+    tag_to_attribute:
+      service.instance.id: service.instance.id
+      server.address: server.address
+      server.port: server.port
+      network.transport: network.transport
+      host.id: host.id
+  - name: edge_retransmits
+    channel: edge_retransmits_{service.instance.id}_{server.address}_{server.port}
+    display_name: Edge Retransmits {service.instance.id} to {server.address}:{server.port}
+    unit: "#"
+    prtg_skip: true
+    multi_instance_labels: ["service.instance.id", "server.address", "server.port", "network.transport", "host.id"]
+    category: connections
+    description: Cumulative TCP segments retransmitted on one outbound dependency edge
+    platforms: ["linux"]
+    otel:
+      name: senhub.connection.retransmits
+      unit: "{segment}"
+      type: counter
+    tag_to_attribute:
+      service.instance.id: service.instance.id
+      server.address: server.address
+      server.port: server.port
+      network.transport: network.transport
+      host.id: host.id
+  - name: edge_bytes_sent
+    channel: edge_bytes_sent_{service.instance.id}_{server.address}_{server.port}
+    display_name: Edge Bytes Sent {service.instance.id} to {server.address}:{server.port}
+    unit: "bytes"
+    prtg_skip: true
+    multi_instance_labels: ["service.instance.id", "server.address", "server.port", "network.transport", "host.id"]
+    category: connections
+    description: Cumulative bytes sent on one outbound dependency edge
+    platforms: ["linux"]
+    otel:
+      name: senhub.connection.io
+      unit: "By"
+      type: counter
+      attributes:
+        network.io.direction: transmit
+    tag_to_attribute:
+      service.instance.id: service.instance.id
+      server.address: server.address
+      server.port: server.port
+      network.transport: network.transport
+      host.id: host.id
+  - name: edge_bytes_received
+    channel: edge_bytes_received_{service.instance.id}_{server.address}_{server.port}
+    display_name: Edge Bytes Received {service.instance.id} to {server.address}:{server.port}
+    unit: "bytes"
+    prtg_skip: true
+    multi_instance_labels: ["service.instance.id", "server.address", "server.port", "network.transport", "host.id"]
+    category: connections
+    description: Cumulative bytes received on one outbound dependency edge
+    platforms: ["linux"]
+    otel:
+      name: senhub.connection.io
+      unit: "By"
+      type: counter
+      attributes:
+        network.io.direction: receive
+    tag_to_attribute:
+      service.instance.id: service.instance.id
+      server.address: server.address
+      server.port: server.port
+      network.transport: network.transport
+      host.id: host.id
+
 tag_metadata:
   interface:
     type: resource
     label: "Network Interface"
+  service.instance.id:
+    type: resource
+    label: "Service Instance ID"
+  server.address:
+    type: resource
+    label: "Server Address"
+  server.port:
+    type: resource
+    label: "Server Port"
+  network.transport:
+    type: resource
+    label: "Network Transport"
+  host.id:
+    type: resource
+    label: "Host ID"
   # System tags (injected by framework)
   host:
     type: resource

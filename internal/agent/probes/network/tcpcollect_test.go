@@ -2,6 +2,7 @@ package network
 
 import (
 	"errors"
+	"senhub-agent.go/internal/agent/services/entity/hostdep"
 	"senhub-agent.go/internal/agent/services/netconn"
 	"testing"
 	"time"
@@ -173,5 +174,66 @@ func TestHostTCPDataPoints_BaseNotModified(t *testing.T) {
 	}
 	if base[0].Key != "host" || base[0].Value != "h1" {
 		t.Fatalf("base slice modified: %+v", base)
+	}
+}
+
+func TestHostTCPDataPoints_EdgeMetrics(t *testing.T) {
+	base := []tags.Tag{{Key: "host", Value: "h1"}}
+	edge := hostdep.EdgeMetric{
+		Attributes: map[string]string{
+			"service.instance.id": "app@h1", "server.address": "10.0.0.9",
+			"server.port": "5432", "network.transport": "tcp",
+		},
+		RTT: 20 * time.Millisecond, HasRTT: true,
+		Retransmits: 3, BytesSent: 100, BytesReceived: 200,
+	}
+	src := tcpSource{
+		conns: func() ([]netconn.Conn, error) { return nil, nil },
+		edges: func([]netconn.Conn) []hostdep.EdgeMetric { return []hostdep.EdgeMetric{edge} },
+	}
+	points, errs := hostTCPDataPoints(src, base, time.Now())
+	if len(errs) != 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	want := map[string]float64{"edge_rtt": 0.02, "edge_retransmits": 3, "edge_bytes_sent": 100, "edge_bytes_received": 200}
+	got := map[string]data_store.DataPoint{}
+	for _, p := range points {
+		if _, isEdge := want[p.Name]; isEdge {
+			got[p.Name] = p
+		}
+	}
+	for name, v := range want {
+		p, ok := got[name]
+		if !ok || p.Value != v {
+			t.Fatalf("%s = %+v, want %v", name, p, v)
+		}
+		keys := map[string]string{}
+		for _, tg := range p.Tags {
+			keys[tg.Key] = tg.Value
+		}
+		if len(keys) != 1+len(edge.Attributes) || keys["host"] != "h1" || keys["server.port"] != "5432" {
+			t.Errorf("%s tags = %v, want host plus exactly the edge keys", name, keys)
+		}
+	}
+
+	// No RTT sample: the gauge is not reported, the counters still are.
+	edge.HasRTT = false
+	points, _ = hostTCPDataPoints(src, base, time.Now())
+	for _, p := range points {
+		if p.Name == "edge_rtt" {
+			t.Error("edge_rtt reported without a sample")
+		}
+	}
+}
+
+func TestHostTCPDataPoints_EdgeMetricsAbsentWhenSocketTableUnavailable(t *testing.T) {
+	called := false
+	src := tcpSource{
+		conns: func() ([]netconn.Conn, error) { return nil, netconn.ErrUnsupported },
+		edges: func([]netconn.Conn) []hostdep.EdgeMetric { called = true; return nil },
+	}
+	points, errs := hostTCPDataPoints(src, nil, time.Now())
+	if called || len(points) != 0 || len(errs) != 1 {
+		t.Fatalf("called=%v points=%d errs=%v", called, len(points), errs)
 	}
 }

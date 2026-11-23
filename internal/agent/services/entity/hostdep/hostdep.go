@@ -108,6 +108,9 @@ type dependant struct {
 	svcID, svcName string
 	addr, port     string
 	foundation     bool
+	// tuple is the socket this observation came from, the join key for the
+	// per-edge connection metrics.
+	tuple tupleKey
 }
 
 // nameEntry caches a pid's resolved executable name across scrapes, guarded by
@@ -143,6 +146,10 @@ type Source struct {
 	// once, not on every cycle. Keyed by (pid, createTime); pruned each scrape
 	// to the pids still present, so it cannot outgrow the live socket table.
 	nameLRU map[int32]nameEntry
+
+	// edges receives, after each successful scrape, the edges now emitted and
+	// the sockets attributed to them (see edgemetrics.go).
+	edges *edgeRegistry
 }
 
 // New builds the host-dependency source. hostID returns the host's stable id,
@@ -161,6 +168,7 @@ func New(hostID func() string, threshold int, exclude []*net.IPNet) *Source {
 		exclude:   exclude,
 		streak:    map[peerKey]streakState{},
 		nameLRU:   map[int32]nameEntry{},
+		edges:     sharedEdges,
 	}
 }
 
@@ -274,6 +282,7 @@ func (s *Source) Observe() (entity.Observation, bool) {
 		next[k] = streakState{hits: hits, dep: d}
 	}
 	s.streak = next
+	s.edges.publish(emittedEdges(next, s.threshold, hostID), deps)
 
 	return buildObservation(next, s.threshold, hostID).WithScope(entity.ScopeHostDep), true
 }
@@ -387,6 +396,10 @@ func (s *Source) scrape(conns []gnet.ConnectionStat, hostID string, priorLRU map
 		d := dependant{
 			addr: c.Raddr.IP,
 			port: strconv.FormatUint(uint64(c.Raddr.Port), 10),
+			tuple: tupleKey{
+				laddr: normalizeIP(c.Laddr.IP), lport: c.Laddr.Port,
+				raddr: normalizeIP(c.Raddr.IP), rport: c.Raddr.Port,
+			},
 		}
 		switch {
 		case c.Pid == self && agentID != "":
@@ -491,25 +504,7 @@ func buildObservation(streak map[peerKey]streakState, threshold int, hostID stri
 				})
 			}
 		}
-		// The endpoint identity comes from the consumer's own SDK, so the
-		// agent cannot drift from the contract: a host-scoped address
-		// (loopback, link-local unicast) gets host.id as a fourth key,
-		// otherwise host A's 127.0.0.1 or the shared 169.254.169.254
-		// metadata endpoint would collapse onto host B's (ADR 0032); every
-		// other address stays 3-key. The SDK canonicalises the literal on
-		// the way (RFC 5952, lowercased zone, IPv4-mapped unmapped).
-		epID := map[string]any{
-			idKeyServerAddress:    d.addr,
-			idKeyServerPort:       d.port,
-			idKeyNetworkTransport: transportTCP,
-		}
-		if port, err := strconv.Atoi(d.port); err == nil {
-			rel := emit.DependsOnLocalEndpoint(d.addr, port, transportTCP, hostID)
-			epID = make(map[string]any, len(rel.TargetID))
-			for k, v := range rel.TargetID {
-				epID[k] = v
-			}
-		}
+		epID := endpointID(d.addr, d.port, hostID)
 		epDedup := fmt.Sprintf("%v|%v:%s/%s", epID[idKeyHost], epID[idKeyServerAddress], d.port, transportTCP)
 		if !epDone[epDedup] {
 			epDone[epDedup] = true
@@ -524,6 +519,29 @@ func buildObservation(streak map[peerKey]streakState, threshold int, hostID stri
 		})
 	}
 	return obs
+}
+
+// endpointID is the identity of the network.endpoint a dependency targets.
+// It comes from the consumer's own SDK, so the agent cannot drift from the
+// contract: a host-scoped address (loopback, link-local unicast) gets host.id
+// as a fourth key, otherwise host A's 127.0.0.1 or the shared 169.254.169.254
+// metadata endpoint would collapse onto host B's (ADR 0032); every other
+// address stays 3-key. The SDK canonicalises the literal on the way (RFC 5952,
+// lowercased zone, IPv4-mapped unmapped).
+func endpointID(addr, port, hostID string) map[string]any {
+	epID := map[string]any{
+		idKeyServerAddress:    addr,
+		idKeyServerPort:       port,
+		idKeyNetworkTransport: transportTCP,
+	}
+	if p, err := strconv.Atoi(port); err == nil {
+		rel := emit.DependsOnLocalEndpoint(addr, p, transportTCP, hostID)
+		epID = make(map[string]any, len(rel.TargetID))
+		for k, v := range rel.TargetID {
+			epID[k] = v
+		}
+	}
+	return epID
 }
 
 // processName resolves a pid to its executable name, best-effort ("" when the

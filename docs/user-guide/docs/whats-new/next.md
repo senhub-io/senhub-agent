@@ -11,4 +11,6 @@ Nothing released yet since 0.7.1. Changes land here as they are merged.
 
 - **The network probe reports host TCP counters.** Connections by state, connections opened, failed and reset, retransmitted segments, resets sent and, on Linux, listen queue overflows, for the whole host. They are on by default; `tcp_stats: false` leaves only the per-interface metrics. On Linux the connection counts come from the kernel socket table and need no extra privilege; on Windows the counters come from the IP Helper API, without listen overflows.
 
+- **Outbound dependencies report their connection quality.** On Linux, for each dependency the agent publishes, the network probe now reports the mean round-trip time (`senhub.connection.rtt`), the segments retransmitted (`senhub.connection.retransmits`) and the bytes exchanged in each direction (`senhub.connection.io`). The series carry the keys of the dependency (service, server address and port, transport, and the host for a local target) and never the client port, so a connection coming and going does not create a series. The counters keep growing for as long as the dependency exists. They follow `tcp_stats`; a dependency excluded by `depends_on_exclude_cidrs` has none.
+
 <div class="rn-filter"></div>
