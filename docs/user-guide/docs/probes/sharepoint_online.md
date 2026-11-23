@@ -181,34 +181,3 @@ Read the probe through `/api/{key}/prtg/metrics/<probe name>` with an HTTP Data 
 # Throttling and errors
 
 Graph answers 429 and 5xx are retried, honouring `Retry-After`. Paged answers are followed only on the Graph host. A 403 names the missing Application permission and the admin consent.
-
-## Parameters
-
-<!-- schema:params:start -->
-<!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:f1ae8c4f29ac5bd18bb2c749a8a899fafd7a1ccb7d1e4f100e37a16f94c49fa6 -->
-
-| Parameter | Must set | Default | Description |
-|---|---|---|---|
-| `tenant_id` | In practice | - | Entra ID tenant (directory) ID; required unless SENHUB_AZURE_TENANT_ID is set for every Azure probe of the agent |
-| `client_id` | In practice | - | Application (client) ID of the app registration; required unless SENHUB_AZURE_CLIENT_ID is set for every Azure probe of the agent |
-| `client_secret` | No | - | Client secret of the app registration; used when no certificate is configured. One of client_secret, client_secret_file, SENHUB_AZURE_CLIENT_SECRET or SENHUB_AZURE_CLIENT_SECRET_FILE is required, in that order of precedence, unless a certificate is given. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
-| `client_secret_file` | No | - | File holding the client secret (a mounted secret, for example); read when the probe is configured. Used when client_secret is not set |
-| `client_certificate` | No | - | Certificate of the app registration, as PEM; when a certificate is configured it replaces the client secret |
-| `client_key` | No | - | Private key of the certificate, as PEM (unencrypted RSA key); not needed when the certificate PEM holds the key too. A secret: reference it with `${secret:…}`, `${env:…}` or `${file:…}` rather than writing it in the file |
-| `client_certificate_path` | No | - | File holding the certificate PEM, read when the probe is configured. Used when client_certificate is not set; SENHUB_AZURE_CLIENT_CERTIFICATE_PATH is the fallback for every Azure probe |
-| `client_key_path` | No | - | File holding the private key PEM, read when the probe is configured. Used when client_key is not set; SENHUB_AZURE_CLIENT_KEY_PATH is the fallback for every Azure probe |
-| `capacity` | No | - | Capacity lot: sites, storage, files and recycle bins from the site usage report (Reports.Read.All) joined with the site list (Sites.Read.All, or the sites listed in sites with Sites.Selected) |
-| `capacity.enabled` | No | `true` | Collect the capacity lot |
-| `capacity.interval` | No | `21600` | Seconds between inventories of the usage report and the sites |
-| `capacity.top_n` | No | `10` | How many of the largest sites are published one by one; up to as many more sites over the quota warning threshold are added |
-| `capacity.quota_warning_percent` | No | `90` | A site is over the threshold when its used storage is at least this percent of its storage limit, when it has a limit |
-| `capacity.max_sites` | No | `20000` | Most sites read from the site list; beyond it the per-site series stop at the cap with a warning, the tenant figures stay complete |
-| `capacity.sites` | No | - | Granted sites mode: the site URLs or Graph site ids (hostname,siteCollectionId,webId) to read, for an application granted Sites.Selected. When set, the tenant is never listed |
-| `capacity.sites_include` | No | - | Publish per-site series only for sites whose web address matches one of these globs (* matches any run of characters); tenant figures ignore it |
-| `capacity.sites_exclude` | No | - | Skip the per-site series of sites whose web address matches one of these globs; wins over sites_include; tenant figures ignore it |
-| `health` | No | - | Service health lot: the state of SharePoint Online and its unresolved issues; needs the Application permission ServiceHealth.Read.All with admin consent |
-| `health.enabled` | No | `true` | Collect the health lot |
-| `health.interval` | No | `300` | Seconds between health collections |
-
-<!-- schema:params:end -->
