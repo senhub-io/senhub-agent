@@ -5,6 +5,8 @@ set -e
 
 if [ -d /run/systemd/system ]; then
     systemctl daemon-reload || true
+    # A unit that ended in failed stays listed after its file is gone.
+    systemctl reset-failed senhub-agent-update.service senhub-agent-update.path senhub-ebpf.service >/dev/null 2>&1 || true
 fi
 
 case "$1" in

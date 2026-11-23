@@ -55,6 +55,9 @@ func TestRootApplyRefusesADowngrade(t *testing.T) {
 	if len(f.f.downloads()) != 0 {
 		t.Error("an archive was downloaded")
 	}
+	if f.f.hits.Load() != 0 {
+		t.Errorf("the registry was contacted %d times; a downgrade is refused locally", f.f.hits.Load())
+	}
 	f.assertUntouched(t)
 	f.assertRequestDeleted(t)
 }
