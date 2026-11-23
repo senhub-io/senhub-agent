@@ -40,8 +40,8 @@ PRTG, Nagios, Zabbix, Prometheus or any OpenTelemetry backend.
   only, not in `senhub-agent-oss`): Citrix, NetScaler, Veeam, Redfish,
   IBM i, Dell PowerStore, SQL Server and Oracle high availability, vSphere
   and Hyper-V HA, Active Directory hybrid, Entra ID, Exchange Online,
-  SharePoint Online, Azure Monitor, Azure Log Query, Azure Container Apps and Container App Jobs,
-  synthetic web checks.
+  SharePoint Online, Azure Monitor, Azure Log Query, Azure Container Apps
+  and Container App Jobs, synthetic web checks.
 
 ## Outputs
 
