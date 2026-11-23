@@ -134,7 +134,7 @@ func IncrementOTLPMetricsRelayed(n int) {
 // empty on a healthy agent, and an empty panel reads as "no error" (#972).
 var (
 	OTLPSignals     = []string{"metrics", "logs", "traces"}
-	OTLPDropReasons = []string{"store_cap", "probe_cardinality", "memory_soft_limit", "memory_hard_limit", "staleness", "logs_queue_full", "dropped_by_age", "metrics_queue_full", "metrics_dropped_by_age", "traces_queue_full", "traces_dropped_by_age", "receiver_rejected", "record_too_large"}
+	OTLPDropReasons = []string{"store_cap", "probe_cardinality", "memory_soft_limit", "memory_hard_limit", "staleness", "logs_queue_full", "dropped_by_age", "metrics_queue_full", "metrics_dropped_by_age", "traces_queue_full", "traces_dropped_by_age", "queue_write_failed", "receiver_rejected", "record_too_large"}
 )
 
 // IncrementOTLPExportErrors records one failed export (after retry

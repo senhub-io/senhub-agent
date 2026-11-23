@@ -85,6 +85,8 @@ func newWireChannel(signal string, queue *wireQueue, ordered, countErrors bool, 
 func (c *wireChannel) export(ctx context.Context, op wireOp) error {
 	attempt := true
 	switch {
+	case c.ordered && c.queue.hasFiles():
+		attempt = false
 	case c.stopping.Load():
 		if !c.knownUp() {
 			attempt = false
@@ -93,8 +95,6 @@ func (c *wireChannel) export(ctx context.Context, op wireOp) error {
 			ctx, cancel = context.WithTimeout(ctx, time.Duration(c.drainTimeout.Load()))
 			defer cancel()
 		}
-	case c.ordered && c.queue.hasFiles():
-		attempt = false
 	case c.backendDown():
 		if !c.claimAttempt() {
 			attempt = false
@@ -168,15 +168,22 @@ func (c *wireChannel) persist(ctx context.Context, op wireOp, attempted bool) bo
 		err = c.queue.enqueue(request, op.units())
 	}
 	if err != nil {
-		if c.logger != nil {
-			c.logger.Warn().Err(err).Int("units", op.units()).
-				Msg("OTLP " + c.signal + " queue: could not keep the request; its data is lost")
-		}
-		c.lostUnits.Add(int64(op.units()))
+		c.lose(err, op.units())
 		return false
 	}
 	c.fireQueued()
 	return true
+}
+
+// lose accounts for units that could not be kept: counted as dropped, and
+// warned about at most once a minute.
+func (c *wireChannel) lose(err error, units int) {
+	c.lostUnits.Add(int64(units))
+	agentstate.AddOTLPDropped("queue_write_failed", units)
+	c.warnThrottled(func(ev *zerolog.Event) {
+		ev.Err(err).Int("units", units).
+			Msg("OTLP " + c.signal + " queue: could not keep the request; its data is lost")
+	})
 }
 
 // persistRequest keeps a request that is already serialized, for the relays,
@@ -186,11 +193,7 @@ func (c *wireChannel) persistRequest(request []byte, units int) bool {
 		return true
 	}
 	if err := c.queue.enqueue(request, units); err != nil {
-		if c.logger != nil {
-			c.logger.Warn().Err(err).Int("units", units).
-				Msg("OTLP " + c.signal + " queue: could not keep the request; its data is lost")
-		}
-		c.lostUnits.Add(int64(units))
+		c.lose(err, units)
 		return false
 	}
 	c.fireQueued()
@@ -209,12 +212,12 @@ const (
 // whether to try the network, with the same rules.
 func (c *wireChannel) relayAdmit() relayDecision {
 	switch {
+	case c.ordered && c.queue.hasFiles():
+		return relayKeep
 	case c.stopping.Load():
 		if c.knownUp() {
 			return relaySend
 		}
-		return relayKeep
-	case c.ordered && c.queue.hasFiles():
 		return relayKeep
 	case c.backendDown() && !c.claimAttempt():
 		return relayKeep
@@ -242,7 +245,7 @@ func (c *wireChannel) relayResult(err error, request func() ([]byte, error), uni
 func (c *wireChannel) keepRelayed(request func() ([]byte, error), units int) bool {
 	b, err := request()
 	if err != nil {
-		c.lostUnits.Add(int64(units))
+		c.lose(err, units)
 		return false
 	}
 	return c.persistRequest(b, units)
