@@ -43,6 +43,21 @@ type LogRecord struct {
 	// step 1b).
 	Fields map[string]any
 
+	// EventName is the OTel event.name of the record; empty for an
+	// ordinary log line.
+	EventName string
+
+	// ObservedTimestamp is when the agent emitted the record, as opposed to
+	// Timestamp, the time of the fact it reports. Zero means the same as
+	// Timestamp.
+	ObservedTimestamp time.Time
+
+	// TypedAttributes carries attributes whose value is not a string
+	// (int64, float64, bool). A key present here replaces the same key of
+	// Attributes on the OTLP wire; consumers that only know strings keep
+	// reading the string form a producer also put in Attributes.
+	TypedAttributes map[string]any
+
 	// ProducerProbeName / ProducerProbeType identify the probe that
 	// produced this record. Used by the strategy to populate the
 	// service.instance.id-equivalent attribute on the OTel side, and

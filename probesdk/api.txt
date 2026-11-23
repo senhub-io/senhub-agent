@@ -372,13 +372,16 @@ func Publish(rec senhub-agent.go/probesdk/logs.Record)
 alias Record = senhub-agent.go/internal/agent/services/agentstate.LogRecord
   field Attributes map[string]string
   field Body string
+  field EventName string
   field Fields map[string]any
+  field ObservedTimestamp time.Time
   field ProducerProbeName string
   field ProducerProbeType string
   field Severity senhub-agent.go/internal/agent/services/agentstate.LogSeverity
   field SeverityText string
   field TargetStrategies []string
   field Timestamp time.Time
+  field TypedAttributes map[string]any
 alias Severity = senhub-agent.go/internal/agent/services/agentstate.LogSeverity
   underlying uint8
 const SeverityDebug senhub-agent.go/internal/agent/services/agentstate.LogSeverity = 5
@@ -553,13 +556,16 @@ type senhub-agent.go/internal/agent/probes/types.Probe interface
 type senhub-agent.go/internal/agent/services/agentstate.LogRecord struct
   field Attributes map[string]string
   field Body string
+  field EventName string
   field Fields map[string]any
+  field ObservedTimestamp time.Time
   field ProducerProbeName string
   field ProducerProbeType string
   field Severity senhub-agent.go/internal/agent/services/agentstate.LogSeverity
   field SeverityText string
   field TargetStrategies []string
   field Timestamp time.Time
+  field TypedAttributes map[string]any
 type senhub-agent.go/internal/agent/services/agentstate.LogSeverity uint8
   underlying uint8
 type senhub-agent.go/internal/agent/services/configuration.AutoUpdateConfig struct
@@ -575,12 +581,16 @@ type senhub-agent.go/internal/agent/services/configuration.EntitiesConfig struct
   field Aggregation *senhub-agent.go/internal/agent/services/configuration.EntitiesAggregationConfig `yaml:"aggregation,omitempty"`
   field DependsOn *senhub-agent.go/internal/agent/services/configuration.EntitiesDependsOnConfig `yaml:"depends_on,omitempty"`
   field Enabled bool `yaml:"enabled"`
+  field InboundCallers *senhub-agent.go/internal/agent/services/configuration.EntitiesInboundCallersConfig `yaml:"inbound_callers,omitempty"`
   field Interval string `yaml:"interval,omitempty"`
   field Neighbors *senhub-agent.go/internal/agent/services/configuration.EntitiesNeighborsConfig `yaml:"neighbors,omitempty"`
 type senhub-agent.go/internal/agent/services/configuration.EntitiesDependsOnConfig struct
   field Debounce int `yaml:"debounce,omitempty"`
   field Enabled bool `yaml:"enabled"`
   field ExcludeCIDRs []string `yaml:"exclude_cidrs,omitempty"`
+type senhub-agent.go/internal/agent/services/configuration.EntitiesInboundCallersConfig struct
+  field Enabled bool `yaml:"enabled"`
+  field PublicAddresses string `yaml:"public_addresses,omitempty"`
 type senhub-agent.go/internal/agent/services/configuration.EntitiesNeighborsConfig struct
   field Enabled bool `yaml:"enabled"`
   field ResolvesTo bool `yaml:"resolves_to,omitempty"`

@@ -69,6 +69,19 @@ type EntitiesConfig struct {
 	// (aggregated_into). Off by default: a Toise older than the relation
 	// rejects it.
 	Aggregation *EntitiesAggregationConfig `yaml:"aggregation,omitempty"`
+	// InboundCallers reports who connects to this host's listeners as OTLP
+	// log records and one metric, never as entities. Off by default: which
+	// clients reach a host can be sensitive.
+	InboundCallers *EntitiesInboundCallersConfig `yaml:"inbound_callers,omitempty"`
+}
+
+// EntitiesInboundCallersConfig is the inbound-callers log report.
+type EntitiesInboundCallersConfig struct {
+	Enabled bool `yaml:"enabled"`
+	// PublicAddresses is what leaves the host about a caller whose address is
+	// public: "clear" (default), "truncated" (the /24 or /48 only) or "count"
+	// (counted, never reported).
+	PublicAddresses string `yaml:"public_addresses,omitempty"`
 }
 
 type EntitiesAggregationConfig struct {

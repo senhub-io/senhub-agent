@@ -66,15 +66,19 @@ const (
 )
 
 // persistedLogRecord is the JSON projection of one event log.Record.
-// Only string-valued bodies/attributes are represented — the only shape
-// the event-log path produces (see logsPipeline.emit).
+// The body is a string; attributes are strings, integers or floats, the
+// shapes logsPipeline.emit produces.
 type persistedLogRecord struct {
-	TimestampUnixNano         int64             `json:"ts"`
-	ObservedTimestampUnixNano int64             `json:"obs_ts,omitempty"`
-	SeverityNumber            int               `json:"sev"`
-	SeverityText              string            `json:"sev_text,omitempty"`
-	Body                      string            `json:"body"`
-	Attributes                map[string]string `json:"attrs,omitempty"`
+	TimestampUnixNano         int64              `json:"ts"`
+	ObservedTimestampUnixNano int64              `json:"obs_ts,omitempty"`
+	SeverityNumber            int                `json:"sev"`
+	SeverityText              string             `json:"sev_text,omitempty"`
+	Body                      string             `json:"body"`
+	Attributes                map[string]string  `json:"attrs,omitempty"`
+	EventName                 string             `json:"event,omitempty"`
+	IntAttributes             map[string]int64   `json:"int_attrs,omitempty"`
+	FloatAttributes           map[string]float64 `json:"float_attrs,omitempty"`
+	BoolAttributes            map[string]bool    `json:"bool_attrs,omitempty"`
 }
 
 // logBatch is the on-disk envelope (one file per failed export batch).
@@ -100,11 +104,31 @@ func serializeEventLog(r sdklog.Record) (persistedLogRecord, bool) {
 	if obs := r.ObservedTimestamp(); !obs.IsZero() {
 		out.ObservedTimestampUnixNano = obs.UnixNano()
 	}
+	out.EventName = r.EventName()
 	r.WalkAttributes(func(kv attribute.KeyValue) bool {
-		if out.Attributes == nil {
-			out.Attributes = map[string]string{}
+		key := string(kv.Key)
+		switch kv.Value.Type() {
+		case attribute.INT64:
+			if out.IntAttributes == nil {
+				out.IntAttributes = map[string]int64{}
+			}
+			out.IntAttributes[key] = kv.Value.AsInt64()
+		case attribute.FLOAT64:
+			if out.FloatAttributes == nil {
+				out.FloatAttributes = map[string]float64{}
+			}
+			out.FloatAttributes[key] = kv.Value.AsFloat64()
+		case attribute.BOOL:
+			if out.BoolAttributes == nil {
+				out.BoolAttributes = map[string]bool{}
+			}
+			out.BoolAttributes[key] = kv.Value.AsBool()
+		default:
+			if out.Attributes == nil {
+				out.Attributes = map[string]string{}
+			}
+			out.Attributes[key] = kv.Value.AsString()
 		}
-		out.Attributes[string(kv.Key)] = kv.Value.AsString()
 		return true
 	})
 	return out, true

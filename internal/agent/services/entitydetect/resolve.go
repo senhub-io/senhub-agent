@@ -57,6 +57,13 @@ func Resolve(global *configuration.EntitiesConfig, storage []configuration.Stora
 		if a := e.Aggregation; a != nil {
 			cfg.AggregationEnabled = a.Enabled
 		}
+		if c := e.InboundCallers; c != nil {
+			// The records ride the OTLP log signal: without an OTLP output
+			// that sends logs there is nobody to read them, and the socket
+			// table is not worth reading for it.
+			cfg.InboundCallersEnabled = c.Enabled && otlpLogsOn(storage)
+			cfg.InboundPublicAddresses = c.PublicAddresses
+		}
 		return cfg
 	}
 
@@ -110,6 +117,23 @@ func applyOTLPFallback(cfg *Config, storage []configuration.StorageConfig) {
 		}
 		return
 	}
+}
+
+// otlpLogsOn reports whether an OTLP output sends logs: the logs signal is on
+// unless the output turns it off.
+func otlpLogsOn(storage []configuration.StorageConfig) bool {
+	for _, s := range storage {
+		if s.Name != "otlp" {
+			continue
+		}
+		signals, _ := s.Params["signals"].(map[string]interface{})
+		logs, _ := signals["logs"].(map[string]interface{})
+		if enabled, ok := logs["enabled"].(bool); ok && !enabled {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // parseCIDRs drops what does not parse rather than refusing the whole

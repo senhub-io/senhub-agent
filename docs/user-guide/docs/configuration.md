@@ -99,6 +99,9 @@ entities:
     enabled: false
     debounce: 3
     exclude_cidrs: ["10.50.0.0/16"]
+  inbound_callers:
+    enabled: false
+    public_addresses: clear
 ```
 
 | Parameter | Default | Description |
@@ -108,6 +111,8 @@ entities:
 | `depends_on.enabled` | `false` | Also map this host's outbound dependencies. Off by default because which peers a host talks to can be sensitive |
 | `depends_on.debounce` | `3` | How many scrapes must have seen a peer before it counts as a dependency rather than a passing connection. The scrapes need not be consecutive: a peer keeps its progress across up to 15 scrapes without being seen (or `debounce`, if larger). The delay before one appears is at least `debounce × interval` |
 | `depends_on.exclude_cidrs` | none | Peer ranges to leave out entirely |
+| `inbound_callers.enabled` | `false` | Report who connects to this host's listeners, as OTLP **log records** and one metric, not as entities: the callers are workstations, clients and external addresses, which belong in the log store and not in the topology. Needs `enabled: true` above (the detector cycle is the clock of the socket read), an `otlp` output whose logs signal is on. It reads addresses, not processes, so it needs no privilege beyond reading the socket table. Off by default because which clients reach a host can be sensitive. Details below |
+| `inbound_callers.public_addresses` | `clear` | What leaves the host about a caller whose address is public: `clear` reports it, `truncated` reports only its /24 (IPv4) or /48 (IPv6) in `senhub.listener.caller.address.prefix` and no `client.address`, `count` only counts it and writes no record. Any other value is read as `count`. Private, CGNAT and unique-local addresses are always reported in clear |
 | `neighbors.enabled` | `false` | Also report the hosts and devices this host sees in its ARP/NDP table, as `network.neighbor` entities (identity: this host and the neighbour MAC address, `AA-BB-CC-DD-EE-FF`), each linked to the local interface it was seen on. Neighbours seen only on link-local addresses or on the default Docker/Podman bridge ranges are left out. Off by default: the receiving Toise must know the `network.neighbor` type, or it rejects these entities |
 | `neighbors.resolves_to` | `false` | Also link a neighbour to the interface that owns its MAC (`resolves_to`, with a `basis` of `arp`, `ndp` or `fdb` and a `confidence`), only when this agent observed both ends: the host's gateway neighbour to the router interface its own `snmp_poll` read, and the host's own MAC learned on a switch port to the host's interface. Another host's MAC is never resolved. This is what lets a path descend from a host to its switch port. Off by default: the receiving Toise must accept the relation's attributes |
 | `aggregation.enabled` | `false` | Link each member port of an Ethernet aggregate (LAG / LACP port-channel, Linux bond or team) to its aggregate interface (`aggregated_into`), on the host and on SNMP devices. The aggregate carries `senhub.interface.aggregation.mode` (`lacp`, `active-backup`, `static`); a member carries `senhub.interface.aggregation.state` (`active`, `standby`) only where the aggregate has a backup notion (LACP, active-backup). Addresses and routes sit on the aggregate while LLDP and switch tables see the members: without this link a path stops at every aggregate. Off by default: the receiving Toise must register the relation |
@@ -125,6 +130,10 @@ family between its interfaces (kernel switches on Linux, IP helper API on
 Windows), each absent when it could not be read: a path crosses a host only
 when it routes the path's address family, so a multi-homed server is not drawn
 as a gateway.
+
+**Inbound callers.** With `inbound_callers.enabled`, each established connection to a listening port of the host is attributed to the listener (`service.endpoint`, the same value as the `service.listener` entity) and to the caller's address, never to its port. Three log events are sent: `senhub.listener.caller.seen` when a caller has been observed on `depends_on.debounce` reads (timestamped at its first read), `senhub.listener.caller.gone` when it has been missing for the same tolerance as a dependency (timestamped at its last read, with `senhub.listener.caller.presence.duration` in seconds), and `senhub.listener.caller.activity`, one per caller every 15 minutes, with `senhub.listener.caller.connection.observed` (distinct connections seen in the window), `senhub.listener.caller.connection.max` (most open at one read) and `senhub.listener.caller.window.duration`. Every record also carries `server.port`, `network.type` and `senhub.listener.caller.connection.count`, the connections open at the read that triggered it (0 on `gone`); the resource carries `host.id`. At most 32 callers per listener are reported: the set is frozen once full, and a place freed by a caller that went away goes to the candidate that appeared first, then by address.
+
+The metric `senhub.listener.caller.count` (unit `{address}`) is the number of distinct caller addresses of a listener at the last read, per `senhub.listener.caller.class`: `emitted` (reported, or about to be once the debounce is met; public addresses in `clear` and `truncated` modes included), `over_cap` (beyond the 32), `public` (public addresses in `count` mode only) and `local` (loopback, link-local, wildcard, the default Docker and Podman bridges, and any caller that reaches the host through a container bridge, veth or CNI interface or sits in the network of one: never reported). The four classes add up to the distinct addresses. The 32 and the 15 minutes are fixed. Nothing is sent to the topology backend.
 
 A loopback peer on an OS dynamic port (the client side of a one-shot local exchange) is never mapped as a dependency, whatever these settings say (since 0.6.2).
 

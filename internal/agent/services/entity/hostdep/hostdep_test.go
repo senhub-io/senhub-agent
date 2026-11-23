@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 	"testing"
+	"time"
 
 	gnet "github.com/shirou/gopsutil/v3/net"
 
@@ -686,5 +687,78 @@ func TestParsePortRange(t *testing.T) {
 		if _, _, ok := parsePortRange(bad); ok {
 			t.Errorf("%q must be rejected", bad)
 		}
+	}
+}
+
+func TestInboundSinkGetsTheRowsOfTheSameRead(t *testing.T) {
+	rows := []gnet.ConnectionStat{
+		conn(statusListen, "0.0.0.0", 443, "", 0, 100),
+		conn(statusEstablished, "10.0.0.5", 443, "198.51.100.7", 51000, 100),
+		conn(statusEstablished, "10.0.0.5", 443, "198.51.100.8", 51001, 100),
+		conn(statusEstablished, "10.0.0.5", 40000, "203.0.113.9", 5432, 100), // outbound
+		conn(statusListen, "0.0.0.0", 22, "", 0, 100),
+	}
+	s := newTestSource(rows)
+	reads := 0
+	s.connections = func(string) ([]gnet.ConnectionStat, error) { reads++; return rows, nil }
+	var got []InboundRow
+	var gotHost string
+	s.SetInboundSink(func(hostID string, r []InboundRow, _ time.Time) { gotHost, got = hostID, r })
+
+	if _, ok := s.Observe(); !ok {
+		t.Fatal("Observe ok=false")
+	}
+	if reads != 1 {
+		t.Errorf("%d socket reads, want one shared read", reads)
+	}
+	if gotHost != "h-1" || len(got) != 2 {
+		t.Fatalf("host=%q rows=%+v, want the two inbound rows", gotHost, got)
+	}
+	for _, r := range got {
+		if r.LocalPort != 443 || r.LocalIP != "10.0.0.5" {
+			t.Errorf("row = %+v", r)
+		}
+	}
+}
+
+func TestInboundSinkNotCalledOnAFailedRead(t *testing.T) {
+	s := newTestSource(nil)
+	s.connections = func(string) ([]gnet.ConnectionStat, error) { return nil, errors.New("denied") }
+	called := false
+	s.SetInboundSink(func(string, []InboundRow, time.Time) { called = true })
+	if _, ok := s.Observe(); ok || called {
+		t.Fatalf("ok=%v sink called=%v on a failed read", ok, called)
+	}
+}
+
+func TestDisableOutboundKeepsTheInboundRows(t *testing.T) {
+	rows := []gnet.ConnectionStat{
+		conn(statusListen, "0.0.0.0", 443, "", 0, 100),
+		conn(statusEstablished, "10.0.0.5", 443, "198.51.100.7", 51000, 100),
+		conn(statusEstablished, "10.0.0.5", 40000, "203.0.113.9", 5432, 100),
+	}
+	s := New(func() string { return "h-1" }, 1, nil)
+	s.connections = fakeConns(rows)
+	s.procName = func(int32) string { return "app" }
+	n := 0
+	s.SetInboundSink(func(_ string, r []InboundRow, _ time.Time) { n = len(r) })
+	s.DisableOutbound()
+
+	obs, ok := s.Observe()
+	if !ok || n != 1 {
+		t.Fatalf("ok=%v inbound rows=%d", ok, n)
+	}
+	if len(obs.Entities) != 0 || len(obs.Relations) != 0 {
+		t.Errorf("outbound disabled but the source emitted %+v", obs)
+	}
+}
+
+func TestWithoutASinkNothingIsCollected(t *testing.T) {
+	s := newTestSource([]gnet.ConnectionStat{
+		conn(statusListen, "0.0.0.0", 443, "", 0, 100),
+		conn(statusEstablished, "10.0.0.5", 443, "198.51.100.7", 51000, 100),
+	})
+	if _, ok := s.Observe(); !ok || s.inbound != nil {
+		t.Fatal("the inbound path must be inert without a sink")
 	}
 }

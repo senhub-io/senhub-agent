@@ -11,4 +11,6 @@ Nothing released yet since 0.7.1. Changes land here as they are merged.
 
 - **The network probe reports host TCP counters.** Connections by state, connections opened, failed and reset, retransmitted segments, resets sent and, on Linux, listen queue overflows, for the whole host. They are on by default; `tcp_stats: false` leaves only the per-interface metrics. On Linux the connection counts come from the kernel socket table and need no extra privilege; on Windows the counters come from the IP Helper API, without listen overflows.
 
+- **Inbound callers of local listeners, in the logs.** With `entities.inbound_callers.enabled` (off by default, needs an OTLP output that sends logs), the agent reports which addresses connect to each listener of the host as log records `senhub.listener.caller.seen`, `.gone` and a 15-minute `.activity`, and as the metric `senhub.listener.caller.count`. Callers are never sent to the topology. Public addresses are reported in clear by default; `inbound_callers.public_addresses` keeps only their /24 or /48, or only counts them. See [Configuration](configuration.md#entities-section).
+
 <div class="rn-filter"></div>
