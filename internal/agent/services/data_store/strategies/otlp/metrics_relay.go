@@ -152,7 +152,7 @@ func (f *httpMetricBatchForwarder) forward(ctx context.Context, rm []*metricpb.R
 	// invisible from here (#819).
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("POST %s: unexpected status %d", f.url, resp.StatusCode)
+		return relayStatusError(f.url, resp)
 	}
 	var answer collectormetricspb.ExportMetricsServiceResponse
 	if proto.Unmarshal(respBody, &answer) == nil {
@@ -347,25 +347,38 @@ func (r *metricsRelay) export(rm []*metricpb.ResourceMetrics, points int) {
 		return
 	}
 
+	started := time.Now()
+	if r.queue != nil {
+		started = r.queue.now()
+	}
 	if err := r.forwarder.forward(ctx, rm); err != nil {
-		agentstate.IncrementOTLPExportErrors("metrics")
-		if r.queue != nil && r.queue.relayResult(err, marshal, points) {
+		var kept, throttled bool
+		if r.queue != nil {
+			kept, throttled = r.queue.relayResult(err, marshal, points)
+		}
+		if !throttled {
+			agentstate.IncrementOTLPExportErrors("metrics")
+		}
+		switch {
+		case kept && throttled:
+			r.logger.Debug().Int("points", points).Msg("OTLP metric relay: backend is throttling; batch kept on disk for replay")
+		case kept:
 			r.logger.Warn().
 				Str("error", redactSensitive(err.Error())).
 				Int("resource_metrics", len(rm)).
 				Int("points", points).
 				Msg("OTLP metric relay export failed; batch kept on disk for replay")
-			return
+		default:
+			r.logger.Warn().
+				Str("error", redactSensitive(err.Error())).
+				Int("resource_metrics", len(rm)).
+				Int("points", points).
+				Msg("OTLP metric relay export failed; batch dropped")
 		}
-		r.logger.Warn().
-			Str("error", redactSensitive(err.Error())).
-			Int("resource_metrics", len(rm)).
-			Int("points", points).
-			Msg("OTLP metric relay export failed; batch dropped")
 		return
 	}
 	if r.queue != nil {
-		r.queue.markSuccess()
+		r.queue.markSuccessSince(started)
 	}
 	agentstate.IncrementOTLPMetricsRelayed(points)
 	r.logger.Debug().

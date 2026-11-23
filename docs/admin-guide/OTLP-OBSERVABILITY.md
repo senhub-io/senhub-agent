@@ -74,6 +74,15 @@ Counter maps (`dropped_by_reason`, `checkpoint.errors_by_stage`) are always retu
 | `memory_soft_limit` | `runtime.MemStats.HeapAlloc` crossed `memory_limit.soft_mib` (default 200 MiB). The exporter drops new series under soft pressure but keeps updating existing ones. |
 | `memory_hard_limit` | Same, for `memory_limit.hard_mib` (default 400 MiB). At this stage **all** new and existing inserts are dropped until pressure recedes. |
 
+### Throttling and queue counters
+
+These are self-metrics only (not fields of `/info/otlp`).
+
+| Metric | Meaning |
+|---|---|
+| `senhub.agent.otlp.throttled{signal=…}` | Exports the backend answered with a throttle hint (HTTP 429/503 `Retry-After`, gRPC `RetryInfo`), per signal (`metrics`, `logs`, `traces`), from 0. The agent kept the data on disk and waited (at most 10 minutes); it is not counted in `export.errors`. |
+| `senhub.agent.otlp.queue.{records,bytes,queued,replayed}{signal=…}` | Depth and traffic of the request queues: `metrics`, `traces`, and `logs_relay` for relayed third-party logs. |
+
 ### `store`
 
 | Field | Type | Source | Meaning |

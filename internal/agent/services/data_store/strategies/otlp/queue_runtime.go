@@ -2,6 +2,7 @@ package otlp
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -51,6 +52,21 @@ type exporterHealth struct {
 	// flush every few seconds; one warning per interval is enough to
 	// surface a dying pipeline without flooding the journal (#821).
 	lastFailWarnNs atomic.Int64
+
+	// hints is the throttle hint the signal's transport saw; nil when the
+	// transport has no hook (the relays carry theirs in the error).
+	hints *hintSink
+	// throttledUntilNs is when the server asked the agent to try again, as
+	// a unix time; live exports and replay probes both wait for it.
+	throttledUntilNs atomic.Int64
+	// throttleNotedNs is when the latest hint was noted.
+	throttleNotedNs atomic.Int64
+	// throttled is set for the length of one throttling episode: from the
+	// first hint until an export is acknowledged. It keeps the episode to
+	// one warning however many batches the server turns away.
+	throttled atomic.Bool
+	// capWarned keeps the "hint above the cap" warning to once per episode.
+	capWarned atomic.Bool
 
 	// recovering keeps one recovery callback in flight, whatever the backend's
 	// flapping; recoverWG lets the replayer wait for it at stop, and
@@ -117,7 +133,7 @@ func (h *exporterHealth) knownUp() bool {
 
 // claimAttempt lets one live export through per probeInterval after a failure.
 func (h *exporterHealth) claimAttempt() bool {
-	if h.stopping.Load() {
+	if h.stopping.Load() || h.throttleRemaining() > 0 {
 		return false
 	}
 	now := h.now().UnixNano()
@@ -128,9 +144,22 @@ func (h *exporterHealth) claimAttempt() bool {
 	return h.lastFailureNs.CompareAndSwap(last, now)
 }
 
-func (h *exporterHealth) markSuccess() {
+func (h *exporterHealth) markSuccess() { h.markSuccessSince(h.now()) }
+
+// markSuccessSince records an acknowledged export that began at started. An
+// export that began before the server's hint was noted does not lift the
+// wait the hint asked for: it was already in flight when the server said
+// slow down, so it proves nothing about the pace the server now wants. Live
+// exports stay held and newer batches do not overtake the backlog.
+func (h *exporterHealth) markSuccessSince(started time.Time) {
 	agentstate.RecordExportSuccess(h.successKey)
 	h.lastSuccessNs.Store(h.now().UnixNano())
+	if noted := h.throttleNotedNs.Load(); noted != 0 && started.UnixNano() < noted && h.throttleRemaining() > 0 {
+		return
+	}
+	h.throttledUntilNs.Store(0)
+	h.throttled.Store(false)
+	h.capWarned.Store(false)
 	// Export succeeded: if we were unhealthy, the backend just recovered.
 	if h.healthy.CompareAndSwap(false, true) {
 		h.runRecovered()
@@ -157,6 +186,67 @@ func (h *exporterHealth) runRecovered() {
 func (h *exporterHealth) closeRecovery() {
 	h.recoveryClosed.Store(true)
 	h.recoverWG.Wait()
+}
+
+// signalName is the signal this health belongs to, from its success key.
+func (h *exporterHealth) signalName() string {
+	return strings.TrimPrefix(h.successKey, "otlp/")
+}
+
+// throttleRemaining is how long the server asked the agent to wait still.
+func (h *exporterHealth) throttleRemaining() time.Duration {
+	until := h.throttledUntilNs.Load()
+	if until == 0 {
+		return 0
+	}
+	if d := time.Duration(until - h.now().UnixNano()); d > 0 {
+		return d
+	}
+	return 0
+}
+
+// noteThrottle reads the server's hint out of a failed export (the error
+// itself, or what the transport saw) and, when there is one, holds every
+// further attempt until it has passed. It reports whether the failure was a
+// throttle. The wait is capped at maxThrottleHint. The counter moves once
+// per throttled export; the warning once per episode.
+func (h *exporterHealth) noteThrottle(err error) bool {
+	now := h.now()
+	var wait time.Duration
+	if te, ok := asThrottled(err); ok && te.wait > wait {
+		wait = te.wait
+	}
+	if d, ok := retryInfoDelay(err); ok && d > wait {
+		wait = d
+	}
+	if d := h.hints.remaining(now); d > wait {
+		wait = d
+	}
+	if wait <= 0 {
+		return false
+	}
+	asked := wait
+	if wait > maxThrottleHint {
+		wait = maxThrottleHint
+		if h.logger != nil && h.capWarned.CompareAndSwap(false, true) {
+			h.logger.Warn().Str("signal", h.signalName()).Dur("asked", asked).Dur("applied", wait).
+				Msg("OTLP backend asked for a longer wait than the agent allows; the wait is capped")
+		}
+	}
+	until := now.Add(wait).UnixNano()
+	for {
+		cur := h.throttledUntilNs.Load()
+		if until <= cur || h.throttledUntilNs.CompareAndSwap(cur, until) {
+			break
+		}
+	}
+	h.throttleNotedNs.Store(now.UnixNano())
+	agentstate.IncrementOTLPThrottled(h.signalName())
+	if h.throttled.CompareAndSwap(false, true) && h.logger != nil {
+		h.logger.Warn().Str("signal", h.signalName()).Dur("retry_after", wait).
+			Msg("OTLP backend is throttling this signal; new data is kept on disk and sent again when the wait is over")
+	}
+	return true
 }
 
 func (h *exporterHealth) markFailure() {
@@ -207,6 +297,10 @@ type replayLoop struct {
 	// probing is true while the loop owns the retry clock for a non-empty
 	// queue; a batch queued meanwhile does not restart it.
 	probing atomic.Bool
+
+	// hold returns how long the server asked the agent to wait still; the
+	// loop never probes before it has passed. Nil means no hint source.
+	hold func() time.Duration
 
 	firstDelay time.Duration
 	maxDelay   time.Duration
@@ -293,6 +387,16 @@ func nextReplayDelay(cur, first, max time.Duration, failed bool) time.Duration {
 	return cur
 }
 
+// armed is the retry gap, stretched to the server's hint when that is longer.
+func (r *replayLoop) armed(delay time.Duration) time.Duration {
+	if r.hold != nil {
+		if w := r.hold(); w > delay {
+			return w
+		}
+	}
+	return delay
+}
+
 func (r *replayLoop) loop() {
 	defer r.wg.Done()
 	delay := r.firstDelay
@@ -303,7 +407,7 @@ func (r *replayLoop) loop() {
 	}
 	// tick is armed once per state change, so a stray wake never pushes
 	// the pending probe back.
-	tick := r.after(delay)
+	tick := r.after(r.armed(delay))
 	for {
 		select {
 		case <-r.quit:
@@ -313,9 +417,17 @@ func (r *replayLoop) loop() {
 				continue
 			}
 			delay = r.firstDelay
-			tick = r.after(delay)
+			tick = r.after(r.armed(delay))
 			continue
 		case <-tick:
+		}
+		// A hint can arrive while the clock runs (a live export was
+		// throttled): the probe waits for it too.
+		if r.hold != nil {
+			if w := r.hold(); w > 0 {
+				tick = r.after(w)
+				continue
+			}
 		}
 
 		if n, waited := r.pending(); n > 0 && r.logger != nil {
@@ -330,6 +442,6 @@ func (r *replayLoop) loop() {
 			r.probing.Store(false)
 			delay = r.maxDelay
 		}
-		tick = r.after(delay)
+		tick = r.after(r.armed(delay))
 	}
 }

@@ -83,6 +83,7 @@ func newWireChannel(signal string, queue *wireQueue, ordered, countErrors bool, 
 
 // export runs one export through the queue: delivered, or kept on disk.
 func (c *wireChannel) export(ctx context.Context, op wireOp) error {
+	started := c.now()
 	attempt := true
 	switch {
 	case c.ordered && c.queue.hasFiles():
@@ -127,15 +128,17 @@ func (c *wireChannel) export(ctx context.Context, op wireOp) error {
 
 	err := c.reporter.reportRejections(op.send(ctx))
 	if err == nil {
-		c.markSuccess()
+		c.markSuccessSince(started)
 		return nil
 	}
 
-	if c.countErrors {
+	retryable := exporterrors.IsRetryable(classifyExportError(err))
+	throttled := retryable && c.noteThrottle(err)
+	if c.countErrors && !throttled {
 		agentstate.IncrementOTLPExportErrors(c.signal)
 		agentstate.RecordExportFailure("otlp/"+c.signal, redactSensitive(err.Error()))
 	}
-	if !exporterrors.IsRetryable(classifyExportError(err)) {
+	if !retryable {
 		// The receiver refused the payload on its merits: queueing it would
 		// replay the same refusal at every recovery and evict requests that
 		// could still be delivered (#833).
@@ -148,7 +151,16 @@ func (c *wireChannel) export(ctx context.Context, op wireOp) error {
 	}
 
 	c.markFailure()
-	if c.persist(ctx, op, true) {
+	kept := c.persist(ctx, op, true)
+	if throttled {
+		// The episode warning said it, and this is no failure to count:
+		// the request is on disk and the retry clock waits for the hint.
+		if kept {
+			return errExportQueued
+		}
+		return errWireBackendDown
+	}
+	if kept {
 		c.warnThrottled(func(ev *zerolog.Event) {
 			ev.Str("error", redactSensitive(err.Error())).Int("units", op.units()).
 				Msg("OTLP " + c.signal + " export failed; request kept on disk for replay")
@@ -225,20 +237,22 @@ func (c *wireChannel) relayAdmit() relayDecision {
 	return relaySend
 }
 
-// relayResult applies the outcome of a relay's own send. It returns true when
-// the batch was kept on disk and so is not lost.
-func (c *wireChannel) relayResult(err error, request func() ([]byte, error), units int) bool {
+// relayResult applies the outcome of a relay's own send. It reports whether
+// the batch was kept on disk (so is not lost), and whether the failure was a
+// throttle, which the relay counts and logs apart from an outage.
+func (c *wireChannel) relayResult(err error, request func() ([]byte, error), units int) (kept, throttled bool) {
 	err = c.reporter.reportRejections(err)
 	if err == nil {
 		c.markSuccess()
-		return false
+		return false, false
 	}
 	if !exporterrors.IsRetryable(classifyExportError(err)) {
 		agentstate.AddOTLPDropped("receiver_rejected", units)
-		return false
+		return false, false
 	}
+	throttled = c.noteThrottle(err)
 	c.markFailure()
-	return c.keepRelayed(request, units)
+	return c.keepRelayed(request, units), throttled
 }
 
 // keepRelayed serialises and queues a relayed batch.
@@ -255,12 +269,13 @@ func (c *wireChannel) keepRelayed(request func() ([]byte, error), units int) boo
 // is never persisted a second time. A cancelled ctx (the agent is stopping)
 // is not a verdict on the backend.
 func (c *wireChannel) exportDirect(ctx context.Context, request []byte, units int) error {
+	started := c.now()
 	err := c.reporter.reportRejections(c.replaySend(ctx, request))
 	if err == nil {
-		c.markSuccess()
+		c.markSuccessSince(started)
 		return nil
 	}
-	if errors.Is(ctx.Err(), context.Canceled) {
+	if errors.Is(ctx.Err(), context.Canceled) || errors.Is(err, errBatchDiscarded) {
 		return err
 	}
 	if !exporterrors.IsRetryable(classifyExportError(err)) {
@@ -271,7 +286,11 @@ func (c *wireChannel) exportDirect(ctx context.Context, request []byte, units in
 		}
 		return errBatchDiscarded
 	}
+	throttled := c.noteThrottle(err)
 	c.markFailure()
+	if throttled {
+		return &throttledError{err: err, wait: c.throttleRemaining()}
+	}
 	return err
 }
 
@@ -292,6 +311,7 @@ func newWireReplayer(ch *wireChannel, log *logger.ModuleLogger) *wireReplayer {
 	r.run = r.replay
 	r.sweep = func() { ch.queue.sweepAged() }
 	r.afterStop = ch.closeRecovery
+	r.hold = ch.throttleRemaining
 	return r
 }
 
@@ -321,8 +341,13 @@ func (r *wireReplayer) replay() (int, error) {
 		r.logger.Info().Int("units", total).Msg("OTLP " + r.ch.signal + " queue: replayed requests")
 	}
 	if err != nil && r.logger != nil && r.ctx.Err() == nil {
-		r.logger.Warn().Err(err).Int("replayed", total).
-			Msg("OTLP " + r.ch.signal + " queue: replay stopped, the backend did not acknowledge; remaining requests stay on disk")
+		if _, throttled := asThrottled(err); throttled {
+			r.logger.Debug().Err(err).Int("replayed", total).
+				Msg("OTLP " + r.ch.signal + " queue: replay paused, the backend is throttling; remaining requests stay on disk")
+		} else {
+			r.logger.Warn().Err(err).Int("replayed", total).
+				Msg("OTLP " + r.ch.signal + " queue: replay stopped, the backend did not acknowledge; remaining requests stay on disk")
+		}
 	}
 	return total, err
 }

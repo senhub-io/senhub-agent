@@ -60,21 +60,25 @@ func newWireRigCfg(t *testing.T, col *fakeCollector, dir, signal string, maxByte
 	}
 	r := &wireRig{t: t, col: col, signal: signal}
 	log := testModuleLogger(t)
+	hints := newHintSinks()
+	bctx := withHintSinks(context.Background(), hints)
 	if signal == "metrics" {
-		base, err := buildMetricExporter(context.Background(), cfg)
+		base, err := buildMetricExporter(bctx, cfg)
 		if err != nil {
 			t.Fatal(err)
 		}
 		r.q = newWireQueue(metricsQueueKind, dir, maxBytes, log)
 		r.ch = newWireChannel("metrics", r.q, true, false, log)
+		r.ch.hints = hints.metrics
 		r.mexp = newPersistentMetricExporter(base, r.ch)
 	} else {
-		base, err := buildTraceExporter(context.Background(), cfg)
+		base, err := buildTraceExporter(bctx, cfg)
 		if err != nil {
 			t.Fatal(err)
 		}
 		r.q = newWireQueue(tracesQueueKind, dir, maxBytes, log)
 		r.ch = newWireChannel("traces", r.q, false, true, log)
+		r.ch.hints = hints.traces
 		r.sexp = newPersistentSpanExporter(base, r.ch)
 	}
 	r.ch.probeInterval = time.Millisecond

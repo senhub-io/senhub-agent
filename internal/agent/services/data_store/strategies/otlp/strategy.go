@@ -111,6 +111,11 @@ type OTLPSyncStrategy struct {
 	metricsReplayer *wireReplayer
 	tracesChan      *wireChannel
 	tracesReplayer  *wireReplayer
+	// logsRelayChan, logsRelayReplayer are the same for the relayed
+	// (third-party) logs, which are verbatim requests and so cannot use the
+	// SDK-record dead-letter queue.
+	logsRelayChan     *wireChannel
+	logsRelayReplayer *wireReplayer
 	// spanExporter is what the trace pipeline exports through: the queue's
 	// decorator when the queue is on, else the SDK exporter itself.
 	spanExporter sdktrace.SpanExporter
@@ -437,6 +442,7 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 		s.logsQueue.setMaxAge(s.cfg.Persistence.LogsQueueMaxAge)
 		s.logsQueue.announce()
 		logExp = newPersistentLogExporter(s.exporters.log, s.logsQueue, s.logger)
+		logExp.hints = s.exporters.sink("logs")
 		s.exporters.log = logExp
 		s.logExporter = logExp
 	}
@@ -503,6 +509,9 @@ func (s *OTLPSyncStrategy) Start(ctx context.Context) error {
 			s.logger.Warn().Err(relayErr).Msg("OTLP log relay unavailable; ingested logs will not be forwarded")
 		} else {
 			s.logsRelay = relay
+			if queuesUsable && s.cfg.Persistence.logsQueuePath() != "" {
+				s.startLogsRelayQueue(relay)
+			}
 			relay.start()
 		}
 	}
@@ -1141,6 +1150,7 @@ func (s *OTLPSyncStrategy) startMetricsQueue() {
 	if window := 3 * s.cfg.Metrics.Interval; window > ch.recentSuccess {
 		ch.recentSuccess = window
 	}
+	ch.hints = s.exporters.sink("metrics")
 	s.exporters.metric = newPersistentMetricExporter(s.exporters.metric, ch)
 	s.metricsChan = ch
 	s.metricsReplayer = s.startWireReplayer(ch)
@@ -1156,9 +1166,26 @@ func (s *OTLPSyncStrategy) startTracesQueue() {
 	q.setMaxAge(s.cfg.Persistence.TracesQueueMaxAge)
 	q.announce()
 	ch := newWireChannel("traces", q, false, true, s.logger)
+	ch.hints = s.exporters.sink("traces")
 	s.spanExporter = newPersistentSpanExporter(s.exporters.trace, ch)
 	s.tracesChan = ch
 	s.tracesReplayer = s.startWireReplayer(ch)
+}
+
+// startLogsRelayQueue keeps the relayed log batches the backend did not take
+// on disk, in a queue of their own next to the logs dead-letter queue, and
+// replays them in order through the relay's own forwarder. It is sized and
+// aged by the logs queue settings.
+func (s *OTLPSyncStrategy) startLogsRelayQueue(relay *logsRelay) {
+	q := newWireQueue(logsRelayQueueKind, s.cfg.Persistence.logsQueuePath(), s.cfg.Persistence.LogsQueueMaxBytes, s.logger)
+	q.setMaxAge(s.cfg.Persistence.LogsQueueMaxAge)
+	q.announce()
+	ch := newWireChannel("logs_relay", q, false, false, s.logger)
+	ch.successKey = "otlp/logs"
+	ch.replaySend = relay.replay
+	relay.queue = ch
+	s.logsRelayChan = ch
+	s.logsRelayReplayer = s.startWireReplayer(ch)
 }
 
 // startWireReplayer starts the retry clock of one queue and replays what the
@@ -1179,7 +1206,7 @@ func (s *OTLPSyncStrategy) stopWireQueues() {
 	for _, side := range []struct {
 		ch *wireChannel
 		rp **wireReplayer
-	}{{s.metricsChan, &s.metricsReplayer}, {s.tracesChan, &s.tracesReplayer}} {
+	}{{s.metricsChan, &s.metricsReplayer}, {s.tracesChan, &s.tracesReplayer}, {s.logsRelayChan, &s.logsRelayReplayer}} {
 		if side.ch == nil {
 			continue
 		}

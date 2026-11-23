@@ -176,6 +176,42 @@ func GetOTLPExportErrorsBySignal() map[string]uint64 {
 	return out
 }
 
+// otlpThrottled counts the exports a backend answered with a throttle
+// hint (HTTP 429/503 with Retry-After, gRPC RetryInfo), by signal. A
+// throttled backend is up and asking for less: its batches wait on disk and
+// the retry clock honours the hint, so it is not an export error and is
+// counted apart from them.
+var otlpThrottled = struct {
+	mu sync.RWMutex
+	m  map[string]uint64
+}{m: map[string]uint64{}}
+
+// IncrementOTLPThrottled records one export the backend asked the agent to
+// slow down on, for one signal ("metrics", "logs", "traces").
+func IncrementOTLPThrottled(signal string) {
+	if signal == "" {
+		signal = "unknown"
+	}
+	otlpThrottled.mu.Lock()
+	otlpThrottled.m[signal]++
+	otlpThrottled.mu.Unlock()
+}
+
+// GetOTLPThrottledBySignal returns a snapshot copy of the throttle
+// counters, every known signal present from 0.
+func GetOTLPThrottledBySignal() map[string]uint64 {
+	otlpThrottled.mu.RLock()
+	defer otlpThrottled.mu.RUnlock()
+	out := make(map[string]uint64, len(otlpThrottled.m)+len(OTLPSignals))
+	for _, k := range OTLPSignals {
+		out[k] = 0
+	}
+	for k, v := range otlpThrottled.m {
+		out[k] = v
+	}
+	return out
+}
+
 // GetOTLPMetricsPushedTotal / GetOTLPLogsPushedTotal /
 // GetOTLPSpansRelayedTotal / GetOTLPExportErrorsTotal are scrape-time
 // accessors. Read once per scrape by the Prometheus bridge.
@@ -251,9 +287,10 @@ func RecordOTLPLogsQueueSize(records int, bytes int64) {
 	otlpLogsQueueBytes.Store(bytes)
 }
 
-// OTLPQueuedSignals are the signals besides logs that keep failed exports
-// in an on-disk queue.
-var OTLPQueuedSignals = []string{"metrics", "traces"}
+// OTLPQueuedSignals are the request queues besides the logs dead-letter
+// queue: metrics, traces, and the relayed (third-party) logs, which are
+// verbatim requests and cannot share the SDK-record format of that queue.
+var OTLPQueuedSignals = []string{"metrics", "traces", "logs_relay"}
 
 // otlpWireQueue is the depth and traffic of one signal's request queue.
 type otlpWireQueue struct {
@@ -264,8 +301,9 @@ type otlpWireQueue struct {
 }
 
 var otlpWireQueues = map[string]*otlpWireQueue{
-	"metrics": {},
-	"traces":  {},
+	"metrics":    {},
+	"traces":     {},
+	"logs_relay": {},
 }
 
 // OTLPQueueStats is one signal's queue as the scrape sees it.

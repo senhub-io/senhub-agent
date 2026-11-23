@@ -11,13 +11,17 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	collectorlogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	collectormetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	collectortracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // fakeCollector is an in-process OTLP receiver, gRPC or HTTP, that can be
@@ -36,6 +40,15 @@ type fakeCollector struct {
 	encodings []string
 	metrics   []*collectormetricspb.ExportMetricsServiceRequest
 	traces    []*collectortracepb.ExportTraceServiceRequest
+	logs      []*collectorlogspb.ExportLogsServiceRequest
+
+	// While now is before throttleUntil every request is answered with a
+	// throttle: HTTP 429 carrying retryAfter, or gRPC RESOURCE_EXHAUSTED
+	// carrying a RetryInfo of retryDelay.
+	throttleUntil time.Time
+	retryAfter    string
+	retryDelay    time.Duration
+	attemptTimes  []time.Time
 
 	stop func()
 }
@@ -55,6 +68,7 @@ func newFakeCollector(t *testing.T, protocol string) *fakeCollector {
 		srv := grpc.NewServer()
 		collectormetricspb.RegisterMetricsServiceServer(srv, &fakeMetricsService{c: c})
 		collectortracepb.RegisterTraceServiceServer(srv, &fakeTraceService{c: c})
+		collectorlogspb.RegisterLogsServiceServer(srv, &fakeLogsService{c: c})
 		go func() { _ = srv.Serve(lis) }()
 		c.endpoint = lis.Addr().String()
 		c.stop = srv.Stop
@@ -76,6 +90,27 @@ func (c *fakeCollector) acknowledgeOnly(n int) {
 	c.mu.Unlock()
 }
 
+// throttleFor answers every request with a throttle until until. retryAfter
+// is the HTTP header value, retryDelay the gRPC RetryInfo.
+func (c *fakeCollector) throttleFor(until time.Time, retryAfter string, retryDelay time.Duration) {
+	c.mu.Lock()
+	c.throttleUntil, c.retryAfter, c.retryDelay = until, retryAfter, retryDelay
+	c.mu.Unlock()
+}
+
+// attemptsAt is when each request arrived.
+func (c *fakeCollector) attemptsAt() []time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]time.Time(nil), c.attemptTimes...)
+}
+
+func (c *fakeCollector) receivedLogs() []*collectorlogspb.ExportLogsServiceRequest {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]*collectorlogspb.ExportLogsServiceRequest(nil), c.logs...)
+}
+
 func (c *fakeCollector) setReject(r bool) {
 	c.mu.Lock()
 	c.reject = r
@@ -88,9 +123,14 @@ func (c *fakeCollector) attemptCount() int {
 	return c.attempts
 }
 
-// admit decides one request's fate: 0 accepted, 1 down, 2 refused on its merits.
+// admit decides one request's fate: 0 accepted, 1 down, 2 refused on its
+// merits, 3 throttled.
 func (c *fakeCollector) admit() int {
 	c.attempts++
+	c.attemptTimes = append(c.attemptTimes, time.Now())
+	if time.Now().Before(c.throttleUntil) {
+		return 3
+	}
 	if c.reject {
 		return 2
 	}
@@ -179,6 +219,11 @@ func (c *fakeCollector) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			if proto.Unmarshal(body, &req) == nil {
 				c.metrics = append(c.metrics, &req)
 			}
+		case "/v1/logs":
+			var req collectorlogspb.ExportLogsServiceRequest
+			if proto.Unmarshal(body, &req) == nil {
+				c.logs = append(c.logs, &req)
+			}
 		case "/v1/traces":
 			var req collectortracepb.ExportTraceServiceRequest
 			if proto.Unmarshal(body, &req) == nil {
@@ -186,8 +231,12 @@ func (c *fakeCollector) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	retryAfter := c.retryAfter
 	c.mu.Unlock()
 	switch verdict {
+	case 3:
+		w.Header().Set("Retry-After", retryAfter)
+		http.Error(w, "slow down", http.StatusTooManyRequests)
 	case 1:
 		http.Error(w, "down", http.StatusServiceUnavailable)
 	case 2:
@@ -202,6 +251,13 @@ func (c *fakeCollector) grpcVerdict() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	switch c.admit() {
+	case 3:
+		st, err := status.New(codes.ResourceExhausted, "slow down").
+			WithDetails(&errdetails.RetryInfo{RetryDelay: durationpb.New(c.retryDelay)})
+		if err != nil {
+			return status.Error(codes.ResourceExhausted, "slow down")
+		}
+		return st.Err()
 	case 1:
 		return status.Error(codes.Unavailable, "collector down")
 	case 2:
@@ -238,4 +294,19 @@ func (s *fakeTraceService) Export(_ context.Context, req *collectortracepb.Expor
 	s.c.traces = append(s.c.traces, req)
 	s.c.mu.Unlock()
 	return &collectortracepb.ExportTraceServiceResponse{}, nil
+}
+
+type fakeLogsService struct {
+	collectorlogspb.UnimplementedLogsServiceServer
+	c *fakeCollector
+}
+
+func (s *fakeLogsService) Export(_ context.Context, req *collectorlogspb.ExportLogsServiceRequest) (*collectorlogspb.ExportLogsServiceResponse, error) {
+	if err := s.c.grpcVerdict(); err != nil {
+		return nil, err
+	}
+	s.c.mu.Lock()
+	s.c.logs = append(s.c.logs, req)
+	s.c.mu.Unlock()
+	return &collectorlogspb.ExportLogsServiceResponse{}, nil
 }

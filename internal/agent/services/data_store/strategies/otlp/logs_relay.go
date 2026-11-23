@@ -155,7 +155,7 @@ func (f *httpLogBatchForwarder) forward(ctx context.Context, rl []*logspb.Resour
 	// invisible from here (#819).
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("POST %s: unexpected status %d", f.url, resp.StatusCode)
+		return relayStatusError(f.url, resp)
 	}
 	var answer collectorlogspb.ExportLogsServiceResponse
 	if proto.Unmarshal(respBody, &answer) == nil {
@@ -188,6 +188,9 @@ type logsRelay struct {
 	forwarder logBatchForwarder
 	enricher  *relayEnricher
 	logger    *logger.ModuleLogger
+	// queue keeps a batch the backend did not take on disk; nil when the
+	// logs queue is off, in which case a failed batch is dropped.
+	queue *wireChannel
 
 	mu         sync.Mutex
 	subscribed <-chan []*logspb.ResourceLogs
@@ -309,8 +312,9 @@ func countLogRecords(rl []*logspb.ResourceLogs) int {
 }
 
 // export ships one accumulated batch with a bounded per-call timeout. A
-// failed export drops the batch (no retry — best-effort, matching the
-// receive side's drop-oldest posture) and counts an OTLP export error.
+// failed export is kept on disk for replay when the logs queue is on, and
+// dropped otherwise; either way it counts an OTLP export error, unless the
+// backend only asked the agent to slow down.
 func (r *logsRelay) export(rl []*logspb.ResourceLogs, records int) {
 	timeout := r.cfg.Timeout
 	if timeout <= 0 {
@@ -323,20 +327,65 @@ func (r *logsRelay) export(rl []*logspb.ResourceLogs, records int) {
 	// Resource is what makes its records attributable downstream.
 	rl = r.enricher.enrichLogs(rl)
 
-	if err := r.forwarder.forward(ctx, rl); err != nil {
-		agentstate.IncrementOTLPExportErrors("logs")
-		r.logger.Warn().
-			Str("error", redactSensitive(err.Error())).
-			Int("resource_logs", len(rl)).
-			Int("records", records).
-			Msg("OTLP log relay export failed; batch dropped")
+	marshal := func() ([]byte, error) {
+		return proto.Marshal(&collectorlogspb.ExportLogsServiceRequest{ResourceLogs: rl})
+	}
+	if r.queue != nil && r.queue.relayAdmit() == relayKeep {
+		if r.queue.keepRelayed(marshal, records) {
+			r.logger.Debug().Int("records", records).Msg("OTLP log relay: batch kept on disk for replay")
+		}
 		return
+	}
+
+	started := time.Now()
+	if r.queue != nil {
+		started = r.queue.now()
+	}
+	if err := r.forwarder.forward(ctx, rl); err != nil {
+		var kept, throttled bool
+		if r.queue != nil {
+			kept, throttled = r.queue.relayResult(err, marshal, records)
+		}
+		if !throttled {
+			agentstate.IncrementOTLPExportErrors("logs")
+		}
+		switch {
+		case kept && throttled:
+			r.logger.Debug().Int("records", records).Msg("OTLP log relay: backend is throttling; batch kept on disk for replay")
+		case kept:
+			r.logger.Warn().
+				Str("error", redactSensitive(err.Error())).
+				Int("resource_logs", len(rl)).
+				Int("records", records).
+				Msg("OTLP log relay export failed; batch kept on disk for replay")
+		default:
+			r.logger.Warn().
+				Str("error", redactSensitive(err.Error())).
+				Int("resource_logs", len(rl)).
+				Int("records", records).
+				Msg("OTLP log relay export failed; batch dropped")
+		}
+		return
+	}
+	if r.queue != nil {
+		r.queue.markSuccessSince(started)
 	}
 	agentstate.IncrementOTLPLogsRelayed(records)
 	r.logger.Debug().
 		Int("resource_logs", len(rl)).
 		Int("records", records).
 		Msg("OTLP logs relayed")
+}
+
+// replay sends one stored, already enriched request through the relay's own
+// forwarder, so the emitting application's Resource is kept.
+func (r *logsRelay) replay(ctx context.Context, request []byte) error {
+	var req collectorlogspb.ExportLogsServiceRequest
+	if err := proto.Unmarshal(request, &req); err != nil {
+		r.logger.Warn().Err(err).Msg("OTLP log relay: a stored request is unreadable; discarded")
+		return errBatchDiscarded
+	}
+	return r.forwarder.forward(ctx, req.GetResourceLogs())
 }
 
 // stop cancels the drain goroutine, unsubscribes, waits for the final
