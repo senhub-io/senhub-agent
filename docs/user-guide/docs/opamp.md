@@ -98,6 +98,8 @@ If a secret cannot be opened, the whole overlay is refused as `secret_unsealable
 - the value is damaged or sealed for another tenant, agent or revision;
 - the secret store refuses the write.
 
+A key rotation requested by the server for a key the agent does not hold is refused the same way, and the agent does not rotate. An overlay that carries neither sealed values nor a rotation request still applies, so a reinstalled agent stays manageable while its new key waits for approval.
+
 ## Key rotation
 
 The agent changes its key pair by itself:
