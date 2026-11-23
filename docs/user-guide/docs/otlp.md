@@ -227,7 +227,8 @@ refusing to start.
 
 A standby ingress can be listed under `fallback_endpoints`: the agent prefers
 the primary, switches on a failed export and returns on its own once the
-primary recovers. See
+primary recovers. This covers metrics, logs and traces, the relayed signals
+included, and the backlog of each queue is replayed to whichever endpoint is up. See
 [the backpressure guide](https://github.com/senhub-io/senhub-agent/blob/master/docs/admin-guide/BACKPRESSURE.md)
 for the shape and the trade-offs.
 
@@ -621,9 +622,10 @@ removes anything. This is on by default on every install; nothing to set.
 
 While the collector is known to be down, new exports go straight to disk
 and the agent does not try the network for each one. It probes the
-collector on a retry clock of 5, 10, 20, 40, 80 and 160 seconds, then every 5
-minutes; the clock starts again at 5 seconds after the next outage. As soon as
-one export succeeds it sends the backlog, oldest first, stopping at the first
+collector on a retry clock of 5, 10, 20 and 40 seconds, then every 60
+seconds; the clock starts again at 5 seconds after the next outage. As soon as
+one export succeeds, a live one included, it sends the backlog, oldest first,
+stopping at the first
 request the collector does not acknowledge. A probe never holds the agent for
 more than 4 seconds, so a collector that drops packets does not stop the
 exports that have to be written meanwhile.
@@ -687,6 +689,9 @@ Under `otlp-queue/` the queues are the subdirectories `logqueue/`,
 Each queue is bounded two ways: a size cap, past which the oldest requests
 are evicted first, and an age limit (24 hours), swept at boot and every 10
 minutes. Each sweep that drops aged requests logs one warning with the count.
+Eviction by the size cap is reported the same way: one warning per queue and
+per minute, and one at each sweep, carrying the number of batches and
+records, data points or spans evicted since the last one.
 What is dropped is counted in `senhub.agent.otlp.dropped`, in records for
 logs, in data points for metrics and in spans for traces:
 
@@ -696,8 +701,9 @@ logs, in data points for metrics and in spans for traces:
 | Metrics | `metrics_queue_max_bytes` (256 MiB) | `metrics_queue_full` | `metrics_queue_max_age` (24 h) | `metrics_dropped_by_age` |
 | Traces | `traces_queue_max_bytes` (64 MiB) | `traces_queue_full` | `traces_queue_max_age` (24 h) | `traces_dropped_by_age` |
 
-If the directory is not writable the agent logs one warning and runs without
-any of the queues; each signal then keeps the SDK's own retry. A request that a
+If the directory is not writable the agent logs one warning for all the OTLP
+queues together (it names the logs, metrics and traces data that are no longer
+kept) and runs without any of them; each signal then keeps the SDK's own retry. A request that a
 queue could not write (full disk) is counted as `queue_write_failed`.
 
 Sizing the metrics queue. A metrics push is one point per active series, and
