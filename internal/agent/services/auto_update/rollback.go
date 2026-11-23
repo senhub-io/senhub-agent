@@ -212,8 +212,12 @@ func (e rollbackEnv) boot() bootAction {
 
 	if !e.canSwap {
 		if e.requestRollbackThroughRoot(marker) {
+			// The marker stays: the root unit reads it as the proof that the
+			// boot guard of this update is still pending.
 			record.Outcome = OutcomeRequested
-			e.finishRollback(record, path)
+			if err := e.writeRolledBackRecord(record); err != nil {
+				e.log.Warn().Err(err).Msg("failed to write rolled-back record")
+			}
 			return bootRollbackNotPerformed
 		}
 		e.log.Error().
@@ -281,7 +285,11 @@ func (e rollbackEnv) requestRollbackThroughRoot(marker pendingUpdate) bool {
 			Msg("rollback not requested: the version to return to already failed to start on this host")
 		return false
 	}
-	if err := installer.Request(marker.FromVersion); err != nil {
+	rb, ok := installer.(RollbackRequester)
+	if !ok {
+		return false
+	}
+	if err := rb.RequestRollback(); err != nil {
 		e.log.Error().Err(err).Str("from_version", marker.FromVersion).Str("to_version", marker.ToVersion).
 			Msg("rollback not requested: the root update unit refused the request")
 		return false

@@ -454,8 +454,10 @@ The `.deb` and `.rpm` packages ship a second, small systemd unit pair, `senhub-a
 What the root service may do:
 
 - It reads the request only when it is a regular file owned by `senhub`, not writable by anyone else, not a symbolic link, and holds nothing but a version in the form `X.Y.Z` or `X.Y.Z-beta.N`. Anything else is refused. The request is deleted whatever the outcome.
+- It installs only a version strictly higher than the installed one. Going back to an older version is a package manager operation (`apt install senhub-agent-oss=<version>`, `dnf downgrade`), never a request to this unit; a fleet server asking for a lower version on a `.deb` or `.rpm` install is answered `downgrade_not_allowed`, or `not_replaceable` when it allows the downgrade.
+- It picks the archive from the package that owns `/usr/bin/senhub-agent`: `senhub-agent-oss` is updated from the open source archive, `senhub-agent` from the full edition one. A binary no known package owns is refused.
 - It fetches the signed version list of the channel from the SenHub release server (the address built into the agent; the `url` setting is not used), checks its signature, channel and freshness, and refuses a version the list does not publish.
-- It downloads the archive, checks its minisign signature against the key built into the agent, replaces `/usr/bin/senhub-agent` (keeping the previous binary beside it for the automatic rollback), and restarts the service. If the new version does not start, the previous one is put back.
+- It downloads the archive, checks its minisign signature against the key built into the agent, replaces `/usr/bin/senhub-agent` (keeping the previous binary beside it for the automatic rollback), and restarts the service. If the new version does not start, the previous one is put back. When a new version never confirms itself, the service can also ask for a rollback, which carries no version: the unit honours it only for an install it made itself, within ten minutes, while the boot check of that install is still pending, and puts back the copy it kept.
 - It runs with a read-only system except `/usr/bin` and `/var/lib/senhub-agent`, no network family besides IP and Unix sockets, two capabilities, and at most six starts an hour.
 
 Every request and every refusal is written to the journal: `journalctl -u senhub-agent-update.service`.

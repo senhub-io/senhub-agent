@@ -124,6 +124,10 @@ type autoUpdate struct {
 	// The root update unit keeps it in a directory the service cannot write,
 	// so a compromised service cannot lower the floor and replay an old list.
 	seqDir string
+	// archiveBase, when set, names the archive family downloaded
+	// (senhub-agent-oss for the open source edition); empty is the default
+	// archive.
+	archiveBase string
 	// launchInstaller runs the staged MSI. Nil in production (the real msiexec
 	// launch is used); injected by tests to assert applyMsiUpdate orchestration
 	// without spawning a process.
@@ -1097,6 +1101,9 @@ func (a *autoUpdate) GetBinaryUrl(
 	registryUrl = a.GetRegistryUrl(registryUrl)
 
 	filename := a.getBinaryNameForOptions(os, arch)
+	if a.archiveBase != "" {
+		filename = fmt.Sprintf("%s-%s-%s.zip", a.archiveBase, os, arch)
+	}
 	formattedVersion := FormatVersionForUrl(version)
 
 	// Always use the same download path pattern, regardless of beta or not

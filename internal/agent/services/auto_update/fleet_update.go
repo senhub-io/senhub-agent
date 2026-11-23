@@ -135,6 +135,9 @@ func (a *autoUpdate) updateForDirective(d Directive, registryUrl string) (bool, 
 		if kind == KindMSI {
 			return refuse(StateFailed, target, CodeDowngradeMSI, nil)
 		}
+		if kind == KindDeb || kind == KindRPM {
+			return refuse(StateFailed, target, ReasonNotReplace, errors.New("downgrade needs a package install"))
+		}
 	}
 	if kind == KindMSI && IsBetaVersion(target) {
 		return refuse(StateFailed, target, CodeBetaMSI, nil)

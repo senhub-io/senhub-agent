@@ -22,6 +22,8 @@ import (
 const (
 	RootUpdateRequestDir      = "/var/lib/senhub-agent/update-request"
 	RootUpdateRequestFile     = "request"
+	RootUpdateRollbackFile    = "rollback"
+	rollbackRequestContent    = "rollback\n"
 	rootUpdateServiceUser     = "senhub"
 	rootUpdateMarkerPath      = "/usr/lib/senhub-agent/root-update"
 	rootUpdatePathUnit        = "/usr/lib/systemd/system/senhub-agent-update.path"
@@ -125,6 +127,10 @@ func (p *packageInstaller) Request(version string) error {
 	if !ValidRequestVersion(version) {
 		return fmt.Errorf("invalid version %q", version)
 	}
+	return p.writeRequest(p.requestFile, version+"\n")
+}
+
+func (p *packageInstaller) writeRequest(name, content string) error {
 	dirfd, err := unix.Open(p.requestDir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return fmt.Errorf("open request directory: %w", err)
@@ -147,7 +153,7 @@ func (p *packageInstaller) Request(version string) error {
 		_ = unix.Unlinkat(dirfd, tmpName, 0)
 	}
 
-	data := []byte(version + "\n")
+	data := []byte(content)
 	if _, err := unix.Write(fd, data); err != nil {
 		cleanup()
 		return fmt.Errorf("write temp request: %w", err)
@@ -164,11 +170,17 @@ func (p *packageInstaller) Request(version string) error {
 		_ = unix.Unlinkat(dirfd, tmpName, 0)
 		return fmt.Errorf("close temp request: %w", err)
 	}
-	if err := unix.Renameat(dirfd, tmpName, dirfd, p.requestFile); err != nil {
+	if err := unix.Renameat(dirfd, tmpName, dirfd, name); err != nil {
 		_ = unix.Unlinkat(dirfd, tmpName, 0)
-		return fmt.Errorf("rename temp request to %s: %w", p.requestFile, err)
+		return fmt.Errorf("rename temp request to %s: %w", name, err)
 	}
 	return nil
+}
+
+// RequestRollback asks the root unit to put the previous binary back. It
+// carries no version: the unit restores only the copy it kept itself.
+func (p *packageInstaller) RequestRollback() error {
+	return p.writeRequest(RootUpdateRollbackFile, rollbackRequestContent)
 }
 
 // RegisterPackageInstaller registers the privileged installer when the package kind supports it.
@@ -194,6 +206,23 @@ func lookupServiceUID() (uint32, error) {
 // consumeRequest securely reads and removes a root update request.
 // It returns the requested version or an error wrapping ErrRequestRefused.
 func consumeRequest(dir, file string, serviceUID uint32, log *logger.ModuleLogger) (string, error) {
+	return consumeFile(dir, file, serviceUID, log, parseRequestContent)
+}
+
+// consumeRollbackRequest does the same for the rollback request, whose only
+// valid content is "rollback" and a newline. It is a file of its own so that
+// no version request can ever be read as a rollback, nor the reverse.
+func consumeRollbackRequest(dir, file string, serviceUID uint32, log *logger.ModuleLogger) error {
+	_, err := consumeFile(dir, file, serviceUID, log, func(b []byte) (string, error) {
+		if string(b) != rollbackRequestContent {
+			return "", fmt.Errorf("malformed rollback request %q", limitedContent(b))
+		}
+		return "rollback", nil
+	})
+	return err
+}
+
+func consumeFile(dir, file string, serviceUID uint32, log *logger.ModuleLogger, parse func([]byte) (string, error)) (string, error) {
 	dirfd, err := unix.Open(dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return "", fmt.Errorf("%w: open request directory: %w", ErrRequestRefused, err)
@@ -266,7 +295,7 @@ func consumeRequest(dir, file string, serviceUID uint32, log *logger.ModuleLogge
 	}
 	content := buf.Bytes()
 
-	version, err := parseRequestContent(content)
+	version, err := parse(content)
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", ErrRequestRefused, err)
 	}

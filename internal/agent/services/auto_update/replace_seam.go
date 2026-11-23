@@ -15,6 +15,14 @@ type PrivilegedInstaller interface {
 	Request(version string) error
 }
 
+// RollbackRequester is implemented by a privileged path that can put back the
+// binary it replaced, without any version: the boot guard uses it when an
+// update never confirms. A version request cannot stand for it, because the
+// path cannot trust a version the service names.
+type RollbackRequester interface {
+	RequestRollback() error
+}
+
 var privilegedInstaller atomic.Pointer[PrivilegedInstaller]
 
 // RegisterPrivilegedInstaller sets the privileged path; nil removes it.

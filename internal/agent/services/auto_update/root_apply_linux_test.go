@@ -86,6 +86,7 @@ func newRootApplyFixture(t *testing.T, request string) *rootApplyFixture {
 		StateDir:      f.stateDir,
 		RootStateDir:  f.rootDir,
 		Restart:       restart,
+		PackageName:   func(string) string { return "senhub-agent" },
 		DownloadWait:  &zero,
 		ListRetryWait: &zero,
 	}
@@ -502,74 +503,6 @@ func TestRootApplyRestartFailureRollsBack(t *testing.T) {
 		t.Errorf("restart calls = %v, want [false true]", f.restartCalls)
 	}
 	f.assertRequestDeleted(t)
-}
-
-func TestRootApplyPromotesRollbackRecord(t *testing.T) {
-	// Write rolled-back record with FailedVersion=0.7.1, RestoredVersion=0.7.0, OutcomeRequested
-	rec := RolledBackRecord{
-		FailedVersion:   "0.7.1",
-		RestoredVersion: "0.7.0",
-		RolledBackAt:    time.Now(),
-		BootAttempts:    1,
-		Outcome:         OutcomeRequested,
-	}
-	data, err := json.Marshal(rec)
-	if err != nil {
-		t.Fatal(err)
-	}
-	f := newRootApplyFixture(t, "0.7.0\n")
-	if err := os.WriteFile(filepath.Join(f.stateDir, "update-rolled-back.json"), data, 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Request 0.7.0 which is in the stable list (we have default list with 0.7.0? Actually default list only 0.7.2,0.7.1)
-	// Need to modify lists to include 0.7.0
-	f.f.useOwnKey(t, list("0.7.2", "0.7.1", "0.7.0"), nil)
-
-	err = RootApply(f.opts)
-	if err != nil {
-		t.Fatalf("RootApply returned error: %v", err)
-	}
-	// Check rollback record outcome
-	rec2, err := ReadRolledBack(f.stateDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rec2 == nil {
-		t.Fatal("rollback record missing")
-	}
-	if rec2.Outcome != OutcomeRestored {
-		t.Errorf("Outcome = %q, want %q", rec2.Outcome, OutcomeRestored)
-	}
-
-	// Second case: record with different RestoredVersion should be left alone
-	f2 := newRootApplyFixture(t, "0.7.0\n")
-	f2.f.useOwnKey(t, list("0.7.2", "0.7.1", "0.7.0"), nil)
-	// write record with RestoredVersion=0.6.0
-	rec3 := RolledBackRecord{
-		FailedVersion:   "0.7.1",
-		RestoredVersion: "0.6.0",
-		RolledBackAt:    time.Now(),
-		BootAttempts:    1,
-		Outcome:         OutcomeRequested,
-	}
-	data3, _ := json.Marshal(rec3)
-	os.WriteFile(filepath.Join(f2.stateDir, "update-rolled-back.json"), data3, 0o644)
-
-	err = RootApply(f2.opts)
-	if err != nil {
-		t.Fatalf("RootApply returned error: %v", err)
-	}
-	rec4, err := ReadRolledBack(f2.stateDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rec4 == nil {
-		t.Fatal("rollback record missing after second test")
-	}
-	if rec4.Outcome != OutcomeRequested {
-		t.Errorf("Outcome = %q, want %q", rec4.Outcome, OutcomeRequested)
-	}
 }
 
 func TestRootApplyRefusesMaliciousContent(t *testing.T) {
