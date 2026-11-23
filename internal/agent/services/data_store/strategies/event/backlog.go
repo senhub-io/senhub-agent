@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
@@ -72,6 +73,12 @@ type eventBacklog struct {
 	now      func() time.Time
 	// readFn reads a queue file; a field so a test can inject an I/O error.
 	readFn func(string) ([]byte, error)
+
+	// writeNanos is the total time append has spent writing files. A
+	// stop is bounded by its deadline plus this: the events must reach
+	// the disk to be kept, and a saturated disk can stall a write for
+	// seconds. Tests read it to tell that cost from an overrun.
+	writeNanos atomic.Int64
 
 	mu sync.Mutex
 	// readFailures counts, per file, the replay rounds that could not read it.
@@ -213,14 +220,19 @@ func (b *eventBacklog) files() int {
 	return len(b.entries)
 }
 
-// append persists one batch (tmp file, fsync, rename), then enforces the
-// age limit and the size cap.
-func (b *eventBacklog) append(events []eventtypes.EventDataPoint) error {
+// append persists one batch (tmp file, rename), then enforces the age limit
+// and the size cap. durable adds an fsync before the rename: it protects
+// against a power cut, and on a loaded disk it can take seconds, so the
+// stop path, which has a deadline and whose process exit leaves the page
+// cache intact, turns it off.
+func (b *eventBacklog) append(events []eventtypes.EventDataPoint, durable bool) error {
 	if len(events) == 0 {
 		return nil
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	writeStart := time.Now()
+	defer func() { b.writeNanos.Add(int64(time.Since(writeStart))) }()
 
 	if err := os.MkdirAll(b.dir, 0o750); err != nil {
 		return fmt.Errorf("creating backlog directory: %w", err)
@@ -239,7 +251,7 @@ func (b *eventBacklog) append(events []eventtypes.EventDataPoint) error {
 		return fmt.Errorf("creating backlog file: %w", err)
 	}
 	_, werr := f.Write(data)
-	if werr == nil {
+	if werr == nil && durable {
 		werr = f.Sync()
 	}
 	if cerr := f.Close(); werr == nil {
