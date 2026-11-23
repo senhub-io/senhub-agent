@@ -2261,6 +2261,7 @@ Common keys of every record, identical byte for byte to the Toise
 | `senhub.listener.caller.address.prefix` | string | `/24` (IPv4) or `/48` (IPv6) of a public caller, only in `truncated` mode |
 | `network.type` | string | `ipv4` or `ipv6` |
 | `senhub.listener.caller.connection.count` | int | Connections open at the triggering read, not a total. `0` on `gone` |
+| `senhub.probe.name` / `senhub.probe.type` | string | Set by the framework on every agent log record, as on the other log-producing probes |
 
 The client port and `network.peer.address` are never reported.
 
@@ -2293,7 +2294,7 @@ partition the addresses, so their sum is the distinct total:
 | `emitted` | Tracked: they have records, or will once the debounce is met. In `clear` and `truncated` modes this includes public addresses |
 | `over_cap` | Beyond the cap of 32: counted, no record |
 | `public` | Public addresses in `count` mode only: counted, no record |
-| `local` | Loopback, link-local, wildcard, multicast, default Docker and Podman bridges, any address that reaches the host through a container bridge, veth or CNI interface or that sits in the network of one: never reported |
+| `local` | Loopback, link-local, wildcard, multicast, an address of the host itself, default Docker and Podman bridges, any address that reaches the host through a container bridge, veth or CNI interface or that sits in the network of one: never reported |
 
 ## 6ter. Entity events — the wire contract and filtering
 

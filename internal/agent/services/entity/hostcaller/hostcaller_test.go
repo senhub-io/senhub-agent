@@ -261,6 +261,9 @@ func TestLocalClassIsNeverReported(t *testing.T) {
 		{"arrives on a bridge address", "10.9.9.9", "192.168.200.1", true},
 		{"private on the real interface", "10.9.9.9", "10.0.0.10", false},
 		{"ipv4-mapped loopback", "::ffff:127.0.0.1", "10.0.0.10", true},
+		{"the host's own address", "10.0.0.10", "10.0.0.10", true},
+		{"the host's own address, other interface", "10.0.0.10", "192.168.200.1", true},
+		{"a neighbour on the real interface", "10.0.0.11", "10.0.0.10", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

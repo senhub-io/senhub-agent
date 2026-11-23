@@ -223,7 +223,7 @@ func (t *Tracker) Observe(hostID string, rows []hostdep.InboundRow, now time.Tim
 				t.ifaceWarn.Do(func() { t.onIfaceErr(err) })
 			}
 		}
-		return ifc.bridged(addr, localIP)
+		return ifc.bridged(addr, localIP) || ifc.own(addr)
 	}
 
 	byPort := map[uint32]map[netip.Addr]*presence{}
