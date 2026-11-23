@@ -142,3 +142,23 @@ func TestRedactNeverKeepsTheLastCharacterOfASecret(t *testing.T) {
 		t.Errorf("bare # changed: %q", got)
 	}
 }
+
+func TestStringMasksTheFragmentOfAPathOnlyToken(t *testing.T) {
+	cases := []struct{ name, in, want string }{
+		{"path fragment", "GET /path#frag", "GET /path#***"},
+		{"path query and fragment", "GET /p?k=v#frag", "GET /p?k=***#***"},
+		{"quoted path", `url="/a/b#frag"`, `url="/a/b#***`},
+		{"absolute url as before", "https://h/path#frag", "https://h/path#***"},
+		{"issue number", "fixed in #1234 and #5", "fixed in #1234 and #5"},
+		{"words with a slash", "and/or #1", "and/or #1"},
+		{"inner slash token", "a/b#c", "a/b#c"},
+		{"bare hash after path", "/path#", "/path#"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := String(c.in); got != c.want {
+				t.Errorf("String(%q) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}

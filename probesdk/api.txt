@@ -463,6 +463,7 @@ alias ParamSpec = senhub-agent.go/internal/agent/probes/spec.ParamSpec
   field Group string `json:"group,omitempty"`
   field Key string `json:"key"`
   field Kind senhub-agent.go/internal/agent/probes/spec.ParamKind `json:"kind"`
+  field ReadableKeys []string `json:"readable_keys,omitempty"`
   field Required bool `json:"required,omitempty"`
   field ScalarMeans string `json:"scalar_means,omitempty"`
   field Secret bool `json:"secret,omitempty"`
@@ -480,6 +481,7 @@ alias Probe = senhub-agent.go/internal/agent/probes/spec.Probe
   method DeclaredKeys() map[string]struct{}
   method ExecutablePaths() map[string]string
   method HasStartSet() bool
+  method ReadableKeysAt(path string) []string
   method RunsOn(goos string) bool
   method SecretPaths() []string
 func Register(p senhub-agent.go/probesdk/spec.Probe)
@@ -564,6 +566,7 @@ type senhub-agent.go/internal/agent/probes/spec.Probe struct
   method DeclaredKeys() map[string]struct{}
   method ExecutablePaths() map[string]string
   method HasStartSet() bool
+  method ReadableKeysAt(path string) []string
   method RunsOn(goos string) bool
   method SecretPaths() []string
 type senhub-agent.go/internal/agent/probes/spec.ProblemKind string

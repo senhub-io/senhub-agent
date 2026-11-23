@@ -220,3 +220,46 @@ func TestMainHelpDoesNotAct(t *testing.T) {
 		}
 	}
 }
+
+func TestMainHelpEverySubcommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("subprocess re-exec test skipped on windows")
+	}
+	if testing.Short() {
+		t.Skip("skipping subprocess test in short mode")
+	}
+	subcommands := [][]string{
+		{"install"}, {"uninstall"}, {"start"}, {"stop"}, {"restart"}, {"status"}, {"run"},
+		{"refresh-unit"}, {"update"}, {"license"}, {"license", "activate"}, {"license", "remove"},
+		{"config", "init"}, {"config", "set"}, {"config", "check"}, {"config", "show"}, {"config", "migrate"},
+		{"secret", "wire-unit"}, {"secret", "migrate"}, {"secret", "rm", "name"}, {"secret", "list"},
+		{"key", "show"}, {"doctor"}, {"console"}, {"db-monitoring"}, {"zabbix", "setup"},
+	}
+	for _, sub := range subcommands {
+		for _, flag := range []string{"-h", "--help"} {
+			args := append(append([]string{"agent"}, sub...), flag)
+			t.Run(strings.Join(args[1:], "_"), func(t *testing.T) {
+				home := t.TempDir()
+				cmd := exec.Command(os.Args[0], "-test.run=^TestMainHelpDoesNotAct$")
+				cmd.Dir = home
+				cmd.Env = append(os.Environ(),
+					"SENHUB_HELP_HELPER=1",
+					"SENHUB_HELP_ARGS="+strings.Join(args, "\x1f"),
+					"HOME="+home, "XDG_CONFIG_HOME="+home, "XDG_STATE_HOME="+home, "XDG_DATA_HOME="+home,
+				)
+				var stdout, stderr bytes.Buffer
+				cmd.Stdout = &stdout
+				cmd.Stderr = &stderr
+				if err := cmd.Run(); err != nil {
+					t.Fatalf("exit error %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+				}
+				if !strings.Contains(strings.ToLower(stdout.String()), "usage") {
+					t.Errorf("stdout has no usage text: %q (stderr %q)", stdout.String(), stderr.String())
+				}
+				if entries, _ := os.ReadDir(home); len(entries) != 0 {
+					t.Errorf("help left files behind in the working directory: %v", entries)
+				}
+			})
+		}
+	}
+}

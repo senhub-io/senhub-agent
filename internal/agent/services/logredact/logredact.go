@@ -23,9 +23,9 @@ var uriUserinfoPattern = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.\-]*://)[^/?#\
 // urlQueryPattern matches a URL-like token followed by a query string.
 var urlQueryPattern = regexp.MustCompile(`((?:[a-zA-Z][a-zA-Z0-9+.\-]*://[^?\s#]*|/[^?\s#]*)\?)([^#\s]*)`)
 
-// urlFragmentPattern masks the fragment of a URL-like token only; a '#' in
-// plain text is left alone.
-var urlFragmentPattern = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.\-]*://[^\s#]*)(#[^\s]*)`)
+// urlFragmentPattern masks the fragment of a URL-like token only, absolute or
+// a bare path starting at a word boundary; a '#' in plain text is left alone.
+var urlFragmentPattern = regexp.MustCompile(`((?:[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s#]*)|(?:(?:^|[\s"'=(\[,])/[^\s#]+))(#[^\s]*)`)
 
 // queryParamPattern matches one name=value pair inside a query string.
 var queryParamPattern = regexp.MustCompile(`([^?&#=\s]+)=([^&#\s]*)`)

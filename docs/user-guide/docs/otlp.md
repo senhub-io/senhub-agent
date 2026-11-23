@@ -200,7 +200,9 @@ otlp:
 Sets the **`X-Scope-OrgID`** header — the standard tenant key used by Mimir,
 Loki, Tempo and VictoriaMetrics — on every signal. `org_id` is accepted as an
 alias; an explicit `X-Scope-OrgID` in `headers:` takes precedence. The value is
-env-expandable (`tenant: "${env:ORG_ID}"`).
+env-expandable (`tenant: "${env:ORG_ID}"`). `config show --redact` and the
+configuration reported to a fleet server show an `X-Scope-OrgID` header as it is
+and mask every other header value.
 
 Ingest authentication is enforced at the **collector/edge** (a standard OTLP
 authenticator: bearer token, basic auth, OIDC or mTLS), not by the agent. A

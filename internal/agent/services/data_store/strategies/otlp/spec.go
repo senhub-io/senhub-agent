@@ -5,11 +5,14 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store/outputspec"
 )
 
+// readableHeaders are the headers that carry a tenant, not a credential.
+var readableHeaders = []string{"X-Scope-OrgID"}
+
 func init() {
 	transport := func() []spec.ParamSpec {
 		return []spec.ParamSpec{
 			{Key: "endpoint", Kind: spec.KindString, Advanced: true, Description: "Endpoint for this signal only; the root endpoint otherwise"},
-			{Key: "headers", Kind: spec.KindMap, Secret: true, Advanced: true, Description: "Headers for this signal only; they replace the root headers"},
+			{Key: "headers", Kind: spec.KindMap, Secret: true, ReadableKeys: readableHeaders, Advanced: true, Description: "Headers for this signal only; they replace the root headers"},
 			{Key: "tls", Kind: spec.KindBlock, Advanced: true, Description: "TLS for this signal only; it replaces the root block", Fields: tlsFields()},
 		}
 	}
@@ -21,7 +24,7 @@ func init() {
 			{Key: "endpoint", Kind: spec.KindString, Required: true, Group: "connection", Description: "Collector address as host:port; no default on purpose", Example: "otel-collector.example.com:4317"},
 			{Key: "protocol", Kind: spec.KindString, Default: "grpc", Enum: []string{"grpc", "http"}, Essential: true, Group: "connection", Description: "OTLP transport"},
 			{Key: "tls", Kind: spec.KindBlock, Group: "connection", Description: "TLS towards the collector; on and verified by default", Fields: tlsFields()},
-			{Key: "headers", Kind: spec.KindMap, Secret: true, Essential: true, Group: "auth", Description: "Headers sent with every request; Authorization carries a bearer token; values are kept in the secret store", Example: "Authorization=Bearer …"},
+			{Key: "headers", Kind: spec.KindMap, Secret: true, ReadableKeys: readableHeaders, Essential: true, Group: "auth", Description: "Headers sent with every request; Authorization carries a bearer token; values are kept in the secret store", Example: "Authorization=Bearer …"},
 			{Key: "tenant", Kind: spec.KindString, AlsoAccepts: []string{"org_id"}, Group: "auth", Description: "Sent as X-Scope-OrgID on every signal (Mimir, Loki, Tempo, VictoriaMetrics)"},
 			{Key: "url_path_prefix", Kind: spec.KindString, Group: "auth", Description: "Base path in front of /v1/metrics and friends, for backends that serve OTLP under a path; HTTP only", Example: "/api/v2/otlp"},
 			{Key: "signals", Kind: spec.KindBlock, Group: "signals", Description: "Which signals leave, and how", Fields: []spec.ParamSpec{
