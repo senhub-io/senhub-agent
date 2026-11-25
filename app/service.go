@@ -270,7 +270,7 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 		// the service manager refuses to install over an existing unit,
 		// and what is wrong (a drifted unit, a disabled service) is
 		// fixed in place. Nothing is restarted either way.
-		if state.serviceInstalled && runtime.GOOS == "linux" {
+		if state.serviceInstalled && (runtime.GOOS == "linux" || runtime.GOOS == "windows") {
 			var reconciled []string
 			reconciled, err = reconcileInstalledServiceOnHost(serviceUser, serviceArgs)
 			run.add(reconciled...)
@@ -285,6 +285,9 @@ func handleServiceCommand(command string, args *cliArgs.ParsedArgs) {
 			if err == nil {
 				run.add("service " + installServiceName)
 				fmt.Println("Service installed successfully")
+				if recErr := applyRecoveryAfterInstall(); recErr != nil {
+					fmt.Fprintf(os.Stderr, "Warning: the service recovery actions could not be set: %v\n", recErr)
+				}
 			}
 		}
 		if err == nil {
@@ -545,6 +548,12 @@ func runAgent(args *cliArgs.ParsedArgs) {
 	}
 
 	// Normal service mode
+	//
+	// The agent runs as LocalSystem and can repair a recovery policy left
+	// behind by the MSI or an older installer: without the non-crash flag
+	// the SCM does not restart a clean exit with an error code.
+	ensureServiceRecovery(appLogger)
+
 	if err := svcLogger.Info("Starting service"); err != nil {
 		appLogger.Warn().Err(err).Msg("Failed to log service start message")
 	}
