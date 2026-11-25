@@ -343,3 +343,21 @@ func TestCgroupReportsUnreadOptionalFiles(t *testing.T) {
 		t.Errorf("skipped = %v, want pids.current reported", skipped)
 	}
 }
+
+// An unlimited container is the normal case: memory.max and pids.max holding
+// "max" must not be reported as unreadable files on every cycle.
+func TestCgroupUnlimitedIsNotReportedAsSkipped(t *testing.T) {
+	root := writeCgroupFixture(t)
+	dir := filepath.Join(root, "system.slice", "docker-"+fixtureID+".scope")
+	var skipped []string
+	r := newCgroupReader(root)
+	r.onSkip = func(path string, _ error) { skipped = append(skipped, filepath.Base(path)) }
+	if _, err := r.stats(dir); err != nil {
+		t.Fatalf("stats: %v", err)
+	}
+	for _, f := range skipped {
+		if f == "memory.max" || f == "pids.max" {
+			t.Errorf("skipped = %v, an unlimited %s is not a read failure", skipped, f)
+		}
+	}
+}

@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -143,7 +144,7 @@ func (r *cgroupReader) stats(dir string) (*containerStats, error) {
 	// nothing", so leave it unset and let the metric be absent instead.
 	if v, err := readUintFile(filepath.Join(dir, "memory.max")); err == nil {
 		s.MemoryStats.Limit = v
-	} else {
+	} else if !errors.Is(err, errUnlimited) {
 		r.skipped(filepath.Join(dir, "memory.max"), err)
 	}
 	if mem, err := readKeyedFile(filepath.Join(dir, "memory.stat")); err == nil {
@@ -159,7 +160,7 @@ func (r *cgroupReader) stats(dir string) (*containerStats, error) {
 	}
 	if v, err := readUintFile(filepath.Join(dir, "pids.max")); err == nil {
 		s.PidsStats.Limit = v
-	} else {
+	} else if !errors.Is(err, errUnlimited) {
 		r.skipped(filepath.Join(dir, "pids.max"), err)
 	}
 
@@ -205,9 +206,13 @@ func readKeyedFile(path string) (map[string]uint64, error) {
 	return out, nil
 }
 
+// errUnlimited marks a limit file holding "max". It is the normal state of a
+// container without a limit, not a read failure, so callers do not report it.
+var errUnlimited = errors.New("unlimited")
+
 // readUintFile reads a single-value cgroup file. The literal "max" means
-// unlimited and is reported as an error so the caller leaves the field unset
-// rather than publishing a zero that reads as a limit of nothing.
+// unlimited and is reported as errUnlimited so the caller leaves the field
+// unset rather than publishing a zero that reads as a limit of nothing.
 func readUintFile(path string) (uint64, error) {
 	data, err := os.ReadFile(path) // #nosec G304 - path is built from a validated cgroup dir
 	if err != nil {
@@ -215,7 +220,7 @@ func readUintFile(path string) (uint64, error) {
 	}
 	text := strings.TrimSpace(string(data))
 	if text == "max" {
-		return 0, fmt.Errorf("%s is unlimited", filepath.Base(path))
+		return 0, fmt.Errorf("%s: %w", filepath.Base(path), errUnlimited)
 	}
 	return strconv.ParseUint(text, 10, 64)
 }
