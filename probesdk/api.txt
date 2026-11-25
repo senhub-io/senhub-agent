@@ -231,6 +231,8 @@ alias Health = senhub-agent.go/internal/agent/services/extension.Health
   field Probes []senhub-agent.go/internal/agent/services/extension.ProbeHealth
   field StartTime time.Time
 alias Host = senhub-agent.go/internal/agent/services/extension.Host
+  imethod ApplyLicense(token string) error
+  imethod ApplyRevocations(token string) error
   imethod Authorized(feature string) bool
   imethod ConfigBlock(name string) (map[string]any, bool)
   imethod EffectiveConfig() ([]senhub-agent.go/internal/agent/services/extension.ConfigFile, error)
@@ -254,11 +256,18 @@ alias Identity = senhub-agent.go/internal/agent/services/extension.Identity
   field InstanceID string
   field LicenseExpiresAt time.Time
   field LicenseID string
+  field LicenseRevocationsVersion uint64
+  field LicenseState string
   field LicenseTier string
   field ReleaseChannel string
   field ReleaseRing string
   field Version string
 func IsTargetParam(key string) bool
+alias LicenseRefusal = senhub-agent.go/internal/agent/services/extension.LicenseRefusal
+  field Err error
+  field Reason string
+  method (*senhub-agent.go/internal/agent/services/extension.LicenseRefusal) Error() string
+  method (*senhub-agent.go/internal/agent/services/extension.LicenseRefusal) Unwrap() error
 alias ManagedProbe = senhub-agent.go/internal/agent/services/extension.ManagedProbe
   field Enabled bool
   field Interval int
@@ -636,6 +645,7 @@ type senhub-agent.go/internal/agent/services/configuration.LocalAgentConfig stru
   field GlobalTags map[string]string `yaml:"global_tags,omitempty"`
   field Key string `yaml:"key"`
   field License string `yaml:"license,omitempty"`
+  field LicenseRevocations string `yaml:"-"`
 type senhub-agent.go/internal/agent/services/configuration.LocalConfigurationData struct
   field Agent senhub-agent.go/internal/agent/services/configuration.LocalAgentConfig `yaml:"agent"`
   field AutoUpdate *senhub-agent.go/internal/agent/services/configuration.AutoUpdateConfig `yaml:"auto_update,omitempty"`
@@ -697,6 +707,8 @@ type senhub-agent.go/internal/agent/services/exporthook.SeriesPoint struct
   field Name string
   field Probe string
 type senhub-agent.go/internal/agent/services/extension.Host interface
+  imethod ApplyLicense(token string) error
+  imethod ApplyRevocations(token string) error
   imethod Authorized(feature string) bool
   imethod ConfigBlock(name string) (map[string]any, bool)
   imethod EffectiveConfig() ([]senhub-agent.go/internal/agent/services/extension.ConfigFile, error)
@@ -720,6 +732,8 @@ type senhub-agent.go/internal/agent/services/extension.Identity struct
   field InstanceID string
   field LicenseExpiresAt time.Time
   field LicenseID string
+  field LicenseRevocationsVersion uint64
+  field LicenseState string
   field LicenseTier string
   field ReleaseChannel string
   field ReleaseRing string

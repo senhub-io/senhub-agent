@@ -50,6 +50,9 @@ type (
 	// reports.
 	UpdateDirective = iextension.UpdateDirective
 	UpdateStatus    = iextension.UpdateStatus
+	// LicenseRefusal is what Host.ApplyLicense and Host.ApplyRevocations
+	// return when the token itself is refused.
+	LicenseRefusal = iextension.LicenseRefusal
 )
 
 // Check line levels for `config check`.

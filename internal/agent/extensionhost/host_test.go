@@ -134,6 +134,7 @@ func TestHostReadsTheAgent(t *testing.T) {
 		Version:        "1.2.3",
 		Edition:        "oss",
 		LicenseTier:    "free",
+		LicenseState:   "none",
 		ReleaseChannel: "stable",
 		ReleaseRing:    "all",
 	}

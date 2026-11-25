@@ -4,6 +4,8 @@ package extensionhost
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"slices"
@@ -124,13 +126,32 @@ func (h *host) Identity() extension.Identity {
 	}
 	id.InstanceID = configuration.AgentInstanceID(h.deps.Config.GetAuthenticationKey())
 	d := h.deps.Config.GetConfiguration()
-	tier, lic := LicenseInForce(d.Agent.License, d.Agent.AuthenticationKey, func() (license.Validator, error) {
-		return license.GetDefaultValidator(7)
-	})
-	id.LicenseTier = tier
-	if lic != nil {
-		id.LicenseID = lic.ID
-		id.LicenseExpiresAt = lic.ExpiresAt
+	if f, ok := license.Current(); ok {
+		// The sensor already validated on change (ent#699); identity must
+		// not revalidate on every call.
+		id.LicenseTier = string(f.Tier())
+		if f.License != nil {
+			id.LicenseID = f.License.ID
+			id.LicenseExpiresAt = f.License.ExpiresAt
+		}
+		id.LicenseState = string(f.State)
+		if f.Revocations != nil {
+			id.LicenseRevocationsVersion = f.Revocations.Version
+		}
+	} else {
+		tier, lic := LicenseInForce(d.Agent.License, d.Agent.AuthenticationKey, func() (license.Validator, error) {
+			return license.GetDefaultValidator(7)
+		})
+		id.LicenseTier = tier
+		if lic != nil {
+			id.LicenseID = lic.ID
+			id.LicenseExpiresAt = lic.ExpiresAt
+		}
+		if tier == string(license.TierFree) {
+			id.LicenseState = "none"
+		} else {
+			id.LicenseState = "valid"
+		}
 	}
 	id.ReleaseChannel = releaseChannel(d.Agent.IncludeBeta)
 	id.ReleaseRing = releaseRing(d.Agent.RegistryUrl)
@@ -373,4 +394,110 @@ func LicenseInForce(token, agentKey string, newValidator func() (license.Validat
 		return string(license.TierFree), nil
 	}
 	return string(lic.Tier), lic
+}
+
+// newLicenseValidator is a seam: production uses the embedded key, tests
+// swap it for a generated one so they can sign tokens.
+var newLicenseValidator = func() (license.Validator, error) {
+	return license.GetDefaultValidator(7)
+}
+
+// heldRevocationList reads the sidecar; an unreadable or invalid list
+// counts as absent rather than blocking a licence push.
+func heldRevocationList(path string, v *license.JWTValidator) (string, *license.RevocationList) {
+	raw, err := configuration.ReadRevocationsSidecar(path)
+	if err != nil || raw == "" {
+		return "", nil
+	}
+	list, err := v.ValidateRevocationList(raw)
+	if err != nil {
+		return raw, nil
+	}
+	return raw, list
+}
+
+func (h *host) ApplyLicense(token string) error {
+	if h.deps.Config == nil {
+		return errors.New("no configuration")
+	}
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return &extension.LicenseRefusal{Reason: "schema"}
+	}
+	validator, err := newLicenseValidator()
+	if err != nil {
+		return err
+	}
+	jwtValidator, _ := validator.(*license.JWTValidator)
+	path := h.deps.Config.GetConfigPath()
+	var held *license.RevocationList
+	if jwtValidator != nil {
+		_, held = heldRevocationList(path, jwtValidator)
+	}
+	cfg := h.deps.Config.GetConfiguration()
+	f := license.Evaluate(validator, token, cfg.Agent.AuthenticationKey, held)
+	switch f.State {
+	case license.StateInvalid:
+		reason := license.RefusalReason(f.Err)
+		if f.Reason == license.ReasonBindingMismatch {
+			reason = "binding"
+		}
+		return &extension.LicenseRefusal{Reason: reason, Err: f.Err}
+	case license.StateExpired:
+		return &extension.LicenseRefusal{Reason: "expired"}
+	case license.StateRevoked:
+		return &extension.LicenseRefusal{Reason: "revoked"}
+	}
+	if token == cfg.Agent.License {
+		// A server resends the licence on every reconnection; the one in
+		// force is neither rewritten nor reloaded.
+		return nil
+	}
+	if err := configuration.WriteLicenseSidecar(path, token); err != nil {
+		return fmt.Errorf("write license sidecar: %w", err)
+	}
+	if err := h.deps.Config.Reload(); err != nil {
+		return fmt.Errorf("reload configuration: %w", err)
+	}
+	return nil
+}
+
+func (h *host) ApplyRevocations(token string) error {
+	if h.deps.Config == nil {
+		return errors.New("no configuration")
+	}
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return &extension.LicenseRefusal{Reason: "schema"}
+	}
+	validator, err := newLicenseValidator()
+	if err != nil {
+		return err
+	}
+	jwtValidator, ok := validator.(*license.JWTValidator)
+	if !ok {
+		return errors.New("license validator does not support revocation lists")
+	}
+	next, err := jwtValidator.ValidateRevocationList(token)
+	if err != nil {
+		return &extension.LicenseRefusal{Reason: license.RefusalReason(err), Err: err}
+	}
+	path := h.deps.Config.GetConfigPath()
+	heldToken, held := heldRevocationList(path, jwtValidator)
+	if held != nil {
+		if next.Version == held.Version && token == heldToken {
+			// Same list replayed: nothing to write or reload.
+			return nil
+		}
+		if err := license.CheckNewer(next, held); err != nil {
+			return &extension.LicenseRefusal{Reason: "stale", Err: err}
+		}
+	}
+	if err := configuration.WriteRevocationsSidecar(path, token); err != nil {
+		return fmt.Errorf("write revocations sidecar: %w", err)
+	}
+	if err := h.deps.Config.Reload(); err != nil {
+		return fmt.Errorf("reload configuration: %w", err)
+	}
+	return nil
 }

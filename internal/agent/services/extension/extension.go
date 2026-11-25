@@ -116,6 +116,13 @@ type Host interface {
 	// fleet server may manage: every name is stored under "fleet.". It
 	// returns an error when no secret backend is available on this host.
 	FleetSecrets() (FleetSecretStore, error)
+	// ApplyLicense validates a licence pushed by a server against this agent
+	// (signature, tier, binding, expiry beyond grace, held revocation list),
+	// writes it as license.jwt and reloads. A refused licence changes nothing.
+	ApplyLicense(token string) error
+	// ApplyRevocations validates a signed revocation list, refuses one not
+	// newer than the list held, writes it and reloads.
+	ApplyRevocations(token string) error
 }
 
 // UpdateDirective is an update setting pushed by a server.
@@ -200,6 +207,12 @@ type Identity struct {
 	// LicenseExpiresAt is when the licence in force expires; zero
 	// without one.
 	LicenseExpiresAt time.Time
+	// LicenseState is the licence state in force: valid, grace, expired,
+	// revoked, invalid or none.
+	LicenseState string
+	// LicenseRevocationsVersion is the version of the held signed
+	// revocation list, 0 when none is held.
+	LicenseRevocationsVersion uint64
 	// ReleaseChannel is "beta" when the local `auto_update.include_beta`
 	// is true, else "stable".
 	ReleaseChannel string
@@ -407,3 +420,21 @@ func ResetForTest() {
 	registered = nil
 	statuses = map[string]map[string]any{}
 }
+
+// LicenseRefusal is the error ApplyLicense and ApplyRevocations return
+// when the token itself is refused; Reason is the short word a server
+// receives (signature, schema, tier, binding, expired, revoked,
+// wrong_type, stale). Any other error is a local failure (write, reload).
+type LicenseRefusal struct {
+	Reason string
+	Err    error
+}
+
+func (e *LicenseRefusal) Error() string {
+	if e.Err != nil {
+		return e.Reason + ": " + e.Err.Error()
+	}
+	return "license refused: " + e.Reason
+}
+
+func (e *LicenseRefusal) Unwrap() error { return e.Err }
