@@ -199,3 +199,24 @@ func TestResolveEffectiveLicense_Precedence(t *testing.T) {
 		t.Errorf("got %q, want the sidecar value", got)
 	}
 }
+
+// Activating a licence on a config with nothing inline must leave
+// agent.yaml alone: on Windows the running service holds it open and the
+// rename fails with Access is denied.
+func TestWriteLicenseSidecar_LeavesAgentYAMLAloneWithoutInlineLicence(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "agent.yaml")
+	if err := os.WriteFile(path, []byte("agent:\n  key: k\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	setCommitHook(t, func(p string, _ int) {
+		if p == path {
+			t.Errorf("agent.yaml was rewritten although it held no inline licence")
+		}
+	})
+	if err := WriteLicenseSidecar(path, "header.payload.sig"); err != nil {
+		t.Fatalf("WriteLicenseSidecar: %v", err)
+	}
+	if err := RemoveLicenseSidecar(path); err != nil {
+		t.Fatalf("RemoveLicenseSidecar: %v", err)
+	}
+}

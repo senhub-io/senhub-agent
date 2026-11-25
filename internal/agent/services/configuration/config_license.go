@@ -67,7 +67,7 @@ func WriteLicenseSidecar(configPath, jwt string) error {
 	if err := atomicWriteFileOwned(path, []byte(jwt+"\n"), mode, owner); err != nil {
 		return fmt.Errorf("writing license sidecar %s: %w", path, err)
 	}
-	if err := SetLicenseField(configPath, ""); err != nil {
+	if err := clearInlineLicense(configPath); err != nil {
 		return fmt.Errorf("clearing inline license in %s: %w", configPath, err)
 	}
 	return nil
@@ -80,10 +80,20 @@ func RemoveLicenseSidecar(configPath string) error {
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("removing license sidecar %s: %w", path, err)
 	}
-	if err := SetLicenseField(configPath, ""); err != nil {
+	if err := clearInlineLicense(configPath); err != nil {
 		return fmt.Errorf("clearing inline license in %s: %w", configPath, err)
 	}
 	return nil
+}
+
+// clearInlineLicense empties agent.license only when it holds something:
+// rewriting agent.yaml for nothing races the running service on Windows,
+// where the rename fails with Access is denied while the file is open.
+func clearInlineLicense(configPath string) error {
+	if inline, err := readInlineLicense(configPath); err == nil && inline == "" {
+		return nil
+	}
+	return SetLicenseField(configPath, "")
 }
 
 // readInlineLicense returns the raw agent.license scalar from configPath
