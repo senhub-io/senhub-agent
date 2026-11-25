@@ -21,6 +21,7 @@ The `opamp:` block of `agent.yaml` configures the client.
 | `opamp.overlay.enabled` | `false` | Accepts a signed remote overlay. Needs a `wss://` or `https://` endpoint, a `tenant` and at least one signing key. |
 | `opamp.overlay.signing_keys` | empty | Pinned ed25519 public keys. Each entry has `id` and `public_key`. A key never arrives over OpAMP. |
 | `opamp.overlay.managed_probe_types` | empty | Probe types the server may create as managed probes. Empty means every type except `exec`. |
+| `opamp.license_from_server` | `false` | Receives the licence and the revocation list from the fleet server. While it is `true`, `license activate` and `license remove` refuse: the server is the only writer of the licence. See [Licence delivered by the server](#licence-delivered-by-the-server). |
 
 Minimal example:
 
@@ -195,6 +196,17 @@ Before the agent has created a key, the command prints `no OpAMP key yet` and ex
 The fingerprint is the lowercase hex SHA-256 of the X25519 public key followed by the Ed25519 public key: 64 characters. To re-approve a key that changed without proof, compare this value with the key the server shows as waiting for approval, and approve only if they are identical.
 
 The agent also logs the key at each start and after a rotation, at INFO level: `OpAMP agent key`, with the fields `key_id` and `fingerprint`.
+
+## Licence delivered by the server
+
+With `opamp.license_from_server: true`, the agent announces the `io.senhub.license/v1` capability and accepts two messages from the server, independently of the overlay: an agent that does not accept the overlay still receives its licence.
+
+- **A licence.** The agent checks it completely before writing anything: the signature, the tier, the binding to this agent (a licence bound to another agent's key or `service.instance.id` is refused), the expiry beyond the grace period, and the revocation list it holds. A valid licence is written to `license.jwt` next to `agent.yaml` and takes effect without a restart. A licence identical to the one in force is accepted without writing anything.
+- **A signed revocation list.** Its signature and its type are checked, and a list whose version is not newer than the one held is refused, so an old list cannot be sent again to lift a revocation. It is written to `license.revocations.jwt` next to `license.jwt`. When the licence in force is listed, the agent drops to the Free tier at once, without grace, stops the paid probes that were running, and logs it.
+
+The agent answers each message with `applied` or `failed` and a reason: `signature`, `schema`, `tier`, `binding`, `expired`, `revoked`, `wrong_type`, `stale`, `write`, or `disabled` when `license_from_server` is off. Its description carries `senhub.license.source` (`server` or `local`), `senhub.license.state` (`valid`, `grace`, `expired`, `revoked`, `invalid` or `none`) and, when a list is held, `senhub.license.revocations.version`.
+
+Without `license_from_server`, the agent ignores what the server sends and keeps its local licence. A site without any outbound flow uses the same files: `license activate` for the licence and `license revocations import` for the list (see [CLI](cli.md#license)).
 
 ## State and persistence
 

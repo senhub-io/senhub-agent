@@ -580,6 +580,11 @@ or the shell history. Validates the license and writes it to the `license.jwt` f
 simply place the `license.jwt` file next to the config yourself and restart —
 no CLI needed.
 
+When `opamp.license_from_server` is `true` in `agent.yaml`, the fleet server
+delivers the licence: `license activate` and `license remove` refuse and write
+nothing, so the licence never has two writers. Set it to `false` first to manage
+the licence locally.
+
 ### Remove license
 
 ```bash
@@ -587,7 +592,22 @@ sudo /usr/local/bin/senhub-agent license remove
 sudo /usr/local/bin/senhub-agent license remove --force
 ```
 
-Reverts to the free tier: deletes `license.jwt` and clears any inline license. The command prompts for confirmation before writing; pass `--force` (`-f`) to skip the prompt for unattended runs. Without a terminal and without `--force`, the command removes nothing, prints `confirmation required: nothing was removed; rerun with --force` and exits `2`. Restart the agent for the change to take effect.
+Reverts to the free tier: deletes `license.jwt` and clears any inline license. Refused when `opamp.license_from_server` is `true`. The command prompts for confirmation before writing; pass `--force` (`-f`) to skip the prompt for unattended runs. Without a terminal and without `--force`, the command removes nothing, prints `confirmation required: nothing was removed; rerun with --force` and exits `2`. Restart the agent for the change to take effect.
+
+### Import a revocation list (offline)
+
+```bash
+sudo /usr/local/bin/senhub-agent license revocations import - < revocations.jwt
+```
+
+Applies a signed revocation list received out of band, for a site with no outbound
+flow. The list is checked as the fleet server's would be: its signature, its type,
+and a version newer than the list already held. Importing the same list again
+succeeds and changes nothing; an older version is refused with exit code `2`. The
+list is written to `license.revocations.jwt` next to `agent.yaml`. When it lists the
+licence in force, the command says so: the agent then drops to the Free tier,
+without grace, at its next reload or restart. Refused when
+`opamp.license_from_server` is `true`.
 
 ## Other
 

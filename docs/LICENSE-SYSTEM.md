@@ -287,7 +287,17 @@ takes precedence over the sidecar.
 
 ### 4. License Validation
 
-**Agent validates license on startup:**
+The sensor evaluates the licence in force at start and again at every
+configuration sync, from three inputs: the token (`license.jwt` or the inline
+`agent.license`), the agent key, and the signed revocation list
+(`license.revocations.jwt`). The result is one of `valid`, `grace`, `expired`,
+`revoked`, `invalid` or `none` (`license.Evaluate`); it is computed once per change
+and read by every other part of the agent (`license.Current`). A replaced licence
+takes effect without a restart, a paid probe that the licence in force no longer
+allows is stopped, and a timer runs a sync when a licence passes from valid to
+grace and from grace to expired.
+
+**Start-up check, as written in the sensor:**
 
 ```go
 // In sensor.go
@@ -304,8 +314,39 @@ if !validator.IsProbeAuthorized(validatedLicense, probeType) {
 **7-day grace period** after license expiration:
 - Allows time for license renewal
 - Probes continue to function during grace period
-- Warning messages logged
+- Warning messages logged, and `senhub.agent.license.expires_in` goes negative
 - After grace period: probes disabled, falls back to free tier
+
+A revoked licence gets no grace.
+
+## Revocation List
+
+A licence covers the paid period, so withdrawing one before its end needs a list
+pushed to the agents (ADR 0005 §6.4):
+
+- The list is an RS256 JWT signed by the licence key, chosen by `kid` like the
+  licences. Header `typ: senhub-revocations+jwt`, claims `typ: senhub-revocations`,
+  `ver` (a strictly increasing integer), `iat`, and `revoked` (the `jti` values).
+- It carries neither `tier` nor `authorized_probes`. The agent refuses a list
+  presented as a licence and a licence presented as a list, with or without the
+  header `typ`.
+- A list whose version is not newer than the one held is refused, so an old list
+  cannot lift a revocation.
+- It reaches the agent from the fleet server (`opamp.license_from_server: true`,
+  capability `io.senhub.license/v1`) or offline with
+  `senhub-agent license revocations import -`.
+- A licence whose `jti` is listed drops the agent to the Free tier at once, without
+  grace; `senhub.agent.license.invalid{reason="revoked"}` is 1.
+
+## Licence Delivered by the Fleet Server
+
+With `opamp.license_from_server: true` in `agent.yaml`, the fleet server is the only
+writer of the licence: `license activate` and `license remove` refuse.
+`Host.ApplyLicense` checks the pushed licence completely (signature, tier, binding,
+expiry beyond grace, held revocation list) before writing `license.jwt`, then
+reloads; `Host.ApplyRevocations` does the same for the list. The offline path
+stays available for agents with no outbound flow: the same files, written with
+`license activate` and `license revocations import`.
 
 ## Deployment Mode
 
@@ -372,6 +413,14 @@ Displays current license information:
 ```
 
 Removes license from config (falls back to free tier).
+
+### Import a Revocation List
+```bash
+./agent license revocations import - < revocations.jwt
+```
+
+Applies a signed revocation list offline. `activate`, `remove` and `revocations
+import` all refuse while `opamp.license_from_server` is `true`.
 
 ## Development Workflow
 
