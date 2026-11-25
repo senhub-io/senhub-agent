@@ -89,7 +89,10 @@ minisign -Vm senhub-agent-linux-amd64.zip \
 ```
 
 That public key is the one the agent itself embeds to verify its own
-auto-updates. A stable release also carries a `SHA256SUMS` file, signed
+auto-updates. It is also published as a minisign key file at
+`https://packages.senhub.io/releases/minisign.pub` (key id
+`D0C8982E9E4C7E65`), so a script can use `minisign -Vm <file> -p minisign.pub`
+after downloading it; compare it once with the key above. A stable release also carries a `SHA256SUMS` file, signed
 the same way (`SHA256SUMS.minisig`), for tools that check a digest:
 verify the list with minisign first, then the archive against it
 (`sha256sum -c --ignore-missing SHA256SUMS`). Each release also publishes a manifest with the

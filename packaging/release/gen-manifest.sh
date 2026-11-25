@@ -93,6 +93,7 @@ if .draft == true then error("release is a draft") else . end
     commit: $commit,
     complete: (($pending | length) == 0 and ($channel == "beta" or $msis == 2)),
     signing_pending: $pending,
+    signing_key_url: "https://packages.senhub.io/releases/minisign.pub",
     artifacts: $artifacts,
     images: ($images | sort_by(.repo)),
     charts: ($charts | sort_by(.repo))

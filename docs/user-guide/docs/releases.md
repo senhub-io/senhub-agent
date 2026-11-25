@@ -121,7 +121,9 @@ release manifest" workflow again for the tag completes it.
 ## Finding and verifying the right file
 
 The public key below is the one the agent embeds to verify its own
-updates. It is the same for every release.
+updates. It is the same for every release, and is also published as a
+key file at `https://packages.senhub.io/releases/minisign.pub`; each
+manifest names that address in `signing_key_url`.
 
 ```bash
 CHANNEL=stable          # or: beta

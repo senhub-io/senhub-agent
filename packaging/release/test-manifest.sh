@@ -40,6 +40,7 @@ CONFORMS='
   and (.commit | test("^[0-9a-f]{40}$"))
   and (.complete | type == "boolean")
   and (.signing_pending | type == "array")
+  and (.signing_key_url == "https://packages.senhub.io/releases/minisign.pub")
   and (.artifacts | length > 0)
   and (.artifacts | all(
         (.os | IN("linux","windows")) and (.arch | IN("amd64","arm64"))
@@ -163,6 +164,15 @@ check "the index lists newest first" '
   (.channels.beta.releases | map(.version)) == ["0.6.2-rc.10","0.6.2-rc.2","0.6.2-rc.1","0.6.2-beta.10","0.6.2-beta.1","0.6.2-beta.0"]
   and (.channels.stable.releases | map(.version)) == ["0.6.2","0.6.1"]
   and .channels.stable.latest_url == "https://packages.senhub.io/releases/stable/latest.json"' "$SITE/releases/index.json"
+
+# The public key is published beside the manifests, and it is the key the
+# documentation tells users to verify with.
+doc_key=$(sed -n 's/^KEY=//p' "$HERE/../../docs/user-guide/docs/releases.md" | head -1)
+if [ -n "$doc_key" ] && [ "$(sed -n 2p "$SITE/releases/minisign.pub" 2>/dev/null)" = "$doc_key" ]; then
+    ok "minisign.pub is published and is the documented key"
+else
+    bad "minisign.pub is published and is the documented key"
+fi
 
 # Re-running with unchanged input changes nothing.
 before=$(cd "$SITE" && find . -type f -exec shasum {} + | sort)

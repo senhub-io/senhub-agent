@@ -81,6 +81,11 @@ server and the HTTP port as properties.
 `senhub-agent-oss`), configured from environment variables. See
 [Running the agent in a container](docs/user-guide/docs/container.md).
 
+Every download is signed with [minisign](https://jedisct1.github.io/minisign/);
+the public key is `RWRlfkyeLpjI0MjTSfuvT/bDNHHaVJhRirQN8Z8LTAM+n4LKVbpjrlRh`,
+also at <https://packages.senhub.io/releases/minisign.pub>. See
+[Verifying a download](docs/user-guide/docs/installation.md#verifying-a-download).
+
 **A fleet**: Ansible, Intune, GPO and SCCM, cloud-init, Docker Compose,
 Helm and Podman each have a page with a runnable example, covering version
 pinning, the licence, secrets and validation before apply. Start from

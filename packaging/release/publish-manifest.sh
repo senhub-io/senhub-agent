@@ -47,6 +47,9 @@ REL="$SITE/releases"
 mkdir -p "$REL/$VERSION" "$REL/$CHANNEL"
 jq -S . "$MANIFEST" > "$REL/$VERSION/manifest.json"
 cp "$HERE/manifest.schema.json" "$REL/manifest.schema.json"
+# The release public key at a stable address, beside the manifests that
+# name it: the one compiled into the agents, the same for every release.
+cp "$HERE/minisign.pub" "$REL/minisign.pub"
 
 LATEST="$REL/$CHANNEL/latest.json"
 if [ -f "$LATEST" ]; then

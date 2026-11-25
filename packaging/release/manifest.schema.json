@@ -24,6 +24,11 @@
       "description": "True when every zip and MSI carries its minisign signature and, on stable, both MSIs are present. False while the Windows signing round is unfinished: do not install the Windows files of an incomplete manifest.",
       "type": "boolean"
     },
+    "signing_key_url": {
+      "description": "Where the minisign public key that signs the artifacts is published.",
+      "type": "string",
+      "format": "uri"
+    },
     "signing_pending": {
       "description": "Names of the zip and MSI artifacts that have no minisign signature yet.",
       "type": "array",
