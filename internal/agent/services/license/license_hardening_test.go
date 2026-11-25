@@ -118,7 +118,7 @@ func TestValidateLicense_RootKeySelection(t *testing.T) {
 			if err == nil {
 				t.Fatal("ValidateLicense() error = nil, want error")
 			}
-			if tt.wantErr != errAny && !errors.Is(err, tt.wantErr) {
+			if !errors.Is(tt.wantErr, errAny) && !errors.Is(err, tt.wantErr) {
 				t.Fatalf("ValidateLicense() error = %v, want %v", err, tt.wantErr)
 			}
 		})

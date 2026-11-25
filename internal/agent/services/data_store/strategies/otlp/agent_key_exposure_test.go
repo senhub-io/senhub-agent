@@ -41,7 +41,7 @@ func resourceValues(s *OTLPSyncStrategy) []string {
 		return out
 	}
 	for _, kv := range s.resource.Attributes() {
-		out = append(out, string(kv.Key)+"="+kv.Value.Emit())
+		out = append(out, string(kv.Key)+"="+kv.Value.String())
 	}
 	return out
 }
@@ -52,7 +52,7 @@ func metricsResourceValues(s *OTLPSyncStrategy) []string {
 		return out
 	}
 	for _, kv := range s.metricsResource.Attributes() {
-		out = append(out, string(kv.Key)+"="+kv.Value.Emit())
+		out = append(out, string(kv.Key)+"="+kv.Value.String())
 	}
 	return out
 }

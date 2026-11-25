@@ -209,7 +209,7 @@ func identityCheck(d doctorDeps) []doctorCheck {
 	fix := "run 'senhub-agent config regenerate-key' on the copy, then update its PRTG sensor URLs; in Fleet, revoke or clear the old record of the copy"
 	var out []doctorCheck
 	if rec != nil && hostID != "" &&
-		strings.ToLower(strings.TrimSpace(rec.HostID)) != strings.ToLower(strings.TrimSpace(hostID)) {
+		!strings.EqualFold(strings.TrimSpace(rec.HostID), strings.TrimSpace(hostID)) {
 		c := failCheck(sectionInstall, "install.identity",
 			fmt.Sprintf("this configuration was copied from another machine (recorded on host.id %s, running on %s): both agents share one identity", rec.HostID, hostID), fix)
 		out = append(out, c)
