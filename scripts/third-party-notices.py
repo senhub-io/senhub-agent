@@ -11,8 +11,14 @@ import re
 import subprocess
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
-MAIN = "senhub-agent.go"
+CORE_ROOT = pathlib.Path(__file__).resolve().parent.parent
+CORE = "senhub-agent.go"
+# The enterprise edition links the core and adds its own modules; its
+# repository runs this script with these variables to list them all.
+ROOT = pathlib.Path(os.environ.get("SENHUB_NOTICES_ROOT") or CORE_ROOT).resolve()
+MAIN = os.environ.get("SENHUB_NOTICES_MAIN", CORE)
+TITLE = os.environ.get("SENHUB_NOTICES_TITLE", "SenHub Agent")
+REGEN = os.environ.get("SENHUB_NOTICES_REGEN", "make third-party-notices")
 
 # L'ordre compte : le premier motif qui matche gagne, et les licences BSD se
 # distinguent par une clause que la precedente n'a pas.
@@ -46,21 +52,28 @@ def linked_modules():
     """
     out = ""
     # Le compagnon eBPF (cmd/senhub-ebpf) n'existe que sous Linux.
-    for goos, package in (("linux", "./cmd/agent"), ("linux", "./cmd/senhub-ebpf"),
-                          ("windows", "./cmd/agent")):
+    targets = (("linux", "./cmd/agent"), ("linux", "./cmd/senhub-ebpf"),
+               ("windows", "./cmd/agent"))
+    if ROOT != CORE_ROOT:
+        targets = (("linux", "./cmd/agent"), ("windows", "./cmd/agent"))
+    for goos, package in targets:
         env = dict(os.environ, GOOS=goos)
         out += subprocess.run(
             ["go", "list", "-deps", "-f",
-             "{{if .Module}}{{.Module.Path}}\t{{.Module.Version}}\t{{.Module.Dir}}{{end}}",
+             "{{if .Module}}{{.Module.Path}}\t{{.Module.Version}}\t{{.Module.Dir}}"
+             "\t{{with .Module.Replace}}{{.Path}} {{.Version}}{{end}}{{end}}",
              package],
             cwd=ROOT, capture_output=True, text=True, check=True, env=env).stdout
     seen = {}
     for line in out.splitlines():
         if not line.strip():
             continue
-        parts = (line.split("\t") + ["", ""])[:3]
-        path, version, directory = parts
-        if not path or path == MAIN:
+        parts = (line.split("\t") + ["", "", ""])[:4]
+        path, version, directory, replaced = parts
+        if replaced.strip():
+            # A fork stands in for the upstream module: name what ships.
+            version = "replaced by %s" % replaced.strip()
+        if not path or path in (MAIN, CORE):
             continue
         seen[path] = (version, directory)
     return dict(sorted(seen.items()))
@@ -104,7 +117,7 @@ def main():
         counts[lic] = counts.get(lic, 0) + 1
 
     lines = [
-        "# Third-party components of SenHub Agent",
+        "# Third-party components of %s" % TITLE,
         "",
         "The components below are linked into the distributed binary. They are",
         "published by third parties under their own licences, which apply to",
@@ -114,7 +127,7 @@ def main():
         "from the module file, so it describes what actually ships rather than",
         "what is declared: a module used only by the tests does not appear here.",
         "",
-        "Regenerate with `make third-party-notices`.",
+        "Regenerate with `%s`." % REGEN,
         "",
         "## Summary",
         "",
@@ -133,6 +146,12 @@ def main():
     dest.write_text("\n".join(lines))
     print("%s: %d components, %d distinct licences"
           % (dest.relative_to(ROOT), len(rows), len(counts)))
+
+    if ROOT != CORE_ROOT:
+        if unknown:
+            print("licence not identified for: " + ", ".join(unknown), file=sys.stderr)
+            return 1
+        return 0
 
     # The user guide publishes the same list as Annex 1 of the licence
     # agreement. It used to be copied by hand and fell behind the build;
