@@ -128,9 +128,17 @@ Source of truth: the `paidProbes` map in `internal/agent/services/license/probe_
 - **ad_hybrid** - Active Directory hybrid-identity monitoring
 - **exchange_online** - Microsoft Exchange Online / Microsoft 365 mail monitoring
 - **azure_container_apps** - Azure Container Apps console log stream (stdout/stderr of every replica), read through ARM without touching the container
+- **azure_container_app_jobs** - Azure Container Apps jobs: state and console output of each execution, read once it has finished
+- **azure_monitor** - Azure resources found through Resource Graph, with their Azure Monitor metrics
+- **azure_log_query** - Log Analytics (KQL) queries published as metrics
+- **entra_id** - Microsoft Entra ID tenant monitoring
 - **ping_gateway** - Gateway connectivity monitoring
 - **ping_webapp** - Web application availability
 - **load_webapp** - Web application performance phase timing
+
+A licence that lists probes (no `"*"`) grants only what it names, and that
+includes the fleet connection: list `opamp` in `authorized_probes` for the
+agent to keep its OpAMP link to Fleet. A wildcard licence grants it already.
 
 ### Enterprise Tier (License Required)
 - **All probes** (wildcard `"*"` authorization in the JWT — also matches any probe added in future releases without requiring a JWT reissue)
