@@ -10,6 +10,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"senhub-agent.go/internal/agent/lifecycle"
@@ -416,7 +417,14 @@ func heldRevocationList(path string, v *license.JWTValidator) (string, *license.
 	return raw, list
 }
 
+// applyMu serialises ApplyLicense and ApplyRevocations: each reads what is
+// held, checks against it and writes, and two at once could put an older
+// revocation list back over a newer one.
+var applyMu sync.Mutex
+
 func (h *host) ApplyLicense(token string) error {
+	applyMu.Lock()
+	defer applyMu.Unlock()
 	if h.deps.Config == nil {
 		return errors.New("no configuration")
 	}
@@ -463,6 +471,8 @@ func (h *host) ApplyLicense(token string) error {
 }
 
 func (h *host) ApplyRevocations(token string) error {
+	applyMu.Lock()
+	defer applyMu.Unlock()
 	if h.deps.Config == nil {
 		return errors.New("no configuration")
 	}
