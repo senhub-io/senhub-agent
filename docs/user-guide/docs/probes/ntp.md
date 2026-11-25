@@ -51,8 +51,10 @@ There is no default server, on purpose. See [Choosing servers](#choosing-servers
 
 ## Metrics
 
-Every series is tagged with the `server` it was measured against, so two
-reference servers produce two independent sets.
+Every series is tagged with the server it was measured against, so two
+reference servers produce two independent sets. The label is `server` on the
+pull outputs (PRTG, Prometheus, Nagios). Over OTLP it is the OpenTelemetry
+attribute `server.address`, which VictoriaMetrics stores as `server_address`.
 
 | Metric | Unit | Description |
 |---|---|---|
@@ -181,6 +183,19 @@ Read `senhub.ntp.state` first; it names the cause directly.
 | `refused` | The server answered, refusing us with a kiss-o'-death code (`RATE`, `DENY`, `RSTR`). | `RATE` means the interval is too short for that server — raise `interval`. `DENY` and `RSTR` mean it does not serve us; use a server that does. The probe stops querying for the rest of the cycle rather than retrying, which is what the code asks for. |
 | `unsynchronised` | The server answered but declares its own clock unsteered. | The problem is at the reference, not on this host. Its timestamps are not usable and are deliberately not published. |
 | `invalid_response` | Something answered on port 123 but not with a usable NTP reply. | Check what is really listening — a captive portal or a middlebox intercepting UDP 123 produces this. |
+
+### Windows hosts that stay `unreachable`
+
+On a Windows host the probe can report `unreachable` towards a server the host
+synchronises from without trouble. Windows Time (`w32time`) sends its queries
+from source port 123, while the probe, like `w32tm /stripchart`, sends them
+from an ephemeral port. A firewall that only lets NTP through between port 123
+on both sides drops the probe's queries. Run
+`w32tm /stripchart /computer:<server> /samples:3` on the host: if it times out
+too, the filtering is on the network path, not in the probe. The probe cannot
+use port 123 itself, since `w32time` already holds it. Open the ephemeral
+source range towards the server, or read the host's own view with
+`w32tm /query /status /verbose`.
 
 ## Operational notes
 
