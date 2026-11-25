@@ -76,6 +76,15 @@ Accepts --config-path, --http-port <n>, --auto-update 1|0, --license <jwt>, --ta
 --json, --ok-if-unchanged; refuses a port already in use; exits 3 when
 the configuration was already there.
 `,
+	"regenerate-key": `Usage: agent config regenerate-key [opts]
+
+Replace agent.key (and admin_key with --admin-key) with fresh random
+keys, giving this agent a new service.instance.id. Use it when the
+configuration was copied from another machine and both agents share one
+identity. Asks for confirmation unless --yes; --config-path selects the
+file; --json prints one JSON object. Restart the service afterwards and
+update PRTG sensor URLs that embed the old key.
+`,
 	"set": `Usage: agent config set <key> <v>
 
 Change one setting (http.port, http.bind_address); exits 3 when it

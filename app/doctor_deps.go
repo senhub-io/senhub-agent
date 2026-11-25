@@ -16,6 +16,7 @@ import (
 
 	"senhub-agent.go/internal/agent/cliArgs"
 	"senhub-agent.go/internal/agent/services/auto_update"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/configuration"
 	"senhub-agent.go/internal/agent/services/configuration/secret"
 	"senhub-agent.go/internal/agent/services/data_store/strategies/http"
@@ -74,6 +75,10 @@ type doctorDeps struct {
 	serviceEnv     func() serviceEnvReport
 	unsetEnv       func(configPath string) []configuration.EnvReference
 	rolledBack     func() (*auto_update.RolledBackRecord, error)
+	// identity reads the identity record, the current host id and the
+	// Fleet refusal marker, so the install section can report a cloned
+	// configuration. Nil skips the check.
+	identity func() (rec *instanceid.IdentityRecord, currentHostID string, elsewhere *instanceid.ConnectedElsewhere, err error)
 	// ebpf reports the optional senhub-ebpf helper; nil skips the check.
 	ebpf func() ebpfclient.Status
 }
@@ -128,6 +133,22 @@ func newDoctorDeps(configPath string) doctorDeps {
 		unsetEnv:    configuration.UnsetEnvReferences,
 		rolledBack: func() (*auto_update.RolledBackRecord, error) {
 			return auto_update.ReadRolledBack(instanceid.OwnStateDir())
+		},
+		identity: func() (*instanceid.IdentityRecord, string, *instanceid.ConnectedElsewhere, error) {
+			dir := instanceid.OwnStateDir()
+			rec, err := instanceid.ReadIdentity(dir)
+			if err != nil {
+				return nil, "", nil, err
+			}
+			elsewhere, err := instanceid.ReadConnectedElsewhere(dir)
+			if err != nil {
+				return nil, "", nil, err
+			}
+			var hostID string
+			if attrs, err := common.GetHostResourceAttributes(); err == nil {
+				hostID = attrs["host.id"]
+			}
+			return rec, hostID, elsewhere, nil
 		},
 		ebpf: func() ebpfclient.Status { return ebpfclient.Inspect(ebpfclient.New("")) },
 	}

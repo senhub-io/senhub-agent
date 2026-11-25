@@ -98,6 +98,7 @@ func checkInstall(d doctorDeps, cfg doctorConfig, st statusResult) []doctorCheck
 		out = append(out, *bin)
 	}
 	out = append(out, skewCheck(d))
+	out = append(out, identityCheck(d)...)
 	if c := rollbackCheck(d); c != nil {
 		out = append(out, *c)
 	}
@@ -190,6 +191,36 @@ func binaryCheck(d doctorDeps, st statusResult) *doctorCheck {
 	}
 	c := okCheck(sectionInstall, "install.binary", fmt.Sprintf("the service runs the binary on disk (%s)", exe))
 	return &c
+}
+
+// identityCheck reports a configuration copied from another machine: the
+// clone keeps the agent key, so both agents answer for one identity. It also
+// reports a Fleet refusal for the same reason. It stays silent when the
+// identity is sound, to keep the doctor output short.
+func identityCheck(d doctorDeps) []doctorCheck {
+	if d.identity == nil {
+		return nil
+	}
+	rec, hostID, elsewhere, err := d.identity()
+	if err != nil {
+		c := warnCheck(sectionInstall, "install.identity", "cannot read the identity record: "+err.Error(), "check that the state directory is readable")
+		return []doctorCheck{c}
+	}
+	fix := "run 'senhub-agent config regenerate-key' on the copy, then update its PRTG sensor URLs; in Fleet, revoke or clear the old record of the copy"
+	var out []doctorCheck
+	if rec != nil && hostID != "" &&
+		strings.ToLower(strings.TrimSpace(rec.HostID)) != strings.ToLower(strings.TrimSpace(hostID)) {
+		c := failCheck(sectionInstall, "install.identity",
+			fmt.Sprintf("this configuration was copied from another machine (recorded on host.id %s, running on %s): both agents share one identity", rec.HostID, hostID), fix)
+		out = append(out, c)
+	}
+	if elsewhere != nil {
+		c := failCheck(sectionInstall, "install.identity.fleet",
+			fmt.Sprintf("Fleet refused this agent on %s: its identity is already connected from another machine", elsewhere.At.Format(time.RFC3339)),
+			fix+", the original machine keeps its key")
+		out = append(out, c)
+	}
+	return out
 }
 
 // rollbackCheck reports an update that did not survive its first boots. It

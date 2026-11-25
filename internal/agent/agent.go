@@ -15,6 +15,7 @@ import (
 	"senhub-agent.go/internal/agent/extensionhost"
 	"senhub-agent.go/internal/agent/lifecycle"
 	"senhub-agent.go/internal/agent/probes"
+	"senhub-agent.go/internal/agent/services/common"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/entitydetect"
 	"senhub-agent.go/internal/agent/services/instanceid"
@@ -173,6 +174,29 @@ func NewAgentWithArgs(args *agentCliArgs.ParsedArgs) Agent {
 		dir := instanceid.OwnStateDir()
 		if err := instanceid.Write(dir, configuration.AgentInstanceID(key), key); err != nil {
 			logger.Warn().Err(err).Str("dir", dir).Msg("Could not publish the agent instance id for other agents on this host; they will describe this agent under a second identity")
+		}
+
+		// A clone of this machine keeps the agent key, and so this agent's
+		// identity, on the original. Say so locally: metrics and entities
+		// mix silently otherwise. Re-keying stays manual, since a legitimate
+		// move of the hardware looks the same.
+		hostAttrs, hostErr := common.GetHostResourceAttributes()
+		if hostErr != nil {
+			logger.Debug().Err(hostErr).Msg("Host id unavailable; identity copy check skipped")
+		}
+		hostID := hostAttrs["host.id"]
+		status, prev, idErr := instanceid.CheckIdentity(dir, configuration.AgentInstanceID(key), hostID, time.Now())
+		switch {
+		case idErr != nil:
+			logger.Warn().Err(idErr).Str("dir", dir).Msg("Could not check whether this agent's identity is already in use on another host")
+		case status == instanceid.IdentityHostChanged:
+			logger.Warn().
+				Str("recorded_host_id", prev.HostID).
+				Str("host_id", hostID).
+				Time("recorded_at", prev.RecordedAt).
+				Msg("This agent's configuration was copied from another machine: the same agent key, and so the same service.instance.id, is in use there. Run 'senhub-agent config regenerate-key' on the copy")
+		case status == instanceid.IdentityRekeyed:
+			logger.Info().Msg("Agent key changed since the last start; identity recorded again")
 		}
 	}
 

@@ -533,6 +533,15 @@ func Main() {
 			migrateConfig(configPath)
 			return
 		}
+		if len(os.Args) > 2 && os.Args[2] == "regenerate-key" {
+			// agent config regenerate-key [opts]
+			// Give a cloned installation its own identity: a fresh agent
+			// key, hence a fresh service.instance.id. Asks first.
+			if code := runConfigRegenerateKey(os.Args[3:], os.Stdin, term.IsTerminal(int(os.Stdin.Fd())), os.Stdout, os.Stderr); code != cliexit.OK {
+				os.Exit(code)
+			}
+			return
+		}
 		if len(os.Args) > 2 && os.Args[2] == "set" {
 			// agent config set <key> <value> [--config-path <path>]
 			// Change one setting in the multi-file layout without

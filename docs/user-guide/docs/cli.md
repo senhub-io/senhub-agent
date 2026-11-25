@@ -39,7 +39,7 @@ A command that exits `3` has written nothing: no file is rewritten, and its modi
 
 ## JSON output
 
-`version`, `status`, `doctor`, `config check`, `config show`, `config set`, `config init` and `secret status` accept `--json`. The command then prints a single JSON object on stdout and nothing else there; diagnostics still go to stderr. Without the flag the output is the text described below.
+`version`, `status`, `doctor`, `config check`, `config show`, `config set`, `config init`, `config regenerate-key` and `secret status` accept `--json`. The command then prints a single JSON object on stdout and nothing else there; diagnostics still go to stderr. Without the flag the output is the text described below.
 
 Every object starts with the same fields:
 
@@ -342,6 +342,22 @@ Converts a legacy monolithic `agent-config.yaml` into the multi-file layout (`ag
 senhub-agent config migrate
 senhub-agent config migrate /path/to/agent-config.yaml
 ```
+
+### config regenerate-key
+
+Gives the agent a new identity. Use it on a machine that was cloned with the agent already installed: the copy keeps the agent key, so both agents report under the same `service.instance.id`, their metrics and topology mix, and a fleet server refuses the second connection. `senhub-agent doctor` reports the case as `install.identity` (configuration copied from another machine) or `install.identity.fleet` (refused by the fleet server). The agent never changes its key on its own, since moving a machine to new hardware is legitimate.
+
+```bash
+sudo senhub-agent config regenerate-key            # asks before writing
+sudo senhub-agent config regenerate-key --yes --admin-key --json
+```
+
+The command writes a new random `agent.key` (and a new `admin_key` with `--admin-key`) and prints the new key and `service.instance.id`. The old key is never printed. Run it on the copy only; the original machine keeps its key. Then:
+
+1. Restart the service; it seals the new key at start.
+2. Update the PRTG sensor URLs that carry the old agent key.
+3. Have a licence bound to this agent (its old key or instance id as subject) re-issued. A customer licence is not affected.
+4. On a fleet server this is a new agent: enrol it with a token, and revoke or clear the record the copy used.
 
 ### debug-modules-list
 
