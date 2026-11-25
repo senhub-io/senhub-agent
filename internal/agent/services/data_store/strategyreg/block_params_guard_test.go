@@ -188,9 +188,9 @@ func keysReadBySource(t *testing.T, src blockSource) map[string]struct{} {
 		if src.tableKeys {
 			if lit, ok := n.(*ast.CompositeLit); ok && len(lit.Elts) > 0 {
 				first := lit.Elts[0]
-				if kv, ok := first.(*ast.KeyValueExpr); ok {
+				if _, ok := first.(*ast.KeyValueExpr); ok {
 					for _, elt := range lit.Elts {
-						if kv, ok = elt.(*ast.KeyValueExpr); ok {
+						if kv, ok := elt.(*ast.KeyValueExpr); ok {
 							addStringLit(keys, kv.Key)
 						}
 					}
