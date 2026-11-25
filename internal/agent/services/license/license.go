@@ -100,6 +100,7 @@ const (
 type LicenseClaims struct {
 	Tier             LicenseTier `json:"tier"`
 	AuthorizedProbes []string    `json:"authorized_probes"`
+	Typ              string      `json:"typ"`
 	jwt.RegisteredClaims
 }
 
@@ -310,6 +311,11 @@ func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
 			if typ, _ := token.Header["typ"].(string); typ == DelegationType {
 				return nil, fmt.Errorf("delegation token presented as a licence")
 			}
+			// A revocation list shares the root key and RS256; its type
+			// alone keeps it from passing as a licence.
+			if typ, _ := token.Header["typ"].(string); typ == RevocationsHeaderType {
+				return nil, fmt.Errorf("%w: revocation list presented as a licence", ErrWrongTokenType)
+			}
 			// For a root-signed licence the kid selects the root key.
 			kid, err := headerKID(token.Header)
 			if err != nil {
@@ -336,6 +342,10 @@ func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
 	claims, ok := token.Claims.(*LicenseClaims)
 	if !ok {
 		return nil, fmt.Errorf("invalid token claims")
+	}
+	// A list signed without the header typ still carries its claim typ.
+	if claims.Typ == RevocationsClaimType {
+		return nil, fmt.Errorf("%w: revocation list presented as a licence", ErrWrongTokenType)
 	}
 
 	// Read standard fields from RegisteredClaims
