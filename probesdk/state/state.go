@@ -7,6 +7,7 @@ package state
 
 import (
 	"path/filepath"
+	"time"
 
 	"senhub-agent.go/internal/agent/services/instanceid"
 )
@@ -28,4 +29,23 @@ func Dir() string {
 // name: state.Path(name + ".bookmark").
 func Path(name string) string {
 	return filepath.Join(Dir(), filepath.Base(name))
+}
+
+// RecordConnectedElsewhere notes in dir that the fleet server refused this
+// agent because its identity is already connected from another machine;
+// agent doctor reports it until ClearConnectedElsewhere runs.
+func RecordConnectedElsewhere(dir string, at time.Time, detail string) error {
+	return instanceid.RecordConnectedElsewhere(dir, at, detail)
+}
+
+// ClearConnectedElsewhere removes that note, once the server admitted the
+// agent again. A missing note is not an error.
+func ClearConnectedElsewhere(dir string) error {
+	return instanceid.ClearConnectedElsewhere(dir)
+}
+
+// HasConnectedElsewhere reports whether that note is present in dir.
+func HasConnectedElsewhere(dir string) (bool, error) {
+	rec, err := instanceid.ReadConnectedElsewhere(dir)
+	return rec != nil, err
 }

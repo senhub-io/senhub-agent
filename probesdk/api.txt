@@ -488,9 +488,12 @@ alias Probe = senhub-agent.go/internal/agent/probes/spec.Probe
 func Register(p senhub-agent.go/probesdk/spec.Probe)
 func Registered() []senhub-agent.go/probesdk/spec.Probe
 == senhub-agent.go/probesdk/state (package state) ==
+func ClearConnectedElsewhere(dir string) error
 func Dir() string
 const EnvDir untyped string = "SENHUB_STATE_DIR"
+func HasConnectedElsewhere(dir string) (bool, error)
 func Path(name string) string
+func RecordConnectedElsewhere(dir string, at time.Time, detail string) error
 == senhub-agent.go/probesdk/tags (package tags) ==
 alias Tag = senhub-agent.go/internal/agent/tags.Tag
   field Key string `json:"key"`
