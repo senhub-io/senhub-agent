@@ -115,6 +115,9 @@ type EntitiesNeighborsConfig struct {
 type LocalAgentConfig struct {
 	Key     string `yaml:"key"`
 	License string `yaml:"license,omitempty"` // JWT license token or JSON for testing
+	// LicenseRevocations is the signed revocation list read from
+	// license.revocations.jwt; never part of the YAML.
+	LicenseRevocations string `yaml:"-"`
 	// GlobalTags are applied to every datapoint of every probe (multi-site /
 	// multi-tenant labelling). A probe's own custom_tags override a global_tag
 	// with the same key. Keep small (< ~10 keys) to bound backend cardinality.
@@ -381,13 +384,14 @@ func (lc *LocalConfiguration) GetConfiguration() ConfigurationData {
 		StorageConfig: lc.snapshot().Storage,
 		Probes:        lc.snapshot().Probes,
 		Agent: AgentConfig{
-			RegistryUrl:       autoUpdate.URL,
-			Version:           updateVersion,
-			UpdateEnabled:     autoUpdate.Enabled,
-			IncludeBeta:       autoUpdate.IncludeBeta,
-			License:           lc.snapshot().Agent.License,
-			AuthenticationKey: lc.snapshot().Agent.Key,
-			GlobalTags:        lc.snapshot().Agent.GlobalTags,
+			RegistryUrl:        autoUpdate.URL,
+			Version:            updateVersion,
+			UpdateEnabled:      autoUpdate.Enabled,
+			IncludeBeta:        autoUpdate.IncludeBeta,
+			License:            lc.snapshot().Agent.License,
+			LicenseRevocations: lc.snapshot().Agent.LicenseRevocations,
+			AuthenticationKey:  lc.snapshot().Agent.Key,
+			GlobalTags:         lc.snapshot().Agent.GlobalTags,
 		},
 	}
 }

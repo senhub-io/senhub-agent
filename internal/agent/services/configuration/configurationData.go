@@ -121,9 +121,11 @@ type AgentConfig struct {
 	UpdateEnabled bool `json:"update_enabled"`
 	// IncludeBeta mirrors the local auto_update.include_beta flag so the
 	// active updater's "latest" resolution can consider the beta channel.
-	IncludeBeta       bool   `json:"include_beta"`
-	License           string `json:"license,omitempty"`
-	AuthenticationKey string `json:"authentication_key,omitempty"`
+	IncludeBeta bool   `json:"include_beta"`
+	License     string `json:"license,omitempty"`
+	// LicenseRevocations is the signed revocation list token, "" without one.
+	LicenseRevocations string `json:"-"`
+	AuthenticationKey  string `json:"authentication_key,omitempty"`
 	// GlobalTags are applied to every datapoint of every probe. Set from the
 	// agent.yaml `agent.global_tags` block.
 	GlobalTags map[string]string `json:"global_tags,omitempty"`

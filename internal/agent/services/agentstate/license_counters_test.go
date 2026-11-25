@@ -23,6 +23,7 @@ func TestClearLicenseInvalidPublishesAllKnownReasonsAtZero(t *testing.T) {
 		"validation_failed": 0,
 		"binding_mismatch":  0,
 		"expired_no_grace":  0,
+		"revoked":           0,
 	}
 	if len(got) != len(want) {
 		t.Fatalf("expected %d reasons, got %d: %v", len(want), len(got), got)
@@ -42,8 +43,8 @@ func TestClearAfterSetResetsAllKnownReasons(t *testing.T) {
 	ClearLicenseInvalid()
 
 	got := GetLicenseInvalidByReason()
-	if len(got) != 3 {
-		t.Fatalf("expected 3 reasons after clear, got %d: %v", len(got), got)
+	if len(got) != 4 {
+		t.Fatalf("expected 4 reasons after clear, got %d: %v", len(got), got)
 	}
 	for _, reason := range []string{"validation_failed", "binding_mismatch", "expired_no_grace"} {
 		if got[reason] != 0 {
@@ -79,8 +80,8 @@ func TestClearResetsUnknownReasonButKeepsKey(t *testing.T) {
 	ClearLicenseInvalid()
 
 	got := GetLicenseInvalidByReason()
-	if len(got) != 4 {
-		t.Fatalf("expected 4 reasons (3 known + other), got %d: %v", len(got), got)
+	if len(got) != 5 {
+		t.Fatalf("expected 5 reasons (4 known + other), got %d: %v", len(got), got)
 	}
 	if got["other"] != 0 {
 		t.Errorf("other: expected 0 after clear, got %d", got["other"])

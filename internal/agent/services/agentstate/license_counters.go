@@ -7,6 +7,7 @@ const (
 	LicenseReasonValidationFailed = "validation_failed"
 	LicenseReasonBindingMismatch  = "binding_mismatch"
 	LicenseReasonExpiredNoGrace   = "expired_no_grace"
+	LicenseReasonRevoked          = "revoked"
 )
 
 // licenseKnownReasons lists every known rejection reason so ClearLicenseInvalid
@@ -15,6 +16,7 @@ var licenseKnownReasons = []string{
 	LicenseReasonValidationFailed,
 	LicenseReasonBindingMismatch,
 	LicenseReasonExpiredNoGrace,
+	LicenseReasonRevoked,
 }
 
 // licenseInvalid latches the current licence-rejection state, labelled by

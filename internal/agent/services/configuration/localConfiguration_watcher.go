@@ -239,6 +239,13 @@ func (lc *LocalConfiguration) hasConfigurationChanged(old, new LocalConfiguratio
 		return true
 	}
 
+	// A licence or revocation list received at runtime must reach the
+	// sensor without a restart.
+	if old.Agent.License != new.Agent.License || old.Agent.LicenseRevocations != new.Agent.LicenseRevocations {
+		lc.logger.Debug().Msg("Licence or revocation list changed")
+		return true
+	}
+
 	if !reflect.DeepEqual(old.Agent.GlobalTags, new.Agent.GlobalTags) {
 		lc.logger.Debug().Msg("Global tags changed")
 		return true

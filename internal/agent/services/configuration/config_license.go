@@ -20,6 +20,10 @@ import (
 // deliberately excluded from the ${secret:} seal.
 const licenseSidecarName = "license.jwt"
 
+// revocationsSidecarName holds the signed revocation list beside the
+// licence: it is not configuration either, and never goes into agent.yaml.
+const revocationsSidecarName = "license.revocations.jwt"
+
 // LicenseSidecarPath returns the absolute path of the license sidecar for a
 // given config path: license.jwt in the same directory as agent.yaml. The
 // directory is derived exactly like probes.d/ and strategies.d/ so the three
@@ -38,6 +42,11 @@ func LicenseSidecarPath(configPath string) string {
 // downgrading to the free tier, which would disable paid probes without a
 // trace.
 func applyLicenseSidecar(cfg *LocalConfigurationData, configPath string) error {
+	revocations, err := ReadRevocationsSidecar(configPath)
+	if err != nil {
+		return err
+	}
+	cfg.Agent.LicenseRevocations = revocations
 	if cfg.Agent.License != "" {
 		return nil
 	}
@@ -50,6 +59,39 @@ func applyLicenseSidecar(cfg *LocalConfigurationData, configPath string) error {
 		return fmt.Errorf("reading license sidecar %s: %w", path, err)
 	}
 	cfg.Agent.License = strings.TrimSpace(string(data))
+	return nil
+}
+
+// RevocationsSidecarPath returns license.revocations.jwt beside configPath.
+func RevocationsSidecarPath(configPath string) string {
+	return filepath.Join(filepath.Dir(configPath), revocationsSidecarName)
+}
+
+// ReadRevocationsSidecar returns the revocation list token, or "" when no
+// list was ever received. A present but unreadable file is an error.
+func ReadRevocationsSidecar(configPath string) (string, error) {
+	path := RevocationsSidecarPath(configPath)
+	data, err := os.ReadFile(path) // #nosec G304 - beside the agent's own configuration
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("reading revocation list %s: %w", path, err)
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+// WriteRevocationsSidecar writes the revocation list with the owner and mode
+// of the licence sidecar. agent.yaml is not touched.
+func WriteRevocationsSidecar(configPath, token string) error {
+	path := RevocationsSidecarPath(configPath)
+	owner, mode, err := licenseSidecarOwner(configPath)
+	if err != nil {
+		return err
+	}
+	if err := atomicWriteFileOwned(path, []byte(token+"\n"), mode, owner); err != nil {
+		return fmt.Errorf("writing revocation list %s: %w", path, err)
+	}
 	return nil
 }
 
