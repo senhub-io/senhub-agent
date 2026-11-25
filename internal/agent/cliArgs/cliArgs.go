@@ -57,9 +57,20 @@ type CliArgs struct {
 type VersionSubcommandArgs struct{}
 
 type LicenseSubcommandArgs struct {
-	Activate *LicenseActivateArgs `arg:"subcommand:activate" help:"Activate a license"`
-	Show     *LicenseShowArgs     `arg:"subcommand:show" help:"Show current license information"`
-	Remove   *LicenseRemoveArgs   `arg:"subcommand:remove" help:"Remove current license"`
+	Activate    *LicenseActivateArgs    `arg:"subcommand:activate" help:"Activate a license"`
+	Show        *LicenseShowArgs        `arg:"subcommand:show" help:"Show current license information"`
+	Remove      *LicenseRemoveArgs      `arg:"subcommand:remove" help:"Remove current license"`
+	Revocations *LicenseRevocationsArgs `arg:"subcommand:revocations" help:"Manage the signed revocation list"`
+}
+
+type LicenseRevocationsArgs struct {
+	Import *LicenseRevocationsImportArgs `arg:"subcommand:import" help:"Import a signed revocation list (offline path)"`
+}
+
+type LicenseRevocationsImportArgs struct {
+	Token      string `arg:"positional" help:"Revocation list token; '-' or none reads it from standard input, which keeps it out of the process list and the shell history"`
+	ConfigPath string `arg:"--config-path" help:"Path to configuration file"`
+	Verbose    bool   `arg:"-v,--verbose" help:"Enable verbose logging"`
 }
 
 type LicenseActivateArgs struct {

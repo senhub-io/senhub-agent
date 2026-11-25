@@ -157,6 +157,24 @@ func readInlineLicense(configPath string) (string, error) {
 	return doc.Agent.License, nil
 }
 
+// LicenceFromServer reads opamp.license_from_server from the raw config: the
+// flag decides which side (Fleet or local CLI) is the single licence writer.
+func LicenceFromServer(configPath string) (bool, error) {
+	raw, err := os.ReadFile(configPath) // #nosec G304 - operator-provided config path
+	if err != nil {
+		return false, fmt.Errorf("reading %s: %w", configPath, err)
+	}
+	var doc struct {
+		Opamp struct {
+			LicenseFromServer bool `yaml:"license_from_server"`
+		} `yaml:"opamp"`
+	}
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		return false, fmt.Errorf("parsing %s: %w", configPath, err)
+	}
+	return doc.Opamp.LicenseFromServer, nil
+}
+
 // MigrateLicenseToSidecar moves an inline plaintext license out of agent.yaml
 // into the license.jwt sidecar, so every install converges on the file-based
 // license. It backs the boot reconciliation (called alongside the inline-secret

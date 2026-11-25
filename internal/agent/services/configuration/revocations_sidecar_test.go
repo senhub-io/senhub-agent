@@ -94,3 +94,36 @@ func TestApplyLicenseSidecar_ReadsTheRevocationList(t *testing.T) {
 		t.Fatalf("LicenseRevocations = %q, want d.e.f", cfg.Agent.LicenseRevocations)
 	}
 }
+
+func TestLicenceFromServer(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{"flag true", "opamp:\n  license_from_server: true\n", true},
+		{"no block", "agent:\n  key: k\n", false},
+		{"flag false", "opamp:\n  license_from_server: false\n", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			configPath := filepath.Join(t.TempDir(), "agent.yaml")
+			if err := os.WriteFile(configPath, []byte(tc.content), 0o600); err != nil {
+				t.Fatalf("writing config: %v", err)
+			}
+			got, err := LicenceFromServer(configPath)
+			if err != nil {
+				t.Fatalf("LicenceFromServer: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("LicenceFromServer = %v, want %v", got, tc.want)
+			}
+		})
+	}
+
+	t.Run("missing file", func(t *testing.T) {
+		if _, err := LicenceFromServer(filepath.Join(t.TempDir(), "absent.yaml")); err == nil {
+			t.Fatal("expected an error for a missing config")
+		}
+	})
+}

@@ -22,10 +22,11 @@ import (
 func handleLicenseCommand() {
 	// Parse license subcommand args
 	type LicenseCmd struct {
-		Activate *cliArgs.LicenseActivateArgs `arg:"subcommand:activate"`
-		Show     *cliArgs.LicenseShowArgs     `arg:"subcommand:show"`
-		Key      *cliArgs.LicenseShowArgs     `arg:"subcommand:key"`
-		Remove   *cliArgs.LicenseRemoveArgs   `arg:"subcommand:remove"`
+		Activate    *cliArgs.LicenseActivateArgs    `arg:"subcommand:activate"`
+		Show        *cliArgs.LicenseShowArgs        `arg:"subcommand:show"`
+		Key         *cliArgs.LicenseShowArgs        `arg:"subcommand:key"`
+		Remove      *cliArgs.LicenseRemoveArgs      `arg:"subcommand:remove"`
+		Revocations *cliArgs.LicenseRevocationsArgs `arg:"subcommand:revocations"`
 	}
 
 	var cmd LicenseCmd
@@ -59,6 +60,8 @@ func handleLicenseCommand() {
 		handleLicenseKey(cmd.Key)
 	case cmd.Remove != nil:
 		handleLicenseRemove(cmd.Remove)
+	case cmd.Revocations != nil && cmd.Revocations.Import != nil:
+		handleLicenseRevocationsImport(cmd.Revocations.Import)
 	default:
 		parser.WriteHelp(os.Stdout)
 		os.Exit(cliexit.Failure)
@@ -89,6 +92,12 @@ func handleLicenseActivate(args *cliArgs.LicenseActivateArgs) {
 	configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
 	if err != nil {
 		fatalf("failed to determine config path: %v", err)
+	}
+
+	// The Fleet server is the single licence writer under
+	// opamp.license_from_server; a local write would race it.
+	if refuseWhenLicenceFromServer(configPath, os.Stderr) {
+		os.Exit(cliexit.Failure)
 	}
 
 	// Validate license code with RSA signature verification
@@ -274,6 +283,11 @@ func handleLicenseRemove(args *cliArgs.LicenseRemoveArgs) {
 		fatalf("failed to determine config path: %v", err)
 	}
 
+	// Same single-writer rule as activate: Fleet owns the licence here.
+	if refuseWhenLicenceFromServer(configPath, os.Stderr) {
+		os.Exit(cliexit.Failure)
+	}
+
 	// Confirm unless forced; without a terminal and without --force the
 	// command fails instead of looking like a user's "no", as uninstall
 	// and secret rm do.
@@ -319,6 +333,112 @@ func licenseCodeFrom(arg string, stdin *os.File) (string, error) {
 		return "", errors.New("no license code on standard input")
 	}
 	return code, nil
+}
+
+// refuseWhenLicenceFromServer reports whether the Fleet server owns the
+// licence. A config we cannot read is only a warning here: the later steps
+// (licence removal or import) fail on the same unreadable file anyway.
+func refuseWhenLicenceFromServer(configPath string, errOut io.Writer) bool {
+	flag, err := configuration.LicenceFromServer(configPath)
+	if err != nil {
+		fmt.Fprintf(errOut, "Warning: could not read opamp.license_from_server from %s: %v\n", configPath, err)
+		return false
+	}
+	if !flag {
+		return false
+	}
+	fmt.Fprintf(errOut, "Error: this agent receives its licence from the Fleet server (opamp.license_from_server: true in %s); a local licence would be a second writer. Set license_from_server to false first, or manage the licence in Fleet.\n", configPath)
+	return true
+}
+
+// handleLicenseRevocationsImport imports a signed revocation list without
+// contacting the server (issue #149): the token travels out of band.
+func handleLicenseRevocationsImport(args *cliArgs.LicenseRevocationsImportArgs) {
+	configPath, err := cliArgs.GetAbsoluteConfigPath(args.ConfigPath)
+	if err != nil {
+		fatalf("failed to determine config path: %v", err)
+	}
+
+	if refuseWhenLicenceFromServer(configPath, os.Stderr) {
+		os.Exit(cliexit.Failure)
+	}
+
+	token, err := licenseCodeFrom(args.Token, os.Stdin)
+	if err != nil {
+		fatalf("%v", err)
+	}
+
+	validator, err := license.GetDefaultValidator(7)
+	if err != nil {
+		fatalf("failed to initialize license validator: %v", err)
+	}
+
+	os.Exit(runLicenseRevocationsImport(validator, configPath, token, os.Stdout, os.Stderr))
+}
+
+// runLicenseRevocationsImport validates the incoming list, compares it with
+// the sidecar (an unreadable or invalid held list counts as absent), then
+// writes it. Returns the exit code so tests can drive it.
+func runLicenseRevocationsImport(v *license.JWTValidator, configPath, token string, out, errOut io.Writer) int {
+	list, err := v.ValidateRevocationList(token)
+	if err != nil {
+		fmt.Fprintf(errOut, "Error: invalid revocation list: %v\n", err)
+		return cliexit.Failure
+	}
+
+	heldToken, held := heldRevocations(v, configPath)
+	if held != nil && heldToken == token && held.Version == list.Version {
+		fmt.Fprintf(out, "Revocation list version %d is already in place.\n", list.Version)
+		return cliexit.OK
+	}
+	if held != nil {
+		if err := license.CheckNewer(list, held); err != nil {
+			fmt.Fprintf(errOut, "Error: revocation list version %d is not newer than the version %d held.\n", list.Version, held.Version)
+			return cliexit.Failure
+		}
+	}
+
+	if err := configuration.WriteRevocationsSidecar(configPath, token); err != nil {
+		fmt.Fprintf(errOut, "Error: failed to write the revocation list: %v\n", err)
+		return cliexit.Failure
+	}
+
+	fmt.Fprintf(out, "Revocation list version %d imported (%d revoked licences) to %s.\n", list.Version, len(list.Revoked), configuration.RevocationsSidecarPath(configPath))
+
+	if jti := revokedJtiInForce(v, configPath, list); jti != "" {
+		fmt.Fprintf(out, "   The licence in force (jti %s) is revoked: the agent drops to the Free tier at its next configuration reload or restart.\n", jti)
+	}
+
+	fmt.Fprintln(out, "   Restart the agent for the list to take effect.")
+	return cliexit.OK
+}
+
+// heldRevocations returns the sidecar token and its validated list; any
+// read or validation failure means "no list held".
+func heldRevocations(v *license.JWTValidator, configPath string) (string, *license.RevocationList) {
+	heldToken, err := configuration.ReadRevocationsSidecar(configPath)
+	if err != nil || heldToken == "" {
+		return "", nil
+	}
+	held, err := v.ValidateRevocationList(heldToken)
+	if err != nil {
+		return "", nil
+	}
+	return heldToken, held
+}
+
+// revokedJtiInForce returns the jti of the effective licence when the new
+// list revokes it, so the operator learns the pending downgrade immediately.
+func revokedJtiInForce(v *license.JWTValidator, configPath string, list *license.RevocationList) string {
+	licToken, err := configuration.ResolveEffectiveLicense(configPath, "")
+	if err != nil || licToken == "" {
+		return ""
+	}
+	lic, err := v.ValidateLicense(licToken)
+	if err != nil || !list.Revokes(lic.ID) {
+		return ""
+	}
+	return lic.ID
 }
 
 // printLicenseSigner tells who signed the licence: the root key, or a
