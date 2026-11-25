@@ -260,3 +260,9 @@ func TestCheckNewer(t *testing.T) {
 		t.Fatalf("expected ErrStaleRevocations for older version, got %v", err)
 	}
 }
+
+func TestCheckNewer_NilNextIsStale(t *testing.T) {
+	if err := CheckNewer(nil, &RevocationList{Version: 1}); !errors.Is(err, ErrStaleRevocations) {
+		t.Fatalf("CheckNewer(nil, held) = %v, want ErrStaleRevocations", err)
+	}
+}

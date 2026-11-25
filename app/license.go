@@ -335,14 +335,16 @@ func licenseCodeFrom(arg string, stdin *os.File) (string, error) {
 	return code, nil
 }
 
-// refuseWhenLicenceFromServer reports whether the Fleet server owns the
-// licence. A config we cannot read is only a warning here: the later steps
-// (licence removal or import) fail on the same unreadable file anyway.
+// refuseWhenLicenceFromServer reports whether a local licence write must be
+// refused: the Fleet server owns the licence, or agent.yaml cannot be read
+// to tell.
 func refuseWhenLicenceFromServer(configPath string, errOut io.Writer) bool {
 	flag, err := configuration.LicenceFromServer(configPath)
 	if err != nil {
-		fmt.Fprintf(errOut, "Warning: could not read opamp.license_from_server from %s: %v\n", configPath, err)
-		return false
+		// Unknown means the server may own the licence: refuse rather
+		// than risk a second writer.
+		fmt.Fprintf(errOut, "Error: cannot tell whether the Fleet server owns the licence (opamp.license_from_server in %s): %v\n", configPath, err)
+		return true
 	}
 	if !flag {
 		return false

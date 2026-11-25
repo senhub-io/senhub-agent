@@ -48,6 +48,9 @@ func (l *RevocationList) Revokes(jti string) bool {
 
 // NewerThan reports whether l is strictly newer than held.
 func (l *RevocationList) NewerThan(held *RevocationList) bool {
+	if l == nil {
+		return false
+	}
 	if held == nil {
 		return true
 	}
@@ -59,6 +62,9 @@ func (l *RevocationList) NewerThan(held *RevocationList) bool {
 func CheckNewer(next, held *RevocationList) error {
 	if next.NewerThan(held) {
 		return nil
+	}
+	if next == nil {
+		return fmt.Errorf("%w: no list", ErrStaleRevocations)
 	}
 	return fmt.Errorf("%w: held version %d, next version %d", ErrStaleRevocations, held.Version, next.Version)
 }

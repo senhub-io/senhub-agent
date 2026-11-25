@@ -68,6 +68,8 @@ type sensor struct {
 	// time alone (valid to grace, grace to expired); it exists only while
 	// a licence is in force.
 	licenceTimer *time.Timer
+	// stopped is set by Shutdown; the licence timer then does nothing.
+	stopped bool
 }
 
 // NewSensor creates a new Sensor instance
@@ -157,13 +159,14 @@ func (s *sensor) armLicenceTimerLocked(next time.Time) {
 		return
 	}
 	s.licenceTimer = time.AfterFunc(time.Until(next)+time.Second, func() {
+		// The check and the sync share one lock hold: a Shutdown in
+		// between would otherwise see probes started after it.
 		s.mu.Lock()
-		running := s.runCtx != nil && s.runCtx.Err() == nil
-		s.mu.Unlock()
-		if !running {
+		defer s.mu.Unlock()
+		if s.stopped || s.runCtx == nil || s.runCtx.Err() != nil {
 			return
 		}
-		if err := s.SyncConfiguration(); err != nil {
+		if err := s.syncLocked(); err != nil {
 			s.moduleLogger.Warn().Err(err).Msg("Configuration sync after a licence state change failed")
 		}
 	})
@@ -187,6 +190,7 @@ func (s *sensor) refreshLicenseLocked(cfg configuration.ConfigurationData) bool 
 				}
 			} else {
 				list = l
+				s.listRefused = ""
 			}
 		}
 	}
@@ -276,7 +280,11 @@ func (s *sensor) GetName() string {
 func (s *sensor) SyncConfiguration() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.syncLocked()
+}
 
+// syncLocked is SyncConfiguration with s.mu held.
+func (s *sensor) syncLocked() error {
 	s.moduleLogger.Info().Msg("Starting configuration synchronization")
 
 	// The licence is re-evaluated on every sync, not only when absent: a
@@ -801,6 +809,7 @@ func (s *sensor) Shutdown(ctx context.Context) error {
 	defer s.mu.Unlock()
 
 	s.moduleLogger.Info().Msg("Shutting down sensor")
+	s.stopped = true
 	s.armLicenceTimerLocked(time.Time{})
 
 	for _, probePoller := range s.startedProbes {

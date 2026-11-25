@@ -175,3 +175,12 @@ func TestRefuseWhenLicenceFromServer(t *testing.T) {
 		})
 	}
 }
+
+// An agent.yaml that cannot be read cannot tell who owns the licence: the
+// local write is refused rather than risking a second writer.
+func TestRefuseWhenLicenceFromServer_UnreadableConfigRefuses(t *testing.T) {
+	var errOut bytes.Buffer
+	if !refuseWhenLicenceFromServer(filepath.Join(t.TempDir(), "missing.yaml"), &errOut) {
+		t.Fatal("an unreadable agent.yaml let a local licence write through")
+	}
+}
