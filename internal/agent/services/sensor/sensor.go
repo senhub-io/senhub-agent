@@ -58,6 +58,16 @@ type sensor struct {
 	moduleLogger     *logger.ModuleLogger
 	licenseValidator license.Validator
 	license          *license.License
+	resolver         *license.Resolver
+	// inForce is the licence evaluation behind s.license; the resolver
+	// revalidates only on change, so a token identical in state and list
+	// version is not re-logged.
+	inForce     license.InForce
+	listRefused string
+	// licenceTimer runs a sync when the licence in force changes state by
+	// time alone (valid to grace, grace to expired); it exists only while
+	// a licence is in force.
+	licenceTimer *time.Timer
 }
 
 // NewSensor creates a new Sensor instance
@@ -108,64 +118,11 @@ func NewSensor(
 		licenseValidator = jwtValidator
 	}
 
-	// Try to load and validate license from configuration
-	var validatedLicense *license.License
-	config := configProvider.GetConfiguration()
-	agentKey := config.Agent.AuthenticationKey
-	if config.Agent.License != "" && licenseValidator != nil {
-		moduleLogger.Info().Msg("License token found in configuration, validating...")
-		lic, err := licenseValidator.ValidateLicense(config.Agent.License)
-		if err != nil {
-			// A licence WAS configured and the validator rejected it: this is
-			// an operator-visible misconfiguration (e.g. a legacy compact
-			// SH-XXXX token), not the legit no-licence free tier. Fail loud so
-			// monitoring alerts instead of the agent silently dropping every
-			// paid probe (#486).
-			agentstate.SetLicenseInvalid(agentstate.LicenseReasonValidationFailed)
-			moduleLogger.Error().
-				Err(err).
-				Msg("Configured license token is INVALID and was rejected - all paid probes disabled, agent degraded to FREE TIER. Fix or remove the license to clear this alert (self-metric senhub.agent.license.invalid=1)")
-		} else if agentKey != "" && !license.VerifyBinding(config.Agent.License, agentKey, lic) {
-			agentstate.SetLicenseInvalid(agentstate.LicenseReasonBindingMismatch)
-			moduleLogger.Error().
-				Msg("Configured license is NOT bound to this agent key and was rejected - all paid probes disabled, agent degraded to FREE TIER (self-metric senhub.agent.license.invalid=1)")
-		} else {
-			validatedLicense = lic
-			tierName := string(lic.Tier)
-			moduleLogger.Info().
-				Str("tier", tierName).
-				Bool("expired", lic.IsExpired).
-				Time("expires_at", lic.ExpiresAt).
-				Str("platform", lic.Platform).
-				Msg("License validated successfully")
+	// Keep the safe-mode authorizer reset even when refreshLicenseLocked
+	// takes the safe-mode path: it is idempotent for the other paths.
+	publishLicense(licenseValidator, nil)
 
-			if lic.IsExpired {
-				if licenseValidator.IsInGracePeriod(lic) {
-					gracePeriodEnd := lic.ExpiresAt.Add(time.Duration(lic.GracePeriodDays) * 24 * time.Hour)
-					moduleLogger.Warn().
-						Time("grace_period_ends", gracePeriodEnd).
-						Str("platform", lic.Platform).
-						Time("delegation_expires_at", lic.DelegationExpiresAt).
-						Msg("License expired but in grace period: renew the licence, or the platform's delegation, before the grace period ends")
-				} else {
-					agentstate.SetLicenseInvalid(agentstate.LicenseReasonExpiredNoGrace)
-					moduleLogger.Error().Msg("License expired and grace period ended - all paid probes disabled, agent degraded to FREE TIER (self-metric senhub.agent.license.invalid=1)")
-					validatedLicense = nil // Disable license if expired outside grace period
-				}
-			}
-
-			if validatedLicense != nil {
-				agentstate.ClearLicenseInvalid()
-			}
-		}
-	} else {
-		moduleLogger.Info().
-			Int("paid_probe_types", len(license.KnownPaidProbes())).
-			Msg("No license configured - free tier: every probe type runs except the paid ones")
-	}
-
-	publishLicense(licenseValidator, validatedLicense)
-	return &sensor{
+	s := &sensor{
 		startedProbes:    []*probes.ProbePoller{},
 		failedProbes:     map[string]failedProbe{},
 		retryWake:        make(chan struct{}, 1),
@@ -173,8 +130,9 @@ func NewSensor(
 		configProvider:   configProvider,
 		moduleLogger:     moduleLogger,
 		licenseValidator: licenseValidator,
-		license:          validatedLicense,
 	}
+	s.refreshLicenseLocked(configProvider.GetConfiguration())
+	return s
 }
 
 // publishLicense lets the export-path extensions ask what the licence
@@ -186,6 +144,126 @@ func publishLicense(v license.Validator, lic *license.License) {
 		return
 	}
 	exporthook.SetAuthorizer(func(feature string) bool { return v.IsProbeAuthorized(lic, feature) })
+}
+
+// armLicenceTimerLocked replaces the licence timer with one firing just
+// after next; a zero next leaves none. Called with s.mu held.
+func (s *sensor) armLicenceTimerLocked(next time.Time) {
+	if s.licenceTimer != nil {
+		s.licenceTimer.Stop()
+		s.licenceTimer = nil
+	}
+	if next.IsZero() {
+		return
+	}
+	s.licenceTimer = time.AfterFunc(time.Until(next)+time.Second, func() {
+		s.mu.Lock()
+		running := s.runCtx != nil && s.runCtx.Err() == nil
+		s.mu.Unlock()
+		if !running {
+			return
+		}
+		if err := s.SyncConfiguration(); err != nil {
+			s.moduleLogger.Warn().Err(err).Msg("Configuration sync after a licence state change failed")
+		}
+	})
+}
+
+// refreshLicenseLocked re-evaluates the licence in force from the current
+// configuration: token, revocation list and agent key. It returns true when
+// the in-force licence changed, so callers can react (only logging today).
+// Called with s.mu held.
+func (s *sensor) refreshLicenseLocked(cfg configuration.ConfigurationData) bool {
+	var list *license.RevocationList
+	if cfg.Agent.LicenseRevocations != "" {
+		if v, ok := s.licenseValidator.(*license.JWTValidator); ok {
+			l, err := v.ValidateRevocationList(cfg.Agent.LicenseRevocations)
+			if err != nil {
+				// Log a refused list once per token, not on every sync.
+				if s.listRefused != cfg.Agent.LicenseRevocations {
+					s.listRefused = cfg.Agent.LicenseRevocations
+					s.moduleLogger.Warn().Err(err).
+						Msg("Revocation list rejected; the licence is checked without it")
+				}
+			} else {
+				list = l
+			}
+		}
+	}
+
+	token := cfg.Agent.License
+	if s.resolver == nil && s.licenseValidator != nil {
+		s.resolver = license.NewResolver(s.licenseValidator)
+	}
+	var f license.InForce
+	if s.resolver != nil {
+		f = s.resolver.Resolve(token, cfg.Agent.AuthenticationKey, list)
+	} else if token != "" {
+		// Safe mode: no validator, so a configured licence cannot be trusted.
+		f = license.InForce{Token: token, State: license.StateInvalid, Reason: license.ReasonValidationFailed}
+	} else {
+		f = license.InForce{State: license.StateNone}
+	}
+
+	listVer := uint64(0)
+	if f.Revocations != nil {
+		listVer = f.Revocations.Version
+	}
+	heldVer := uint64(0)
+	if s.inForce.Revocations != nil {
+		heldVer = s.inForce.Revocations.Version
+	}
+	if f.Token == s.inForce.Token && f.State == s.inForce.State && listVer == heldVer {
+		return false
+	}
+
+	s.inForce = f
+	s.license = f.License
+	s.armLicenceTimerLocked(f.NextChange())
+	publishLicense(s.licenseValidator, f.License)
+	license.Publish(f)
+
+	agentstate.ClearLicenseInvalid()
+	if f.Reason != "" {
+		agentstate.SetLicenseInvalid(f.Reason)
+	}
+
+	switch f.State {
+	case license.StateValid:
+		s.moduleLogger.Info().
+			Str("tier", string(f.Tier())).
+			Time("expires_at", f.License.ExpiresAt).
+			Str("platform", f.License.Platform).
+			Msg("License validated successfully")
+	case license.StateGrace:
+		gracePeriodEnd := f.License.ExpiresAt.Add(time.Duration(f.License.GracePeriodDays) * 24 * time.Hour)
+		s.moduleLogger.Warn().
+			Time("grace_period_ends", gracePeriodEnd).
+			Str("platform", f.License.Platform).
+			Time("delegation_expires_at", f.License.DelegationExpiresAt).
+			Msg("License expired but in grace period: renew the licence, or the platform's delegation, before the grace period ends")
+	case license.StateExpired:
+		s.moduleLogger.Error().
+			Msg("License expired and grace period ended - all paid probes disabled, agent degraded to FREE TIER (self-metric senhub.agent.license.invalid=1)")
+	case license.StateRevoked:
+		s.moduleLogger.Error().
+			Str("jti", f.Parsed.ID).
+			Uint64("revocations_version", listVer).
+			Msg("License revoked by the signed revocation list - paid probes stopped, agent on FREE TIER without grace (self-metric senhub.agent.license.invalid{reason=revoked}=1)")
+	case license.StateInvalid:
+		if f.Reason == license.ReasonBindingMismatch {
+			s.moduleLogger.Error().
+				Msg("Configured license is NOT bound to this agent key and was rejected - all paid probes disabled, agent degraded to FREE TIER (self-metric senhub.agent.license.invalid=1)")
+		} else {
+			s.moduleLogger.Error().Err(f.Err).
+				Msg("Configured license token is INVALID and was rejected - all paid probes disabled, agent degraded to FREE TIER. Fix or remove the license to clear this alert (self-metric senhub.agent.license.invalid=1)")
+		}
+	case license.StateNone:
+		s.moduleLogger.Info().
+			Int("paid_probe_types", len(license.KnownPaidProbes())).
+			Msg("No license configured - free tier: every probe type runs except the paid ones")
+	}
+	return true
 }
 
 func (s *sensor) GetName() string {
@@ -201,36 +279,10 @@ func (s *sensor) SyncConfiguration() error {
 
 	s.moduleLogger.Info().Msg("Starting configuration synchronization")
 
-	// Re-validate license from current configuration (may have been loaded after initial startup)
+	// The licence is re-evaluated on every sync, not only when absent: a
+	// replaced, revoked or expired licence takes effect without a restart.
 	config := s.configProvider.GetConfiguration()
-	if s.license == nil && config.Agent.License != "" && s.licenseValidator != nil {
-		lic, err := s.licenseValidator.ValidateLicense(config.Agent.License)
-		if err != nil {
-			agentstate.SetLicenseInvalid(agentstate.LicenseReasonValidationFailed)
-			s.moduleLogger.Error().Err(err).Msg("Configured license token is INVALID and was rejected during configuration sync - agent staying on FREE TIER (self-metric senhub.agent.license.invalid=1)")
-		} else if agentKey := config.Agent.AuthenticationKey; agentKey != "" && !license.VerifyBinding(config.Agent.License, agentKey, lic) {
-			// Mirror the constructor's binding enforcement (see above). Without
-			// it the initial binding_mismatch rejection is silently undone by
-			// the first SyncConfiguration — which runs at boot — unlocking paid
-			// probes for a licence not bound to this agent's authentication key.
-			agentstate.SetLicenseInvalid(agentstate.LicenseReasonBindingMismatch)
-			s.moduleLogger.Error().Msg("Configured license is NOT bound to this agent key and was rejected during configuration sync - agent staying on FREE TIER (self-metric senhub.agent.license.invalid=1)")
-		} else {
-			isExpired := lic.IsExpired && !s.licenseValidator.IsInGracePeriod(lic)
-			if !isExpired {
-				s.license = lic
-				publishLicense(s.licenseValidator, lic)
-				agentstate.ClearLicenseInvalid()
-				s.moduleLogger.Info().
-					Str("tier", string(lic.Tier)).
-					Strs("probes", lic.AuthorizedProbes).
-					Msg("License validated during configuration sync")
-			} else {
-				agentstate.SetLicenseInvalid(agentstate.LicenseReasonExpiredNoGrace)
-				s.moduleLogger.Error().Msg("Configured license is expired and outside its grace period - agent staying on FREE TIER (self-metric senhub.agent.license.invalid=1)")
-			}
-		}
-	}
+	s.refreshLicenseLocked(config)
 
 	validProbeIds := []string{}
 	probeConfigs := config.Probes
@@ -302,7 +354,6 @@ func (s *sensor) SyncConfiguration() error {
 		}
 
 		probeId := probes.GenerateProbeId(probeConfig)
-		validProbeIds = append(validProbeIds, probeId)
 
 		probeExists := false
 		for _, startedProbe := range s.startedProbes {
@@ -312,6 +363,21 @@ func (s *sensor) SyncConfiguration() error {
 				break
 			}
 		}
+
+		// A probe already running must still be wanted by the licence in
+		// force: leaving it out of validProbeIds makes phase 2 stop it,
+		// the same way a disabled probe is stopped.
+		if probeExists && s.checkLicenceAllows(probeConfig) != nil {
+			s.moduleLogger.Warn().
+				Str("probe_name", probeConfig.Name).
+				Str("probe_type", probeConfig.Type).
+				Str("license_state", string(s.inForce.State)).
+				Msg("Probe stopped: the licence in force no longer allows it")
+			continue
+		}
+
+		validProbeIds = append(validProbeIds, probeId)
+
 		if probeExists {
 			s.moduleLogger.Debug().
 				Str("probe_id", probeId).
@@ -560,7 +626,17 @@ func (s *sensor) checkStartAllowed(probeConfig configuration.ProbeConfig) error 
 		return errors.New(license.NotInThisBuild(probeType))
 	}
 
-	// If licenseValidator is nil (safe mode), only allow free tier probes
+	return s.checkLicenceAllows(probeConfig)
+}
+
+// checkLicenceAllows is the licensing half of checkStartAllowed: safe mode
+// allows only free-tier probes, otherwise the licence in force decides.
+func (s *sensor) checkLicenceAllows(probeConfig configuration.ProbeConfig) error {
+	probeType := probeConfig.Type
+	if probeType == "" {
+		probeType = probeConfig.Name
+	}
+
 	if s.licenseValidator == nil {
 		freeTierProbes := license.GetFreeTierProbes()
 		isFreeTier := false
@@ -578,19 +654,17 @@ func (s *sensor) checkStartAllowed(probeConfig configuration.ProbeConfig) error 
 				Msg("License validator unavailable - only free tier probes allowed")
 			return fmt.Errorf("probe %q requires a valid license validator", probeType)
 		}
-		// Free tier probe - allow it to continue startup
-	} else {
-		// Normal license validation with validator
-		if !s.licenseValidator.IsProbeAuthorized(s.license, probeType) {
-			// Get list of free tier probes for helpful error message
-			freeTierProbes := license.GetFreeTierProbes()
-			s.moduleLogger.Warn().
-				Str("probe_type", probeType).
-				Str("probe_name", probeConfig.Name).
-				Strs("free_tier_probes", freeTierProbes).
-				Msg("Probe not authorized by license - skipping (upgrade license to enable)")
-			return fmt.Errorf("probe %q requires a valid license", probeType)
-		}
+		return nil
+	}
+
+	if !s.licenseValidator.IsProbeAuthorized(s.license, probeType) {
+		freeTierProbes := license.GetFreeTierProbes()
+		s.moduleLogger.Warn().
+			Str("probe_type", probeType).
+			Str("probe_name", probeConfig.Name).
+			Strs("free_tier_probes", freeTierProbes).
+			Msg("Probe not authorized by license - skipping (upgrade license to enable)")
+		return fmt.Errorf("probe %q requires a valid license", probeType)
 	}
 	return nil
 }
@@ -727,6 +801,7 @@ func (s *sensor) Shutdown(ctx context.Context) error {
 	defer s.mu.Unlock()
 
 	s.moduleLogger.Info().Msg("Shutting down sensor")
+	s.armLicenceTimerLocked(time.Time{})
 
 	for _, probePoller := range s.startedProbes {
 		s.moduleLogger.Debug().

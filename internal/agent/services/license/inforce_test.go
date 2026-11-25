@@ -280,3 +280,45 @@ func TestRefusalReason(t *testing.T) {
 		})
 	}
 }
+
+func TestNextChange(t *testing.T) {
+	exp := time.Now().Add(time.Hour)
+	tests := []struct {
+		name string
+		f    InForce
+		want time.Time
+	}{
+		{name: "valid ends at expiry", f: InForce{State: StateValid, License: &License{ExpiresAt: exp}}, want: exp},
+		{name: "grace ends after the grace days", f: InForce{State: StateGrace, License: &License{ExpiresAt: exp, GracePeriodDays: 7}}, want: exp.Add(7 * 24 * time.Hour)},
+		{name: "revoked never changes by time", f: InForce{State: StateRevoked}, want: time.Time{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.f.NextChange(); !got.Equal(tt.want) {
+				t.Fatalf("NextChange() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// A licence that expires while the agent runs must move to grace without
+// a new token: the memoised result is dropped once its boundary passed.
+func TestResolverReevaluatesPastTheExpiry(t *testing.T) {
+	priv, pub := generateTestRSAKeys(t)
+	v := &countingValidator{JWTValidator: newHardeningValidator(t, publicKeyToPEM(pub), "", "")}
+	c := baseClaimsWithJTI()
+	c["exp"] = time.Now().Add(time.Second).Unix()
+	token := createSignedJWT(t, priv, c)
+
+	r := NewResolver(v)
+	if got := r.Resolve(token, testAgentKey, nil); got.State != StateValid {
+		t.Fatalf("state = %q, want valid", got.State)
+	}
+	time.Sleep(time.Until(time.Unix(c["exp"].(int64), 0)) + 50*time.Millisecond)
+	if got := r.Resolve(token, testAgentKey, nil); got.State != StateGrace {
+		t.Fatalf("state after expiry = %q, want grace", got.State)
+	}
+	if v.calls != 2 {
+		t.Fatalf("validations = %d, want 2", v.calls)
+	}
+}

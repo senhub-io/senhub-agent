@@ -59,6 +59,18 @@ func (f InForce) ExpiresIn(now time.Time) (time.Duration, bool) {
 	return f.License.ExpiresAt.Sub(now), true
 }
 
+// NextChange is when the state changes by time alone: the end of a valid
+// licence, or the end of the grace period. Zero when no time can change it.
+func (f InForce) NextChange() time.Time {
+	if f.License == nil {
+		return time.Time{}
+	}
+	if f.State == StateGrace {
+		return f.License.ExpiresAt.Add(time.Duration(f.License.GracePeriodDays) * 24 * time.Hour)
+	}
+	return f.License.ExpiresAt
+}
+
 // Evaluate resolves the licence state from the token, the validator and the
 // held revocation list. Revocation wins over the grace period: a revoked
 // licence is never honoured, expired or not.
@@ -132,7 +144,9 @@ func (r *Resolver) Resolve(token, agentKey string, list *RevocationList) InForce
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.resolved && r.token == token && r.agentKey == agentKey && r.revVer == revVer {
+	next := r.cached.NextChange()
+	if r.resolved && r.token == token && r.agentKey == agentKey && r.revVer == revVer &&
+		(next.IsZero() || time.Now().Before(next)) {
 		return r.cached
 	}
 	r.cached = Evaluate(r.validator, token, agentKey, list)
