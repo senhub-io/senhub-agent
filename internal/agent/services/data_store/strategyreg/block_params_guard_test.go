@@ -153,6 +153,11 @@ func TestKnownBlockParamsMatchTheCode(t *testing.T) {
 			t.Errorf("blockSources has an entry for %s but no such block is declared; the table is stale", id)
 		}
 	}
+	for id := range untraceableBlocks {
+		if !declaredIDs[id] {
+			t.Errorf("untraceableBlocks has an entry for %s but no such block is declared; the exclusion is stale", id)
+		}
+	}
 }
 
 // keysReadBySource parses the named function and collects the keys it
