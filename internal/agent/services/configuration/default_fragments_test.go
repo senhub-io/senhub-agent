@@ -50,14 +50,16 @@ func assertFileContains(t *testing.T, path, want string) {
 
 func TestEnsureDefaultProbeFragments(t *testing.T) {
 	socketYes := func(string) (os.FileInfo, error) { return nil, nil }
+	socketOpen := func(string) error { return nil }
 
 	t.Run("linux without systemd writes no services probe", func(t *testing.T) {
 		dir := t.TempDir()
 		cfg := writeTestAgentConfig(t, dir)
 		EnsureDefaultProbeFragments(cfg, nil, DefaultFragmentOptions{
-			SystemdRunning:   func() bool { return false },
-			GOOS:             "linux",
-			DockerSocketStat: socketYes,
+			SystemdRunning:     func() bool { return false },
+			GOOS:               "linux",
+			DockerSocketStat:   socketYes,
+			DockerSocketAccess: socketOpen,
 		})
 		if _, err := os.Stat(filepath.Join(dir, "probes.d", "05-services.yaml")); !os.IsNotExist(err) {
 			t.Fatalf("a host without systemd must not get the systemd probe, stat err=%v", err)
@@ -70,9 +72,10 @@ func TestEnsureDefaultProbeFragments(t *testing.T) {
 		dir := t.TempDir()
 		cfg := writeTestAgentConfig(t, dir)
 		EnsureDefaultProbeFragments(cfg, nil, DefaultFragmentOptions{
-			SystemdRunning:   func() bool { return true },
-			GOOS:             "linux",
-			DockerSocketStat: socketYes,
+			SystemdRunning:     func() bool { return true },
+			GOOS:               "linux",
+			DockerSocketStat:   socketYes,
+			DockerSocketAccess: socketOpen,
 		})
 		for _, name := range []string{"05-services.yaml", "06-swarm.yaml"} {
 			if _, err := os.Stat(filepath.Join(dir, "probes.d", name)); !os.IsNotExist(err) {
@@ -122,9 +125,10 @@ func TestEnsureDefaultProbeFragments(t *testing.T) {
 		dir := t.TempDir()
 		cfg := writeTestAgentConfig(t, dir)
 		EnsureDefaultProbeFragments(cfg, nil, DefaultFragmentOptions{
-			SystemdRunning:   func() bool { return true },
-			GOOS:             "linux",
-			DockerSocketStat: socketYes,
+			SystemdRunning:     func() bool { return true },
+			GOOS:               "linux",
+			DockerSocketStat:   socketYes,
+			DockerSocketAccess: func(string) error { return nil },
 		})
 
 		servicesPath := filepath.Join(dir, "probes.d", "05-services.yaml")
@@ -135,13 +139,55 @@ func TestEnsureDefaultProbeFragments(t *testing.T) {
 		assertFileContains(t, swarmPath, "type: swarm")
 	})
 
+	t.Run("linux with docker socket but no access writes swarm disabled", func(t *testing.T) {
+		dir := t.TempDir()
+		cfg := writeTestAgentConfig(t, dir)
+		EnsureDefaultProbeFragments(cfg, nil, DefaultFragmentOptions{
+			SystemdRunning:     func() bool { return true },
+			GOOS:               "linux",
+			DockerSocketStat:   socketYes,
+			DockerSocketAccess: func(string) error { return os.ErrPermission },
+		})
+
+		probesDir := filepath.Join(dir, "probes.d")
+		if testPathExists(t, filepath.Join(probesDir, "06-swarm.yaml")) {
+			t.Fatal("an active swarm fragment was written although the agent cannot open the Docker socket")
+		}
+		disabledPath := filepath.Join(probesDir, "06-swarm.yaml.disabled")
+		if !testPathExists(t, disabledPath) {
+			t.Fatal("no disabled swarm fragment was written")
+		}
+		assertFileContains(t, disabledPath, "type: swarm")
+		assertFileContains(t, disabledPath, "usermod -aG docker")
+		assertFileContains(t, filepath.Join(probesDir, "05-services.yaml"), "type: systemd")
+	})
+
+	t.Run("linux with docker socket and access writes active swarm", func(t *testing.T) {
+		dir := t.TempDir()
+		cfg := writeTestAgentConfig(t, dir)
+		EnsureDefaultProbeFragments(cfg, nil, DefaultFragmentOptions{
+			SystemdRunning:     func() bool { return true },
+			GOOS:               "linux",
+			DockerSocketStat:   socketYes,
+			DockerSocketAccess: func(string) error { return nil },
+		})
+
+		probesDir := filepath.Join(dir, "probes.d")
+		swarmPath := filepath.Join(probesDir, "06-swarm.yaml")
+		assertFileContains(t, swarmPath, "type: swarm")
+		if testPathExists(t, swarmPath+".disabled") {
+			t.Fatal("a disabled twin was written although the socket is accessible")
+		}
+	})
+
 	t.Run("windows writes winservices and no swarm", func(t *testing.T) {
 		dir := t.TempDir()
 		cfg := writeTestAgentConfig(t, dir)
 		EnsureDefaultProbeFragments(cfg, nil, DefaultFragmentOptions{
-			SystemdRunning:   func() bool { return true },
-			GOOS:             "windows",
-			DockerSocketStat: socketYes,
+			SystemdRunning:     func() bool { return true },
+			GOOS:               "windows",
+			DockerSocketStat:   socketYes,
+			DockerSocketAccess: socketOpen,
 		})
 
 		servicesPath := filepath.Join(dir, "probes.d", "05-services.yaml")
@@ -156,9 +202,10 @@ func TestEnsureDefaultProbeFragments(t *testing.T) {
 		dir := t.TempDir()
 		cfg := writeTestAgentConfig(t, dir)
 		EnsureDefaultProbeFragments(cfg, nil, DefaultFragmentOptions{
-			SystemdRunning:   func() bool { return true },
-			GOOS:             "linux",
-			DockerSocketStat: socketYes,
+			SystemdRunning:     func() bool { return true },
+			GOOS:               "linux",
+			DockerSocketStat:   socketYes,
+			DockerSocketAccess: socketOpen,
 		})
 
 		if !testPathExists(t, filepath.Join(dir, "probes.d", "05-services.yaml")) {
@@ -180,9 +227,10 @@ func TestEnsureDefaultProbeFragments(t *testing.T) {
 		}
 
 		EnsureDefaultProbeFragments(cfg, nil, DefaultFragmentOptions{
-			SystemdRunning:   func() bool { return true },
-			GOOS:             "linux",
-			DockerSocketStat: socketYes,
+			SystemdRunning:     func() bool { return true },
+			GOOS:               "linux",
+			DockerSocketStat:   socketYes,
+			DockerSocketAccess: socketOpen,
 		})
 
 		if testPathExists(t, filepath.Join(dir, "probes.d", "05-services.yaml")) {
@@ -211,9 +259,10 @@ func TestEnsureDefaultProbeFragments(t *testing.T) {
 		}
 
 		EnsureDefaultProbeFragments(cfg, nil, DefaultFragmentOptions{
-			SystemdRunning:   func() bool { return true },
-			GOOS:             "linux",
-			DockerSocketStat: socketYes,
+			SystemdRunning:     func() bool { return true },
+			GOOS:               "linux",
+			DockerSocketStat:   socketYes,
+			DockerSocketAccess: socketOpen,
 		})
 
 		if testPathExists(t, filepath.Join(dir, "probes.d", "05-services.yaml")) {
@@ -228,9 +277,10 @@ func TestEnsureDefaultProbeFragments(t *testing.T) {
 		dir := t.TempDir()
 		cfg := writeTestAgentConfig(t, dir)
 		EnsureDefaultProbeFragments(cfg, nil, DefaultFragmentOptions{
-			SystemdRunning:   func() bool { return true },
-			GOOS:             "darwin",
-			DockerSocketStat: socketYes,
+			SystemdRunning:     func() bool { return true },
+			GOOS:               "darwin",
+			DockerSocketStat:   socketYes,
+			DockerSocketAccess: socketOpen,
 		})
 
 		if testPathExists(t, filepath.Join(dir, "probes.d", "05-services.yaml")) {
@@ -249,9 +299,10 @@ func TestEnsureDefaultProbeFragments(t *testing.T) {
 		}
 
 		EnsureDefaultProbeFragments(cfg, nil, DefaultFragmentOptions{
-			SystemdRunning:   func() bool { return true },
-			GOOS:             "linux",
-			DockerSocketStat: socketYes,
+			SystemdRunning:     func() bool { return true },
+			GOOS:               "linux",
+			DockerSocketStat:   socketYes,
+			DockerSocketAccess: socketOpen,
 		})
 
 		if testPathExists(t, filepath.Join(dir, "probes.d", "05-services.yaml")) {

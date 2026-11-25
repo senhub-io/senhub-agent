@@ -43,6 +43,11 @@ type DefaultFragmentOptions struct {
 	// SystemdRunning reports whether systemd is the init system; a Linux
 	// container has no systemd, and the probe would only fail there.
 	SystemdRunning func() bool
+	// DockerSocketAccess checks that the current process can open the Docker
+	// socket for reading and writing; nil uses the platform default. A socket
+	// the agent cannot open yields a probe that fails on every cycle, so the
+	// fragment is shipped disabled with a hint instead.
+	DockerSocketAccess func(string) error
 }
 
 func systemdRunning() bool {
@@ -56,6 +61,10 @@ type defaultFragmentSpec struct {
 	probeType string
 	content   string
 	enabled   bool
+	// disabledHint, when set, is a YAML comment written on top of the content
+	// in a ".disabled" twin: the operator reads why and renames the file once
+	// the underlying access problem is fixed.
+	disabledHint string
 }
 
 func defaultFragmentSpecs(opts DefaultFragmentOptions) []defaultFragmentSpec {
@@ -73,6 +82,11 @@ func defaultFragmentSpecs(opts DefaultFragmentOptions) []defaultFragmentSpec {
 		running = systemdRunning
 	}
 
+	access := opts.DockerSocketAccess
+	if access == nil {
+		access = dockerSocketAccess
+	}
+
 	var specs []defaultFragmentSpec
 
 	switch goos {
@@ -85,13 +99,17 @@ func defaultFragmentSpecs(opts DefaultFragmentOptions) []defaultFragmentSpec {
 			enabled:   running(),
 		})
 		if _, err := stat(dockerSocketPath); err == nil {
-			specs = append(specs, defaultFragmentSpec{
+			spec := defaultFragmentSpec{
 				fileName:  swarmFragmentFile,
 				name:      "swarm",
 				probeType: probeTypeSwarm,
 				content:   SwarmProbeFragmentTemplate,
 				enabled:   true,
-			})
+			}
+			if accessErr := access(dockerSocketPath); accessErr != nil {
+				spec.disabledHint = fmt.Sprintf("# The agent user cannot open the Docker socket: %s.\n# Add that user to the socket's owning group (usermod -aG docker <user>, then restart the agent service) and rename this file without .disabled.", accessErr)
+			}
+			specs = append(specs, spec)
 		}
 	case "windows":
 		specs = append(specs, defaultFragmentSpec{
@@ -175,6 +193,21 @@ func EnsureDefaultProbeFragments(configPath string, log *logger.ModuleLogger, op
 		if err := os.MkdirAll(probesDir, 0750); err != nil {
 			if log != nil {
 				log.Warn().Err(err).Str("path", probesDir).Msg("Default probe fragment not written: cannot create probes.d")
+			}
+			continue
+		}
+		if spec.disabledHint != "" {
+			if err := atomicWriteFile(disabledPath, []byte(spec.disabledHint+"\n"+spec.content), fileModeOr(disabledPath, 0600)); err != nil {
+				if log != nil {
+					log.Warn().Err(err).Str("path", disabledPath).Msg("Default probe fragment write failed")
+				}
+				continue
+			}
+			if log != nil {
+				log.Info().
+					Str("path", disabledPath).
+					Str("probe_type", spec.probeType).
+					Msg("Default probe fragment written disabled: the agent cannot open the Docker socket")
 			}
 			continue
 		}

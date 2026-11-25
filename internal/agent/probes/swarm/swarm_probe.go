@@ -193,7 +193,18 @@ func (p *swarmProbe) Collect() ([]data_store.DataPoint, error) {
 		// keep publishing the last snapshot it saw as if it were current.
 		p.entitySrc.update("", "", 0, 0, nil)
 		points = append(points, p.checkResultPoint(checkResult, nil, now))
-		return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), nil
+		points = p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName())
+		if state == stateUnreachable {
+			// Returning nil here would let the agent believe a probe it
+			// cannot talk to is healthy: the availability points above carry
+			// up=0, but only an error makes doctor and the poller treat the
+			// cycle as failed.
+			if err != nil {
+				return points, fmt.Errorf("swarm: the Docker socket %s did not answer: %w", p.cfg.SocketPath, err)
+			}
+			return points, fmt.Errorf("swarm: the Docker socket %s did not answer", p.cfg.SocketPath)
+		}
+		return points, nil
 	}
 	p.notManagerLogged.Store(false)
 
@@ -242,6 +253,13 @@ func (p *swarmProbe) Collect() ([]data_store.DataPoint, error) {
 	points = append(points, p.checkResultPoint(checkResult, clusterTags, now))
 
 	return p.BaseProbe.EnrichDataPointsWithProbeName(points, p.GetName()), firstErr
+}
+
+// KeepsPartialResults reports that the availability points emitted on an
+// unreachable cycle are meaningful on their own: without this, the poller
+// drops them together with the cycle's error and the dashboard loses up=0.
+func (p *swarmProbe) KeepsPartialResults() bool {
+	return true
 }
 
 // clusterState distinguishes the three situations that all look like "no data"

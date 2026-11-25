@@ -277,18 +277,23 @@ ping -n 4 app.example.com  # Windows
 
 **2. Permission Denied (Linux/Unix)**
 
-**Symptom:** "Operation not permitted" or "socket: permission denied"
+**Symptom:** "Operation not permitted", "socket: permission denied" or "socktype: SOCK_RAW" in the probe error, which then ends with a hint naming the two fixes below.
 
-**Solution:**
+The packaged service runs as the `senhub` user with no capability and `NoNewPrivileges`, so `ping` can open neither a raw ICMP socket nor, on Ubuntu and Debian where `net.ipv4.ping_group_range` is disabled by default, a datagram one. A capability set on the `ping` binary does not help: `NoNewPrivileges` ignores it.
+
+**Solution**, one of:
 ```bash
-# Option 1: Run agent as root
-sudo senhub-agent run
+# Option 1: give the service CAP_NET_RAW with a drop-in
+sudo systemctl edit senhub-agent
+#   [Service]
+#   CapabilityBoundingSet=CAP_NET_RAW
+#   AmbientCapabilities=CAP_NET_RAW
+sudo systemctl restart senhub-agent
 
-# Option 2: Grant raw socket capabilities (Linux)
-sudo setcap cap_net_raw=eip /opt/senhub/bin/senhub-agent
-
-# Option 3: Allow ICMP for agent user
-sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"
+# Option 2: allow unprivileged ICMP for the service's group
+gid=$(getent group senhub | cut -d: -f3)
+echo "net.ipv4.ping_group_range = $gid $gid" | sudo tee /etc/sysctl.d/60-senhub-ping.conf
+sudo sysctl --system
 ```
 
 **3. Windows: Ping Service Disabled**

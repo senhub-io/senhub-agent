@@ -50,11 +50,19 @@ add_default_fragment() {
     file=/etc/senhub-agent/probes.d/$1
     # The directory belongs to the service user: never write through a link
     # it may have planted, and create the file only if it does not exist.
-    [ -e "${file}" ] || [ -L "${file}" ] || [ -e "${file}.disabled" ] && return 0
+    [ -e "${file}" ] || [ -L "${file}" ] || [ -e "${file}.disabled" ] || [ -L "${file}.disabled" ] && return 0
     grep -Eqs "^[[:space:]]*type:[[:space:]]*\"?$2\"?[[:space:]]*$" /etc/senhub-agent/probes.d/*.yaml && return 0
+    header="# $3 Rename to *.disabled to
+# turn it off (it is added once per host: deleting it also works)."
+    if [ -n "${5:-}" ]; then
+        # Written disabled, with the reason: an enabled probe would fail
+        # every cycle.
+        file="${file}.disabled"
+        header="# $3
+# Written disabled: $5"
+    fi
     ( umask 077; set -C; cat > "${file}" ) 2>/dev/null <<FRAGMENT || true
-# $3 Rename to *.disabled to
-# turn it off (it is added once per host: deleting it also works).
+${header}
 
 - name: $4
   type: $2
@@ -62,6 +70,20 @@ add_default_fragment() {
     interval: 60
 FRAGMENT
     [ -f "${file}" ] && [ ! -L "${file}" ] && chown -h senhub:senhub "${file}" 2>/dev/null || true
+}
+# senhub_can_use_socket says whether the service user can read and write a
+# socket. This script runs as root, which always can; the service does not.
+# Without runuser or su to ask, it answers yes, as before.
+senhub_can_use_socket() {
+    if command -v runuser >/dev/null 2>&1; then
+        runuser -u senhub -- test -r "$1" -a -w "$1" 2>/dev/null
+        return
+    fi
+    if command -v su >/dev/null 2>&1; then
+        su -s /bin/sh -c "test -r '$1' -a -w '$1'" senhub 2>/dev/null
+        return
+    fi
+    return 0
 }
 # Once per host: an upgrade after this one must not bring back a fragment
 # the operator deleted. The opt-out the agent honours is honoured here too.
@@ -77,7 +99,13 @@ if [ "${defaults_off}" = 0 ] && [ ! -e "${defaults_marker}" ] && [ ! -L "${defau
         add_default_fragment 05-services.yaml systemd "Default OS service supervisor probe." services
     fi
     if [ -S /var/run/docker.sock ]; then
-        add_default_fragment 06-swarm.yaml swarm "Default Docker Swarm probe (declares overlay networks on a manager)." swarm
+        swarm_off=""
+        if ! senhub_can_use_socket /var/run/docker.sock; then
+            swarm_off="the senhub user cannot open /var/run/docker.sock. Add it to
+# the socket's group (usermod -aG docker senhub), restart the service, then
+# rename this file without .disabled."
+        fi
+        add_default_fragment 06-swarm.yaml swarm "Default Docker Swarm probe (declares overlay networks on a manager)." swarm "${swarm_off}"
     fi
     mkdir -p /var/lib/senhub-agent
     ( umask 077; set -C; : > "${defaults_marker}" ) 2>/dev/null || true
