@@ -10,11 +10,13 @@ import (
 // data within half a minute of the start.
 const maxStartSpread = 30 * time.Second
 
-// StartOffset is how long a probe waits before its first collection: the
-// FNV-1a 64 hash of its id modulo min(interval, maxStartSpread). The same
-// probe gets the same offset on every start, so the timing PRTG and the
-// other readers see does not move between restarts. A probe without an
-// interval is not delayed.
+// StartOffset is the phase a probe keeps between its collections: the
+// FNV-1a 64 hash of its id modulo min(interval, maxStartSpread). The first
+// collection runs at once; the scheduler then waits this offset before its
+// ticker starts, so the second collection comes one interval plus the
+// offset after the first. The same probe gets the same offset on every
+// start, so the timing PRTG and the other readers see does not move
+// between restarts. A probe without an interval is not delayed.
 func StartOffset(probeID string, interval time.Duration) time.Duration {
 	if interval <= 0 {
 		return 0

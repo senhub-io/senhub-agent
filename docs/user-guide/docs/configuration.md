@@ -202,6 +202,8 @@ All probes support the following parameters in the `params` section:
 | `interval` | `60` | Collection interval in seconds |
 | `timeout` | `30` | Request timeout in seconds |
 
+When a probe starts, or restarts because its configuration changed (an `interval` set by a fleet server included), it collects at once, then keeps a fixed phase of its own: up to 30 seconds, derived from the probe's name and the same on every start, so the probes of one agent do not all collect at the same second. The second collection therefore comes one interval plus that phase after the first, and the following ones exactly one interval apart.
+
 ### Custom Tags
 
 You can attach custom tags to all metrics from a specific probe. Tags are included in the metric output for filtering and grouping in your monitoring system:
