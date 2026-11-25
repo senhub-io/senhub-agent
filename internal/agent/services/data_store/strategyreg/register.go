@@ -127,6 +127,75 @@ func init() {
 		"tlspskfile":     "tls: { psk_file: ... }",
 	})
 
+	// The sub-blocks otlp reads key by key (config.go). Each list is
+	// exactly what the named parser reads; the guard test in this
+	// package fails when either side drifts. Blocks whose contents are
+	// chosen by the operator (headers, resource, match, the
+	// relay_tenant_overrides cards) are deliberately not declared: any
+	// key inside them is the operator's to pick.
+	data_store.RegisterKnownBlockParams("otlp", "tls", []string{
+		"enabled", "insecure_skip_verify", "ca_file", "cert_file", "key_file",
+	})
+	data_store.RegisterKnownBlockParams("otlp", "retry", []string{
+		"enabled", "initial_interval", "max_interval", "max_elapsed_time",
+	})
+	data_store.RegisterKnownBlockParams("otlp", "persistence", []string{
+		"enabled", "path", "interval",
+		"logs_queue_max_bytes", "logs_queue_max_age",
+		"metrics_queue_max_bytes", "metrics_queue_max_age",
+		"traces_queue_max_bytes", "traces_queue_max_age",
+	})
+	data_store.RegisterKnownBlockParams("otlp", "memory_limit", []string{
+		"soft_mib", "hard_mib", "check_interval",
+	})
+	data_store.RegisterKnownBlockParams("otlp", "relay", []string{
+		"enrichment",
+	})
+	// Per-signal blocks: what parseSignals reads directly, plus the
+	// transport keys (endpoint, headers, tls) parseSignalTransport reads
+	// out of the same map. entities.governance is read as a block handed
+	// to governance.Parse, whose keys belong to that package.
+	data_store.RegisterKnownBlockParams("otlp", "signals.metrics", []string{
+		"enabled", "interval", "temporality", "endpoint", "headers", "tls",
+	})
+	data_store.RegisterKnownBlockParams("otlp", "signals.logs", []string{
+		"enabled", "batch_size", "batch_timeout", "buffer_size",
+		"max_export_bytes", "endpoint", "headers", "tls",
+	})
+	data_store.RegisterKnownBlockParams("otlp", "signals.traces", []string{
+		"enabled", "batch_size", "batch_timeout", "buffer_size",
+		"sample_ratio", "relay_enrichment", "relay_tenant_overrides",
+		"endpoint", "headers", "tls",
+	})
+	data_store.RegisterKnownBlockParams("otlp", "signals.entities", []string{
+		"enabled", "interval", "buffer_size", "depends_on_debounce",
+		"depends_on_enabled", "depends_on_exclude_cidrs",
+		"redact_attributes", "governance",
+	})
+	// A signal-level tls block is parsed by the same parseTLS.
+	data_store.RegisterKnownBlockParams("otlp", "signals.metrics.tls", []string{
+		"enabled", "insecure_skip_verify", "ca_file", "cert_file", "key_file",
+	})
+	data_store.RegisterKnownBlockParams("otlp", "signals.logs.tls", []string{
+		"enabled", "insecure_skip_verify", "ca_file", "cert_file", "key_file",
+	})
+	data_store.RegisterKnownBlockParams("otlp", "signals.traces.tls", []string{
+		"enabled", "insecure_skip_verify", "ca_file", "cert_file", "key_file",
+	})
+
+	// The sub-blocks zabbix reads key by key (config.go).
+	data_store.RegisterKnownBlockParams("zabbix", "tls", []string{
+		"enabled", "insecure_skip_verify", "ca_file", "cert_file",
+		"key_file", "server_name", "psk_identity", "psk_file",
+	})
+	data_store.RegisterKnownBlockParams("zabbix", "passive", []string{
+		"enabled", "bind_address", "port", "allow", "advertise", "tls",
+	})
+	data_store.RegisterKnownBlockParams("zabbix", "passive.tls", []string{
+		"enabled", "cert_file", "key_file", "ca_file",
+		"psk_identity", "psk_file",
+	})
+
 	// How to check a configuration without building anything, so
 	// `agent config check` refuses what the agent would refuse rather
 	// than reporting it valid and letting the strategy be dropped at

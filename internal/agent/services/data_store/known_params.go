@@ -3,6 +3,7 @@ package data_store
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 
 	"senhub-agent.go/internal/agent/services/configuration"
@@ -156,8 +157,9 @@ func ValidateStrategyParams(name string, params configuration.StorageConfigParam
 var knownBlocks = map[string]map[string]map[string]struct{}{}
 
 // RegisterKnownBlockParams declares the keys a strategy reads inside one
-// of its sub-blocks (`prtg:` under `http:`), so a key the block never
-// reads is reported with its full path instead of being dropped.
+// of its sub-blocks, so a key the block never reads is reported with its
+// full path instead of being dropped. The block path is dot-separated
+// and may cross several nested maps ("signals.metrics.tls").
 func RegisterKnownBlockParams(name, block string, known []string) {
 	set := make(map[string]struct{}, len(known))
 	for _, key := range known {
@@ -171,8 +173,46 @@ func RegisterKnownBlockParams(name, block string, known []string) {
 	knownBlocks[name][block] = set
 }
 
-// UnreadBlockParamsFor returns the paths (`prtg.typo`) of the keys inside
-// a declared sub-block that the strategy does not read, sorted.
+// stringKeyedMap views a decoded block as a string-keyed map. Both the
+// Go-native and the YAML interface-keyed decode produce maps the agent
+// has to walk; a non-map or a non-string key is not a level we control.
+func stringKeyedMap(raw interface{}) map[string]interface{} {
+	switch v := raw.(type) {
+	case map[string]interface{}:
+		return v
+	case map[interface{}]interface{}:
+		out := make(map[string]interface{}, len(v))
+		for k, val := range v {
+			if ks, ok := k.(string); ok {
+				out[ks] = val
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+// descendBlockPath follows the segments of a dotted block path through
+// nested maps. A missing level or one of another type means the block
+// is not configured, which is not unread keys.
+func descendBlockPath(params map[string]interface{}, path []string) map[string]interface{} {
+	current := stringKeyedMap(params)
+	for _, segment := range path {
+		if current == nil {
+			return nil
+		}
+		raw, present := current[segment]
+		if !present {
+			return nil
+		}
+		current = stringKeyedMap(raw)
+	}
+	return current
+}
+
+// UnreadBlockParamsFor returns the paths (`prtg.typo`,
+// `signals.metrics.tls.typo`) of the keys inside a declared sub-block
+// that the strategy does not read, sorted.
 func UnreadBlockParamsFor(name string, params map[string]interface{}) []string {
 	knownParamsMu.RLock()
 	blocks := knownBlocks[name]
@@ -180,8 +220,8 @@ func UnreadBlockParamsFor(name string, params map[string]interface{}) []string {
 
 	var unread []string
 	for block, known := range blocks {
-		values, ok := params[block].(map[string]interface{})
-		if !ok {
+		values := descendBlockPath(params, strings.Split(block, "."))
+		if values == nil {
 			continue
 		}
 		for key := range values {
@@ -192,4 +232,26 @@ func UnreadBlockParamsFor(name string, params map[string]interface{}) []string {
 	}
 	sort.Strings(unread)
 	return unread
+}
+
+// KnownBlocksFor returns a copy of the sub-blocks a strategy declared,
+// each with its keys sorted. Used by the guard test that keeps the
+// block declarations in step with the code.
+func KnownBlocksFor(name string) map[string][]string {
+	knownParamsMu.RLock()
+	defer knownParamsMu.RUnlock()
+	blocks, ok := knownBlocks[name]
+	if !ok {
+		return nil
+	}
+	out := make(map[string][]string, len(blocks))
+	for block, set := range blocks {
+		keys := make([]string, 0, len(set))
+		for key := range set {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		out[block] = keys
+	}
+	return out
 }
