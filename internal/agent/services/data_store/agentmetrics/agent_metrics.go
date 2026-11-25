@@ -7,6 +7,7 @@ import (
 	"senhub-agent.go/internal/agent/services/data_store/otelmapper"
 	"senhub-agent.go/internal/agent/services/entity"
 	"senhub-agent.go/internal/agent/services/exporthook"
+	"senhub-agent.go/internal/agent/services/license"
 	"senhub-agent.go/internal/agent/services/logger"
 )
 
@@ -515,6 +516,25 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Value:       float64(n),
 			Description: "1 when a configured license was rejected and the agent degraded to free tier (by reason: validation_failed, binding_mismatch, expired_no_grace); 0 once a license validates. Absent when no license is configured.",
 		})
+	}
+
+	// Time remaining on the licence in force (#858). The sensor publishes the
+	// evaluated InForce once per change; readers here never revalidate.
+	if f, ok := license.Current(); ok {
+		if d, ok := f.ExpiresIn(time.Now()); ok {
+			platform := ""
+			if f.License != nil {
+				platform = f.License.Platform
+			}
+			records = append(records, otelmapper.OtelRecord{
+				Name:        "senhub.agent.license.expires_in",
+				Unit:        "s",
+				Type:        "gauge",
+				Attributes:  map[string]string{"state": string(f.State), "platform": platform},
+				Value:       d.Seconds(),
+				Description: "Seconds until the licence in force expires; negative during the grace period. state is valid or grace; platform names the delegating platform, empty for a root-signed licence.",
+			})
+		}
 	}
 
 	// HTTP MetricCache drop counters — same emitted-only-when-touched
