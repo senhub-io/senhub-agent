@@ -5,7 +5,7 @@ SenHub Agent uses YAML configuration to define monitoring probes, data storage, 
 Two layouts are supported and the agent auto-detects which one you use:
 
 - **Multi-file**: `agent.yaml` for global settings plus `probes.d/` and `strategies.d/` directories for fragments. This is the layout `install`, `config init` and the Windows MSI generate. See [Multi-File Configuration Layout](#multi-file-configuration-layout) below.
-- **Single file** (legacy): one `agent.yaml` or `agent-config.yaml` carrying top-level `probes:` and `storage:` blocks. Existing installs keep working; `senhub-agent config migrate` converts them. The single-file examples on this page show the same settings in one block for readability; in the multi-file layout, probes go under `probes.d/` and outputs under `strategies.d/`.
+- **Single file** (legacy): one `agent.yaml` or `agent-config.yaml` carrying top-level `probes:` and `storage:` blocks. The agent splits such a file into the multi-file layout at its next start (see [Backward compatibility](#backward-compatibility)); `senhub-agent config migrate` does the same on demand. The single-file examples on this page show the same settings in one block for readability; in the multi-file layout, probes go under `probes.d/` and outputs under `strategies.d/`.
 
 ## Configuration File Location
 
@@ -17,7 +17,7 @@ The default configuration file is `agent.yaml` at the OS canonical path:
 | **Linux** | `/etc/senhub-agent/agent.yaml` |
 | **macOS** | `/usr/local/etc/senhub-agent/agent.yaml` |
 
-Legacy `agent-config.yaml` files continue to work unchanged. You can override the path at install time; an absolute path is used as given, and a relative path resolves next to the binary:
+A legacy single-file `agent-config.yaml` is split into the multi-file layout at the next start. You can override the path at install time; an absolute path is used as given, and a relative path resolves next to the binary:
 
 ```bash
 sudo ./senhub-agent install --config-path /etc/senhub-agent/agent.yaml
@@ -885,7 +885,7 @@ http:
 
 ### Backward compatibility
 
-At each start, a main file that contains a top-level `probes:` or `storage:` block is split into the multi-file layout before it is loaded, by the same engine as `senhub-agent config migrate`. The globals stay in the main file, each strategy goes to its own `strategies.d/` file, and each probe to its own `probes.d/NN-<name>.yaml`, numbered from 10 in the original order (from 0.6.5; 0.6.2 to 0.6.4 put every probe in `probes.d/00-host.yaml`). Fragments the installer laid down and that were never edited (an empty file, or the default `probes.d/00-host.yaml`, `probes.d/05-services.yaml`, `probes.d/06-swarm.yaml` or `strategies.d/00-http.yaml`) are set aside with the suffix `.install-default` rather than blocking the split (from 0.6.4; earlier versions refused to split beside them). A fragment you wrote yourself still blocks it, since the split would start what the monolithic file had been ignoring. The agent checks that the split layout resolves to the same configuration as the original file, and restores the original otherwise. Inline secrets are then sealed into the secret store, as at any start. The log says which happened:
+At each start, a main file that contains a top-level `probes:` or `storage:` block is split into the multi-file layout before it is loaded, by the same engine as `senhub-agent config migrate`. The globals stay in the main file, each strategy goes to its own `strategies.d/` file, and each probe to its own `probes.d/NN-<name>.yaml`, numbered from 10 in the original order (from 0.6.5; 0.6.2 to 0.6.4 put every probe in `probes.d/00-host.yaml`). Fragments the installer laid down and that were never edited (an empty file, or the default `probes.d/00-host.yaml`, `probes.d/05-services.yaml`, `probes.d/06-swarm.yaml` or `strategies.d/00-http.yaml`) are set aside with the suffix `.install-default` rather than blocking the split (from 0.6.4; earlier versions refused to split beside them). A fragment you wrote yourself still blocks it, since the split would start what the monolithic file had been ignoring. The agent checks that the split layout resolves to the same configuration as the original file, and restores the original otherwise. The original file is kept as `<file>.pre-multi-file.<timestamp>` until the secrets are sealed, then deleted, since it may hold them in plain text. Inline secrets are then sealed into the secret store, as at any start. The log says which happened:
 
 > Harmonised monolithic config to multi-file layout
 
