@@ -90,7 +90,7 @@ The block is decoded strictly: an unknown field, a wrong type or a malformed ver
 |---|---|
 | `target_not_published` | The target is not in the signed list. |
 | `downgrade_not_allowed` | The target is lower than the running version and `allow_downgrade` is not set. Versions are ordered by semantic versioning 2.0: `0.7.2-beta.3` is lower than `0.7.2`. |
-| `downgrade_msi` | A lower target on an MSI install: Windows Installer does not go back in place. |
+| `downgrade_msi` | A lower target on an MSI install: Windows Installer does not go back in place. Going back is done on the host, by uninstall and reinstall or by replacing the binaries (see [Going back to an earlier version on Windows](installation.md#going-back-to-an-earlier-version-on-windows)). The automatic restore of the previous version after a failed start still applies. |
 | `beta_msi` | A beta target on an MSI install: no beta MSI is published. |
 | `rolled_back:<version>` | The target is the version that failed to start on this agent and was restored. The memory lasts until another version installs successfully; `retry: true` lifts it. |
 | `not_replaceable` | This install cannot replace itself, a tarball install, or a `.deb` or `.rpm` install whose root update unit is disabled (see [the root update unit](installation.md#the-root-update-unit)). |
