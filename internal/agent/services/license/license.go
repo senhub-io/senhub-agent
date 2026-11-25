@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"senhub-agent.go/internal/agent/services/configuration"
 )
 
 // legacyCompactPrefix is the marker of the retired compact-licence
@@ -32,6 +34,29 @@ const legacyCompactPrefix = "SH-"
 // still on the legacy format, needs a JWT re-issue" from a generic
 // malformed token.
 var ErrLegacyCompactLicense = errors.New("legacy compact (SH-XXXX) license is no longer supported; re-issue a JWT license (see docs/LICENSE-SYSTEM.md)")
+
+// ErrUnknownKeyID is returned when a token header carries a kid that is
+// neither empty (the historical root key) nor one of the registered
+// root keys. It distinguishes "key rotation moved on without this
+// agent" from a plain signature failure.
+var ErrUnknownKeyID = errors.New("unknown key id (kid) in token header")
+
+// ErrInvalidTier is returned when a licence carries no tier or a tier
+// outside the three known values; the paid-probe gating has no defined
+// behaviour for an unknown tier, so it must be refused rather than
+// silently degraded.
+var ErrInvalidTier = errors.New("invalid license tier")
+
+// LicenceIssuer is the expected iss of a root-signed licence. Delegated
+// licences may also carry their platform as iss during the transition.
+const LicenceIssuer = "SenHub"
+
+// LicenceAudience is the expected audience of a licence token.
+const LicenceAudience = "senhub-agent"
+
+// claimClockSkew tolerates minor clock drift between the issuing
+// platform and the agent when checking nbf.
+const claimClockSkew = 5 * time.Minute
 
 // looksLikeLegacyCompactLicense reports whether the token is a retired
 // compact licence. A real JWT is three base64url segments separated by
@@ -150,7 +175,11 @@ type Validator interface {
 // kind of key, so a token can never be checked against a key of the
 // other kind.
 type JWTValidator struct {
-	publicKey       *rsa.PublicKey
+	publicKey *rsa.PublicKey
+	// rootKeys holds additional root RSA keys, selected by the kid
+	// header of the token (key rotation). An empty or absent kid always
+	// means the historical root key.
+	rootKeys        map[string]*rsa.PublicKey
 	gracePeriodDays int
 }
 
@@ -186,8 +215,51 @@ func NewJWTValidator(publicKeyPEM string, gracePeriodDays int) (*JWTValidator, e
 
 	return &JWTValidator{
 		publicKey:       rsaPubKey,
+		rootKeys:        map[string]*rsa.PublicKey{},
 		gracePeriodDays: gracePeriodDays,
 	}, nil
+}
+
+// AddRootKey registers an additional root RSA key under a key id, for
+// root-key rotation. It refuses an empty kid, an unreadable or non-RSA
+// PEM, and a kid already registered (a kid that silently switched keys
+// would break already-distributed tokens).
+func (v *JWTValidator) AddRootKey(kid, publicKeyPEM string) error {
+	if kid == "" {
+		return fmt.Errorf("kid must not be empty")
+	}
+	if _, ok := v.rootKeys[kid]; ok {
+		return fmt.Errorf("kid %q already registered", kid)
+	}
+	block, _ := pem.Decode([]byte(publicKeyPEM))
+	if block == nil {
+		return fmt.Errorf("failed to decode PEM block for kid %q", kid)
+	}
+	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse public key for kid %q: %w", kid, err)
+	}
+	rsaPub, ok := pub.(*rsa.PublicKey)
+	if !ok {
+		return fmt.Errorf("kid %q is not an RSA public key", kid)
+	}
+	v.rootKeys[kid] = rsaPub
+	return nil
+}
+
+// selectRootKey picks the root key for an RS256 token by its kid header:
+// empty or absent kid means the historical root key; a known kid its
+// registered key; an unknown kid is refused so stale agents get an
+// actionable rotation error instead of a bare signature failure.
+func (v *JWTValidator) selectRootKey(kid string) (*rsa.PublicKey, error) {
+	if kid == "" {
+		return v.publicKey, nil
+	}
+	key, ok := v.rootKeys[kid]
+	if !ok {
+		return nil, fmt.Errorf("%w: %q", ErrUnknownKeyID, kid)
+	}
+	return key, nil
 }
 
 // ValidateLicense validates a JWT licence token: RS256 with the
@@ -223,7 +295,9 @@ func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
 			if typ, _ := token.Header["typ"].(string); typ == DelegationType {
 				return nil, fmt.Errorf("delegation token presented as a licence")
 			}
-			return v.publicKey, nil
+			// For a root-signed licence the kid selects the root key.
+			kid, _ := token.Header["kid"].(string)
+			return v.selectRootKey(kid)
 		case *jwt.SigningMethodEd25519:
 			dlg, err := v.parseDelegation(token)
 			if err != nil {
@@ -267,10 +341,24 @@ func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
 			delegationExpiresAt = delegation.RegisteredClaims.ExpiresAt.Time
 		}
 	}
+
+	if err := checkTransitionClaims(claims, platform); err != nil {
+		return nil, err
+	}
+
+	// The generator capitalises tiers ("Pro"); normalise so every
+	// comparison downstream sees the lowercase constants.
+	tier := strings.ToLower(string(claims.Tier))
+	switch tier {
+	case string(TierFree), string(TierPro), string(TierEnterprise):
+	default:
+		return nil, fmt.Errorf("%w: %q, want one of %q, %q, %q", ErrInvalidTier, claims.Tier, TierFree, TierPro, TierEnterprise)
+	}
+
 	isExpired := time.Now().After(expiresAt)
 
 	license := &License{
-		Tier:                claims.Tier,
+		Tier:                LicenseTier(tier),
 		AuthorizedProbes:    claims.AuthorizedProbes,
 		ExpiresAt:           expiresAt,
 		IssuedAt:            issuedAt,
@@ -284,6 +372,37 @@ func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
 	}
 
 	return license, nil
+}
+
+// checkTransitionClaims enforces iss, aud and nbf when present, while
+// tokens predating these claims must still validate: claims absent from
+// the token are accepted, claims present with the wrong value are not.
+// exp stays manual (grace periods); nbf gets the clock-skew tolerance
+// here instead.
+func checkTransitionClaims(claims *LicenseClaims, platform string) error {
+	// TODO(ent#985): require iss, aud and nbf once every issued licence carries them.
+	if iss := claims.RegisteredClaims.Issuer; iss != "" {
+		// A delegated licence names the platform that signed it.
+		if iss != LicenceIssuer && (platform == "" || iss != platform) {
+			return fmt.Errorf("invalid iss %q, want %q", iss, LicenceIssuer)
+		}
+	}
+	if aud := claims.RegisteredClaims.Audience; len(aud) != 0 {
+		found := false
+		for _, a := range aud {
+			if a == LicenceAudience {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("invalid aud %v, want %q", aud, LicenceAudience)
+		}
+	}
+	if nbf := claims.RegisteredClaims.NotBefore; nbf != nil && nbf.Time.After(time.Now().Add(claimClockSkew)) {
+		return fmt.Errorf("licence not yet valid (nbf %s, now + %s tolerated)", nbf.Time.UTC().Format(time.RFC3339), claimClockSkew)
+	}
+	return nil
 }
 
 // parseDelegation verifies the root-signed delegation carried in the
@@ -301,7 +420,10 @@ func (v *JWTValidator) parseDelegation(token *jwt.Token) (*delegationInfo, error
 		if !ok || method.Alg() != "RS256" {
 			return nil, fmt.Errorf("unexpected signing method: %v, expected RS256", t.Header["alg"])
 		}
-		return v.publicKey, nil
+		// The delegation is root-signed: its kid selects the root key.
+		// The licence's own kid names the platform key, not a root key.
+		dlgKID, _ := t.Header["kid"].(string)
+		return v.selectRootKey(dlgKID)
 	}, jwt.WithoutClaimsValidation())
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrDelegationInvalid, err)
@@ -771,8 +893,10 @@ func SubjectIsAgentKey(subject string) bool {
 //
 //   - empty Subject → an unbound licence, valid on any agent (kept for
 //     back-compat with dev/unsigned-tier setups);
-//   - Subject is an agent key (a UUID) → a per-agent licence, valid only
-//     on that exact agent;
+//   - Subject is an agent key (a UUID) → a per-agent licence, valid on
+//     that exact agent or on an agent whose service.instance.id derives
+//     from that agent key (licences pre-dating instance ids bind the
+//     agent key itself, newer ones the instance id);
 //   - Subject is anything else → a customer licence (e.g. "client1"),
 //     valid across that customer's whole fleet. The Subject is an
 //     identifier for traceability, not a secret — the licence's trust
@@ -788,7 +912,7 @@ func VerifyBinding(_ string, agentKey string, lic *License) bool {
 		return true
 	}
 	if SubjectIsAgentKey(lic.Subject) {
-		return lic.Subject == agentKey
+		return lic.Subject == agentKey || lic.Subject == configuration.AgentInstanceID(agentKey)
 	}
 	// A customer identifier: valid fleet-wide.
 	return true

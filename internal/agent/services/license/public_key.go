@@ -31,9 +31,27 @@ xpKWcsyzFCvMC+Pz/tS1C0aOtl4yZl7/k7wKX6mYKRPgM2LbXuNxA7gonECLDl5j
 ojgktHLdogXsO8cHYmo4/+MCAwEAAQ==
 -----END PUBLIC KEY-----`
 
+// rootKeysByKID holds the rotated root RSA public keys, keyed by the
+// kid the platform stamps in the token header. It is empty for now;
+// when the production root key is rotated, add the new pair here and
+// GetDefaultValidator registers every entry with AddRootKey. Tokens
+// with an absent or empty kid keep trusting the historical
+// SenHubPublicKey above.
+var rootKeysByKID = map[string]string{}
+
 // GetDefaultValidator returns a validator that trusts the embedded root
-// key. Platform signing keys are not embedded: they are reached through
-// the root-signed delegation each licence carries.
+// key plus every rotated root key in rootKeysByKID. Platform signing
+// keys are not embedded: they are reached through the root-signed
+// delegation each licence carries.
 func GetDefaultValidator(gracePeriodDays int) (*JWTValidator, error) {
-	return NewJWTValidator(SenHubPublicKey, gracePeriodDays)
+	v, err := NewJWTValidator(SenHubPublicKey, gracePeriodDays)
+	if err != nil {
+		return nil, err
+	}
+	for kid, pem := range rootKeysByKID {
+		if err := v.AddRootKey(kid, pem); err != nil {
+			return nil, err
+		}
+	}
+	return v, nil
 }

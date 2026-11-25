@@ -175,10 +175,34 @@ agent to keep its OpAMP link to Fleet. A wildcard licence grants it already.
   "authorized_probes": ["redfish", "citrix", "netscaler"] or ["*"],
   "exp": 1794241033,  // Expiration timestamp (Unix epoch)
   "iat": 1762705033,  // Issued at timestamp (Unix epoch)
+  "nbf": 1762705033,  // Not valid before (Unix epoch)
   "iss": "SenHub",    // Issuer
+  "aud": "senhub-agent",
   "sub": "customer-id" // Subject (customer identifier)
 }
 ```
+
+What the agent checks on top of the RS256 signature:
+
+- **`tier`** must be `free`, `pro` or `enterprise`, in any case (the
+  generator writes `Pro`). A token with no tier or another value is
+  refused.
+- **`iss`, `aud`, `nbf`** are checked when present: `iss` must be
+  `SenHub` (or the signing platform for a delegated licence), `aud` must
+  include `senhub-agent`, and `nbf` must not be more than five minutes in
+  the future. A licence issued before 0.7.2 carries no `aud` and no `nbf`
+  and stays valid; the three claims become mandatory once every licence
+  in the field has been re-issued.
+- **`kid`** in the token header selects the root key. A token without a
+  `kid` is checked against the historical key embedded in the agent; a
+  `kid` the agent does not know is refused. This is what lets the signing
+  key rotate: agents first ship the new public key under its `kid`, then
+  licences signed by it are issued.
+- **`sub`**: empty means valid on any agent; a UUID binds the licence to
+  one agent, given as its agent key or, from 0.7.2, as its
+  `service.instance.id` (which keeps the agent key out of the licence);
+  anything else is a customer identifier, valid on that customer's whole
+  fleet.
 
 ### Example JWT Token
 
