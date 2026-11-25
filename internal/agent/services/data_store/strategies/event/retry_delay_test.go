@@ -87,7 +87,7 @@ func TestFirstRetryDoesNotRaceIntakeVisibility(t *testing.T) {
 	const lag = 200 * time.Millisecond
 	const n = 3
 
-	run := func(t *testing.T, firstDelay time.Duration) int {
+	run := func(t *testing.T, lag, firstDelay time.Duration) int {
 		t.Helper()
 		intake := newLaggyIntake(lag, 1)
 		s := newLaggyStrategy(t, intake)
@@ -104,15 +104,17 @@ func TestFirstRetryDoesNotRaceIntakeVisibility(t *testing.T) {
 	}
 
 	t.Run("delayed first resend stores each event once", func(t *testing.T) {
-		if got := run(t, lag+100*time.Millisecond); got != n {
+		if got := run(t, lag, lag+100*time.Millisecond); got != n {
 			t.Fatalf("stored = %d, want %d", got, n)
 		}
 	})
 
 	// Without the delay the resend lands before the ids are visible: this
 	// is the duplicate the delay exists to prevent, and proves the fake bites.
+	// The ids stay invisible far longer than any scheduler stall, so a loaded
+	// host cannot let a late resend find them visible and hide the duplicate.
 	t.Run("immediate first resend duplicates", func(t *testing.T) {
-		if got := run(t, 0); got <= n {
+		if got := run(t, 10*time.Second, 0); got <= n {
 			t.Fatalf("stored = %d, want > %d", got, n)
 		}
 	})
