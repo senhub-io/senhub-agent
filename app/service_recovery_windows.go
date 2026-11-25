@@ -73,6 +73,7 @@ func ensureServiceRecovery(log *logger.Logger) {
 	defer m.Disconnect() //nolint:errcheck // best-effort release
 	s, err := m.OpenService(windowsServiceName)
 	if err != nil {
+		log.Warn().Err(err).Msg("Could not open the service to check its recovery actions")
 		return
 	}
 	defer s.Close() //nolint:errcheck // best-effort release

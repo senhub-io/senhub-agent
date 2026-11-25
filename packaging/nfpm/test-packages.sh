@@ -361,10 +361,11 @@ run_distro() {
 
     if [ "$FMT" = deb ]; then
         echo "  purge"
+        senhub_uid=$(x "id -u senhub")
         check "purge" "dpkg -P senhub-agent-oss"
         check "config, data and logs gone" "[ ! -e /etc/senhub-agent ] && [ ! -e /var/lib/senhub-agent ] && [ ! -e /var/log/senhub-agent ]"
         check "service user removed" "! getent passwd senhub >/dev/null"
-        check "no file left to the removed user's id" "[ -z \"\$(find /etc /var /usr /opt /tmp -xdev -nouser 2>/dev/null | head -5)\" ]"
+        check "no file left to the removed user's id" "[ -n '$senhub_uid' ] && [ -z \"\$(find /etc /var /usr /opt /tmp -xdev -uid '$senhub_uid' | head -5)\" ]"
     else
         # Reinstall over the kept config: the edit must still be there.
         echo "  reinstall over kept config"

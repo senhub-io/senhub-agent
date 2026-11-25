@@ -1,6 +1,9 @@
 package auto_update
 
-import "sync/atomic"
+import (
+	"sync"
+	"sync/atomic"
+)
 
 // checkBinaryReplaceable is a package-level indirection so tests can stub
 // the binary-replaceability probe.
@@ -38,8 +41,12 @@ func (a *autoUpdate) noteEnabled(enabled bool) {
 // tracks the enabled flag: the first observation is a baseline, only an
 // actual change is notified.
 type selfReplaceState struct {
-	known atomic.Bool
-	on    atomic.Bool
+	// mu makes the compare-and-record one step: the scheduler and the
+	// directive hook can call noteSelfReplace together, and two
+	// interleaved swaps could lose a change.
+	mu    sync.Mutex
+	known bool
+	on    bool
 }
 
 // noteSelfReplace records the current self-replaceability; a change means a
@@ -47,14 +54,13 @@ type selfReplaceState struct {
 // longer) install a new version by itself.
 func (a *autoUpdate) noteSelfReplace() {
 	on := CanReplaceSelf()
-	if !a.selfReplace.known.Swap(true) {
-		a.selfReplace.on.Store(on)
-		return
+	a.selfReplace.mu.Lock()
+	changed := a.selfReplace.known && a.selfReplace.on != on
+	a.selfReplace.known, a.selfReplace.on = true, on
+	a.selfReplace.mu.Unlock()
+	if changed {
+		notifyStatusListeners()
 	}
-	if a.selfReplace.on.Swap(on) == on {
-		return
-	}
-	notifyStatusListeners()
 }
 
 // checkAfterResume is the resume hook: it runs an immediate update check
