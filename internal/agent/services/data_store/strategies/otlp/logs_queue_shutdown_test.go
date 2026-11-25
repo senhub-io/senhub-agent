@@ -35,8 +35,11 @@ func TestLogsShutdown_BlockedExporterEverythingOnDiskUnderBudget(t *testing.T) {
 	if err := pipe.shutdown(ctx); err != nil {
 		t.Fatalf("shutdown: %v", err)
 	}
-	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
-		t.Errorf("hand-off took %v, want well under %v", elapsed, logsShutdownFlushBudget)
+	// A stop that waited on the hung export would use the whole budget, so
+	// finishing inside it is the property. A tighter bound measures the
+	// machine's load, not the hand-off.
+	if elapsed := time.Since(start); elapsed >= logsShutdownFlushBudget {
+		t.Errorf("hand-off took %v, want under the %v budget", elapsed, logsShutdownFlushBudget)
 	}
 	if got, _ := q.pending(); got != total {
 		t.Errorf("records on disk=%d, want all %d", got, total)
