@@ -88,10 +88,17 @@ func CheckIdentity(dir, instanceID, hostID string, now time.Time) (IdentityStatu
 		}
 		return IdentityRekeyed, existing, nil
 	}
-	// A record without a host id (written while the host id was unknown) is
-	// not evidence of a copy, so it is compared against nothing.
-	if hostID == "" || normalizeHostID(existing.HostID) == "" {
+	if hostID == "" {
 		return IdentityUnchecked, existing, nil
+	}
+	// A record written while the host id was unknown is no evidence of a
+	// copy: complete it now, or the check would stay off for good.
+	if normalizeHostID(existing.HostID) == "" {
+		rec := &IdentityRecord{InstanceID: instanceID, HostID: hostID, RecordedAt: now}
+		if err := writeJSONAtomic(filepath.Join(dir, IdentityFileName), rec); err != nil {
+			return IdentityUnchecked, existing, err
+		}
+		return IdentityRecorded, existing, nil
 	}
 	if normalizeHostID(existing.HostID) == hostID {
 		return IdentityMatches, existing, nil
@@ -169,6 +176,11 @@ func writeJSONAtomic(path string, v any) error {
 		_ = tmp.Close()
 		cleanup()
 		return fmt.Errorf("writing record: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return fmt.Errorf("syncing %s: %w", path, err)
 	}
 	if err := tmp.Close(); err != nil {
 		cleanup()

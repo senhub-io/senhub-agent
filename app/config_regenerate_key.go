@@ -19,6 +19,13 @@ type regenerateKeyReport struct {
 	AdminKey          string `json:"admin_key,omitempty"`
 }
 
+// regenerateKeyCancelled is the JSON view of a declined rekey, so a script
+// cannot read it as done.
+type regenerateKeyCancelled struct {
+	jsonHeader
+	Cancelled bool `json:"cancelled"`
+}
+
 // runConfigRegenerateKey implements `config regenerate-key`: it replaces the
 // agent key (and, on request, the administration key) with fresh random
 // ones. The rekey is never done for the operator: PRTG sensor URLs embed the
@@ -77,9 +84,9 @@ func runConfigRegenerateKey(argv []string, in io.Reader, terminal bool, out, err
 		fmt.Fprint(errOut, "Replace the agent key? [y/N] ")
 		ok, interactive := confirmReader(in, terminal, errOut, "--yes")
 		if !interactive {
-			// confirmReader already said why nothing was read; only the
-			// file must stay untouched.
-			return cliexit.Failure
+			// Nothing was read and nothing is written; a JSON caller still
+			// gets a document saying why.
+			return reportFailure(command, jsonMode, out, fmt.Errorf("confirmation required: nothing was changed; rerun with --yes"))
 		}
 		if !ok {
 			if jsonMode {
@@ -95,7 +102,9 @@ func runConfigRegenerateKey(argv []string, in io.Reader, terminal bool, out, err
 	}
 	if withAdminKey {
 		if err := configuration.ReplaceAdminKey(configPath, newAdminKey); err != nil {
-			return reportFailure(command, jsonMode, out, err)
+			return reportFailure(command, jsonMode, out, fmt.Errorf(
+				"agent.key was replaced (new service.instance.id %s, new key %s) but admin_key was not: %w",
+				configuration.AgentInstanceID(newKey), newKey, err))
 		}
 	}
 
@@ -131,7 +140,7 @@ func writeJSONRegenerated(command string, out io.Writer, agentKey, instanceID, a
 // writeCancelled prints the JSON view of an operator-declined rekey: a
 // success-shaped document, because nothing was changed and nothing failed.
 func writeCancelled(command string, out io.Writer) int {
-	doc := newJSONHeader(command, cliexit.OK)
+	doc := regenerateKeyCancelled{jsonHeader: newJSONHeader(command, cliexit.OK), Cancelled: true}
 	if err := writeJSON(out, doc); err != nil {
 		fmt.Fprintf(out, "Error: %v\n", err)
 		return cliexit.Failure

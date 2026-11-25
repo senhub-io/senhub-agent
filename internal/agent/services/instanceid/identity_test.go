@@ -156,3 +156,23 @@ func TestConnectedElsewhereRoundTrip(t *testing.T) {
 		t.Fatalf("after clear: %v, %v", rec, err)
 	}
 }
+
+// A record written while the host id was unknown is completed once it is
+// known, or the copy check would stay off for good.
+func TestCheckIdentityCompletesARecordWithoutHost(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now()
+	if _, _, err := CheckIdentity(dir, "11111111-1111-5111-8111-111111111111", "host-a", now); err != nil {
+		t.Fatal(err)
+	}
+	if status, _, err := CheckIdentity(dir, "22222222-2222-5222-8222-222222222222", "", now); err != nil || status != IdentityRekeyed {
+		t.Fatalf("rekey without host: status %v err %v", status, err)
+	}
+	status, _, err := CheckIdentity(dir, "22222222-2222-5222-8222-222222222222", "host-a", now)
+	if err != nil || status != IdentityRecorded {
+		t.Fatalf("status %v err %v, want IdentityRecorded", status, err)
+	}
+	if status, _, _ := CheckIdentity(dir, "22222222-2222-5222-8222-222222222222", "host-b", now); status != IdentityHostChanged {
+		t.Fatalf("status %v after the record was completed, want IdentityHostChanged", status)
+	}
+}

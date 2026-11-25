@@ -247,6 +247,21 @@ func (v *JWTValidator) AddRootKey(kid, publicKeyPEM string) error {
 	return nil
 }
 
+// headerKID reads the kid header. A kid that is present but not a string
+// is refused rather than read as absent, which would select the historical
+// key for a token that names another one.
+func headerKID(header map[string]interface{}) (string, error) {
+	raw, present := header["kid"]
+	if !present || raw == nil {
+		return "", nil
+	}
+	kid, ok := raw.(string)
+	if !ok {
+		return "", fmt.Errorf("%w: kid is a %T, not a string", ErrUnknownKeyID, raw)
+	}
+	return kid, nil
+}
+
 // selectRootKey picks the root key for an RS256 token by its kid header:
 // empty or absent kid means the historical root key; a known kid its
 // registered key; an unknown kid is refused so stale agents get an
@@ -296,7 +311,10 @@ func (v *JWTValidator) ValidateLicense(tokenString string) (*License, error) {
 				return nil, fmt.Errorf("delegation token presented as a licence")
 			}
 			// For a root-signed licence the kid selects the root key.
-			kid, _ := token.Header["kid"].(string)
+			kid, err := headerKID(token.Header)
+			if err != nil {
+				return nil, err
+			}
 			return v.selectRootKey(kid)
 		case *jwt.SigningMethodEd25519:
 			dlg, err := v.parseDelegation(token)
@@ -422,7 +440,10 @@ func (v *JWTValidator) parseDelegation(token *jwt.Token) (*delegationInfo, error
 		}
 		// The delegation is root-signed: its kid selects the root key.
 		// The licence's own kid names the platform key, not a root key.
-		dlgKID, _ := t.Header["kid"].(string)
+		dlgKID, err := headerKID(t.Header)
+		if err != nil {
+			return nil, err
+		}
 		return v.selectRootKey(dlgKID)
 	}, jwt.WithoutClaimsValidation())
 	if err != nil {

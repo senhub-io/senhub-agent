@@ -2,6 +2,8 @@ package license
 
 import (
 	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"testing"
 	"time"
@@ -250,5 +252,31 @@ func TestVerifyBinding_InstanceID(t *testing.T) {
 				t.Errorf("VerifyBinding() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// A kid that is present but not a string names no key: reading it as
+// absent would check the token against the historical key.
+func TestNonStringKIDIsRefused(t *testing.T) {
+	priv, pub := generateTestRSAKeys(t)
+	der, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pemKey := string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}))
+	v, err := NewJWTValidator(pemKey, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"tier": "pro", "exp": time.Now().Add(time.Hour).Unix(), "iat": time.Now().Unix(),
+	})
+	token.Header["kid"] = 42
+	signed, err := token.SignedString(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := v.ValidateLicense(signed); !errors.Is(err, ErrUnknownKeyID) {
+		t.Fatalf("err = %v, want ErrUnknownKeyID", err)
 	}
 }
