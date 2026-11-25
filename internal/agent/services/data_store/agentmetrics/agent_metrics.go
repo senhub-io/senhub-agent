@@ -1,6 +1,7 @@
 package agentmetrics
 
 import (
+	"strconv"
 	"time"
 
 	"senhub-agent.go/internal/agent/services/agentstate"
@@ -515,6 +516,32 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 			Attributes:  map[string]string{"reason": reason},
 			Value:       float64(n),
 			Description: "1 when a configured license was rejected and the agent degraded to free tier (by reason: validation_failed, binding_mismatch, expired_no_grace); 0 once a license validates. Absent when no license is configured.",
+		})
+	}
+
+	// The auto-update setting in force, so a dashboard shows what the
+	// updater is actually doing: a server directive hides the local file's
+	// enabled flag, and only this view says so.
+	if s, ok := agentstate.GetUpdateSetting(); ok {
+		records = append(records, otelmapper.OtelRecord{
+			Name: "senhub.agent.update.info",
+			Unit: "",
+			Type: "gauge",
+			Attributes: map[string]string{
+				"enabled":      strconv.FormatBool(s.Enabled),
+				"include_beta": strconv.FormatBool(s.IncludeBeta),
+				"target":       s.Target,
+				"source":       s.Source,
+			},
+			Value:       1,
+			Description: "Automatic update setting in force (gauge always 1): enabled, include_beta, target (latest or a pinned version) and source (local file or a server directive).",
+		})
+		records = append(records, otelmapper.OtelRecord{
+			Name:        "senhub.agent.update.paused",
+			Unit:        "{status}",
+			Type:        "gauge",
+			Value:       boolGauge(s.Paused),
+			Description: "1 while an extension has suspended the periodic update check, 0 otherwise.",
 		})
 	}
 

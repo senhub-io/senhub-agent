@@ -62,7 +62,7 @@ The agent publishes its catalogue of probe types and parameters. The server can 
 
 ## Auto-update pause (v2)
 
-`auto_update: paused` from the server suspends the agent's hourly update check. Withdrawing the overlay, disabling OpAMP, or stopping the service resumes it. The pause is kept across a restart while the stored overlay verifies.
+`auto_update: paused` from the server suspends the agent's hourly update check. Withdrawing the overlay, disabling OpAMP, or stopping the service resumes it. The pause is kept across a restart while the stored overlay verifies. `senhub-agent status` shows it (`Paused by an extension`, and `agent.update.paused` in `--json`), and the self-metric `senhub.agent.update.paused` is 1 while it lasts.
 
 ## Updates driven by the server (v2)
 
@@ -104,6 +104,7 @@ The block is decoded strictly: an unknown field, a wrong type or a malformed ver
 | `senhub.update.target` | The version aimed at; empty when none. |
 | `senhub.update.reason` | A code from the table above, or `download`, `signature`, `install` when an attempt failed. |
 | `senhub.install.kind` | `msi`, `zip`, `deb`, `rpm`, `tarball` or `unknown`. |
+| `senhub.update.self_replace` | `true` when the agent can install a new version by itself (an MSI, a ZIP or tarball install, or a `.deb`/`.rpm` whose root update unit is enabled), `false` otherwise. A server reads it to refuse a target with `not_replaceable` before sending it. |
 
 `service.version` stays the running version; after a successful installation the agent restarts and the new version is reported. The install kind comes from what the installers leave behind: the MSI registry marker, any other Windows install as `zip`, and on Linux a binary owned by a package (known to `dpkg` or `rpm`, as `/usr/bin/senhub-agent` is) as `deb` or `rpm`, otherwise `tarball`.
 

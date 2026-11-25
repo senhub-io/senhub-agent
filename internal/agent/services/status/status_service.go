@@ -47,6 +47,19 @@ type SystemStatus struct {
 	// Extensions is what each running extension published, keyed by
 	// extension name; doctor hands it back to the extension.
 	Extensions map[string]map[string]any `json:"extensions,omitempty"`
+	// Update is the auto-update setting in force, published by the
+	// running updater; nil before the updater has published once.
+	Update *UpdateInfo `json:"update,omitempty"`
+}
+
+// UpdateInfo is the auto-update configuration in force: what the updater is
+// actually doing, which a server directive can override entirely.
+type UpdateInfo struct {
+	Enabled     bool   `json:"enabled"`
+	IncludeBeta bool   `json:"include_beta"`
+	Target      string `json:"target"`
+	Source      string `json:"source"`
+	Paused      bool   `json:"paused"`
 }
 
 // ConfigWatch says why the running agent is not watching its

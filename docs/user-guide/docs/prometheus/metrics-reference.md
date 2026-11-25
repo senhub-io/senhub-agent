@@ -40,6 +40,8 @@ the OTLP receiver counters once that probe has received traffic.
 | `senhub_agent_otlp_receiver_refused_total` | counter | OTLP/HTTP requests the receiver refused, by signal and reason (`bad_body`, `too_large`, `media_type`, `encoding`, `rate_limited`, `method`, `unauthorized`, `forbidden`) | `signal`, `reason` |
 | `senhub_agent_http_requests_total` | counter | HTTP requests served per route template | `endpoint` |
 | `senhub_agent_build_info` | gauge (=1) | Agent build metadata | `version`, `commit` |
+| `senhub_agent_update_info` | gauge (=1) | Automatic update setting in force: on or off, beta channel, target (`latest` or a pinned version), and whether it comes from the local file or a server directive | `enabled`, `include_beta`, `target`, `source` (`local`, `server`) |
+| `senhub_agent_update_paused` | gauge | 1 while an extension (a fleet server) has suspended the hourly update check, 0 otherwise | |
 
 `senhub_agent_collect_errors_total` carries two bounded labels so a spike can be
 attributed without log correlation:

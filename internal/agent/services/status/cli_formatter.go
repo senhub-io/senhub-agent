@@ -66,6 +66,14 @@ func (f *CLIFormatter) FormatSystemStatus(status SystemStatus) string {
 		output.WriteString(block)
 	}
 
+	// The auto-update setting in force, which a server directive may have
+	// overridden entirely; the operator would otherwise reason from the
+	// local file alone.
+	if block := f.formatUpdate(status.Update); block != "" {
+		output.WriteString("\n")
+		output.WriteString(block)
+	}
+
 	// Probe Status (only if we have probes)
 	if len(status.Probes) > 0 {
 		output.WriteString("\n")
@@ -175,6 +183,32 @@ func (f *CLIFormatter) formatConfigWatch(watch *ConfigWatch) string {
 		output.WriteString(fmt.Sprintf("             %s\n", watch.Detail))
 	}
 	output.WriteString("\nCollection and export are unaffected. A configuration change will not be\npicked up on its own: restart the agent to apply one.\n")
+	return output.String()
+}
+
+// formatUpdate renders the auto-update setting in force, nothing when the
+// updater has not published once.
+func (f *CLIFormatter) formatUpdate(u *UpdateInfo) string {
+	if u == nil {
+		return ""
+	}
+	source := "local file"
+	if u.Source == "server" {
+		source = "set by a server"
+	}
+	var output strings.Builder
+	if u.Enabled {
+		output.WriteString(fmt.Sprintf("Auto-update: enabled, target %s", u.Target))
+		if u.IncludeBeta {
+			output.WriteString(", beta channel")
+		}
+		output.WriteString(fmt.Sprintf(" (%s)\n", source))
+	} else {
+		output.WriteString(fmt.Sprintf("Auto-update: disabled (%s)\n", source))
+	}
+	if u.Paused {
+		output.WriteString("  Paused by an extension: the periodic check does not run until it is resumed\n")
+	}
 	return output.String()
 }
 

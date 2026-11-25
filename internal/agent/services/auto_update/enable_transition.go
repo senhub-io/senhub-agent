@@ -34,6 +34,29 @@ func (a *autoUpdate) noteEnabled(enabled bool) {
 	}
 }
 
+// selfReplaceState tracks self-replaceability the same way enabledState
+// tracks the enabled flag: the first observation is a baseline, only an
+// actual change is notified.
+type selfReplaceState struct {
+	known atomic.Bool
+	on    atomic.Bool
+}
+
+// noteSelfReplace records the current self-replaceability; a change means a
+// server that drives the update must be told the agent can (or can no
+// longer) install a new version by itself.
+func (a *autoUpdate) noteSelfReplace() {
+	on := CanReplaceSelf()
+	if !a.selfReplace.known.Swap(true) {
+		a.selfReplace.on.Store(on)
+		return
+	}
+	if a.selfReplace.on.Swap(on) == on {
+		return
+	}
+	notifyStatusListeners()
+}
+
 // checkAfterResume is the resume hook: it runs an immediate update check
 // when an extension lifts the pause.
 func (a *autoUpdate) checkAfterResume() {

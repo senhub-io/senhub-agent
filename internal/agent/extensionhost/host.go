@@ -249,6 +249,7 @@ func (h *host) UpdateStatus() extension.UpdateStatus {
 		Target:      st.Target,
 		Reason:      st.Reason,
 		InstallKind: auto_update.InstallKind(),
+		SelfReplace: auto_update.CanReplaceSelf(),
 	}
 }
 

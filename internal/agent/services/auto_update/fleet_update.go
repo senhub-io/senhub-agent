@@ -58,6 +58,7 @@ func (a *autoUpdate) effectiveSettings() (enabled bool, version string) {
 func (a *autoUpdate) checkAfterDirective() {
 	enabled, _ := a.effectiveSettings()
 	a.noteEnabled(enabled)
+	a.publishSetting()
 	a.logger.Info().Bool("enabled", enabled).Msg("Update directive changed; checking now")
 	if err := a.PeriodicalCheckForUpdate(); err != nil {
 		a.logger.Error().Err(err).Msg("Failed to check for update after a directive change")

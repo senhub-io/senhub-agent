@@ -1,6 +1,9 @@
 package auto_update
 
-import "sync/atomic"
+import (
+	"runtime"
+	"sync/atomic"
+)
 
 // PrivilegedInstaller is the way an install that cannot replace itself
 // gets an update: the unprivileged agent asks, something with the rights
@@ -50,4 +53,10 @@ func canReplaceSelf(goos, kind string) bool {
 		return true
 	}
 	return registeredPrivilegedInstaller() != nil
+}
+
+// CanReplaceSelf reports whether this install can put a new version of the
+// agent in place from the running process.
+func CanReplaceSelf() bool {
+	return canReplaceSelf(runtime.GOOS, InstallKind())
 }

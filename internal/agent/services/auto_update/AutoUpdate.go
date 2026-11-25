@@ -151,6 +151,10 @@ type autoUpdate struct {
 	listRetryWait *time.Duration
 	// installMSI replaces applyMsiUpdate in tests of the server-driven path.
 	installMSI func(msiURL, version string) error
+	// selfReplace remembers the last known self-replaceability so a change
+	// (a privileged installer registered or removed while the agent runs)
+	// is pushed to status listeners once.
+	selfReplace selfReplaceState
 }
 
 // msiAttempt is the record of a launched MSI upgrade used to detect a
@@ -212,6 +216,10 @@ func (a *autoUpdate) Start(ctx context.Context) error {
 	a.configSource.OnConfigChanged(a.onConfigChange)
 	setResumeHook(a.checkAfterResume)
 	setDirectiveHook(a.checkAfterDirective)
+	setSettingHook(a.publishSetting)
+
+	a.noteSelfReplace()
+	a.publishSetting()
 
 	a.createScheduler()
 	if err := (*a.scheduler).Start(ctx); err != nil {
@@ -227,6 +235,7 @@ func (a *autoUpdate) Start(ctx context.Context) error {
 func (a *autoUpdate) Shutdown(ctx context.Context) error {
 	setResumeHook(nil)
 	setDirectiveHook(nil)
+	setSettingHook(nil)
 	if a.scheduler == nil {
 		return nil
 	}
@@ -242,6 +251,7 @@ func (a *autoUpdate) Shutdown(ctx context.Context) error {
 func (a *autoUpdate) onConfigChange(string) {
 	enabled, _ := a.effectiveSettings()
 	a.noteEnabled(enabled)
+	a.publishSetting()
 	if err := a.PeriodicalCheckForUpdate(); err != nil {
 		a.logger.Error().
 			Err(err).
@@ -826,6 +836,7 @@ func (a *autoUpdate) checkForUpdateOnce() error {
 	// auto_update.enabled can be turned off while the agent runs: the
 	// updater started with it on keeps its scheduler, so every check reads
 	// the setting in force.
+	a.noteSelfReplace()
 	enabled, expectedVersion := a.effectiveSettings()
 	if !enabled {
 		a.logger.Debug().Msg("Update check skipped: auto_update is disabled")

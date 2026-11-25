@@ -62,6 +62,18 @@ func OnStatusChange(fn func()) {
 	statusListeners = append(statusListeners, fn)
 }
 
+// notifyStatusListeners wakes every listener without changing the status,
+// for facts a server learns by reading the status payload again (for
+// instance self-replaceability).
+func notifyStatusListeners() {
+	statusMu.Lock()
+	listeners := append([]func(){}, statusListeners...)
+	statusMu.Unlock()
+	for _, fn := range listeners {
+		go fn()
+	}
+}
+
 func setStatus(s Status) {
 	statusMu.Lock()
 	if !statusKnown {

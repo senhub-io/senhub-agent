@@ -11,9 +11,18 @@ var paused atomic.Bool
 // next scheduled tick.
 var resumeHook atomic.Pointer[func()]
 
+// settingHook runs synchronously whenever the pause state changes, so the
+// published setting reflects a pause immediately, not at the next tick.
+var settingHook atomic.Pointer[func()]
+
 // SetPaused suspends (true) or resumes (false) the periodic update check.
 func SetPaused(p bool) {
 	was := paused.Swap(p)
+	if was != p {
+		if hook := settingHook.Load(); hook != nil {
+			(*hook)()
+		}
+	}
 	if was && !p {
 		if hook := resumeHook.Load(); hook != nil {
 			go (*hook)()
@@ -31,4 +40,14 @@ func setResumeHook(f func()) {
 		return
 	}
 	resumeHook.Store(&f)
+}
+
+// setSettingHook installs the hook run on every pause state change; nil
+// clears it.
+func setSettingHook(f func()) {
+	if f == nil {
+		settingHook.Store(nil)
+		return
+	}
+	settingHook.Store(&f)
 }

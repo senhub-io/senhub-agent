@@ -155,6 +155,9 @@ type UpdateStatus struct {
 	Reason string
 	// InstallKind is msi, zip, deb, rpm, tarball or unknown.
 	InstallKind string
+	// SelfReplace reports whether this install can put a new version in
+	// place by itself, or through the privileged path registered for it.
+	SelfReplace bool
 }
 
 // FleetSecretStore gives an extension access to the secrets a fleet server

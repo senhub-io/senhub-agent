@@ -210,7 +210,21 @@ func Snapshot(svc *status.StatusService) status.SystemStatus {
 	if w := agentstate.GetConfigWatchDisabled(); w != nil {
 		st.ConfigWatch = &status.ConfigWatch{Reason: w.Reason, Detail: w.Detail}
 	}
+	if s, ok := agentstate.GetUpdateSetting(); ok {
+		st.Update = updateInfoFrom(s)
+	}
 	return st
+}
+
+// updateInfoFrom maps the agentstate setting onto the status payload.
+func updateInfoFrom(s agentstate.UpdateSetting) *status.UpdateInfo {
+	return &status.UpdateInfo{
+		Enabled:     s.Enabled,
+		IncludeBeta: s.IncludeBeta,
+		Target:      s.Target,
+		Source:      s.Source,
+		Paused:      s.Paused,
+	}
 }
 
 func healthFor(base status.HealthInfo, total, failed int) status.HealthInfo {

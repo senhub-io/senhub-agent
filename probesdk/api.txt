@@ -319,6 +319,7 @@ alias UpdateDirective = senhub-agent.go/internal/agent/services/extension.Update
 alias UpdateStatus = senhub-agent.go/internal/agent/services/extension.UpdateStatus
   field InstallKind string
   field Reason string
+  field SelfReplace bool
   field State string
   field Target string
 func ValidFleetSecretName(name string) bool
@@ -772,6 +773,7 @@ type senhub-agent.go/internal/agent/services/extension.UpdateDirective struct
 type senhub-agent.go/internal/agent/services/extension.UpdateStatus struct
   field InstallKind string
   field Reason string
+  field SelfReplace bool
   field State string
   field Target string
 type senhub-agent.go/internal/agent/services/governance.Governance struct
