@@ -15,10 +15,11 @@ import (
 	"senhub-agent.go/internal/agent/services/agentstate"
 )
 
-// watchConfigFile monitors the configuration file AND the multi-file
-// fragment directories (probes.d/, strategies.d/) for changes. Any
-// event from either source triggers a reload; the loader re-merges
-// fragments and the observers fire if the merged data changed.
+// watchConfigFile monitors the directory holding the configuration file
+// (agent.yaml and its license sidecars), AND the multi-file fragment
+// directories (probes.d/, strategies.d/) for changes. Any event from
+// either source triggers a reload; the loader re-merges fragments and
+// the observers fire if the merged data changed.
 //
 // Events that come from inside the fragment directories carry the
 // fragment file path in event.Name. We filter out dotfiles and
@@ -48,6 +49,12 @@ func (lc *LocalConfiguration) watchConfigFile() {
 				continue
 			}
 
+			// The directory of agent.yaml also holds backups, secrets
+			// and unrelated files: drop their events without a log line.
+			if !topLevelEventWanted(lc.configPath, event.Name) {
+				continue
+			}
+
 			lc.logger.Debug().
 				Str("event", event.String()).
 				Msg("Configuration event received")
@@ -67,8 +74,8 @@ func (lc *LocalConfiguration) watchConfigFile() {
 
 				// For events on the MAIN file only: an editor that
 				// deletes-then-recreates the file briefly produces a
-				// missing-file state. Skip the reload — attemptRewatch
-				// covers that path.
+				// missing-file state. Skip the reload: the directory watch
+				// delivers the Create that follows.
 				if isMainFile {
 					if _, err := os.Stat(lc.configPath); os.IsNotExist(err) {
 						lc.logger.Warn().Msg("Configuration file was deleted, skipping reload")
@@ -86,25 +93,23 @@ func (lc *LocalConfiguration) watchConfigFile() {
 				}
 			} else if event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
 				if isMainFile {
-					// Editor delete-then-recreate dance on the main
-					// file. Try to re-add the watch after the file
-					// reappears.
-					lc.logger.Warn().
+					// The directory watch stays active, so a recreated
+					// file arrives as a Create event on its own.
+					lc.logger.Debug().
 						Str("event_type", event.Op.String()).
-						Msg("Configuration file was removed or renamed, attempting to re-watch...")
-					lc.watcherWG.Add(1)
-					go lc.attemptRewatch()
+						Msg("Configuration file removed or renamed; waiting for it to come back")
 				} else {
-					// Fragment file removed or renamed. The directory
-					// watch is still active; reload so the operator
-					// sees the new effective configuration immediately.
+					// Fragment or license file removed or renamed. The
+					// directory watch is still active; reload so the
+					// operator sees the new effective configuration
+					// immediately.
 					lc.logger.Info().
 						Str("path", event.Name).
 						Str("event_type", event.Op.String()).
-						Msg("Fragment file removed/renamed, reloading...")
+						Msg("Configuration file removed or renamed, reloading...")
 					time.Sleep(200 * time.Millisecond)
 					if err := lc.reloadConfiguration(); err != nil {
-						lc.logger.Error().Err(err).Msg("Failed to reload configuration after fragment change")
+						lc.logger.Error().Err(err).Msg("Failed to reload configuration after file removal")
 					}
 				}
 			}
@@ -261,56 +266,16 @@ func (lc *LocalConfiguration) hasConfigurationChanged(old, new LocalConfiguratio
 	return false
 }
 
-// attemptRewatch tries to re-add the configuration file to the watcher
-// This handles editors that delete and recreate files during save operations
-func (lc *LocalConfiguration) attemptRewatch() {
-	defer lc.watcherWG.Done()
-	maxRetries := 5
-	retryDelay := 500 * time.Millisecond
-
-	for i := 0; i < maxRetries; i++ {
-		// Wait for the file to be recreated — abortable so Shutdown
-		// never waits half a rewatch cycle (joinable lifecycle, #268).
-		select {
-		case <-lc.stopCh:
-			return
-		case <-time.After(retryDelay):
-		}
-
-		// Check if file exists
-		if _, err := os.Stat(lc.configPath); err == nil {
-			// File exists, try to add it back to watcher
-			if err := lc.watcher.Add(lc.configPath); err != nil {
-				lc.logger.Warn().
-					Err(err).
-					Int("attempt", i+1).
-					Msg("Failed to re-watch configuration file")
-			} else {
-				lc.logger.Info().
-					Int("attempt", i+1).
-					Msg("Successfully re-added configuration file to watcher")
-
-				// File is back, try to reload configuration
-				if err := lc.reloadConfiguration(); err != nil {
-					lc.logger.Error().
-						Err(err).
-						Msg("Failed to reload configuration after re-watch")
-				} else {
-					lc.logger.Info().Msg("Configuration reloaded successfully after re-watch")
-				}
-				return
-			}
-		} else {
-			lc.logger.Debug().
-				Int("attempt", i+1).
-				Msg("Configuration file not yet recreated, retrying...")
-		}
-
-		// Increase delay for next retry
-		retryDelay *= 2
+// topLevelEventWanted filters events from the directory holding
+// agent.yaml: only the config file itself and the two license sidecars
+// matter there. Events from other directories (probes.d/,
+// strategies.d/) pass through and are left to shouldIgnoreEvent.
+func topLevelEventWanted(configPath, name string) bool {
+	if filepath.Dir(name) != filepath.Dir(configPath) {
+		return true
 	}
-
-	lc.logger.Error().
-		Int("max_retries", maxRetries).
-		Msg("Failed to re-watch configuration file after maximum retries")
+	base := filepath.Base(name)
+	return base == filepath.Base(configPath) ||
+		base == licenseSidecarName ||
+		base == revocationsSidecarName
 }

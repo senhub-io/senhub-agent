@@ -170,7 +170,7 @@ func handleLicenseActivate(args *cliArgs.LicenseActivateArgs) {
 	}
 
 	fmt.Printf("\nLicense activated and saved to: %s\n", configuration.LicenseSidecarPath(configPath))
-	fmt.Println("   Restart the agent for changes to take effect.")
+	fmt.Println("   A running agent applies it within a few seconds; restart it only if 'agent doctor' reports the configuration watch off.")
 }
 
 // handleLicenseShow shows current license information
@@ -309,7 +309,7 @@ func handleLicenseRemove(args *cliArgs.LicenseRemoveArgs) {
 
 	fmt.Printf("License removed from: %s\n", configPath)
 	fmt.Println("   Agent will run in free tier mode.")
-	fmt.Println("   Restart the agent for changes to take effect.")
+	fmt.Println("   A running agent applies it within a few seconds; restart it only if 'agent doctor' reports the configuration watch off.")
 }
 
 // licenseCodeFrom returns the licence given on the command line, or reads
@@ -408,10 +408,10 @@ func runLicenseRevocationsImport(v *license.JWTValidator, configPath, token stri
 	fmt.Fprintf(out, "Revocation list version %d imported (%d revoked licences) to %s.\n", list.Version, len(list.Revoked), configuration.RevocationsSidecarPath(configPath))
 
 	if jti := revokedJtiInForce(v, configPath, list); jti != "" {
-		fmt.Fprintf(out, "   The licence in force (jti %s) is revoked: the agent drops to the Free tier at its next configuration reload or restart.\n", jti)
+		fmt.Fprintf(out, "   The licence in force (jti %s) is revoked: the agent drops to the Free tier within a few seconds.\n", jti)
 	}
 
-	fmt.Fprintln(out, "   Restart the agent for the list to take effect.")
+	fmt.Fprintln(out, "   A running agent applies the list within a few seconds; restart it only if 'agent doctor' reports the configuration watch off.")
 	return cliexit.OK
 }
 

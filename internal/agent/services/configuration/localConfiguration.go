@@ -477,9 +477,13 @@ func (lc *LocalConfiguration) Start(ctx context.Context) error {
 	}
 
 	// Initialize file watcher. We watch:
-	//   - the top-level config file (configPath / agent.yaml) — for
-	//     monolithic configs this is the whole story; for multi-file
-	//     it carries the global blocks.
+	//   - the directory containing the top-level config file
+	//     (configPath / agent.yaml), filtered to agent.yaml and the
+	//     two license sidecars — for monolithic configs this is the
+	//     whole story; for multi-file it carries the global blocks.
+	//     Watching the directory survives an editor that deletes and
+	//     recreates the file, and lets a license dropped beside the
+	//     config apply to a running agent.
 	//   - the probes.d/ and strategies.d/ sibling directories when
 	//     they exist. fsnotify on a directory emits events for every
 	//     entry inside, so add/remove/edit of a fragment file
@@ -502,15 +506,15 @@ func (lc *LocalConfiguration) Start(ctx context.Context) error {
 		return nil
 	}
 
-	if err := lc.watcher.Add(lc.configPath); err != nil {
+	baseDir := filepath.Dir(lc.configPath)
+	if err := lc.watcher.Add(baseDir); err != nil {
 		_ = lc.watcher.Close()
 		lc.watcher = nil
 		lc.degradeToUnwatched(agentstate.ConfigWatchNotWatched, err)
 		return nil
 	}
-	lc.logger.Info().Str("config_path", lc.configPath).Msg("Started watching configuration file")
+	lc.logger.Info().Str("dir", baseDir).Msg("Started watching configuration directory")
 
-	baseDir := filepath.Dir(lc.configPath)
 	for _, sub := range []string{"probes.d", "strategies.d"} {
 		dir := filepath.Join(baseDir, sub)
 		if info, err := os.Stat(dir); err != nil || !info.IsDir() {

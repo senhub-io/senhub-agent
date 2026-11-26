@@ -675,13 +675,11 @@ as a JWT.
 ### Activating a License
 
 **Option A — drop the file (simplest).** Save the license file you received
-from support as `license.jwt` next to `agent.yaml` (see paths above), then
-restart the agent:
+from support as `license.jwt` next to `agent.yaml` (see paths above):
 
 ```bash
 # Linux
 sudo cp license.jwt /etc/senhub-agent/license.jwt
-sudo systemctl restart senhub-agent
 ```
 
 **Option B — CLI.** Activate with the token; this validates it, verifies that it
@@ -694,8 +692,9 @@ sudo /usr/local/bin/senhub-agent license activate - < license.jwt
 Read from standard input, the token stays out of the process list and the
 shell history; it is also accepted as the argument.
 
-Either way, **the license takes effect after restarting the agent** — a license
-change is not picked up while the agent is running.
+Either way, a running agent applies the license within a few seconds, without
+a restart. Only an agent whose configuration watch is off (`senhub-agent doctor`
+reports it) needs a restart to see it.
 
 !!! warning "Never copy an agent key to another machine"
     A licence bound to one agent key is valid on that agent only. To license

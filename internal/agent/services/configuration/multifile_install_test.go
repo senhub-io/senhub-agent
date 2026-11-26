@@ -203,19 +203,19 @@ func TestWatcher_FragmentDirsAreWatched(t *testing.T) {
 	}
 	watched := lc.watcher.WatchList()
 
-	hasMain, hasProbes, hasStrategies := false, false, false
+	hasConfigDir, hasProbes, hasStrategies := false, false, false
 	for _, w := range watched {
 		switch {
-		case w == configPath:
-			hasMain = true
+		case w == filepath.Dir(configPath):
+			hasConfigDir = true
 		case strings.HasSuffix(w, "probes.d"):
 			hasProbes = true
 		case strings.HasSuffix(w, "strategies.d"):
 			hasStrategies = true
 		}
 	}
-	if !hasMain {
-		t.Error("main config file should be watched")
+	if !hasConfigDir {
+		t.Error("the configuration directory should be watched")
 	}
 	if !hasProbes {
 		t.Error("probes.d should be watched")

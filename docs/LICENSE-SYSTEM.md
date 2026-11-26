@@ -267,7 +267,7 @@ to install it:
 ./agent license activate eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
 
 # Option B — drop-in: save the token file we send you next to agent.yaml
-cp license.jwt /etc/senhub-agent/license.jwt   # restart the agent
+cp license.jwt /etc/senhub-agent/license.jwt   # applied within seconds
 ```
 
 ```bash
