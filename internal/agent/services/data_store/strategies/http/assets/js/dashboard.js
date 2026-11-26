@@ -117,7 +117,7 @@
         if (p.running && p.target_up === false) return 'target-down';
         if (p.running) return 'running';
         if (p.authorized === false) return p.tier === 'pro' ? 'locked' : 'unsupported';
-        return 'stopped';
+        return 'starting';
     }
     function probeStats(list) {
         const st = { total: list.length, running: 0, failing: 0, targetDown: 0, disabled: 0, other: 0 };
@@ -161,14 +161,14 @@
         if (st.running) pills += pill('ok', st.running + ' running');
         if (st.failing) pills += pill('err', st.failing + ' failing');
         if (st.targetDown) pills += pill('err', st.targetDown + ' target down');
-        if (st.other) pills += pill('warn', st.other + ' stopped');
+        if (st.other) pills += pill('warn', st.other + ' not running');
         if (st.disabled) pills += pill('off', st.disabled + ' disabled');
         $('probes-pills').innerHTML = pills;
 
         if (!list.length) {
             $('probes-body').innerHTML = '<div class="empty-line">No probe configured yet. <a href="' + WEB + 'probes?new=1">Add a probe</a> to start collecting.</div>';
         } else {
-            const order = { failing: 0, 'target-down': 1, stopped: 2, locked: 2, running: 3, disabled: 4 };
+            const order = { failing: 0, 'target-down': 1, locked: 2, starting: 3, running: 3, unsupported: 4, disabled: 5 };
             const rows = list.slice().sort((a, b) => order[probeState(a)] - order[probeState(b)]);
             // Same wrapper as the Probes page: this table is wider than a
             // phone, and without its own scroller it pushes the whole
@@ -186,7 +186,7 @@
                 else if (s === 'disabled') state = pill('off', 'disabled');
                 else if (s === 'locked') state = pill('pro', 'license needed') + why(p.reason || 'not authorized');
                 else if (s === 'unsupported') state = pill('off', 'not on this platform') + why(p.reason || 'another platform');
-                else state = pill('warn', 'stopped') + (p.reason ? why(p.reason) : '');
+                else state = pill('warn', 'starting') + (p.reason ? why(p.reason) : '');
                 const last = s !== 'disabled' && p.last_update ? esc(rel(p.last_update)) : '-';
                 const metrics = s === 'disabled' ? '-' : num(p.metrics_count);
                 const cat = (types[p.type] && types[p.type].category) || 'other';

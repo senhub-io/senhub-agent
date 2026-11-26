@@ -172,6 +172,14 @@
         const probesApi = '/api/' + window.AGENT_KEY + '/config/probes';        let licenseState = {};
         const $ = (id) => document.getElementById(id);
 
+        // A browser session carries '_' instead of the administration key:
+        // revealing or copying it would only show the placeholder.
+        if (window.AGENT_KEY === '_') {
+            $('adminkey').textContent = 'Not shown in a browser session. On the machine, senhub-agent console --print gives the console address with it.';
+            $('reveal-admin').classList.add('hide');
+            $('copy-admin').classList.add('hide');
+        }
+
         function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
         function pill(kind, label) { return '<span class="pill ' + kind + '">' + esc(label) + '</span>'; }
 
@@ -265,7 +273,7 @@
                 const d = await post(body);
                 let msg = (d.applied || []).join('; ');
                 if (d.warnings && d.warnings.length) msg += (msg ? '. ' : '') + d.warnings.join('; ');
-                banner('warn', msg || 'Saved.');
+                banner(d.warnings && d.warnings.length ? 'warn' : 'ok', msg || 'Saved.');
             } catch (e) {
                 banner('err', e.message);
             }

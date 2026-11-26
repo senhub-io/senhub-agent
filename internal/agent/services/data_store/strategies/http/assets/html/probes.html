@@ -259,7 +259,7 @@
   </div>
 </div>
 
-<script>window.AGENT_KEY = '{{.AgentKey}}';</script>
+<script>window.AGENT_KEY = '{{.AgentKey}}';window.PRTG_ENABLED = {{if .PRTGEnabled}}true{{else}}false{{end}};</script>
 <script src="/web/{{.AgentKey}}/assets/js/console.js"></script>
 <script src="/web/{{.AgentKey}}/assets/js/schema-form.js"></script>
 <script>
@@ -696,7 +696,7 @@
   
       if (!metricsOk) {
         count.textContent = '0';
-        container.innerHTML = `<div class="empty-line">Current series unavailable.</div>`;
+        container.innerHTML = `<div class="empty-line">${window.PRTG_ENABLED === false ? 'Current values are read through the PRTG endpoint, which is off on this agent. Enable it under Outputs, HTTP, to see them here.' : 'Current series unavailable.'}</div>`;
         return;
       }
   

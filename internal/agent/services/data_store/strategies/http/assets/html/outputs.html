@@ -109,7 +109,7 @@
                 acts = (dis ? '<button class="btn sm" data-write data-act="enable">Enable</button>' : '<button class="btn sm" data-write data-act="test">Test</button>') +
                     '<a class="btn sm" href="' + editHref(o) + '">Edit</a>' +
                     '<details class="menu" data-write><summary class="btn sm ghost" title="More">...</summary><div class="items">' +
-                    (dis ? '<button data-act="enable">Enable</button>' : '<button data-act="disable">Disable</button>') +
+                    (dis ? '' : '<button data-act="disable">Disable</button>') +
                     '<button class="danger" data-act="delete">Delete</button></div></details>';
             }
             const testHtml = tests[o.name] ? '<div class="otest">' + tests[o.name] + '</div>' : '';
