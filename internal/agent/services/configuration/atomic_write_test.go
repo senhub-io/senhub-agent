@@ -34,9 +34,9 @@ func TestSealAgentKey_KeepsAnOperatorEditLandingBetweenReadAndWrite(t *testing.T
 		}
 	})
 
-	n, _, err := sealAgentKeyInFile(path, newSealState())
+	n, _, err := sealMainFileSecrets(path, newSealState())
 	if err != nil || n != 1 {
-		t.Fatalf("sealAgentKeyInFile = %d, %v", n, err)
+		t.Fatalf("sealMainFileSecrets = %d, %v", n, err)
 	}
 	got, _ := os.ReadFile(path)
 	s := string(got)
@@ -95,7 +95,7 @@ func TestSealAgentKey_GiveUpLeavesTheFileUntouchedAndSealRetriesNextStart(t *tes
 			t.Fatal(err)
 		}
 	})
-	if _, _, err := sealAgentKeyInFile(path, newSealState()); !errors.Is(err, ErrConfigChangedConcurrently) {
+	if _, _, err := sealMainFileSecrets(path, newSealState()); !errors.Is(err, ErrConfigChangedConcurrently) {
 		t.Fatalf("err = %v, want ErrConfigChangedConcurrently", err)
 	}
 	got, _ := os.ReadFile(path)
@@ -104,7 +104,7 @@ func TestSealAgentKey_GiveUpLeavesTheFileUntouchedAndSealRetriesNextStart(t *tes
 	}
 
 	beforeCommitHook.Store(nil)
-	if n, _, err := sealAgentKeyInFile(path, newSealState()); err != nil || n != 1 {
+	if n, _, err := sealMainFileSecrets(path, newSealState()); err != nil || n != 1 {
 		t.Fatalf("retry = %d, %v", n, err)
 	}
 }

@@ -458,3 +458,44 @@ func TestSealInlineSecrets_SealsTheAdministrationKey(t *testing.T) {
 		t.Errorf("the administration key was left in the file:\n%s", raw)
 	}
 }
+
+func TestSealInlineSecrets_SealsTheOpAMPToken(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		token  string
+		sealed bool
+	}{
+		{name: "plaintext token", token: "plain-token-123", sealed: true},
+		{name: "env reference left alone", token: "${env:OPAMP_TOKEN}"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mp := secret.NewMemoryProvider()
+			secret.SetProvider(mp)
+			t.Cleanup(func() { secret.SetProvider(nil) })
+
+			dir := t.TempDir()
+			cfg := filepath.Join(dir, "agent.yaml")
+			writeSealFile(t, cfg, fmt.Sprintf(
+				"config_version: 2\nopamp:\n  enabled: true\n  endpoint: wss://fleet.example.com/v1/opamp\n  token: %s\n",
+				tc.token))
+
+			if err := SealInlineSecrets(cfg, nil); err != nil {
+				t.Fatalf("SealInlineSecrets: %v", err)
+			}
+			raw, _ := os.ReadFile(cfg)
+			if !tc.sealed {
+				if strings.Contains(string(raw), "${secret:") {
+					t.Errorf("the env reference was rewritten:\n%s", raw)
+				}
+				return
+			}
+			if strings.Contains(string(raw), "plain-token-123") || !strings.Contains(string(raw), "${secret:opamp.token}") {
+				t.Errorf("the OpAMP token was left in the file:\n%s", raw)
+			}
+			v, err := mp.Get("opamp.token")
+			if err != nil || v != "plain-token-123" {
+				t.Errorf("secret store opamp.token = (%q, %v), want %q", v, err, "plain-token-123")
+			}
+		})
+	}
+}

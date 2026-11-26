@@ -244,17 +244,18 @@ func SealInlineSecrets(configPath string, log *logger.ModuleLogger) error {
 		total += n
 	}
 
-	// The agent's own auth key lives in the main config file's agent block (not
-	// in a probe), so seal it separately. The license is left in clear — it is a
-	// JWT bound to the agent key, not a portable access secret — and its
-	// on-disk home is the license.jwt sidecar (see config_license.go), not this
-	// file, so there is nothing here to seal.
-	n, backupPath, err := sealAgentKeyInFile(configPath, st)
+	// The agent's own auth key and the OpAMP token live in the main config
+	// file's top-level blocks (not in a probe), so seal them together in the
+	// same rewrite. The license is left in clear — it is a JWT bound to the
+	// agent key, not a portable access secret — and its on-disk home is the
+	// license.jwt sidecar (see config_license.go), not this file, so there is
+	// nothing here to seal.
+	n, backupPath, err := sealMainFileSecrets(configPath, st)
 	if backupPath != "" {
 		backups = append(backups, backup{configPath, backupPath})
 	}
 	if err != nil {
-		return finalizeRestore(fmt.Errorf("sealing agent.key: %w", err))
+		return finalizeRestore(fmt.Errorf("sealing the main file: %w", err))
 	}
 	total += n
 
@@ -581,12 +582,14 @@ func marshalNode(doc *yaml.Node) ([]byte, error) {
 	return []byte(buf.String()), nil
 }
 
-// sealAgentKeyInFile seals the agent.key (when it is an inline plaintext value)
-// in the main config file, keyed as "agent.key", and rewrites it to
-// ${secret:agent.key}. The agent.license field is deliberately left untouched:
+// sealMainFileSecrets seals the agent.key (when it is an inline plaintext value)
+// in the main config file: agent.key stays keyed "agent.key" and is rewritten
+// to ${secret:agent.key}; a plaintext opamp.token is keyed "opamp.token" and
+// rewritten to ${secret:opamp.token}. Both share the single rewrite (and thus
+// a single backup). The agent.license field is deliberately left untouched:
 // the license lives in clear in the license.jwt sidecar (config_license.go),
-// not in this file. Returns the count (0 or 1) and the backup path.
-func sealAgentKeyInFile(path string, st *sealState) (int, string, error) {
+// not in this file. Returns the count (0, 1 or 2) and the backup path.
+func sealMainFileSecrets(path string, st *sealState) (int, string, error) {
 	var count int
 	var backupPath string
 	_, err := rewriteFile(path, func(data []byte) ([]byte, error) {
@@ -598,25 +601,41 @@ func sealAgentKeyInFile(path string, st *sealState) (int, string, error) {
 		if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
 			return nil, nil
 		}
-		agent := mapValue(doc.Content[0], "agent")
-		if agent == nil || agent.Kind != yaml.MappingNode {
+		root := doc.Content[0]
+		sealed := 0
+		agent := mapValue(root, "agent")
+		if agent != nil && agent.Kind == yaml.MappingNode {
+			keyNode := mapValue(agent, "key")
+			if keyNode != nil && keyNode.Kind == yaml.ScalarNode && isPlaintextScalar(keyNode.Value) {
+				ref, err := st.sealValue("agent.key", keyNode.Value, "agent.key")
+				if err != nil {
+					return nil, err
+				}
+				keyNode.SetString(ref)
+				sealed++
+			}
+		}
+		opamp := mapValue(root, "opamp")
+		if opamp != nil && opamp.Kind == yaml.MappingNode {
+			tokenNode := mapValue(opamp, "token")
+			if tokenNode != nil && tokenNode.Kind == yaml.ScalarNode && isPlaintextScalar(tokenNode.Value) {
+				ref, err := st.sealValue("opamp.token", tokenNode.Value, "opamp.token")
+				if err != nil {
+					return nil, err
+				}
+				tokenNode.SetString(ref)
+				sealed++
+			}
+		}
+		if sealed == 0 {
 			return nil, nil
 		}
-		keyNode := mapValue(agent, "key")
-		if keyNode == nil || keyNode.Kind != yaml.ScalarNode || !isPlaintextScalar(keyNode.Value) {
-			return nil, nil
-		}
-		ref, err := st.sealValue("agent.key", keyNode.Value, "agent.key")
-		if err != nil {
-			return nil, err
-		}
-		count = 1
+		count = sealed
 		bp := fmt.Sprintf("%s.backup.%s", path, time.Now().Format("20060102-150405"))
 		if err := os.WriteFile(bp, data, 0o600); err != nil {
 			return nil, fmt.Errorf("writing backup: %w", err)
 		}
 		backupPath = bp
-		keyNode.SetString(ref)
 		out, err := marshalNode(&doc)
 		if err != nil {
 			return nil, fmt.Errorf("marshalling: %w", err)

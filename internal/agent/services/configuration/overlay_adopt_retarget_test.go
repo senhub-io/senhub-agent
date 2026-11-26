@@ -8,6 +8,67 @@ import (
 	"senhub-agent.go/internal/agent/services/extension"
 )
 
+func TestOverlayAdoptRefusesForeignReferences(t *testing.T) {
+	prevResolve := resolveSecretFunc
+	t.Cleanup(func() { resolveSecretFunc = prevResolve })
+	resolveSecretFunc = func(name, _ string, _ bool) (string, error) {
+		if name == "fleet.db" {
+			return "fleet-db-secret", nil
+		}
+		return "", errors.New("unknown secret")
+	}
+	probeYAML := `- name: db
+  type: postgresql
+  params:
+    host: db1
+    password: ${secret:db.pw}
+`
+	configPath := writeSecurityTestConfig(t, probeYAML)
+	enabled := true
+	newTarget := func() *overlayTarget {
+		return &overlayTarget{
+			cfg: &LocalConfigurationData{
+				Probes: []ProbeConfig{
+					{
+						Name:    "db",
+						Type:    "postgresql",
+						Enabled: &enabled,
+						Params:  ProbeConfigParams{"host": "db1", "password": "old"},
+					},
+				},
+			},
+			configPath: configPath,
+		}
+	}
+
+	// A reference to an operator-side secret (not fleet.*) is refused.
+	target := newTarget()
+	if target.AdoptProbe(extension.ManagedProbe{Name: "db", Type: "postgresql", Enabled: true, Params: map[string]any{"host": "db1", "password": "${secret:db.pw}"}}) {
+		t.Fatal("AdoptProbe with a foreign ${secret:} reference = true, want false")
+	}
+	if target.cfg.Probes[0].Params["password"] != "old" {
+		t.Errorf("params changed after refusal: %v", target.cfg.Probes[0].Params)
+	}
+
+	// Any other ${...} form is refused too.
+	target = newTarget()
+	if target.AdoptProbe(extension.ManagedProbe{Name: "db", Type: "postgresql", Enabled: true, Params: map[string]any{"host": "db1", "password": "${env:X}"}}) {
+		t.Fatal("AdoptProbe with an ${env:} reference = true, want false")
+	}
+	if target.cfg.Probes[0].Params["password"] != "old" {
+		t.Errorf("params changed after refusal: %v", target.cfg.Probes[0].Params)
+	}
+
+	// fleet.<name> is resolved and applied.
+	target = newTarget()
+	if !target.AdoptProbe(extension.ManagedProbe{Name: "db", Type: "postgresql", Enabled: true, Params: map[string]any{"host": "db1", "password": "${secret:fleet.db}"}}) {
+		t.Fatal("AdoptProbe with a ${secret:fleet.db} reference = false, want true")
+	}
+	if got := target.cfg.Probes[0].Params["password"]; got != "fleet-db-secret" {
+		t.Errorf("password = %v, want fleet-db-secret", got)
+	}
+}
+
 func TestOverlayAdoptRetargetComparesWithLocalValue(t *testing.T) {
 	prevResolve := resolveSecretFunc
 	t.Cleanup(func() { resolveSecretFunc = prevResolve })
