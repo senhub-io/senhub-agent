@@ -95,9 +95,9 @@ func (lc *LocalConfiguration) watchConfigFile() {
 				if isMainFile {
 					// The directory watch stays active, so a recreated
 					// file arrives as a Create event on its own.
-					lc.logger.Debug().
+					lc.logger.Warn().
 						Str("event_type", event.Op.String()).
-						Msg("Configuration file removed or renamed; waiting for it to come back")
+						Msg("Configuration file removed or renamed; the configuration in force stays until it comes back")
 				} else {
 					// Fragment or license file removed or renamed. The
 					// directory watch is still active; reload so the

@@ -341,6 +341,9 @@ func runConfigInit(argv []string, out io.Writer, env initEnv) int {
 		if wroteZabbix {
 			written = append(written, filepath.Join(configDir, "strategies.d", "20-zabbix.yaml"))
 		}
+		if opts.zabbixHostname != "" && !wroteZabbix {
+			fmt.Fprintf(text, "  zabbix hostname: not applied, %s already exists; set hostname there\n", filepath.Join(configDir, "strategies.d", "20-zabbix.yaml"))
+		}
 		return finish(false, written)
 	}
 
@@ -413,6 +416,9 @@ func runConfigInit(argv []string, out io.Writer, env initEnv) int {
 	if wroteZabbix {
 		written = append(written, filepath.Join(configDir, "strategies.d", "20-zabbix.yaml"))
 	}
+	if opts.zabbixHostname != "" && !wroteZabbix {
+		fmt.Fprintf(text, "  zabbix hostname: not applied, %s already exists; set hostname there\n", filepath.Join(configDir, "strategies.d", "20-zabbix.yaml"))
+	}
 
 	fmt.Fprintf(text, "Configuration created at %s\n", configPath)
 	fmt.Fprintf(text, "  http: %s\n", net.JoinHostPort(bind, strconv.Itoa(httpPort)))
@@ -428,7 +434,7 @@ func runConfigInit(argv []string, out io.Writer, env initEnv) int {
 	if opts.zabbixServer != "" {
 		fmt.Fprintf(text, "  zabbix server: %s\n", opts.zabbixServer)
 	}
-	if opts.zabbixHostname != "" {
+	if opts.zabbixHostname != "" && wroteZabbix {
 		fmt.Fprintf(text, "  zabbix hostname: %s\n", opts.zabbixHostname)
 	}
 	fmt.Fprintf(text, "  probes: %s\n", filepath.Join(configDir, "probes.d"))

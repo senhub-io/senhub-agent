@@ -279,7 +279,7 @@ func ValidateZabbixInstallArgs(server, metadata, hostname string) error {
 		return fmt.Errorf("--zabbix-host-metadata %q contains an invalid character", metadata)
 	}
 	if hostname != "" && !validZabbixHostname(hostname) {
-		return fmt.Errorf("--zabbix-hostname %q is not a valid Zabbix host name: letters, digits, dot, dash, underscore and space, at most 128 characters", hostname)
+		return fmt.Errorf("--zabbix-hostname %q is not a valid Zabbix host name: letters, digits, dot, dash, underscore and inner spaces, at most 128 characters", hostname)
 	}
 	return nil
 }

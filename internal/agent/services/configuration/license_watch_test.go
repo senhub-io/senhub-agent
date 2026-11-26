@@ -2,6 +2,7 @@ package configuration
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -103,6 +104,50 @@ func TestLicenseSidecarAppliesWhileRunning(t *testing.T) {
 		t.Fatalf("WriteRevocationsSidecar: %v", err)
 	}
 	waitForRevocations(t, lc, "header.payload.sig-r")
+}
+
+func TestConfigReplacedByRenameIsReloaded(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "agent.yaml")
+
+	lc := NewLocalConfiguration(&cliArgs.ParsedArgs{ConfigPath: configPath}, createTestLocalLogger())
+
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
+	if err := lc.Start(runCtx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = lc.Shutdown(context.Background()) })
+
+	if err := WriteLicenseSidecar(configPath, "header.payload.sig-1"); err != nil {
+		t.Fatalf("WriteLicenseSidecar: %v", err)
+	}
+	waitForLicense(t, lc, "header.payload.sig-1")
+
+	tmpSidecar := filepath.Join(dir, ".license.jwt.tmp")
+	if err := os.WriteFile(tmpSidecar, []byte("header.payload.sig-2\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile sidecar tmp: %v", err)
+	}
+	if err := os.Rename(tmpSidecar, LicenseSidecarPath(configPath)); err != nil {
+		t.Fatalf("Rename sidecar: %v", err)
+	}
+	waitForLicense(t, lc, "header.payload.sig-2")
+
+	before, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("ReadFile config: %v", err)
+	}
+	tmpConfig := filepath.Join(dir, ".agent.yaml.tmp")
+	if err := os.WriteFile(tmpConfig, before, 0o600); err != nil {
+		t.Fatalf("WriteFile config tmp: %v", err)
+	}
+	if err := os.Rename(tmpConfig, configPath); err != nil {
+		t.Fatalf("Rename config: %v", err)
+	}
+	if err := RemoveLicenseSidecar(configPath); err != nil {
+		t.Fatalf("RemoveLicenseSidecar: %v", err)
+	}
+	waitForLicense(t, lc, "")
 }
 
 func waitForLicense(t *testing.T, lc *LocalConfiguration, want string) {

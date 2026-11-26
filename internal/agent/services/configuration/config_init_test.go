@@ -248,6 +248,28 @@ func TestValidateZabbixInstallArgs(t *testing.T) {
 	}
 }
 
+func TestEnsureZabbixStrategyFragmentSecondCallWithHostnameNotApplied(t *testing.T) {
+	dir := t.TempDir()
+
+	if written, err := EnsureZabbixStrategyFragment(dir, "zbx:10051", "", ""); err != nil || !written {
+		t.Fatalf("first write: written = %v, err = %v; want true, nil", written, err)
+	}
+	written, err := EnsureZabbixStrategyFragment(dir, "zbx:10051", "", "aca-collector")
+	if err != nil {
+		t.Fatalf("second call with hostname: %v", err)
+	}
+	if written {
+		t.Fatal("second call with hostname: written = true, want false")
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "strategies.d", "20-zabbix.yaml"))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if strings.Contains(string(data), "hostname") {
+		t.Error("fragment contains hostname after second call; want unchanged")
+	}
+}
+
 func TestEnsureStrategyFragmentsReportWhatTheyWrote(t *testing.T) {
 	dir := t.TempDir()
 
