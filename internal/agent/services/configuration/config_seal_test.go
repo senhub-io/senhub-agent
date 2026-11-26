@@ -484,7 +484,7 @@ func TestSealInlineSecrets_SealsTheOpAMPToken(t *testing.T) {
 			}
 			raw, _ := os.ReadFile(cfg)
 			if !tc.sealed {
-				if strings.Contains(string(raw), "${secret:") {
+				if strings.Contains(string(raw), "${secret:") || !strings.Contains(string(raw), "${env:OPAMP_TOKEN}") {
 					t.Errorf("the env reference was rewritten:\n%s", raw)
 				}
 				return
