@@ -143,11 +143,15 @@ init_config() {
   fi
   # A Zabbix server is all the Zabbix output needs: the host registers by
   # itself at its first contact once the server was prepared with
-  # 'senhub-agent zabbix setup'.
+  # 'senhub-agent zabbix setup'. A fixed host name keeps a container
+  # replica, whose machine name changes on every revision, the same host.
   if [ -n "${SENHUB_ZABBIX_SERVER:-}" ]; then
     set -- "$@" --zabbix-server "$SENHUB_ZABBIX_SERVER"
     if [ -n "${SENHUB_ZABBIX_HOST_METADATA:-}" ]; then
       set -- "$@" --zabbix-host-metadata "$SENHUB_ZABBIX_HOST_METADATA"
+    fi
+    if [ -n "${SENHUB_ZABBIX_HOSTNAME:-}" ]; then
+      set -- "$@" --zabbix-hostname "$SENHUB_ZABBIX_HOSTNAME"
     fi
   fi
 

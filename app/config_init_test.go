@@ -201,15 +201,18 @@ func TestFindLicenseInDir(t *testing.T) {
 }
 
 func TestParseInitConfigArgs_Zabbix(t *testing.T) {
-	opts, err := parseInitConfigArgs([]string{"--zabbix-server", "zbx.example.com:10051", "--zabbix-host-metadata", "senhub-agent"})
+	opts, err := parseInitConfigArgs([]string{"--zabbix-server", "zbx.example.com:10051", "--zabbix-host-metadata", "senhub-agent", "--zabbix-hostname", "aca-collector"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if opts.zabbixServer != "zbx.example.com:10051" || opts.zabbixMetadata != "senhub-agent" {
+	if opts.zabbixServer != "zbx.example.com:10051" || opts.zabbixMetadata != "senhub-agent" || opts.zabbixHostname != "aca-collector" {
 		t.Errorf("parsed %+v", opts)
 	}
 	if _, err := parseInitConfigArgs([]string{"--zabbix-host-metadata", "x"}); err == nil {
 		t.Error("metadata without a server must be refused before anything is written")
+	}
+	if _, err := parseInitConfigArgs([]string{"--zabbix-hostname", "x"}); err == nil {
+		t.Error("hostname without a server must be refused before anything is written")
 	}
 	if _, err := parseInitConfigArgs([]string{"--zabbix-server", "zbx 10051"}); err == nil {
 		t.Error("a server with whitespace must be refused")

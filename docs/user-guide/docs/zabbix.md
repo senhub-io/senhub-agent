@@ -23,7 +23,7 @@ is set, on the agent or in the Zabbix interface:
 |---|---|
 | Windows | `msiexec /i senhub-agent-<version>-amd64.msi /qn ZABBIX_SERVER=zabbix.example.com:10051` |
 | Linux | after `install`: `sudo /usr/local/bin/senhub-agent config init --zabbix-server zabbix.example.com:10051` |
-| Container | `SENHUB_ZABBIX_SERVER=zabbix.example.com:10051` |
+| Container | `SENHUB_ZABBIX_SERVER=zabbix.example.com:10051`, and `SENHUB_ZABBIX_HOSTNAME=<name>` where the platform renames the container on every deployment |
 
 The port is the server's or proxy's trapper port (`ListenPort` in its
 configuration), 10051 by default; an address without a port gets 10051.

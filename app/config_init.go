@@ -37,6 +37,9 @@ type initConfigArgs struct {
 	// by commas for a proxy group); zabbixMetadata its host_metadata.
 	zabbixServer   string
 	zabbixMetadata string
+	// zabbixHostname is the name the host registers under; empty means
+	// the machine's own name.
+	zabbixHostname string
 	tags           map[string]string
 	httpPort       int
 	httpBind       string
@@ -93,6 +96,8 @@ func parseInitConfigArgs(argv []string) (initConfigArgs, error) {
 			out.zabbixServer, err = value(&i)
 		case "--zabbix-host-metadata":
 			out.zabbixMetadata, err = value(&i)
+		case "--zabbix-hostname":
+			out.zabbixHostname, err = value(&i)
 		case jsonFlag:
 			out.jsonMode = true
 		case okIfUnchangedFlag:
@@ -137,7 +142,7 @@ func parseInitConfigArgs(argv []string) (initConfigArgs, error) {
 	if err := validateOTLPArgs(out.otlpEndpoint, out.otlpProtocol); err != nil {
 		return out, err
 	}
-	if err := configuration.ValidateZabbixInstallArgs(out.zabbixServer, out.zabbixMetadata); err != nil {
+	if err := configuration.ValidateZabbixInstallArgs(out.zabbixServer, out.zabbixMetadata, out.zabbixHostname); err != nil {
 		return out, err
 	}
 	return out, nil
@@ -329,7 +334,7 @@ func runConfigInit(argv []string, out io.Writer, env initEnv) int {
 		if wroteOTLP {
 			written = append(written, filepath.Join(configDir, "strategies.d", "10-otlp.yaml"))
 		}
-		wroteZabbix, err := configuration.EnsureZabbixStrategyFragment(configDir, opts.zabbixServer, opts.zabbixMetadata)
+		wroteZabbix, err := configuration.EnsureZabbixStrategyFragment(configDir, opts.zabbixServer, opts.zabbixMetadata, opts.zabbixHostname)
 		if err != nil {
 			return fail(fmt.Errorf("config init: writing Zabbix strategy: %w", err))
 		}
@@ -401,7 +406,7 @@ func runConfigInit(argv []string, out io.Writer, env initEnv) int {
 	if wroteOTLP {
 		written = append(written, filepath.Join(configDir, "strategies.d", "10-otlp.yaml"))
 	}
-	wroteZabbix, err := configuration.EnsureZabbixStrategyFragment(configDir, opts.zabbixServer, opts.zabbixMetadata)
+	wroteZabbix, err := configuration.EnsureZabbixStrategyFragment(configDir, opts.zabbixServer, opts.zabbixMetadata, opts.zabbixHostname)
 	if err != nil {
 		return fail(fmt.Errorf("config init: writing Zabbix strategy: %w", err))
 	}
@@ -422,6 +427,9 @@ func runConfigInit(argv []string, out io.Writer, env initEnv) int {
 	}
 	if opts.zabbixServer != "" {
 		fmt.Fprintf(text, "  zabbix server: %s\n", opts.zabbixServer)
+	}
+	if opts.zabbixHostname != "" {
+		fmt.Fprintf(text, "  zabbix hostname: %s\n", opts.zabbixHostname)
 	}
 	fmt.Fprintf(text, "  probes: %s\n", filepath.Join(configDir, "probes.d"))
 	return finish(true, written)

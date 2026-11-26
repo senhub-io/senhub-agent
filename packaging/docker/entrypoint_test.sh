@@ -49,11 +49,26 @@ case "$(cat "$work/init-args")" in
   *"--zabbix-server zbx.example.com:10051 --zabbix-host-metadata senhub-agent"*) check "SENHUB_ZABBIX_SERVER reaches config init" "yes" "yes" ;;
   *) check "SENHUB_ZABBIX_SERVER reaches config init" "$(cat "$work/init-args")" "--zabbix-server zbx.example.com:10051 --zabbix-host-metadata senhub-agent" ;;
 esac
+SENHUB_ZABBIX_SERVER=zbx.example.com:10051
+SENHUB_ZABBIX_HOSTNAME=aca-collector
+init_config >/dev/null 2>&1 || true
+case "$(cat "$work/init-args")" in
+  *"--zabbix-hostname aca-collector"*) check "SENHUB_ZABBIX_HOSTNAME reaches config init" "yes" "yes" ;;
+  *) check "SENHUB_ZABBIX_HOSTNAME reaches config init" "$(cat "$work/init-args")" "--zabbix-hostname aca-collector" ;;
+esac
+unset SENHUB_ZABBIX_SERVER SENHUB_ZABBIX_HOST_METADATA SENHUB_ZABBIX_HOSTNAME
 init_config >/dev/null 2>&1 || true
 case "$(cat "$work/init-args")" in
   *zabbix*) check "no Zabbix flag without SENHUB_ZABBIX_SERVER" "$(cat "$work/init-args")" "no zabbix flag" ;;
   *) check "no Zabbix flag without SENHUB_ZABBIX_SERVER" "ok" "ok" ;;
 esac
+SENHUB_ZABBIX_HOSTNAME=aca-collector
+init_config >/dev/null 2>&1 || true
+case "$(cat "$work/init-args")" in
+  *zabbix*) check "no Zabbix flag with only SENHUB_ZABBIX_HOSTNAME" "$(cat "$work/init-args")" "no zabbix flag" ;;
+  *) check "no Zabbix flag with only SENHUB_ZABBIX_HOSTNAME" "ok" "ok" ;;
+esac
+unset SENHUB_ZABBIX_HOSTNAME
 case "$(cat "$work/init-args")" in
   *"--http-bind 0.0.0.0"*) check "the HTTP output listens on every address by default" "yes" "yes" ;;
   *) check "the HTTP output listens on every address by default" "$(cat "$work/init-args")" "--http-bind 0.0.0.0" ;;

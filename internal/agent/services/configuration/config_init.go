@@ -255,11 +255,15 @@ func badZabbixRune(r rune, allowSpace bool) bool {
 
 // ValidateZabbixInstallArgs checks what an installer passes for the Zabbix
 // output before anything is written. The server is one host[:port] or
-// several separated by commas (a proxy group). The metadata needs a server.
-func ValidateZabbixInstallArgs(server, metadata string) error {
+// several separated by commas (a proxy group). The metadata and a fixed
+// host name need a server.
+func ValidateZabbixInstallArgs(server, metadata, hostname string) error {
 	if server == "" {
 		if metadata != "" {
 			return fmt.Errorf("--zabbix-host-metadata requires --zabbix-server")
+		}
+		if hostname != "" {
+			return fmt.Errorf("--zabbix-hostname requires --zabbix-server")
 		}
 		return nil
 	}
@@ -274,25 +278,47 @@ func ValidateZabbixInstallArgs(server, metadata string) error {
 	if strings.IndexFunc(metadata, func(r rune) bool { return badZabbixRune(r, true) }) >= 0 {
 		return fmt.Errorf("--zabbix-host-metadata %q contains an invalid character", metadata)
 	}
+	if hostname != "" && !validZabbixHostname(hostname) {
+		return fmt.Errorf("--zabbix-hostname %q is not a valid Zabbix host name: letters, digits, dot, dash, underscore and space, at most 128 characters", hostname)
+	}
 	return nil
+}
+
+// validZabbixHostname checks the Zabbix technical host name charset: it
+// must keep matching what the server accepts so autoregistration does not
+// silently create a broken host.
+func validZabbixHostname(hostname string) bool {
+	if hostname == "" || len(hostname) > 128 || hostname[0] == ' ' || hostname[len(hostname)-1] == ' ' {
+		return false
+	}
+	for i := 0; i < len(hostname); i++ {
+		c := hostname[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case c == '.' || c == '-' || c == '_' || c == ' ':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // WriteZabbixStrategyFragment writes strategies.d/20-zabbix.yaml for an
 // installer that was given a Zabbix server, the one step that otherwise
 // separates installing the agent from the host appearing in Zabbix. It is
 // idempotent and never overwrites an existing fragment.
-func WriteZabbixStrategyFragment(configDir, server, metadata string) error {
-	_, err := EnsureZabbixStrategyFragment(configDir, server, metadata)
+func WriteZabbixStrategyFragment(configDir, server, metadata, hostname string) error {
+	_, err := EnsureZabbixStrategyFragment(configDir, server, metadata, hostname)
 	return err
 }
 
 // EnsureZabbixStrategyFragment is WriteZabbixStrategyFragment reporting
 // whether it wrote the fragment.
-func EnsureZabbixStrategyFragment(configDir, server, metadata string) (written bool, err error) {
+func EnsureZabbixStrategyFragment(configDir, server, metadata, hostname string) (written bool, err error) {
 	if server == "" {
 		return false, nil
 	}
-	if err := ValidateZabbixInstallArgs(server, metadata); err != nil {
+	if err := ValidateZabbixInstallArgs(server, metadata, hostname); err != nil {
 		return false, err
 	}
 	dir := filepath.Join(configDir, "strategies.d")
@@ -305,11 +331,17 @@ func EnsureZabbixStrategyFragment(configDir, server, metadata string) (written b
 	}
 	body := "# SenHub Agent — Zabbix output (provisioned by 'config init').\n" +
 		"# Registers this host by autoregistration and pushes its values as an\n" +
-		"# active agent. Prepare the server once with 'senhub-agent zabbix setup'.\n" +
-		"zabbix:\n" +
+		"# active agent. Prepare the server once with 'senhub-agent zabbix setup'.\n"
+	if hostname != "" {
+		body += "# The host name is fixed so a redeployed container stays the same Zabbix host.\n"
+	}
+	body += "zabbix:\n" +
 		"  server: \"" + server + "\"\n"
 	if metadata != "" {
 		body += "  host_metadata: \"" + metadata + "\"\n"
+	}
+	if hostname != "" {
+		body += "  hostname: \"" + hostname + "\"\n"
 	}
 	if err := atomicWriteFile(path, []byte(body), 0o600); err != nil {
 		return false, fmt.Errorf("writing %s: %w", path, err)

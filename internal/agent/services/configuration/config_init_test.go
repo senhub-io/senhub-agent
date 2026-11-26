@@ -173,7 +173,7 @@ agent:
 
 func TestWriteZabbixStrategyFragment(t *testing.T) {
 	dir := t.TempDir()
-	if err := WriteZabbixStrategyFragment(dir, "zbx-a.example.com:10051,zbx-b.example.com", "senhub-agent site-paris"); err != nil {
+	if err := WriteZabbixStrategyFragment(dir, "zbx-a.example.com:10051,zbx-b.example.com", "senhub-agent site-paris", ""); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(filepath.Join(dir, "strategies.d", "20-zabbix.yaml"))
@@ -187,9 +187,12 @@ func TestWriteZabbixStrategyFragment(t *testing.T) {
 	if doc["zabbix"]["server"] != "zbx-a.example.com:10051,zbx-b.example.com" || doc["zabbix"]["host_metadata"] != "senhub-agent site-paris" {
 		t.Errorf("fragment = %v", doc)
 	}
+	if _, ok := doc["zabbix"]["hostname"]; ok {
+		t.Error("a fragment without a hostname must not carry a hostname key")
+	}
 
 	// Never overwrites what is already there.
-	if err := WriteZabbixStrategyFragment(dir, "other:10051", ""); err != nil {
+	if err := WriteZabbixStrategyFragment(dir, "other:10051", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	again, _ := os.ReadFile(filepath.Join(dir, "strategies.d", "20-zabbix.yaml"))
@@ -197,26 +200,51 @@ func TestWriteZabbixStrategyFragment(t *testing.T) {
 		t.Error("an existing Zabbix fragment was rewritten")
 	}
 
-	if err := WriteZabbixStrategyFragment(t.TempDir(), "", ""); err != nil {
+	if err := WriteZabbixStrategyFragment(t.TempDir(), "", "", ""); err != nil {
 		t.Errorf("no server means nothing to write, got %v", err)
+	}
+
+	fixed := t.TempDir()
+	if err := WriteZabbixStrategyFragment(fixed, "zbx.example.com:10051", "senhub-agent", "aca-collector"); err != nil {
+		t.Fatal(err)
+	}
+	rawFixed, err := os.ReadFile(filepath.Join(fixed, "strategies.d", "20-zabbix.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var docFixed map[string]map[string]string
+	if err := yaml.Unmarshal(rawFixed, &docFixed); err != nil {
+		t.Fatalf("the fragment is not valid YAML: %v\n%s", err, rawFixed)
+	}
+	if docFixed["zabbix"]["hostname"] != "aca-collector" {
+		t.Errorf("fragment = %v", docFixed)
 	}
 }
 
 func TestValidateZabbixInstallArgs(t *testing.T) {
-	for _, bad := range [][2]string{
-		{"zbx:10051\n  tls: {}", ""},
-		{"zbx 10051", ""},
-		{"zbx:10051,", ""},
-		{`zbx"`, ""},
-		{"", "senhub-agent"},
-		{"zbx:10051", "meta#x"},
+	for _, bad := range [][3]string{
+		{"zbx:10051\n  tls: {}", "", ""},
+		{"zbx 10051", "", ""},
+		{"zbx:10051,", "", ""},
+		{`zbx"`, "", ""},
+		{"", "senhub-agent", ""},
+		{"zbx:10051", "meta#x", ""},
+		{"", "", "collector"},
+		{"zbx:10051", "", "site#paris"},
+		{"zbx:10051", "", strings.Repeat("a", 129)},
+		{"zbx:10051", "", " x"},
 	} {
-		if err := ValidateZabbixInstallArgs(bad[0], bad[1]); err == nil {
-			t.Errorf("server %q metadata %q accepted", bad[0], bad[1])
+		if err := ValidateZabbixInstallArgs(bad[0], bad[1], bad[2]); err == nil {
+			t.Errorf("server %q metadata %q hostname %q accepted", bad[0], bad[1], bad[2])
 		}
 	}
-	if err := ValidateZabbixInstallArgs("zbx:10051", "senhub-agent paris"); err != nil {
+	if err := ValidateZabbixInstallArgs("zbx:10051", "senhub-agent paris", ""); err != nil {
 		t.Errorf("a plain server and metadata refused: %v", err)
+	}
+	for _, hostname := range []string{"aca-collector", "Site Paris_01.a"} {
+		if err := ValidateZabbixInstallArgs("zbx:10051", "senhub-agent", hostname); err != nil {
+			t.Errorf("hostname %q refused: %v", hostname, err)
+		}
 	}
 }
 
@@ -233,10 +261,10 @@ func TestEnsureStrategyFragmentsReportWhatTheyWrote(t *testing.T) {
 		t.Errorf("existing fragment: written = %v, err = %v; want false, nil", written, err)
 	}
 
-	if written, err := EnsureZabbixStrategyFragment(dir, "zbx:10051", ""); err != nil || !written {
+	if written, err := EnsureZabbixStrategyFragment(dir, "zbx:10051", "", ""); err != nil || !written {
 		t.Errorf("zabbix first write: written = %v, err = %v; want true, nil", written, err)
 	}
-	if written, err := EnsureZabbixStrategyFragment(dir, "zbx:10051", ""); err != nil || written {
+	if written, err := EnsureZabbixStrategyFragment(dir, "zbx:10051", "", ""); err != nil || written {
 		t.Errorf("zabbix existing fragment: written = %v, err = %v; want false, nil", written, err)
 	}
 }

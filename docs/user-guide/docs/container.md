@@ -111,6 +111,7 @@ reads them, so they apply with a configuration of your own too (see
 | `SENHUB_TAGS` | No | - | Tags on every metric, as `key=value,key2=value2` |
 | `SENHUB_ZABBIX_SERVER` | No | - | Zabbix server or proxy, `host:port`: writes the Zabbix output, and the container registers in Zabbix at its first contact |
 | `SENHUB_ZABBIX_HOST_METADATA` | No | `senhub-agent` | Host metadata the Zabbix autoregistration action matches |
+| `SENHUB_ZABBIX_HOSTNAME` | No | the container's host name | Name the container registers under in Zabbix. Set it on a platform that renames the container on every deployment (Azure Container Apps, Kubernetes), or each deployment registers as a new Zabbix host. Run one replica per name: two replicas under one name would interleave their values. Read when the configuration is first written, like the other variables of this table |
 | `SENHUB_HTTP_PORT` | No | `8080` | Port of the console and of the PRTG, Nagios and Prometheus endpoints |
 | `SENHUB_HTTP_BIND` | No | `0.0.0.0` | Address the console and the PRTG, Nagios and Prometheus endpoints listen on. The container's own loopback is reachable by no one, so the image listens on every address and relies on the container network; `127.0.0.1` keeps them inside the container |
 | `SENHUB_CONFIG_DIR` | No | `/etc/senhub-agent` | Where the configuration is read and written |

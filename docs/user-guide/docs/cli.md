@@ -283,6 +283,7 @@ Before writing anything, `config init` binds the HTTP port it is about to config
 | `--otlp-protocol grpc\|http` | OTLP transport (default `grpc`; use `http` for a native VictoriaMetrics / Grafana Alloy OTLP/HTTP endpoint) |
 | `--zabbix-server HOST:PORT` | Provision the Zabbix output (`strategies.d/20-zabbix.yaml`); several addresses separated by commas name a proxy group. With a server prepared by `zabbix setup`, the host registers at its first contact |
 | `--zabbix-host-metadata TEXT` | Host metadata the autoregistration action matches (default `senhub-agent`); needs `--zabbix-server` |
+| `--zabbix-hostname NAME` | Name the host registers under in Zabbix, instead of the machine's host name; needs `--zabbix-server`. Letters, digits, dot, dash, underscore and space, at most 128 characters |
 | `--json` | Print one JSON object: `changed`, `created` and the files written |
 | `--ok-if-unchanged` | Exit `0` instead of `3` when the configuration was already there, for an installer that treats any non-zero code as a failure (the Windows MSI and the container image use it) |
 
