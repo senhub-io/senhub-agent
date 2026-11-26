@@ -370,3 +370,86 @@
 .md-sidebar--primary .md-nav[data-md-level="4"] {
   display: none;
 }
+
+/* ===== Headings weight, as on the site ===== */
+.md-typeset h1 { font-weight: 700; letter-spacing: -.01em; }
+.md-typeset h2 { font-weight: 700; }
+.md-typeset h3 { font-weight: 600; }
+/* header title: Roboto 600, not the slab */
+.md-header__topic { font-family: "Roboto", sans-serif; font-weight: 600; }
+
+/* ===== Tables: charter rules ===== */
+[data-md-color-scheme="default"] .md-typeset table:not([class]),
+[data-md-color-scheme="default"] .md-typeset table:not([class]) th,
+[data-md-color-scheme="default"] .md-typeset table:not([class]) td { border-color: #dde3ee; }
+[data-md-color-scheme="slate"] .md-typeset table:not([class]),
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) th,
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) td { border-color: #1d2f52; }
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) { --md-typeset-table-color: #1d2f52; }
+[data-md-color-scheme="default"] .md-typeset table:not([class]) { --md-typeset-table-color: #dde3ee; }
+
+/* ===== Admonitions in charter colours (collapsible ??? included) ===== */
+/* note / info / abstract: night blue rule, mist background */
+.md-typeset :is(.admonition, details):is(.note, .info, .abstract, .summary, .tldr, .todo, .quote, .cite) {
+  border-color: #00102e;
+}
+.md-typeset :is(.note, .info, .abstract, .summary, .tldr, .todo, .quote, .cite) > :is(.admonition-title, summary) {
+  background-color: #f4f6fa;
+}
+.md-typeset :is(.note, .info, .abstract, .summary, .tldr, .todo, .quote, .cite) > :is(.admonition-title, summary)::before {
+  background-color: #00102e;
+}
+[data-md-color-scheme="slate"] .md-typeset :is(.admonition, details):is(.note, .info, .abstract, .summary, .tldr, .todo, .quote, .cite) {
+  border-color: #9fb0cb;
+}
+[data-md-color-scheme="slate"] .md-typeset :is(.note, .info, .abstract, .summary, .tldr, .todo, .quote, .cite) > :is(.admonition-title, summary) {
+  background-color: #071a3d;
+}
+[data-md-color-scheme="slate"] .md-typeset :is(.note, .info, .abstract, .summary, .tldr, .todo, .quote, .cite) > :is(.admonition-title, summary)::before {
+  background-color: #9fb0cb;
+}
+/* tip / success / question / example: amber tint, like Highlights */
+.md-typeset :is(.admonition, details):is(.tip, .hint, .important, .success, .check, .done, .question, .help, .faq, .example) {
+  border-color: #fcbe36;
+}
+.md-typeset :is(.tip, .hint, .important, .success, .check, .done, .question, .help, .faq, .example) > :is(.admonition-title, summary) {
+  background-color: rgba(252, 190, 54, .14);
+}
+.md-typeset :is(.tip, .hint, .important, .success, .check, .done, .question, .help, .faq, .example) > :is(.admonition-title, summary)::before {
+  background-color: #00102e;
+}
+[data-md-color-scheme="slate"] .md-typeset :is(.tip, .hint, .important, .success, .check, .done, .question, .help, .faq, .example) > :is(.admonition-title, summary)::before {
+  background-color: #fcbe36;
+}
+/* warning / danger / failure / bug: solid amber title, night blue text */
+.md-typeset :is(.admonition, details):is(.warning, .caution, .attention, .danger, .error, .failure, .fail, .missing, .bug) {
+  border-color: #fcbe36;
+}
+.md-typeset :is(.warning, .caution, .attention, .danger, .error, .failure, .fail, .missing, .bug) > :is(.admonition-title, summary) {
+  background-color: #fcbe36;
+  color: #00102e;
+}
+.md-typeset :is(.warning, .caution, .attention, .danger, .error, .failure, .fail, .missing, .bug) > :is(.admonition-title, summary)::before,
+.md-typeset :is(.warning, .caution, .attention, .danger, .error, .failure, .fail, .missing, .bug) > summary::after {
+  background-color: #00102e;
+}
+/* the fold chevron of collapsible blocks follows the title colour */
+.md-typeset details > summary::after { background-color: var(--md-default-fg-color--light) !important; }
+
+/* Material's syntax highlight palette, in charter colours, so no token
+   class falls back to its default red, green or purple. */
+:root, [data-md-color-scheme="slate"], [data-md-color-scheme="default"] {
+  --md-code-hl-color: rgba(252, 190, 54, .18);
+  --md-code-hl-number-color: #9fb0cb;
+  --md-code-hl-special-color: #fcbe36;
+  --md-code-hl-function-color: #e8edf5;
+  --md-code-hl-constant-color: #9fb0cb;
+  --md-code-hl-keyword-color: #fcbe36;
+  --md-code-hl-string-color: #9fb0cb;
+  --md-code-hl-name-color: #e8edf5;
+  --md-code-hl-operator-color: #e8edf5;
+  --md-code-hl-punctuation-color: #e8edf5;
+  --md-code-hl-comment-color: #6d7685;
+  --md-code-hl-generic-color: #9fb0cb;
+  --md-code-hl-variable-color: #e8edf5;
+}
