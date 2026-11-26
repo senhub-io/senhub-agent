@@ -12,9 +12,9 @@ theme:
   name: material
   logo: assets/logo.svg
   favicon: assets/favicon.svg
-  font:
-    text: Inter
-    code: JetBrains Mono
+  # Self-hosted fonts (Roboto, Roboto Slab) are declared in extra.css: the
+  # site charter forbids loading fonts from a CDN.
+  font: false
   icon:
     repo: fontawesome/brands/github
   features:
