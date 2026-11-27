@@ -3,8 +3,10 @@
 package network
 
 import (
+	"errors"
 	"fmt"
 	"net"
+	"os"
 	"time"
 
 	psnet "github.com/shirou/gopsutil/v3/net"
@@ -113,11 +115,50 @@ type unixNetworkCollector struct {
 	addressLabel             bool
 	tcp                      tcpSource
 	tcpStats                 bool
+	ioCounters               func(perNIC bool) ([]psnet.IOCountersStat, error)
+	monitored                func(name string) interfaceInfo
+	statePath                string
+	stateMaxAge              time.Duration
+	warm                     map[string]counterWithTime
+	warmBoot                 string
 }
 
 type counterWithTime struct {
-	Stats     psnet.IOCountersStat
-	Timestamp time.Time
+	Stats     psnet.IOCountersStat `json:"stats"`
+	Timestamp time.Time            `json:"timestamp"`
+}
+
+type networkWarmState struct {
+	BootID   string                     `json:"boot_id"`
+	Counters map[string]counterWithTime `json:"counters"`
+}
+
+func (u *unixNetworkCollector) readIOCounters() ([]psnet.IOCountersStat, error) {
+	if u.ioCounters != nil {
+		return u.ioCounters(true)
+	}
+	return psnet.IOCounters(true)
+}
+
+func (u *unixNetworkCollector) interfaceState(name string) interfaceInfo {
+	if u.monitored != nil {
+		return u.monitored(name)
+	}
+	return u.isInterfaceMonitored(name)
+}
+
+func (u *unixNetworkCollector) SetState(path string, maxAge time.Duration) {
+	u.statePath = path
+	u.stateMaxAge = maxAge
+	var st networkWarmState
+	if err := hostpoll.TakeWarm(path, &st); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			u.logger.Debug().Err(err).Str("path", path).Msg("Warm state unavailable")
+		}
+		return
+	}
+	u.warm = st.Counters
+	u.warmBoot = st.BootID
 }
 
 func newNetworkCollector(config map[string]interface{}, logger *logger.Logger) (hostpoll.Collector, error) {
@@ -139,7 +180,7 @@ func newNetworkCollector(config map[string]interface{}, logger *logger.Logger) (
 }
 
 func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPoint, error) {
-	counters, err := psnet.IOCounters(true)
+	counters, err := u.readIOCounters()
 	if err != nil {
 		return nil, fmt.Errorf("error getting network metrics: %w", err)
 	}
@@ -153,7 +194,7 @@ func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPo
 
 	for _, counter := range counters {
 		// Check if interface should be monitored and get its addresses
-		interfaceInfo := u.isInterfaceMonitored(counter.Name)
+		interfaceInfo := u.interfaceState(counter.Name)
 		if interfaceInfo.err != nil {
 			if interfaceInfo.gone {
 				u.logger.Debug().
@@ -217,6 +258,11 @@ func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPo
 			})
 		}
 
+		if _, exists := u.lastCounters[counter.Name]; !exists {
+			if saved, ok := u.warm[counter.Name]; ok && hostpoll.WarmUsable(u.warmBoot, saved.Timestamp, timestamp, u.stateMaxAge) {
+				u.lastCounters[counter.Name] = saved
+			}
+		}
 		// Calculate rates per second if we have previous data
 		if lastCounter, exists := u.lastCounters[counter.Name]; exists {
 			timeDiff := timestamp.Sub(lastCounter.Timestamp).Seconds()
@@ -263,10 +309,22 @@ func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPo
 			u.logger.Debug().Err(err).Msg("Host TCP counters unavailable")
 		}
 	}
+	u.warm = nil
 	return dataPoints, nil
 }
 
 func (u *unixNetworkCollector) Close() error {
+	if u.statePath == "" || len(u.lastCounters) == 0 {
+		return nil
+	}
+	boot, err := hostpoll.BootIdentity()
+	if err != nil {
+		u.logger.Debug().Err(err).Msg("Boot identity unavailable")
+		return nil
+	}
+	if err := hostpoll.SaveWarm(u.statePath, &networkWarmState{BootID: boot, Counters: u.lastCounters}); err != nil {
+		u.logger.Warn().Err(err).Str("path", u.statePath).Msg("Failed to save warm state")
+	}
 	return nil
 }
 
