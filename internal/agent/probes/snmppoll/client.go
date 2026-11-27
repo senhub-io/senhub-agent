@@ -3,9 +3,12 @@ package snmppoll
 import (
 	"fmt"
 	"math/big"
-	"senhub-agent.go/internal/agent/services/snmpcore"
+	"strconv"
+	"strings"
 
 	"github.com/gosnmp/gosnmp"
+
+	"senhub-agent.go/internal/agent/services/snmpcore"
 )
 
 // snmpVarBind is a transport-neutral view of one SNMP variable binding,
@@ -118,7 +121,7 @@ func (c *gosnmpClient) Get(oids []string) ([]snmpVarBind, error) {
 }
 
 func (c *gosnmpClient) BulkWalk(baseOID string) ([]snmpVarBind, error) {
-	pdus, err := c.handle.BulkWalkAll("." + baseOID)
+	pdus, err := c.bulkWalkChecked(baseOID)
 	if err != nil {
 		return nil, fmt.Errorf("snmp bulkwalk %s: %w", baseOID, err)
 	}
@@ -132,7 +135,7 @@ func (c *gosnmpClient) BulkWalk(baseOID string) ([]snmpVarBind, error) {
 // WalkRaw mirrors BulkWalk but keeps every SYNTAX undecoded, for the
 // topology rail. It does not filter non-numeric binds.
 func (c *gosnmpClient) WalkRaw(baseOID string) ([]snmpRawBind, error) {
-	pdus, err := c.handle.BulkWalkAll("." + baseOID)
+	pdus, err := c.bulkWalkChecked(baseOID)
 	if err != nil {
 		return nil, fmt.Errorf("snmp walkraw %s: %w", baseOID, err)
 	}
@@ -141,6 +144,90 @@ func (c *gosnmpClient) WalkRaw(baseOID string) ([]snmpRawBind, error) {
 		out = append(out, snmpRawBind{OID: snmpcore.TrimLeadingDot(pdu.Name), Type: pdu.Type, Value: pdu.Value})
 	}
 	return out, nil
+}
+
+// bulkWalkChecked walks like gosnmp.BulkWalkAll but fails on a response that
+// carries an error-status. BulkWalkAll stops there and returns nil, which the
+// caller reads as an empty table.
+func (c *gosnmpClient) bulkWalkChecked(baseOID string) ([]gosnmp.SnmpPDU, error) {
+	rootOid := "." + baseOID
+	maxReps := c.handle.MaxRepetitions
+	if maxReps == 0 {
+		maxReps = 50
+	}
+	oid := rootOid
+	requests := 0
+	var out []gosnmp.SnmpPDU
+	for {
+		requests++
+		response, err := c.handle.GetBulk([]string{oid}, 0, maxReps)
+		if err != nil {
+			return nil, err
+		}
+		if response.Error != gosnmp.NoError {
+			return nil, fmt.Errorf("error-status %s at index %d", response.Error, response.ErrorIndex)
+		}
+		if len(response.Variables) == 0 {
+			return out, nil
+		}
+		for i, pdu := range response.Variables {
+			if pdu.Type == gosnmp.EndOfMibView || pdu.Type == gosnmp.NoSuchObject || pdu.Type == gosnmp.NoSuchInstance {
+				return out, nil
+			}
+			if !strings.HasPrefix(pdu.Name, rootOid+".") {
+				if requests == 1 && i == 0 {
+					getResp, err := c.handle.Get([]string{rootOid})
+					if err != nil {
+						return nil, err
+					}
+					if getResp.Error != gosnmp.NoError {
+						return nil, fmt.Errorf("error-status %s at index %d", getResp.Error, getResp.ErrorIndex)
+					}
+					if len(getResp.Variables) > 0 {
+						p := getResp.Variables[0]
+						if p.Name == rootOid && p.Type != gosnmp.NoSuchObject && p.Type != gosnmp.NoSuchInstance && p.Type != gosnmp.Null {
+							out = append(out, p)
+						}
+					}
+					return out, nil
+				}
+				if pdu.Name == rootOid && pdu.Type != gosnmp.NoSuchInstance {
+					out = append(out, pdu)
+				}
+				return out, nil
+			}
+			if compareOIDs(oid, pdu.Name) >= 0 {
+				return nil, fmt.Errorf("OID not increasing: %s >= %s", oid, pdu.Name)
+			}
+			out = append(out, pdu)
+		}
+		oid = response.Variables[len(response.Variables)-1].Name
+	}
+}
+
+func compareOIDs(a, b string) int {
+	as := strings.Split(strings.TrimPrefix(a, "."), ".")
+	bs := strings.Split(strings.TrimPrefix(b, "."), ".")
+	n := len(as)
+	if len(bs) > n {
+		n = len(bs)
+	}
+	for i := 0; i < n; i++ {
+		var av, bv int
+		if i < len(as) {
+			av, _ = strconv.Atoi(as[i])
+		}
+		if i < len(bs) {
+			bv, _ = strconv.Atoi(bs[i])
+		}
+		if av != bv {
+			if av < bv {
+				return -1
+			}
+			return 1
+		}
+	}
+	return 0
 }
 
 func (c *gosnmpClient) Close() error {
