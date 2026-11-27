@@ -168,8 +168,9 @@ func TestFileTail_TwoProbesOnOnePathRecoverFromARotation(t *testing.T) {
 	file := filepath.Join(dir, "access.log")
 	writeFile(t, file, backlog(40))
 	var probes []*FileTailProbe
+	var logs []*lockedBuffer
 	for _, name := range []string{"a", "b"} {
-		p, _ := startLoggedFileTail(t, map[string]interface{}{
+		p, l := startLoggedFileTail(t, map[string]interface{}{
 			"paths":         []interface{}{file},
 			"bookmark_path": filepath.Join(dir, name+".json"),
 		})
@@ -178,6 +179,7 @@ func TestFileTail_TwoProbesOnOnePathRecoverFromARotation(t *testing.T) {
 		p.mu.Unlock()
 		defer stopFileTail(t, p)
 		probes = append(probes, p)
+		logs = append(logs, l)
 	}
 	time.Sleep(500 * time.Millisecond)
 
@@ -198,11 +200,29 @@ func TestFileTail_TwoProbesOnOnePathRecoverFromARotation(t *testing.T) {
 			}
 		}
 		if done {
-			return
+			break
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	t.Fatalf("emitted %d and %d of %d lines of the new file", probes[0].emitted.Load(), probes[1].emitted.Load(), len(lines))
+	for _, p := range probes {
+		if p.emitted.Load() < uint64(len(lines)) {
+			t.Fatalf("emitted %d and %d of %d lines of the new file", probes[0].emitted.Load(), probes[1].emitted.Load(), len(lines))
+		}
+	}
+
+	// Recovered tails stay recovered: further scans, many grace periods
+	// apart, restart nothing (ent#584: one of them looped every scan).
+	for i := 0; i < 10; i++ {
+		for _, p := range probes {
+			p.scanAndTail()
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
+	for i, l := range logs {
+		if got := l.count("tail does not follow its file"); got > 1 {
+			t.Errorf("probe %d restarted its tail %d times after one rotation, want at most once", i, got)
+		}
+	}
 }
 
 // The right file, but a tail that reads nothing of what was appended: it
