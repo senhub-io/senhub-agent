@@ -299,6 +299,35 @@ func TestLogsPump_HonorsStrategyRouting(t *testing.T) {
 	}
 }
 
+func TestLogsPump_StopDeliversWhatIsStillInTheChannel(t *testing.T) {
+	defer resetLogChannel()
+
+	pipe, exp := newTestLogsPipeline(t, 10, 1024, 10*time.Millisecond)
+
+	pump := newLogsPump(pipe, 64)
+	ch := agentstate.SubscribeLogsFor(strategyName, 64)
+	_, cancel := context.WithCancel(context.Background())
+	pump.subscribed = ch
+	pump.cancel = cancel
+
+	for i := 0; i < 5; i++ {
+		agentstate.PublishLog(agentstate.LogRecord{
+			Timestamp: time.Now(),
+			Severity:  agentstate.LogSeverityInfo,
+			Body:      "msg",
+		})
+	}
+
+	ctx, stopCtx := context.WithTimeout(context.Background(), 2*time.Second)
+	defer stopCtx()
+	pump.stop(ctx)
+	pipe.shutdown(context.Background())
+
+	if got := len(exp.snapshot()); got != 5 {
+		t.Errorf("exporter received %d records, want 5", got)
+	}
+}
+
 // resetLogChannel exposes the agentstate test helper through the
 // otlp_test package by going through the public API: subscribe and
 // unsubscribe to drain any leftover state. Safer than relying on

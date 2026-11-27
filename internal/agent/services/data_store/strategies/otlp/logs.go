@@ -364,10 +364,9 @@ func (p *logsPump) drain(ctx context.Context, ch <-chan agentstate.LogRecord) {
 	}
 }
 
-// stop cancels the pump goroutine and unsubscribes. Honors deadline:
-// if the goroutine doesn't exit within the deadline, returns without
-// waiting (the goroutine will exit on its own when the channel closes
-// from UnsubscribeLogs). Idempotent.
+// stop cancels the pump goroutine, waits for it to exit within the
+// deadline, then drains records still buffered in the channel so they
+// are not lost, and unsubscribes. Idempotent.
 func (p *logsPump) stop(ctx context.Context) {
 	p.mu.Lock()
 	ch := p.subscribed
@@ -393,8 +392,34 @@ func (p *logsPump) stop(ctx context.Context) {
 
 	select {
 	case <-done:
+		p.drainRemaining(ctx, ch)
 	case <-ctx.Done():
-		// Best-effort; goroutine will exit when channel closes.
+		// Goroutine may still be reading the channel; leave it be.
 	case <-time.After(5 * time.Second):
+	}
+}
+
+// drainRemaining empties what is left in ch without blocking: records
+// already buffered at cancel time would otherwise be lost, since
+// UnsubscribeLogs never closes the channel (#262).
+func (p *logsPump) drainRemaining(ctx context.Context, ch <-chan agentstate.LogRecord) {
+	if ch == nil {
+		return
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case rec, ok := <-ch:
+			if !ok {
+				return
+			}
+			if rec.ProducerProbeType == relayedLogProbeType {
+				continue
+			}
+			p.pipeline.emit(ctx, rec)
+		default:
+			return
+		}
 	}
 }
