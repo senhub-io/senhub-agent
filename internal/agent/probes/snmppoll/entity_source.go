@@ -483,6 +483,7 @@ func (s *snmpEntitySource) build(res sweepResult, now time.Time) (entity.Observa
 		return resolveDeviceID(n)
 	}
 	obs := buildObservationAs(res.deviceID, res.self, res.topo, res.routes, res.ifaces, res.addrs, resolveNeighbor)
+	s.dropOwnInterfaceAddressBindings(&obs, res)
 	dropLinksToDownPorts(&obs, s.registry, now)
 	maxRoutes := s.cfg.MaxRoutes
 	if maxRoutes <= 0 {
@@ -1815,6 +1816,48 @@ func deviceKey(id string) map[string]any {
 // owning device plus the port name.
 func interfacePortKey(deviceID, ifName string) map[string]any {
 	return map[string]any{idKeyNetworkDevice: deviceID, idKeyInterfaceName: ifName}
+}
+
+func (s *snmpEntitySource) dropOwnInterfaceAddressBindings(obs *entity.Observation, res sweepResult) {
+	if s.hostInterfaceMACs == nil {
+		return
+	}
+	hostMACs, err := s.hostInterfaceMACs()
+	if err != nil {
+		s.moduleLogger.Debug().
+			Err(err).
+			Str("target", s.cfg.Target).
+			Msg("host interface MAC scan failed; address bindings kept")
+		return
+	}
+	if len(hostMACs) == 0 {
+		return
+	}
+	// The host probe binds the same addresses to the host's own interfaces; both
+	// edges would retract each other every cycle, so only the host's is kept.
+	ownNames := make(map[string]bool)
+	for _, ifc := range res.ifaces {
+		if ifc.Mac != "" {
+			if _, ok := hostMACs[ifc.Mac]; ok {
+				ownNames[ifc.Name] = true
+			}
+		}
+	}
+	if len(ownNames) == 0 {
+		return
+	}
+	kept := obs.Relations[:0]
+	for _, rel := range obs.Relations {
+		if rel.Type == relBoundTo && rel.ToType == entityTypeNetworkInterface {
+			if dev, ok := rel.ToID[idKeyNetworkDevice].(string); ok && dev == res.deviceID {
+				if name, ok := rel.ToID[idKeyInterfaceName].(string); ok && ownNames[name] {
+					continue
+				}
+			}
+		}
+		kept = append(kept, rel)
+	}
+	obs.Relations = kept
 }
 
 // selfAttrs carries only observer-independent descriptive
