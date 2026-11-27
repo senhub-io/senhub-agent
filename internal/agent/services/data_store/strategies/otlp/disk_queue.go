@@ -249,13 +249,8 @@ func (q *diskQueue) commit(data []byte, units int) error {
 	}
 	q.seq++
 	final := filepath.Join(q.dir, q.fileName(q.seq))
-	tmp := final + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o640); err != nil { // #nosec G306
-		return fmt.Errorf("write tmp: %w", err)
-	}
-	if err := os.Rename(tmp, final); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("rename: %w", err)
+	if err := writeFileDurably(final, data, 0o640); err != nil {
+		return err
 	}
 
 	q.sizeBytes += int64(len(data))
@@ -428,17 +423,9 @@ func (q *diskQueue) rewrite(name string, data []byte, oldUnits, newUnits int) {
 	if info, err := os.Stat(path); err == nil {
 		oldSize = info.Size()
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o640); err != nil { // #nosec G306
+	if err := writeFileDurably(path, data, 0o640); err != nil {
 		if q.logger != nil {
 			q.logger.Warn().Err(err).Str("file", name).Msg(q.label + ": failed to write remainder file")
-		}
-		return
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		if q.logger != nil {
-			q.logger.Warn().Err(err).Str("file", name).Msg(q.label + ": failed to rename remainder file")
 		}
 		return
 	}
@@ -451,4 +438,38 @@ func (q *diskQueue) rewrite(name string, data []byte, oldUnits, newUnits int) {
 		q.oldestAt = time.Time{}
 	}
 	q.publishLocked()
+}
+
+// writeFileDurably writes data via tmp+rename with fsync on the file and,
+// best-effort, on the parent directory (not supported on Windows).
+func writeFileDurably(path string, data []byte, perm os.FileMode) error {
+	tmp := path + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm) // #nosec G304
+	if err != nil {
+		return fmt.Errorf("write tmp: %w", err)
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return fmt.Errorf("write tmp: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return fmt.Errorf("fsync: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("close: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("rename: %w", err)
+	}
+	// Directory fsync makes the rename itself durable; ignored where unsupported.
+	if dir, err := os.Open(filepath.Dir(path)); err == nil { // #nosec G304
+		_ = dir.Sync()
+		_ = dir.Close()
+	}
+	return nil
 }
