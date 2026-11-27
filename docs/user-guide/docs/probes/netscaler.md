@@ -178,6 +178,8 @@ Tags: `service_name`, `vserver_name`, `ip_address`, `port`
 
 Tags: `servicegroup_name`, `vserver_name`
 
+The traffic of a service group (requests, responses, throughput, connections, surge queue) is the sum over its members. When the statistics of one member cannot be read in a cycle, these traffic metrics are left out for that group in that cycle rather than published as a partial sum that would understate it: the PRTG channels show no value, and the group's state and member counts are still reported.
+
 **SSL Certificate Metrics:**
 - `netscaler.ssl.certificate.days_to_expiration` - Days until certificate expires
 - `netscaler.ssl.certificate.status` - Certificate status (1=valid, 0=expired/invalid)
