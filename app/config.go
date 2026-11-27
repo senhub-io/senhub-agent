@@ -454,6 +454,17 @@ func checkConfig(configPath string) checkOutcome {
 		}
 	}
 
+	// A start-time split that is refused is only a log line, repeated at
+	// every start; say it here, where doctor reads it too.
+	if configuration.HasMonolithicMarkers(content) {
+		if blocker := configuration.MonolithicSplitBlocker(configPath); blocker != nil {
+			fmt.Printf("  [WARN] the agent cannot split %s into probes.d/ and strategies.d/: %v\n", filepath.Base(configPath), blocker)
+			warnings++
+		} else {
+			fmt.Printf("  [INFO] %s is in the single-file layout; the agent splits it into probes.d/ and strategies.d/ at its next start\n", filepath.Base(configPath))
+		}
+	}
+
 	// Config version. Validate against the agent's supported range
 	// (MinimumConfigVersion..CurrentConfigVersion) rather than a
 	// hardcoded literal, so `config check` tracks the source of truth

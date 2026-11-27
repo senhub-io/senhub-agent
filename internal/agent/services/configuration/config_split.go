@@ -79,15 +79,7 @@ func MigrateToMultiFile(configPath string, log *logger.ModuleLogger) (result Mig
 	// left behind are removed: they made every later attempt fail the
 	// same check, and each attempt left one more backup (#974).
 	fragmentsDir := filepath.Dir(configPath)
-	owned, foreign := classifyFragments(fragmentsDir)
-	var defaults, userFragments []string
-	for _, p := range foreign {
-		if isInstallDefaultFragment(p) {
-			defaults = append(defaults, p)
-		} else {
-			userFragments = append(userFragments, p)
-		}
-	}
+	owned, defaults, userFragments := fragmentsBeside(fragmentsDir)
 	if len(userFragments) > 0 {
 		return result, &FragmentsBesideMonolithicError{ConfigPath: configPath, Fragments: userFragments}
 	}
@@ -593,6 +585,36 @@ type FragmentsBesideMonolithicError struct {
 func (e *FragmentsBesideMonolithicError) Error() string {
 	return fmt.Sprintf("%s still holds probes:/storage:, and %s exist beside it; the agent ignores those files today and migrating would start them. Move what they hold into %s, or remove them, then run 'senhub-agent config migrate'",
 		filepath.Base(e.ConfigPath), strings.Join(e.Fragments, ", "), filepath.Base(e.ConfigPath))
+}
+
+// fragmentsBeside classifies the fragments in configDir into files a
+// migration wrote (owned), install defaults, and everything else the
+// operator wrote (user).
+func fragmentsBeside(configDir string) (owned, defaults, user []string) {
+	owned, foreign := classifyFragments(configDir)
+	for _, p := range foreign {
+		if isInstallDefaultFragment(p) {
+			defaults = append(defaults, p)
+		} else {
+			user = append(user, p)
+		}
+	}
+	return owned, defaults, user
+}
+
+// MonolithicSplitBlocker reports why a start-time split of configPath
+// would be refused: operator-written fragments beside a monolithic
+// file. It reads nothing but the file and its directory, writes
+// nothing, and returns nil when no split is blocked.
+func MonolithicSplitBlocker(configPath string) error {
+	raw, err := os.ReadFile(configPath) // #nosec G304 - operator-provided config path
+	if configPath == "" || err != nil || !HasMonolithicMarkers(raw) {
+		return nil //nolint:nilerr // an unreadable file is reported by the load, not here
+	}
+	if _, _, user := fragmentsBeside(filepath.Dir(configPath)); len(user) > 0 {
+		return &FragmentsBesideMonolithicError{ConfigPath: configPath, Fragments: user}
+	}
+	return nil
 }
 
 func warnRestore(log *logger.ModuleLogger, msg string) {
