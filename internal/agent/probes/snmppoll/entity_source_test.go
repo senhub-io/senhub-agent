@@ -609,13 +609,16 @@ func TestSelfAttrs_Readable(t *testing.T) {
 	if a["device.role"] != "router" {
 		t.Errorf("device.role = %v, want router (L2+L3)", a["device.role"])
 	}
-	if a["vendor"] != "cisco" {
-		t.Errorf("vendor = %v, want cisco (PEN 9)", a["vendor"])
+	if _, ok := a["vendor"]; ok {
+		t.Errorf("bare vendor key is forbidden by the toise contract: %v", a["vendor"])
+	}
+	if a[attrHwVendor] != "cisco" || a[attrHwVendorSource] != "iana_pen" {
+		t.Errorf("hw.vendor = %v (source %v), want cisco from the IANA PEN 9", a[attrHwVendor], a[attrHwVendorSource])
 	}
 	if a[attrSysDescr] != "Cisco IOS Software, C2960" {
 		t.Errorf("sys.descr = %v", a[attrSysDescr])
 	}
-	if a[attrHwVendor] != "Cisco" || a[attrHwModel] != "WS-C2960-24TT-L" || a[attrHwFirmwareVer] != "15.0(2)SE" {
+	if a[attrHwModel] != "WS-C2960-24TT-L" || a[attrHwFirmwareVer] != "15.0(2)SE" {
 		t.Errorf("hw.* nameplate = vendor:%v model:%v fw:%v", a[attrHwVendor], a[attrHwModel], a[attrHwFirmwareVer])
 	}
 	if _, ok := a["sys_name"]; ok {
@@ -885,5 +888,30 @@ func TestObserve_DropsDiscoveredLinkOnceFarEndIsReadDown(t *testing.T) {
 	s.registry.recordPortStates("sw1", []ifaceRow{{Name: "Ethernet2", OperStatus: ifOperDown}}, time.Minute, s.now())
 	if obs, _ := s.Observe(); len(obs.Relations) != 0 {
 		t.Errorf("after the far end is read down: %d relations, want 0", len(obs.Relations))
+	}
+}
+
+// Without a known enterprise number, hw.vendor falls back to the ENTITY-MIB
+// manufacturer, and says so (ent#798).
+func TestSelfAttrsVendorFallsBackToEntityMIB(t *testing.T) {
+	cases := []struct {
+		name       string
+		pen, mfg   string
+		want, from string
+	}{
+		{"fortinet by PEN", "12356", "Fortinet Inc.", "fortinet", "iana_pen"},
+		{"unknown PEN, ENTITY-MIB name", "99999", "Acme Networks", "Acme Networks", "entity_mib"},
+		{"nothing known", "99999", "", "", ""},
+	}
+	for _, c := range cases {
+		a := selfAttrs(deviceIdentity{VendorPEN: c.pen, HwVendor: c.mfg})
+		got, _ := a[attrHwVendor].(string)
+		from, _ := a[attrHwVendorSource].(string)
+		if got != c.want || from != c.from {
+			t.Errorf("%s: hw.vendor = %q from %q, want %q from %q", c.name, got, from, c.want, c.from)
+		}
+		if _, ok := a["vendor"]; ok {
+			t.Errorf("%s: bare vendor key emitted", c.name)
+		}
 	}
 }

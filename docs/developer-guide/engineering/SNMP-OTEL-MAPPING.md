@@ -148,10 +148,13 @@ same device derive byte-identical ids.
   not chosen as the id goes in **descriptive attributes** (dotted lowercase,
   frozen casing — `sys.name`, `sys.descr` (sysDescr.0) (not the polled
   address: it depends on the observer and flapped between agents),
-  `device.role` from the sysServices bitmask, `vendor` from the PEN, plus the
-  chassis nameplate `hw.vendor`/`hw.model`/`hw.firmware_version` from
-  ENTITY-MIB `entPhysicalMfgName`/`ModelName`/`FirmwareRev` of the **single**
-  chassis row), never as a second identity key. These make the device readable
+  `device.role` from the sysServices bitmask, `hw.vendor` as the short
+  lowercase IANA enterprise name of the sysObjectID PEN (ENTITY-MIB
+  `entPhysicalMfgName` only when the PEN is unknown), with
+  `senhub.hw.vendor.source` (`iana_pen` | `entity_mib`), plus the chassis
+  nameplate `hw.model`/`hw.firmware_version` from ENTITY-MIB
+  `ModelName`/`FirmwareRev` of the **single** chassis row; the bare key
+  `vendor` is no longer emitted), never as a second identity key. These make the device readable
   in a backend instead of just its cryptic id; neighbours carry `sys.name`.
   The raw identity parts ride as attributes too, whichever rung the id took,
   so the effect of a precedence rule is measured from the graph:

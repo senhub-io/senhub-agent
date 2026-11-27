@@ -89,6 +89,7 @@ const (
 	// Polled-device descriptive attribute keys (network.device nameplate).
 	attrSysDescr       = "sys.descr"
 	attrHwVendor       = "hw.vendor"
+	attrHwVendorSource = "senhub.hw.vendor.source"
 	attrHwModel        = "hw.model"
 	attrHwFirmwareVer  = "hw.firmware_version"
 	attrHwSerial       = "hw.serial_number"
@@ -1831,8 +1832,15 @@ func selfAttrs(self deviceIdentity) map[string]any {
 	add("sys.name", self.SysName)
 	add(attrSysDescr, self.SysDescr)
 	add("device.role", deviceRole(self.Services))
-	add("vendor", vendorName(self.VendorPEN))
-	add(attrHwVendor, self.HwVendor)
+	// hw.vendor is the short IANA enterprise name; the ENTITY-MIB
+	// manufacturer string is only a fallback (toise contract, ent#798).
+	if v := vendorName(self.VendorPEN); v != "" {
+		attrs[attrHwVendor] = v
+		attrs[attrHwVendorSource] = "iana_pen"
+	} else if v := strings.TrimSpace(self.HwVendor); v != "" {
+		attrs[attrHwVendor] = v
+		attrs[attrHwVendorSource] = "entity_mib"
+	}
 	add(attrHwModel, self.HwModel)
 	add(attrHwFirmwareVer, self.HwFirmware)
 	// The raw identity parts, whichever rung the id took, so the rung a
@@ -1892,6 +1900,8 @@ func vendorName(pen string) string {
 		return "mikrotik"
 	case "8072":
 		return "net-snmp"
+	case "12356":
+		return "fortinet"
 	default:
 		return ""
 	}
