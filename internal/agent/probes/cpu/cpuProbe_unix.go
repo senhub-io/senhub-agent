@@ -5,6 +5,7 @@ package cpu
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -102,7 +103,9 @@ func perCorePercents(prev, curr []cpu.TimesStat) ([]float64, bool) {
 	for i := range curr {
 		v, ok := busyPercent(prev[i], curr[i])
 		if !ok {
-			return nil, false
+			// A core with no ticks in the interval says nothing; the
+			// others still do.
+			v = math.NaN()
 		}
 		percents[i] = v
 	}
@@ -338,6 +341,9 @@ func (u *unixCollector) collectPerCoreMetrics(dataPoints *[]data_store.DataPoint
 	if err == nil && len(times) > 0 {
 		if percents, ok := perCorePercents(u.lastPerCore, times); ok {
 			for i, cpuPercent := range percents {
+				if math.IsNaN(cpuPercent) {
+					continue
+				}
 				coreTags := append([]tags.Tag{}, baseTags...)
 				coreTags = append(coreTags, tags.Tag{
 					Key:   "core",
@@ -358,6 +364,8 @@ func (u *unixCollector) collectPerCoreMetrics(dataPoints *[]data_store.DataPoint
 		return nil
 	}
 
+	// The next delta must not span the interval this sample covered.
+	u.lastPerCore = nil
 	perCpuPercent, err := cpu.Percent(time.Second, true)
 	if err != nil {
 		return fmt.Errorf("error getting per-CPU metrics: %w", err)
