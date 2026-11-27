@@ -1878,7 +1878,9 @@ func selfAttrs(self deviceIdentity) map[string]any {
 	add("device.role", deviceRole(self.Services))
 	// hw.vendor is the short IANA enterprise name; the ENTITY-MIB
 	// manufacturer string is only a fallback (toise contract, ent#798).
-	if v := vendorName(self.VendorPEN); v != "" {
+	// PEN 8072 names the net-snmp agent software, not who built the
+	// hardware: the ENTITY-MIB manufacturer says more.
+	if v := vendorName(self.VendorPEN); v != "" && self.VendorPEN != "8072" {
 		attrs[attrHwVendor] = v
 		attrs[attrHwVendorSource] = "iana_pen"
 	} else if v := strings.TrimSpace(self.HwVendor); v != "" {

@@ -902,6 +902,7 @@ func TestSelfAttrsVendorFallsBackToEntityMIB(t *testing.T) {
 		{"fortinet by PEN", "12356", "Fortinet Inc.", "fortinet", "iana_pen"},
 		{"unknown PEN, ENTITY-MIB name", "99999", "Acme Networks", "Acme Networks", "entity_mib"},
 		{"nothing known", "99999", "", "", ""},
+		{"net-snmp agent, ENTITY-MIB name", "8072", "Acme Appliances", "Acme Appliances", "entity_mib"},
 	}
 	for _, c := range cases {
 		a := selfAttrs(deviceIdentity{VendorPEN: c.pen, HwVendor: c.mfg})
