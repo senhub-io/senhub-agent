@@ -220,29 +220,32 @@ func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPo
 		// Calculate rates per second if we have previous data
 		if lastCounter, exists := u.lastCounters[counter.Name]; exists {
 			timeDiff := timestamp.Sub(lastCounter.Timestamp).Seconds()
-			if timeDiff > 0 {
-				metrics := []struct {
-					name  string
-					value float64
-				}{
-					{"bytes_sent", float64(counter.BytesSent-lastCounter.Stats.BytesSent) / timeDiff},
-					{"bytes_received", float64(counter.BytesRecv-lastCounter.Stats.BytesRecv) / timeDiff},
-					{"packets_sent", float64(counter.PacketsSent-lastCounter.Stats.PacketsSent) / timeDiff},
-					{"packets_received", float64(counter.PacketsRecv-lastCounter.Stats.PacketsRecv) / timeDiff},
-					{"errors_sent", float64(counter.Errout-lastCounter.Stats.Errout) / timeDiff},
-					{"errors_received", float64(counter.Errin-lastCounter.Stats.Errin) / timeDiff},
-					{"discards_sent", float64(counter.Dropout-lastCounter.Stats.Dropout) / timeDiff},
-					{"discards_received", float64(counter.Dropin-lastCounter.Stats.Dropin) / timeDiff},
-				}
+			metrics := []struct {
+				name string
+				cur  uint64
+				prev uint64
+			}{
+				{"bytes_sent", counter.BytesSent, lastCounter.Stats.BytesSent},
+				{"bytes_received", counter.BytesRecv, lastCounter.Stats.BytesRecv},
+				{"packets_sent", counter.PacketsSent, lastCounter.Stats.PacketsSent},
+				{"packets_received", counter.PacketsRecv, lastCounter.Stats.PacketsRecv},
+				{"errors_sent", counter.Errout, lastCounter.Stats.Errout},
+				{"errors_received", counter.Errin, lastCounter.Stats.Errin},
+				{"discards_sent", counter.Dropout, lastCounter.Stats.Dropout},
+				{"discards_received", counter.Dropin, lastCounter.Stats.Dropin},
+			}
 
-				for _, metric := range metrics {
-					dataPoints = append(dataPoints, data_store.DataPoint{
-						Name:      metric.name,
-						Timestamp: timestamp,
-						Value:     metric.value,
-						Tags:      interfaceTags,
-					})
+			for _, metric := range metrics {
+				rate, ok := counterRate(metric.cur, metric.prev, timeDiff)
+				if !ok {
+					continue
 				}
+				dataPoints = append(dataPoints, data_store.DataPoint{
+					Name:      metric.name,
+					Timestamp: timestamp,
+					Value:     rate,
+					Tags:      interfaceTags,
+				})
 			}
 		}
 
@@ -265,4 +268,15 @@ func (u *unixNetworkCollector) Collect(timestamp time.Time) ([]data_store.DataPo
 
 func (u *unixNetworkCollector) Close() error {
 	return nil
+}
+
+// counterRate computes a per-second rate from two cumulative counters.
+// If the counter went backwards, the interface has been reset (counter
+// zeroed or wrapped); the interval says nothing useful, so report false
+// and let the next reading start from the new base value.
+func counterRate(cur, prev uint64, seconds float64) (float64, bool) {
+	if seconds <= 0 || cur < prev {
+		return 0, false
+	}
+	return float64(cur-prev) / seconds, true
 }
