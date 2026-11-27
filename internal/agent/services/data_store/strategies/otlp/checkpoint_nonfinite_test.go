@@ -50,7 +50,7 @@ func TestCheckpointer_NonFiniteValuesSkipped(t *testing.T) {
 		if fresh.size() != 1 {
 			t.Errorf("fresh store size=%d, want 1", fresh.size())
 		}
-		cms, _ := fresh.snapshot(time.Now())
+		cms := snapshotMetrics(fresh, time.Now())
 		if len(cms) != 1 || cms[0].MetricName != "finite_metric" {
 			t.Errorf("restored metrics=%v, want only finite_metric", cms)
 		}

@@ -39,7 +39,7 @@ func relayedPoint(probe, host string, duplicated bool) datapoint.DataPoint {
 
 func relaySeriesCount(s *OTLPSyncStrategy) int {
 	n := 0
-	cms, _ := s.store.snapshot(time.Now())
+	cms := snapshotMetrics(s.store, time.Now())
 	for _, cm := range cms {
 		if cm.ProbeName == "otlp-relay" {
 			n++
