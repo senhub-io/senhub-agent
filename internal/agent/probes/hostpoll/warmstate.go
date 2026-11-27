@@ -56,7 +56,7 @@ func SaveWarm(path string, v interface{}) error {
 		return fmt.Errorf("write warm state: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp) // best effort: the rename error is what is returned
 		return fmt.Errorf("rename warm state: %w", err)
 	}
 	return nil

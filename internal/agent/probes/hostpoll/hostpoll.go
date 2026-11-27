@@ -13,6 +13,7 @@ package hostpoll
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"senhub-agent.go/internal/agent/probes/types"
@@ -55,6 +56,9 @@ type Probe struct {
 	collector Collector
 	interval  time.Duration
 	spec      Spec
+	// mu keeps a collection, the health check's collection and the stop
+	// from touching the collector's readings at the same time.
+	mu sync.Mutex
 }
 
 // New builds a host polling probe from its Spec. The `interval` param is
@@ -91,7 +95,9 @@ func (p *Probe) ShouldStart() bool { return true }
 func (p *Probe) GetInterval() time.Duration { return p.interval }
 
 func (p *Probe) Collect() ([]datapoint.DataPoint, error) {
+	p.mu.Lock()
 	metrics, err := p.collector.Collect(time.Now())
+	p.mu.Unlock()
 	if err != nil {
 		return nil, fmt.Errorf("failed to collect %s metrics: %w", p.spec.Subject, err)
 	}
@@ -111,6 +117,8 @@ func (p *Probe) OnStart(quitChannel chan struct{}) error {
 
 func (p *Probe) OnShutdown(ctx context.Context) error {
 	if p.collector != nil {
+		p.mu.Lock()
+		defer p.mu.Unlock()
 		return p.collector.Close()
 	}
 	return nil
