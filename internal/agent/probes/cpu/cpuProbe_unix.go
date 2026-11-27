@@ -25,12 +25,88 @@ type unixCollector struct {
 	// elapsed wall time as a 0-100 % value per mode.
 	lastTimes     *cpu.TimesStat
 	lastTimestamp time.Time
+	// lastPerCore holds the previous per-core cumulative CPU time
+	// snapshots, used to derive per-core utilization percentages from
+	// deltas instead of gopsutil's blocking cpu.Percent call.
+	lastPerCore []cpu.TimesStat
+	// timesUnavailable is set when cpu.Times() fails or returns nothing
+	// (e.g. macOS without cgo), so the usage collectors fall back to
+	// the blocking cpu.Percent path.
+	timesUnavailable bool
 	// lastKernel holds the previous reading of the kernel's cumulative
 	// counters, which are rates once divided by the elapsed time. The
 	// definitions declare them in 1/s, the way the Windows collector
 	// already reports them.
 	lastKernel   *kernelCounters
 	lastKernelAt time.Time
+}
+
+// timesDelta returns the user and nice deltas (with guest time netted
+// out when the result stays non-negative, since the kernel accounts
+// guest inside user and guest_nice inside nice) plus the total delta
+// over the ten modes, so every CPU percentage shares one denominator.
+func timesDelta(prev, curr cpu.TimesStat) (user, nice, total float64) {
+	guestDelta := curr.Guest - prev.Guest
+	guestNiceDelta := curr.GuestNice - prev.GuestNice
+	user = curr.User - prev.User
+	nice = curr.Nice - prev.Nice
+	if user-guestDelta >= 0 {
+		user -= guestDelta
+	}
+	if nice-guestNiceDelta >= 0 {
+		nice -= guestNiceDelta
+	}
+	total = user +
+		(curr.System - prev.System) +
+		(curr.Idle - prev.Idle) +
+		nice +
+		(curr.Iowait - prev.Iowait) +
+		(curr.Irq - prev.Irq) +
+		(curr.Softirq - prev.Softirq) +
+		(curr.Steal - prev.Steal) +
+		guestDelta +
+		guestNiceDelta
+	return user, nice, total
+}
+
+// busyPercent derives the overall busy percentage over an interval from
+// two cumulative snapshots, using the same total (and thus the same
+// guest subtraction) as the per-mode percentages. Returns false when
+// total <= 0, so callers can skip the round instead of emitting
+// divide-by-zero values.
+func busyPercent(prev, curr cpu.TimesStat) (float64, bool) {
+	_, _, total := timesDelta(prev, curr)
+	if total <= 0 {
+		return 0, false
+	}
+	busy := total - (curr.Idle - prev.Idle) - (curr.Iowait - prev.Iowait)
+	v := (busy / total) * 100.0
+	if v < 0 {
+		return 0, true
+	}
+	if v > 100 {
+		return 100, true
+	}
+	return v, true
+}
+
+// perCorePercents derives one busy percentage per core from previous and
+// current cumulative snapshots. Returns false when the lengths differ or
+// prev is empty (first call or core-count change), meaning the caller
+// should only memorize the current snapshot.
+func perCorePercents(prev, curr []cpu.TimesStat) ([]float64, bool) {
+	if len(prev) == 0 || len(prev) != len(curr) {
+		return nil, false
+	}
+	percents := make([]float64, len(curr))
+	for i := range curr {
+		v, ok := busyPercent(prev[i], curr[i])
+		if !ok {
+			return nil, false
+		}
+		percents[i] = v
+	}
+	return percents, true
 }
 
 func newCPUCollector(config map[string]interface{}, logger *logger.Logger) (hostpoll.Collector, error) {
@@ -104,20 +180,26 @@ func (u *unixCollector) getBaseTags() ([]tags.Tag, error) {
 func (u *unixCollector) collectCPUTimes(dataPoints *[]data_store.DataPoint, timestamp time.Time, baseTags []tags.Tag) error {
 	times, err := cpu.Times(false)
 	if err != nil {
+		u.timesUnavailable = true
 		return fmt.Errorf("error getting CPU times: %w", err)
 	}
 
 	if len(times) == 0 {
+		// Platform without a working cpu.Times (e.g. macOS without cgo):
+		// signal the fallback to the blocking cpu.Percent path.
+		u.timesUnavailable = true
 		return nil
 	}
+
+	u.timesUnavailable = false
 
 	curr := times[0]
 
 	// On the first collection we have nothing to diff against — store the
 	// snapshot and return without emitting per-mode percentages. The first
 	// real datapoints arrive on the second tick of the probe interval.
-	// Total CPU usage (cpu_usage_total) and per-core values come from
-	// gopsutil's blocking cpu.Percent path and don't need this warm-up.
+	// cpu_usage_total and per-core values come from these same deltas and
+	// follow the same warm-up.
 	if u.lastTimes == nil {
 		u.lastTimes = &curr
 		u.lastTimestamp = timestamp
@@ -135,28 +217,11 @@ func (u *unixCollector) collectCPUTimes(dataPoints *[]data_store.DataPoint, time
 	// those ticks twice and push every other mode down. mpstat and
 	// node_exporter do the same subtraction. A source that has already
 	// subtracted them would drive the result negative, so the delta is
-	// only taken when it stays positive.
+	// only taken when it stays positive (see timesDelta).
+	userDelta, niceDelta, totalDelta := timesDelta(prev, curr)
+
 	guestDelta := curr.Guest - prev.Guest
 	guestNiceDelta := curr.GuestNice - prev.GuestNice
-	userDelta := curr.User - prev.User
-	niceDelta := curr.Nice - prev.Nice
-	if userDelta-guestDelta >= 0 {
-		userDelta -= guestDelta
-	}
-	if niceDelta-guestNiceDelta >= 0 {
-		niceDelta -= guestNiceDelta
-	}
-
-	totalDelta := userDelta +
-		(curr.System - prev.System) +
-		(curr.Idle - prev.Idle) +
-		niceDelta +
-		(curr.Iowait - prev.Iowait) +
-		(curr.Irq - prev.Irq) +
-		(curr.Softirq - prev.Softirq) +
-		(curr.Steal - prev.Steal) +
-		guestDelta +
-		guestNiceDelta
 
 	u.lastTimes = &curr
 	u.lastTimestamp = timestamp
@@ -204,10 +269,26 @@ func (u *unixCollector) collectCPUTimes(dataPoints *[]data_store.DataPoint, time
 		})
 	}
 
+	if usage, ok := busyPercent(prev, curr); ok {
+		*dataPoints = append(*dataPoints, data_store.DataPoint{
+			Name:      "cpu_usage_total",
+			Timestamp: timestamp,
+			Value:     usage,
+			Tags:      baseTags,
+		})
+	}
+
 	return nil
 }
 
 func (u *unixCollector) collectCPUUsage(dataPoints *[]data_store.DataPoint, timestamp time.Time, baseTags []tags.Tag) error {
+	// collectCPUTimes derives cpu_usage_total from the same deltas as the
+	// per-mode metrics; only fall back to the blocking cpu.Percent call on
+	// platforms where cpu.Times is unavailable (e.g. macOS without cgo).
+	if !u.timesUnavailable {
+		return nil
+	}
+
 	cpuPercent, err := cpu.Percent(time.Second, false)
 	if err != nil {
 		return fmt.Errorf("error getting CPU percentage metrics: %w", err)
@@ -253,6 +334,30 @@ func (u *unixCollector) collectLoadAverage(dataPoints *[]data_store.DataPoint, t
 }
 
 func (u *unixCollector) collectPerCoreMetrics(dataPoints *[]data_store.DataPoint, timestamp time.Time, baseTags []tags.Tag) error {
+	times, err := cpu.Times(true)
+	if err == nil && len(times) > 0 {
+		if percents, ok := perCorePercents(u.lastPerCore, times); ok {
+			for i, cpuPercent := range percents {
+				coreTags := append([]tags.Tag{}, baseTags...)
+				coreTags = append(coreTags, tags.Tag{
+					Key:   "core",
+					Value: fmt.Sprintf("%d", i),
+				})
+
+				*dataPoints = append(*dataPoints, data_store.DataPoint{
+					Name:      "cpu_core_usage",
+					Timestamp: timestamp,
+					Value:     cpuPercent,
+					Tags:      coreTags,
+				})
+			}
+		}
+		// Memorize even on the first call or a core-count change, so the
+		// next tick has something to diff against.
+		u.lastPerCore = times
+		return nil
+	}
+
 	perCpuPercent, err := cpu.Percent(time.Second, true)
 	if err != nil {
 		return fmt.Errorf("error getting per-CPU metrics: %w", err)

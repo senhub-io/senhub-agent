@@ -44,12 +44,14 @@ Platform-specific metrics are automatically detected and collected based on the 
 On macOS, the `gopsutil` library has limited support for detailed CPU time metrics (`cpu.Times()`). The CPU probe implements graceful degradation:
 
 - **If detailed CPU times unavailable**: Probe continues with load average metrics (cpu_load1, cpu_load5, cpu_load15)
-- **Always available**: CPU usage percentage (cpu_usage_total, cpu_core_usage)
+- **Always available**: CPU usage percentage (cpu_usage_total, cpu_core_usage); where `cpu.Times()` is missing it is a one-second sample taken at each collection
 - **Behavior**: Logs warnings for unavailable metrics but remains active
 
 This ensures the probe stays functional even when platform limitations exist, providing at minimum load average and usage percentage metrics.
 
 ## Key Metrics Summary
+
+On Linux and the other Unix systems, `cpu_usage_total` and `cpu_core_usage` are averages over the probe interval, computed from the same CPU time counters as the per-mode shares (`cpu_user`, `cpu_idle`, ...): usage is the share of time spent neither idle nor waiting on I/O. Like the per-mode shares, they appear from the second collection after a start.
 
 ### Cross-Platform Metrics
 

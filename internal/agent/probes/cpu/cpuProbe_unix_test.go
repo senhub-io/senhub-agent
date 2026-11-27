@@ -84,8 +84,8 @@ func TestUnixCollector_CPUTimes_PercentageMath(t *testing.T) {
 // TestUnixCollector_CPUTimes_FirstCallNoEmit ensures the very first
 // Collect() seeds lastTimes but emits zero per-mode datapoints — there
 // is no baseline to diff against and synthesising one would mis-report
-// the agent's startup interval. Total-CPU and per-core paths still emit
-// because they use gopsutil's own blocking percent API.
+// the agent's startup interval. cpu_usage_total and per-core usage come
+// from the same deltas and wait for the second call too.
 func TestUnixCollector_CPUTimes_FirstCallNoEmit(t *testing.T) {
 	baseLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
 	u := &unixCollector{logger: baseLogger}
@@ -104,5 +104,121 @@ func TestUnixCollector_CPUTimes_FirstCallNoEmit(t *testing.T) {
 			"cpu_iowait", "cpu_irq", "cpu_softirq", "cpu_steal":
 			t.Errorf("first call should not emit %s; got value=%v", dp.Name, dp.Value)
 		}
+	}
+}
+
+func TestBusyPercent(t *testing.T) {
+	testCases := []struct {
+		name       string
+		prev       cpu.TimesStat
+		curr       cpu.TimesStat
+		expected   float64
+		expectedOK bool
+	}{
+		{
+			name:       "simple",
+			curr:       cpu.TimesStat{User: 30, System: 10, Idle: 50, Iowait: 10},
+			expected:   40,
+			expectedOK: true,
+		},
+		{
+			// Guest is accounted inside user: it must not be counted twice.
+			name:       "guest not double counted",
+			curr:       cpu.TimesStat{User: 50, Guest: 20, Idle: 50},
+			expected:   50,
+			expectedOK: true,
+		},
+		{
+			name:       "zero total",
+			expectedOK: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := busyPercent(tc.prev, tc.curr)
+			if ok != tc.expectedOK {
+				t.Fatalf("ok = %v, expected %v", ok, tc.expectedOK)
+			}
+			if !tc.expectedOK {
+				return
+			}
+			if got != tc.expected {
+				t.Fatalf("busyPercent = %v, expected %v", got, tc.expected)
+			}
+		})
+	}
+}
+
+func TestUnixCollector_FirstCallEmitsNoUsageTotal(t *testing.T) {
+	testLogger := logger.NewLogger(&cliArgs.ParsedArgs{})
+	u := &unixCollector{logger: testLogger}
+
+	var dataPoints []data_store.DataPoint
+	if err := u.collectCPUTimes(&dataPoints, time.Now(), nil); err != nil {
+		t.Fatalf("collectCPUTimes error: %v", err)
+	}
+
+	for _, dp := range dataPoints {
+		if dp.Name == "cpu_usage_total" {
+			t.Fatalf("first call emitted cpu_usage_total (%v)", dp.Value)
+		}
+	}
+
+	if u.lastTimes == nil {
+		t.Skip("platform without a working cpu.Times")
+	}
+}
+
+func TestUnixCollector_PerCoreFromDeltas(t *testing.T) {
+	core := func(user, idle float64) cpu.TimesStat {
+		return cpu.TimesStat{User: user, Idle: idle}
+	}
+
+	testCases := []struct {
+		name       string
+		prev       []cpu.TimesStat
+		curr       []cpu.TimesStat
+		expected   []float64
+		expectedOK bool
+	}{
+		{
+			name:       "two cores",
+			prev:       []cpu.TimesStat{core(10, 90), core(50, 50)},
+			curr:       []cpu.TimesStat{core(20, 180), core(100, 100)},
+			expected:   []float64{10, 50},
+			expectedOK: true,
+		},
+		{
+			name:       "length mismatch",
+			prev:       []cpu.TimesStat{core(10, 90), core(50, 50)},
+			curr:       []cpu.TimesStat{core(20, 90)},
+			expectedOK: false,
+		},
+		{
+			name:       "empty prev",
+			curr:       []cpu.TimesStat{core(20, 90)},
+			expectedOK: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := perCorePercents(tc.prev, tc.curr)
+			if ok != tc.expectedOK {
+				t.Fatalf("ok = %v, expected %v", ok, tc.expectedOK)
+			}
+			if !tc.expectedOK {
+				return
+			}
+			if len(got) != len(tc.expected) {
+				t.Fatalf("len = %d, expected %d", len(got), len(tc.expected))
+			}
+			for i := range got {
+				if got[i] != tc.expected[i] {
+					t.Fatalf("core %d = %v, expected %v", i, got[i], tc.expected[i])
+				}
+			}
+		})
 	}
 }
