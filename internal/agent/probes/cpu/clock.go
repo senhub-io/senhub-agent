@@ -49,6 +49,12 @@ type withClock struct {
 	lastSyncError string
 }
 
+func (c *withClock) SetState(path string, maxAge time.Duration) {
+	if s, ok := c.Collector.(hostpoll.StateAware); ok {
+		s.SetState(path, maxAge)
+	}
+}
+
 func (c *withClock) Collect(timestamp time.Time) ([]datapoint.DataPoint, error) {
 	points, err := c.Collector.Collect(timestamp)
 	if err != nil {

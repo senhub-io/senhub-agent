@@ -18,6 +18,7 @@ import (
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/logger"
 	"senhub-agent.go/internal/agent/types/datapoint"
+	"senhub-agent.go/probesdk/state"
 )
 
 // defaultInterval is the polling period used when the config carries no
@@ -97,7 +98,16 @@ func (p *Probe) Collect() ([]datapoint.DataPoint, error) {
 	return p.EnrichDataPointsWithProbeName(metrics, p.GetName()), nil
 }
 
-func (p *Probe) OnStart(quitChannel chan struct{}) error { return nil }
+func (p *Probe) OnStart(quitChannel chan struct{}) error {
+	if s, ok := p.collector.(StateAware); ok {
+		name := p.GetName()
+		if name == "" {
+			name = p.spec.TypeName
+		}
+		s.SetState(state.Path(name+".warm.json"), 2*p.interval)
+	}
+	return nil
+}
 
 func (p *Probe) OnShutdown(ctx context.Context) error {
 	if p.collector != nil {
