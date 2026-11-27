@@ -727,10 +727,13 @@ func stopProbe(p *probes.ProbePoller) error {
 // to the console. Callers hold s.mu.
 func (s *sensor) publishFailedProbes() {
 	out := make(map[string]string, len(s.failedProbes))
+	names := make([]string, 0, len(s.failedProbes))
 	for id, f := range s.failedProbes {
 		out[id] = f.reason
+		names = append(names, f.config.Name)
 	}
 	agentstate.SetStartFailedProbes(out)
+	agentstate.SetStartFailedProbeNames(names)
 }
 
 // retryFailedProbes tries the probes that failed to start again, until

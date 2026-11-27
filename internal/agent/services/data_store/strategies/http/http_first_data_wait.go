@@ -42,7 +42,9 @@ func (h *HTTPSyncStrategy) inStartPhase() bool {
 // outputs, so a reading in the first seconds precedes it); in the second
 // case the wait goes on until the probe registers, then applies the same
 // rules. It returns at once for a name the agent neither runs nor
-// configures, one whose last cycle failed, one that already has data, an
+// configures, one that failed to start (a constructor error or a
+// licence refusal: it will never produce data), one whose last cycle
+// failed, one that already has data, an
 // event-driven one (no first collection to wait for), one whose first
 // collection already finished, or once the start window is over. If that
 // first cycle handed points, the wait continues until those points become
@@ -58,9 +60,13 @@ func (h *HTTPSyncStrategy) waitForFirstData(ctx context.Context, w http.Response
 
 	registered := agentstate.ActiveProbeNamesChanged()
 	state, running := agentstate.ProbeRunStateByName(probeName)
+	if !running && agentstate.ProbeStartFailedByName(probeName) {
+		return
+	}
 	if !running && !h.probeConfigured(probeName) {
 		return
 	}
+
 	if running && !worthWaiting(state) {
 		return
 	}
@@ -90,9 +96,14 @@ func (h *HTTPSyncStrategy) waitForFirstData(ctx context.Context, w http.Response
 		}
 		registered = agentstate.ActiveProbeNamesChanged()
 		state, running = agentstate.ProbeRunStateByName(probeName)
+		if !running && agentstate.ProbeStartFailedByName(probeName) {
+			h.logFirstDataWait(probeName, false, wait)
+			return
+		}
 		if running && !worthWaiting(state) {
 			return
 		}
+
 	}
 
 	cycled, _ := agentstate.FirstCycleSignalByName(probeName)

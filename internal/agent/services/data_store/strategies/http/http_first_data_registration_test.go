@@ -240,3 +240,28 @@ func TestPRTGFirstData_NoDataOverRealServerWithServerTimeouts(t *testing.T) {
 		t.Fatalf("answered after %v, want at least 9.5s", elapsed)
 	}
 }
+
+// TestPRTGFirstData_ProbeThatFailedToStartAnswersAtOnce checks that a
+// configured probe that failed to start is not waited for: it will never
+// produce data, so the reading answers immediately with no channel.
+func TestPRTGFirstData_ProbeThatFailedToStartAnswersAtOnce(t *testing.T) {
+	api, _, _ := firstWaitHarness(t, time.Second)
+	agentstate.SetActiveProbeNames(nil)
+	t.Cleanup(func() { agentstate.SetActiveProbeNames(nil) })
+	api.strategy.agentConfig = newFirstDataProbesConfig(configuration.ProbeConfig{Name: "cpu-wait", Type: "cpu"})
+	api.strategy.firstDataWait = 5 * time.Second
+	agentstate.SetStartFailedProbeNames([]string{"CPU-Wait"})
+	t.Cleanup(func() { agentstate.SetStartFailedProbeNames(nil) })
+
+	w := httptest.NewRecorder()
+	begin := time.Now()
+	api.HandlePRTGMetricsGET(w, firstWaitRequest(context.Background()))
+	elapsed := time.Since(begin)
+
+	if n := channelCount(t, w); n != 0 {
+		t.Fatalf("channels = %d, want 0", n)
+	}
+	if elapsed >= 500*time.Millisecond {
+		t.Fatalf("answered after %v, want at once", elapsed)
+	}
+}

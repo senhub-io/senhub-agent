@@ -2,6 +2,8 @@
 
 Nothing released yet since 0.7.1. Changes land here as they are merged.
 
+- **PRTG and Nagios no longer wait on a probe that could not start.** In the minutes after the agent starts, a reading of a probe that has no data yet waits up to 10 seconds for its first collection. A probe that failed to start, a Pro probe without a licence for example, will never collect, yet each of its readings waited the full 10 seconds. It now answers at once, as for a name the agent does not know.
+
 - **Services carry their run state in the topology.** The `host.service` entity of a systemd unit or a Windows service now has a `status` attribute: `running`, `stopped`, `starting`, `stopping`, `paused`, `failed` (systemd only) or `unknown`, never left out. On Linux, an enabled unit that systemd has not loaded is listed too, as `stopped`, so a stopped automatic-start service shows in the graph instead of being absent. The `host.service.running` series is unchanged and stays the one to alert on.
 
 - **SNMP device vendor: one attribute, from the enterprise number.** A polled device carried both `vendor` (from its enterprise number) and `hw.vendor` (from the chassis ENTITY-MIB name, such as `Cisco`). It now carries `hw.vendor` only, the short lowercase name of its enterprise number (`cisco`, `juniper`, `fortinet`, ...), with the ENTITY-MIB name used only when the number is not known, and `senhub.hw.vendor.source` says which (`iana_pen` or `entity_mib`). Fortinet devices are now named. A topology query on `vendor` should read `hw.vendor`.

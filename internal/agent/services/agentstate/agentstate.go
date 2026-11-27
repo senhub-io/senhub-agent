@@ -129,6 +129,38 @@ func RecordProbeCycle(probeID string, points int) {
 // the one state a monitoring agent must not report as silence.
 var probeStartFailed = map[string]string{}
 
+// probeStartFailedNames holds the configured names of the probes that
+// failed to start, because an HTTP reading arrives by probe name, not by
+// ID, and the wait for first data must not run for a probe that will
+// never produce anything.
+var probeStartFailedNames = map[string]struct{}{}
+
+// SetStartFailedProbeNames replaces the set of configured names of
+// probes that failed to start. Empty names are ignored, others are
+// lower-cased to match the case-insensitive lookups done by name.
+func SetStartFailedProbeNames(names []string) {
+	probeStateMu.Lock()
+	defer probeStateMu.Unlock()
+	next := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		if name == "" {
+			continue
+		}
+		next[strings.ToLower(name)] = struct{}{}
+	}
+	probeStartFailedNames = next
+}
+
+// ProbeStartFailedByName reports whether the configured probe with that
+// name failed to start. It reads by name because that is what the HTTP
+// strategy has.
+func ProbeStartFailedByName(name string) bool {
+	probeStateMu.RLock()
+	defer probeStateMu.RUnlock()
+	_, ok := probeStartFailedNames[strings.ToLower(name)]
+	return ok
+}
+
 // SetStartFailedProbes replaces the set of configured probes that failed
 // to start, keyed by probe ID, valued by the reason. Called by the Sensor
 // after every sync and every retry.
