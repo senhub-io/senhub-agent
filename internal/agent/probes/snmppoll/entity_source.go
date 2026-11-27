@@ -1878,9 +1878,10 @@ func selfAttrs(self deviceIdentity) map[string]any {
 	add("device.role", deviceRole(self.Services))
 	// hw.vendor is the short IANA enterprise name; the ENTITY-MIB
 	// manufacturer string is only a fallback (toise contract, ent#798).
-	// PEN 8072 names the net-snmp agent software, not who built the
-	// hardware: the ENTITY-MIB manufacturer says more.
-	if v := vendorName(self.VendorPEN); v != "" && self.VendorPEN != "8072" {
+	// Some numbers name the SNMP agent software, not who built the
+	// hardware: the ENTITY-MIB manufacturer says more, and with none the
+	// vendor is left out rather than misnamed.
+	if v := vendorName(self.VendorPEN); v != "" && !agentSoftwarePENs[self.VendorPEN] {
 		attrs[attrHwVendor] = v
 		attrs[attrHwVendorSource] = "iana_pen"
 	} else if v := strings.TrimSpace(self.HwVendor); v != "" {
@@ -1903,6 +1904,11 @@ func selfAttrs(self deviceIdentity) map[string]any {
 	}
 	return attrs
 }
+
+// agentSoftwarePENs are enterprise numbers of SNMP agent software (net-snmp,
+// its UCD-SNMP ancestor, the Windows SNMP service) rather than of a hardware
+// maker.
+var agentSoftwarePENs = map[string]bool{"8072": true, "2021": true, "311": true}
 
 // deviceRole infers a readable role from the IF-MIB-adjacent sysServices
 // bitmask (sum of 2^(layer-1) over the OSI layers the device offers): a device

@@ -903,6 +903,9 @@ func TestSelfAttrsVendorFallsBackToEntityMIB(t *testing.T) {
 		{"unknown PEN, ENTITY-MIB name", "99999", "Acme Networks", "Acme Networks", "entity_mib"},
 		{"nothing known", "99999", "", "", ""},
 		{"net-snmp agent, ENTITY-MIB name", "8072", "Acme Appliances", "Acme Appliances", "entity_mib"},
+		{"net-snmp agent, no ENTITY-MIB name", "8072", "", "", ""},
+		{"UCD-SNMP agent", "2021", "Acme Appliances", "Acme Appliances", "entity_mib"},
+		{"Windows SNMP service, nothing else", "311", "", "", ""},
 	}
 	for _, c := range cases {
 		a := selfAttrs(deviceIdentity{VendorPEN: c.pen, HwVendor: c.mfg})
