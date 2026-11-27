@@ -277,6 +277,11 @@ func addInstalledUnits(all []dbus.UnitStatus, files []dbus.UnitFile, states map[
 		if _, ok := loaded[name]; ok {
 			continue
 		}
+		// A template (foo@.service) never runs under its own name; its
+		// instances are listed when they are loaded.
+		if strings.Contains(name, "@.") {
+			continue
+		}
 		all = append(all, dbus.UnitStatus{
 			Name:        name,
 			LoadState:   "not-found",

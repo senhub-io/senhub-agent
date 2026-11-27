@@ -443,3 +443,13 @@ func TestAddInstalledUnits(t *testing.T) {
 		t.Errorf("states[b.service] = %q, want enabled", states["b.service"])
 	}
 }
+
+// An enabled template is not a service of its own: only its loaded
+// instances are.
+func TestAddInstalledUnitsSkipsTemplates(t *testing.T) {
+	states := map[string]string{}
+	got := addInstalledUnits(nil, []dbus.UnitFile{{Path: "/usr/lib/systemd/system/getty@.service", Type: "enabled"}}, states)
+	if len(got) != 0 || len(states) != 0 {
+		t.Fatalf("template listed as a unit: %+v, states %v", got, states)
+	}
+}

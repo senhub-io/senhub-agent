@@ -134,7 +134,7 @@ func (p *SystemdProbe) Collect() ([]data_store.DataPoint, error) {
 		// Enabled but not loaded units never appear in ListUnitsContext,
 		// yet a stopped automatic-start service is exactly what the graph
 		// must show.
-		files, err := conn.ListUnitFilesByPatternsContext(ctx, []string{"enabled"}, nil)
+		files, err := conn.ListUnitFilesByPatternsContext(ctx, []string{"enabled", "enabled-runtime"}, nil)
 		if err != nil {
 			p.moduleLogger.Debug().Err(err).Msg("systemd: enabled unit files unreadable; only loaded units listed")
 		} else {
