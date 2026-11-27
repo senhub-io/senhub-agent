@@ -1,7 +1,8 @@
 # SenHub agent alerting starter pack — agent self-health.
 #
-# Monitors the monitor: probe health, collection errors, and the OTLP
-# export pipeline (drops, export errors, buffer growth).
+# Monitors the monitor: probe health, collection errors, the OTLP
+# export pipeline (drops, export errors, buffer growth), disk queues
+# for rejected exports, and backend throttling.
 
 groups:
   - name: senhub-agent-health
@@ -51,6 +52,46 @@ groups:
         annotations:
           summary: "OTLP buffer near capacity on {{ $labels.host_name }}{{ $labels.instance }}"
           description: "Above 80% of the default 50000-point cap; drops start at 100%."
+
+      - alert: AgentOtlpQueueNearCapacity
+        # Defaults: metrics 256 MiB, traces 64 MiB; adjust if you
+        # changed metrics_queue_max_bytes / traces_queue_max_bytes.
+        expr: senhub_agent_otlp_queue_bytes{signal="metrics"} > 0.8 * 268435456 or senhub_agent_otlp_queue_bytes{signal="traces"} > 0.8 * 67108864
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OTLP disk queue near capacity on {{ $labels.host_name }}{{ $labels.instance }}"
+          description: "Metrics or traces disk queue above 80% of its default cap; data is dropped at 100%."
+
+      - alert: AgentOtlpLogsQueueNearCapacity
+        # Default logs queue cap is 128 MiB; adjust if you changed
+        # logs_queue_max_bytes.
+        expr: senhub_agent_otlp_logs_queue_bytes > 0.8 * 134217728
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OTLP logs disk queue near capacity on {{ $labels.host_name }}{{ $labels.instance }}"
+          description: "Logs disk queue above 80% of the default 128 MiB cap; data is dropped at 100%."
+
+      - alert: AgentOtlpQueueNotDraining
+        expr: (senhub_agent_otlp_queue_records > 0 and rate(senhub_agent_otlp_queue_replayed_total[15m]) == 0) or (senhub_agent_otlp_logs_queue_records > 0 and rate(senhub_agent_otlp_logs_replayed_total[15m]) == 0)
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OTLP disk queue not draining on {{ $labels.host_name }}{{ $labels.instance }}"
+          description: "The queue is growing with no replay; the backend is not resuming. Data waits on disk and is lost at the cap or at the maximum age (24 h by default)."
+
+      - alert: AgentOtlpThrottled
+        expr: rate(senhub_agent_otlp_throttled_total[5m]) > 0
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "OTLP exports throttled on {{ $labels.host_name }}{{ $labels.instance }}"
+          description: "The backend is asking to slow down (429/503 Retry-After, RetryInfo); the agent waits and keeps data on disk. This is not an export error."
 
       - alert: AgentRestarted
         expr: senhub_agent_uptime_seconds < 300

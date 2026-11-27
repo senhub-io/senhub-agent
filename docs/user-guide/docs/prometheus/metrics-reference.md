@@ -74,6 +74,7 @@ Emitted when an OTLP output is configured.
 | `senhub_agent_otlp_endpoint_switches_total` | counter | Cumulative endpoint failover switches (the active OTLP endpoint changed). Rising means the primary is flapping. |
 | `senhub_agent_otlp_export_duration_seconds` | gauge | Wall-clock duration of the most recent successful OTLP metrics export. |
 | `senhub_agent_otlp_logs_pushed_total` | counter | Cumulative count of log records emitted via OTLP/gRPC. |
+| `senhub_agent_otlp_throttled_total` | counter | Cumulative OTLP exports the backend answered with a throttle hint (HTTP 429/503 with Retry-After, gRPC RetryInfo), by `signal`. The data waited on disk; not counted as an export error. |
 | `senhub_agent_otlp_queue_bytes` | gauge | Bytes currently held by the on-disk queue of a signal, by `signal` (`metrics`, `traces`). |
 | `senhub_agent_otlp_queue_queued_total` | counter | Cumulative data points or spans written to the signal's queue after a failed export, by `signal`. |
 | `senhub_agent_otlp_queue_records` | gauge | Data points (metrics) or spans (traces) currently held in the signal's on-disk queue, awaiting replay, by `signal`. |

@@ -10,7 +10,7 @@ plus the agent's own delivery pipeline.
 | `vmalert/host.rules.yml` | CPU, memory, disk capacity and growth, interface errors |
 | `vmalert/active-checks.rules.yml` | icmp_check, http_check (incl. TLS expiry under 30/7 days), tcp_dial, dns_latency |
 | `vmalert/snmp.rules.yml` | snmp_poll device/interface health, snmp_trap receiver self-metrics |
-| `vmalert/agent-health.rules.yml` | probe health, collection errors, OTLP drops and buffer growth |
+| `vmalert/agent-health.rules.yml` | probe health, collection errors, OTLP drops and buffer growth, disk queues near their cap or not draining, backend throttling |
 | `grafana/contact-points.example.yaml` | Grafana contact-point + notification-policy provisioning example |
 
 Metric names are the Prometheus exposition names; both ingestion
