@@ -3,6 +3,7 @@ package otlp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -503,5 +504,58 @@ func TestPushMetrics_AFilteredKeepaliveIsNotResolvedAgainEachCycle(t *testing.T)
 	}
 	if cands := store.snapshot(base.Add(5 * time.Minute)); len(cands) != 0 {
 		t.Fatalf("candidates one minute after a filtered keepalive = %+v, want none", cands)
+	}
+}
+
+func TestPushMetrics_QueuedExport_MarksEmitted(t *testing.T) {
+	base := keepaliveBase()
+	store := newMetricStore()
+	store.upsertAt(datapoint.DataPoint{
+		Name:      "cpu_utilization",
+		Value:     50,
+		Timestamp: base,
+		Tags: []tags.Tag{
+			{Key: "probe_name", Value: "cpu"},
+			{Key: "probe_type", Value: "cpu"},
+			{Key: "unit", Value: "%"},
+		},
+	}, base)
+
+	defs := &fakeDefs{defs: map[string]*transformers.ProbeDefinition{"cpu": newGaugeDef()}}
+	res := resource.NewSchemaless()
+	start := base.Add(-time.Minute)
+
+	calls := 0
+	export := func(_ context.Context, rm *metricdata.ResourceMetrics) error {
+		calls++
+		if calls == 1 {
+			return fmt.Errorf("wrapped: %w", errExportQueued)
+		}
+		if len(rm.ScopeMetrics) == 0 || len(rm.ScopeMetrics[0].Metrics) == 0 {
+			t.Fatal("export called with an empty batch")
+		}
+		return nil
+	}
+
+	_, err := pushMetrics(context.Background(), store, defs, res, "",
+		start, base, otelmapper.DefaultResolveOptions(), nil, nil, export, nil, 1)
+	if err == nil || !errors.Is(err, errExportQueued) {
+		t.Fatalf("first pushMetrics error = %v, want wrapped errExportQueued", err)
+	}
+
+	before := calls
+	count, err := pushMetrics(context.Background(), store, defs, res, "",
+		start, base.Add(time.Second), otelmapper.DefaultResolveOptions(), nil, nil, export, nil, 1)
+	if err != nil {
+		t.Fatalf("second pushMetrics: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("second count = %d, want 0 after queued mark", count)
+	}
+	if calls != before {
+		t.Fatalf("second pushMetrics called export, want no export")
+	}
+	if cands := store.snapshot(base.Add(time.Second)); len(cands) != 0 {
+		t.Fatalf("candidates after queued export = %+v, want none", cands)
 	}
 }
