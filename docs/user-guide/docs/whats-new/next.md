@@ -2,6 +2,8 @@
 
 Nothing released yet since 0.7.1. Changes land here as they are merged.
 
+- **Linux and macOS: first CPU and network points right after a restart.** When the agent stopped cleanly, the cpu and network probes keep their last readings, so the first points are published with the first collection after a restart or an update instead of one interval later. After a reboot or a crash they still wait one interval, as before.
+
 - **Linux: no absurd network rate after an interface reset.** When an interface counter went backwards (interface reset, driver reloaded, a 32-bit counter wrapping), the network probe published a rate of about 10^19 for that cycle. It now skips the rates of that interface for that cycle and starts again from the new value.
 
 - **PRTG and Nagios no longer wait on a probe that could not start.** In the minutes after the agent starts, a reading of a probe that has no data yet waits up to 10 seconds for its first collection. A probe that failed to start, a Pro probe without a licence for example, will never collect, yet each of its readings waited the full 10 seconds. It now answers at once, as for a name the agent does not know.
