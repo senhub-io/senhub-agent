@@ -149,10 +149,11 @@ func NewHTTPSyncStrategy(
 		agentKey:            agentConfig.GetAuthenticationKey(),
 		port:                8080,      // Default port
 		bindAddress:         "0.0.0.0", // Default to all interfaces
-		transformerRegistry: transformers.NewTransformerRegistry(moduleLogger.Logger),
-		startTime:           time.Now(), // Initialize start time for uptime calculation
-		assetHandler:        NewAssetHandler(agentConfig.GetAuthenticationKey()),
-		cache:               NewMetricCache(time.Duration(cacheRetentionMinutes)*time.Minute, moduleLogger),
+		transformerRegistry: transformers.SharedRegistry(moduleLogger.Logger),
+
+		startTime:    time.Now(), // Initialize start time for uptime calculation
+		assetHandler: NewAssetHandler(agentConfig.GetAuthenticationKey()),
+		cache:        NewMetricCache(time.Duration(cacheRetentionMinutes)*time.Minute, moduleLogger),
 	}
 
 	// Initialize format converter after cache is created

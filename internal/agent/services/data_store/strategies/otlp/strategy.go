@@ -266,12 +266,13 @@ func NewOTLPSyncStrategy(
 	}
 
 	s := &OTLPSyncStrategy{
-		agentConfig:     agentConfig,
-		rawParams:       params,
-		cfg:             cfg,
-		logger:          moduleLogger,
-		store:           store,
-		registry:        transformers.NewTransformerRegistry(baseLogger),
+		agentConfig: agentConfig,
+		rawParams:   params,
+		cfg:         cfg,
+		logger:      moduleLogger,
+		store:       store,
+		registry:    transformers.SharedRegistry(baseLogger),
+
 		resource:        buildResource(cfg.Resource, cliArgs.Version, hostAttrs, globalTags),
 		metricsResource: buildResource(cfg.Resource, "", hostAttrs, globalTags),
 		globalTagKeys:   globalTagKeys,

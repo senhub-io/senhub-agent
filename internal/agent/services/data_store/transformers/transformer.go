@@ -386,6 +386,19 @@ func NewTransformerRegistry(baseLogger *logger.Logger) *TransformerRegistry {
 	return registry
 }
 
+var (
+	sharedRegistryOnce sync.Once
+	sharedRegistry     *TransformerRegistry
+)
+
+// SharedRegistry returns the process-wide registry. Its definitions come
+// from embedded files and its keys carry the output style, so every
+// strategy can read the same one; the first caller's logger names it.
+func SharedRegistry(baseLogger *logger.Logger) *TransformerRegistry {
+	sharedRegistryOnce.Do(func() { sharedRegistry = NewTransformerRegistry(baseLogger) })
+	return sharedRegistry
+}
+
 // GetProbeDefinition returns the parsed ProbeDefinition for a probe, or nil if not found.
 // Used by the web UI, the Prometheus exposition and the OTLP exporter.
 // Parsed on first use and memoized; negative lookups are memoized too so

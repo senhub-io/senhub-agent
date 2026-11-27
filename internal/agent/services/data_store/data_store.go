@@ -122,7 +122,7 @@ func NewDataStore(
 		logger:              moduleLogger,
 		configProvider:      configProvider,
 		agentConfig:         agentConfig,
-		transformerRegistry: transformers.NewTransformerRegistry(baseLogger),
+		transformerRegistry: transformers.SharedRegistry(baseLogger),
 	}
 	empty := make([]SyncStrategy, 0)
 	ds.strategies.Store(&empty)
