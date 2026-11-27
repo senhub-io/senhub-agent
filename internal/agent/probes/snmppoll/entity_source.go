@@ -619,6 +619,11 @@ func (s *snmpEntitySource) maybeSweep(client snmpClient, now time.Time) {
 		// Half a cycle early: the cycle that falls on retryAt starts a
 		// little before or after it.
 		s.retryAt = now.Add(delay - s.cfg.Interval/2)
+		// The back-off must not carry a short outage past the silence
+		// threshold: one attempt always lands a cycle before it.
+		if last := s.failingSince.Add(silentAfterSweeps*s.interval - s.cfg.Interval); last.After(now) && s.retryAt.After(last) {
+			s.retryAt = last
+		}
 		known := s.deviceID
 		s.mu.Unlock()
 		if res.identityHeld {

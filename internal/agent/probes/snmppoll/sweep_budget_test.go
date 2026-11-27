@@ -112,7 +112,9 @@ func TestAFailedSweepIsRetriedLessAndLessOften(t *testing.T) {
 			swept = append(swept, i)
 		}
 	}
-	want := []int{0, 1, 3, 7, 12, 17}
+	// Cycle 2, not 3: one attempt lands before the device is declared
+	// silent at cycle 3 (ent#823).
+	want := []int{0, 1, 2, 6, 11, 16}
 	if len(swept) != len(want) {
 		t.Fatalf("sweeps at cycles %v, want %v", swept, want)
 	}
@@ -174,5 +176,54 @@ func TestACycleOnASilentDeviceStopsAtItsFirstTimeout(t *testing.T) {
 	_, _ = collect(refusing, cfg, "192.0.2.10:161", "name:sw1", nil, time.Now(), testLogger(t))
 	if _, walks := buildPlan(cfg); refusing.reads != len(walks) {
 		t.Errorf("%d reads for %d columns: an error that is not a timeout must not end the cycle", refusing.reads, len(walks))
+	}
+}
+
+// A finite outage ends before the silence threshold: the back-off is capped so
+// that one attempt always lands a cycle before the device would be declared
+// silent, and the good sweep resets the failure counter (ent#823).
+func TestAShortOutageEndsBeforeTheDeviceIsDeclaredSilent(t *testing.T) {
+	tcs := []struct {
+		name     string
+		topology time.Duration
+		outage   time.Duration
+	}{
+		{"topology 1 min, outage 110 s", time.Minute, 110 * time.Second},
+		{"topology 10 min, outage 28 min", 10 * time.Minute, 28 * time.Minute},
+	}
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			const cycle = 30 * time.Second
+			s := newEntitySource(&config{Target: "192.0.2.10", Interval: cycle, TopologyInterval: tc.topology}, testLogger(t))
+			t0 := time.Unix(1780272000, 0)
+			clock := t0
+			s.now = func() time.Time { return clock }
+			good := &fakeClient{walkRawResult: map[string][]snmpRawBind{
+				oidSysNameBase: {{OID: oidSysName, Value: []byte("sw1")}},
+			}}
+			s.maybeSweep(good, t0)
+			if s.DeviceID() == "" {
+				t.Fatal("the device did not resolve before the outage")
+			}
+			dev := silentDevice()
+			// The outage starts at the next topology sweep, the first one
+			// that fails, so the back-off runs from there.
+			start := t0.Add(tc.topology)
+			end := start.Add(3*tc.topology + 2*time.Minute)
+			for now := t0.Add(cycle); !now.After(end); now = now.Add(cycle) {
+				var client snmpClient = good
+				if !now.Before(start) && now.Before(start.Add(tc.outage)) {
+					client = dev
+				}
+				clock = now
+				s.maybeSweep(client, now)
+				if s.silent() {
+					t.Fatalf("device declared silent %s after the outage began, want the outage absorbed", now.Sub(start))
+				}
+			}
+			if s.sweepFailures != 0 {
+				t.Errorf("%d sweep failures after the outage, want 0", s.sweepFailures)
+			}
+		})
 	}
 }
