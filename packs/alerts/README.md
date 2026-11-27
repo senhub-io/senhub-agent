@@ -13,9 +13,14 @@ plus the agent's own delivery pipeline.
 | `vmalert/agent-health.rules.yml` | probe health, collection errors, OTLP drops and buffer growth, disk queues near their cap or not draining, backend throttling |
 | `grafana/contact-points.example.yaml` | Grafana contact-point + notification-policy provisioning example |
 
-Metric names are the Prometheus exposition names; both ingestion
-paths (Prometheus scrape of the agent, OTLP push through an OTel
-collector) produce them. The full name catalog is in the user guide's
+Metric names come in two flavors. Scraping the agent's Prometheus
+exposition yields `senhub_`-prefixed names. Pushing OTLP to
+VictoriaMetrics with `-opentelemetry.usePrometheusNaming=true`
+converts OpenTelemetry names to Prometheus names too, but metrics
+whose OpenTelemetry name does not start with `senhub.` arrive
+without the prefix. When a metric's name differs between the two
+paths, the rules query both names with `or`, so they fire on either
+ingestion path. The full name catalog is in the user guide's
 metrics reference.
 
 ## vmalert

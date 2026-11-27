@@ -1,6 +1,13 @@
 # SenHub agent alerting starter pack — active checks (free tier):
 # icmp_check, http_check, tcp_dial, dns_latency.
 #
+# Rules query both possible metric names when they differ between
+# ingestion paths: the agent's Prometheus exposition names and the
+# names produced by the OTLP -> VictoriaMetrics path when
+# -opentelemetry.usePrometheusNaming=true strips the "senhub_"
+# prefix from OpenTelemetry metrics whose name does not start with
+# "senhub.". See the metrics reference in the user guide.
+#
 # Every check probe reports failure as a measurement (up == 0), so the
 # absence of an alert means the target really answered.
 
@@ -13,8 +20,8 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "Ping target {{ $labels.target }} unreachable"
-          description: "ICMP echo to {{ $labels.target }} failing for 3 minutes."
+          summary: "Ping target {{ $labels.icmp_target }} unreachable"
+          description: "ICMP echo to {{ $labels.icmp_target }} failing for 3 minutes."
 
       - alert: IcmpPacketLoss
         expr: senhub_icmp_packet_loss_ratio > 0.2
@@ -22,7 +29,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Packet loss to {{ $labels.target }}"
+          summary: "Packet loss to {{ $labels.icmp_target }}"
           description: "More than 20% packet loss for 5 minutes."
 
       - alert: HttpCheckDown
@@ -31,32 +38,32 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "HTTP check {{ $labels.target }} failing"
+          summary: "HTTP check {{ $labels.httpcheck_target }} failing"
           description: "Unexpected status, failed content match or unreachable for 3 minutes."
 
       - alert: HttpCheckSlow
-        expr: senhub_httpcheck_duration_seconds > 2
+        expr: (senhub_httpcheck_duration_seconds or httpcheck_duration_seconds) > 2
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "HTTP check {{ $labels.target }} slow"
+          summary: "HTTP check {{ $labels.httpcheck_target }} slow"
           description: "Total request time above 2s for 10 minutes."
 
       - alert: TlsCertExpiringSoon
-        expr: senhub_httpcheck_tls_expiry < 30
+        expr: senhub_httpcheck_tls_expiry_seconds < 30*86400
         labels:
           severity: warning
         annotations:
-          summary: "TLS certificate of {{ $labels.target }} expires in {{ $value | printf \"%.0f\" }} days"
+          summary: "TLS certificate of {{ $labels.httpcheck_target }} expires in {{ $value | humanizeDuration }}"
           description: "Renew before it reaches zero; the value goes negative once expired."
 
       - alert: TlsCertExpiryCritical
-        expr: senhub_httpcheck_tls_expiry < 7
+        expr: senhub_httpcheck_tls_expiry_seconds < 7*86400
         labels:
           severity: critical
         annotations:
-          summary: "TLS certificate of {{ $labels.target }} expires within a week"
+          summary: "TLS certificate of {{ $labels.httpcheck_target }} expires within a week"
           description: "Immediate renewal required."
 
       - alert: TcpPortDown
@@ -65,7 +72,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "TCP port {{ $labels.target }} not accepting connections"
+          summary: "TCP port {{ $labels.tcpdial_target }} not accepting connections"
           description: "Connect refused or timed out for 3 minutes."
 
       - alert: DnsLookupFailing
@@ -74,7 +81,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "DNS resolution of {{ $labels.name }} via {{ $labels.resolver }} failing"
+          summary: "DNS resolution of {{ $labels.dns_question_name }} via {{ $labels.dns_resolver }} failing"
           description: "Lookups failing for 3 minutes."
 
       - alert: DnsLookupSlow
@@ -83,5 +90,5 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Slow DNS resolution of {{ $labels.name }} via {{ $labels.resolver }}"
+          summary: "Slow DNS resolution of {{ $labels.dns_question_name }} via {{ $labels.dns_resolver }}"
           description: "Lookup time above 500ms for 10 minutes."

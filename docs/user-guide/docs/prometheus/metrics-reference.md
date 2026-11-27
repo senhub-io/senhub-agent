@@ -243,7 +243,7 @@ measurement (`up = 0`), never a missing series. Durations are seconds.
 | `senhub_httpcheck_duration_seconds` | gauge | s | `httpcheck_target` |
 | `senhub_httpcheck_duration_dns_seconds` / `_connect_` / `_tls_` / `_ttfb_` | gauge | s | `httpcheck_target` |
 | `senhub_httpcheck_response_size_bytes` | gauge | By | `httpcheck_target` |
-| `senhub_httpcheck_tls_expiry` | gauge | days (negative once expired) | `httpcheck_target` (TLS targets only) |
+| `senhub_httpcheck_tls_expiry_seconds` | gauge | s (negative once expired) | `httpcheck_target` (TLS targets only) |
 | `senhub_httpcheck_content_match` | gauge | bool 0/1 | `httpcheck_target` (only with `content_match`) |
 
 ### TCP Dial (`type: tcp_dial`)

@@ -1,6 +1,13 @@
 # SenHub agent alerting starter pack — SNMP (free tier):
 # snmp_poll device/interface health + snmp_trap receiver self-metrics.
 #
+# Rules query both possible metric names when they differ between
+# ingestion paths: the agent's Prometheus exposition names and the
+# names produced by the OTLP -> VictoriaMetrics path when
+# -opentelemetry.usePrometheusNaming=true strips the "senhub_"
+# prefix from OpenTelemetry metrics whose name does not start with
+# "senhub.". See the metrics reference in the user guide.
+#
 # ifOperStatus / ifAdminStatus values follow IF-MIB: 1=up, 2=down,
 # 3=testing, ...
 
@@ -13,25 +20,25 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "SNMP device {{ $labels.instance }} unreachable"
+          summary: "SNMP device {{ $labels.snmp_target }} unreachable"
           description: "Device not answering SNMP for 5 minutes."
 
       - alert: SnmpInterfaceDown
-        expr: senhub_snmp_interface_oper_status == 2 and senhub_snmp_interface_admin_status == 1
+        expr: (senhub_snmp_interface_oper_status or snmp_interface_oper_status) == 2 and (senhub_snmp_interface_admin_status or snmp_interface_admin_status) == 1
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "Interface {{ $labels.if_index }} down on {{ $labels.instance }}"
+          summary: "Interface {{ $labels.network_interface_index }} down on {{ $labels.snmp_target }}"
           description: "Operationally down while administratively up for 5 minutes."
 
       - alert: SnmpInterfaceErrors
-        expr: rate(senhub_snmp_interface_in_errors_total[5m]) + rate(senhub_snmp_interface_out_errors_total[5m]) > 1
+        expr: (rate(senhub_snmp_interface_in_errors_total[5m]) or rate(snmp_interface_in_errors_total[5m])) + (rate(senhub_snmp_interface_out_errors_total[5m]) or rate(snmp_interface_out_errors_total[5m])) > 1
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "Errors on interface {{ $labels.if_index }} of {{ $labels.instance }}"
+          summary: "Errors on interface {{ $labels.network_interface_index }} of {{ $labels.snmp_target }}"
           description: "More than 1 error/s sustained for 10 minutes."
 
       - alert: SnmpTrapCommunityMismatch

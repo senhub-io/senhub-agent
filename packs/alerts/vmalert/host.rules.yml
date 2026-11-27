@@ -1,8 +1,11 @@
 # SenHub agent alerting starter pack — host metrics (free tier).
 #
-# Metric names are the Prometheus exposition names produced both by the
-# agent's /probes/prometheus endpoint and by the OTLP -> collector ->
-# VictoriaMetrics chain. See the metrics reference in the user guide.
+# Rules query both possible metric names when they differ between
+# ingestion paths: the agent's Prometheus exposition names and the
+# names produced by the OTLP -> VictoriaMetrics path when
+# -opentelemetry.usePrometheusNaming=true strips the "senhub_"
+# prefix from OpenTelemetry metrics whose name does not start with
+# "senhub.". See the metrics reference in the user guide.
 #
 # Thresholds are conservative starting points; tune per environment.
 
@@ -10,7 +13,7 @@ groups:
   - name: senhub-host
     rules:
       - alert: HostHighCpu
-        expr: (1 - avg without (cpu_logical_number) (senhub_system_cpu_utilization_ratio{cpu_mode="idle"})) > 0.90
+        expr: (1 - avg without (cpu_logical_number) (senhub_system_cpu_utilization_ratio{cpu_mode="idle"} or system_cpu_utilization_ratio{cpu_mode="idle"})) > 0.90
         for: 15m
         labels:
           severity: warning
@@ -19,7 +22,7 @@ groups:
           description: "CPU usage above 90% for 15 minutes."
 
       - alert: HostMemoryPressure
-        expr: senhub_system_memory_utilization_ratio > 0.90
+        expr: (senhub_system_memory_utilization_ratio or system_memory_utilization_ratio) > 0.90
         for: 15m
         labels:
           severity: warning
@@ -28,7 +31,7 @@ groups:
           description: "Physical memory usage above 90% for 15 minutes."
 
       - alert: DiskAlmostFull
-        expr: senhub_system_filesystem_utilization_ratio{system_filesystem_state="used"} > 0.90
+        expr: (senhub_system_filesystem_utilization_ratio{system_filesystem_state="used"} or system_filesystem_utilization_ratio{system_filesystem_state="used"}) > 0.90
         for: 10m
         labels:
           severity: warning
@@ -38,8 +41,8 @@ groups:
 
       - alert: DiskWillFillIn24h
         expr: |
-          predict_linear(senhub_system_filesystem_usage_bytes{system_filesystem_state="available"}[6h], 24*3600) < 0
-          and senhub_system_filesystem_utilization_ratio{system_filesystem_state="used"} > 0.70
+          (predict_linear(senhub_system_filesystem_usage_bytes{system_filesystem_state="available"}[6h], 24*3600) or predict_linear(system_filesystem_usage_bytes{system_filesystem_state="available"}[6h], 24*3600)) < 0
+          and (senhub_system_filesystem_utilization_ratio{system_filesystem_state="used"} or system_filesystem_utilization_ratio{system_filesystem_state="used"}) > 0.70
         for: 30m
         labels:
           severity: critical
@@ -48,7 +51,7 @@ groups:
           description: "At the current 6h growth rate, no space left within 24 hours."
 
       - alert: NetworkInterfaceErrors
-        expr: senhub_system_network_errors_per_second > 10
+        expr: (senhub_system_network_errors_per_second or system_network_errors_per_second) > 10
         for: 10m
         labels:
           severity: warning

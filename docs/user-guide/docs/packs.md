@@ -35,9 +35,11 @@ which carries the `senhub_` prefix (`senhub_system_cpu_utilization_ratio`,
 `senhub_icmp_up`). They match when VictoriaMetrics or Prometheus scrapes
 the agent's [`/metrics` endpoint](prometheus/index.md). When the same
 metrics arrive by [OTLP push](otlp.md), the standard OpenTelemetry names
-lose the prefix in the backend (`system_cpu_utilization_ratio`), so the
-host expressions need the prefix removed. Check the name in your backend
-with a query before loading a file.
+lose the prefix in VictoriaMetrics started with
+`-opentelemetry.usePrometheusNaming` (`system_cpu_utilization_ratio`).
+Where the two names differ, the expressions query both with `or`, so the
+same files work on either path. With another backend, check the name with
+a query before loading a file.
 
 ### Load into vmalert
 
