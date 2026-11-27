@@ -4,8 +4,10 @@
 package cpu
 
 import (
+	"errors"
 	"fmt"
 	"math"
+	"os"
 	"time"
 
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -40,6 +42,13 @@ type unixCollector struct {
 	// already reports them.
 	lastKernel   *kernelCounters
 	lastKernelAt time.Time
+
+	times         func(perCPU bool) ([]cpu.TimesStat, error)
+	kernel        func() (*kernelCounters, error)
+	lastPerCoreAt time.Time
+	statePath     string
+	stateMaxAge   time.Duration
+	warm          *cpuWarmState
 }
 
 // timesDelta returns the user and nice deltas (with guest time netted
@@ -181,7 +190,7 @@ func (u *unixCollector) getBaseTags() ([]tags.Tag, error) {
 }
 
 func (u *unixCollector) collectCPUTimes(dataPoints *[]data_store.DataPoint, timestamp time.Time, baseTags []tags.Tag) error {
-	times, err := cpu.Times(false)
+	times, err := u.readTimes(false)
 	if err != nil {
 		u.timesUnavailable = true
 		return fmt.Errorf("error getting CPU times: %w", err)
@@ -197,6 +206,14 @@ func (u *unixCollector) collectCPUTimes(dataPoints *[]data_store.DataPoint, time
 	u.timesUnavailable = false
 
 	curr := times[0]
+
+	if u.lastTimes == nil && u.warm != nil && u.warm.Times != nil {
+		if u.warmUsable(u.warm.TimesAt, timestamp) {
+			u.lastTimes = u.warm.Times
+			u.lastTimestamp = u.warm.TimesAt
+		}
+		u.warm.Times = nil
+	}
 
 	// On the first collection we have nothing to diff against — store the
 	// snapshot and return without emitting per-mode percentages. The first
@@ -337,8 +354,14 @@ func (u *unixCollector) collectLoadAverage(dataPoints *[]data_store.DataPoint, t
 }
 
 func (u *unixCollector) collectPerCoreMetrics(dataPoints *[]data_store.DataPoint, timestamp time.Time, baseTags []tags.Tag) error {
-	times, err := cpu.Times(true)
+	times, err := u.readTimes(true)
 	if err == nil && len(times) > 0 {
+		if u.lastPerCore == nil && u.warm != nil && len(u.warm.PerCore) > 0 {
+			if u.warmUsable(u.warm.PerCoreAt, timestamp) {
+				u.lastPerCore = u.warm.PerCore
+			}
+			u.warm.PerCore = nil
+		}
 		if percents, ok := perCorePercents(u.lastPerCore, times); ok {
 			for i, cpuPercent := range percents {
 				if math.IsNaN(cpuPercent) {
@@ -361,6 +384,7 @@ func (u *unixCollector) collectPerCoreMetrics(dataPoints *[]data_store.DataPoint
 		// Memorize even on the first call or a core-count change, so the
 		// next tick has something to diff against.
 		u.lastPerCore = times
+		u.lastPerCoreAt = timestamp
 		return nil
 	}
 
@@ -412,7 +436,68 @@ func (u *unixCollector) collectProcessesCount(dataPoints *[]data_store.DataPoint
 }
 
 func (u *unixCollector) Close() error {
+	if u.statePath == "" || u.lastTimes == nil {
+		return nil
+	}
+	boot, err := hostpoll.BootIdentity()
+	if err != nil {
+		u.logger.Debug().Err(err).Msg("Warm state not saved: no boot identity")
+		return nil
+	}
+	st := cpuWarmState{
+		BootID:    boot,
+		TimesAt:   u.lastTimestamp,
+		Times:     u.lastTimes,
+		PerCoreAt: u.lastPerCoreAt,
+		PerCore:   u.lastPerCore,
+		KernelAt:  u.lastKernelAt,
+		Kernel:    u.lastKernel,
+	}
+	if err := hostpoll.SaveWarm(u.statePath, &st); err != nil {
+		u.logger.Warn().Err(err).Str("path", u.statePath).Msg("Warm state save failed")
+	}
 	return nil
+}
+
+func (u *unixCollector) SetState(path string, maxAge time.Duration) {
+	u.statePath = path
+	u.stateMaxAge = maxAge
+	var st cpuWarmState
+	if err := hostpoll.TakeWarm(path, &st); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			u.logger.Debug().Err(err).Str("path", path).Msg("Discarding unusable warm state")
+		}
+		return
+	}
+	u.warm = &st
+}
+
+func (u *unixCollector) warmUsable(readAt, now time.Time) bool {
+	return u.warm != nil && hostpoll.WarmUsable(u.warm.BootID, readAt, now, u.stateMaxAge)
+}
+
+func (u *unixCollector) readTimes(perCPU bool) ([]cpu.TimesStat, error) {
+	if u.times == nil {
+		return cpu.Times(perCPU)
+	}
+	return u.times(perCPU)
+}
+
+func (u *unixCollector) readKernel() (*kernelCounters, error) {
+	if u.kernel == nil {
+		return readKernelCounters()
+	}
+	return u.kernel()
+}
+
+type cpuWarmState struct {
+	BootID    string          `json:"boot_id"`
+	TimesAt   time.Time       `json:"times_at"`
+	Times     *cpu.TimesStat  `json:"times,omitempty"`
+	PerCoreAt time.Time       `json:"per_core_at"`
+	PerCore   []cpu.TimesStat `json:"per_core,omitempty"`
+	KernelAt  time.Time       `json:"kernel_at"`
+	Kernel    *kernelCounters `json:"kernel,omitempty"`
 }
 
 // collectCPUCount emits the number of logical processors. Mapped to the
@@ -446,7 +531,7 @@ type kernelCounters struct {
 // The first reading has nothing to subtract from and emits only the
 // gauge, the way the per-mode percentages warm up.
 func (u *unixCollector) collectKernelCounters(dataPoints *[]data_store.DataPoint, timestamp time.Time, baseTags []tags.Tag) error {
-	curr, err := readKernelCounters()
+	curr, err := u.readKernel()
 	if err != nil {
 		return err
 	}
@@ -457,6 +542,13 @@ func (u *unixCollector) collectKernelCounters(dataPoints *[]data_store.DataPoint
 		Tags:      baseTags,
 	})
 
+	if u.lastKernel == nil && u.warm != nil && u.warm.Kernel != nil {
+		if u.warmUsable(u.warm.KernelAt, timestamp) {
+			u.lastKernel = u.warm.Kernel
+			u.lastKernelAt = u.warm.KernelAt
+		}
+		u.warm.Kernel = nil
+	}
 	prev, prevAt := u.lastKernel, u.lastKernelAt
 	u.lastKernel, u.lastKernelAt = curr, timestamp
 	if prev == nil {
