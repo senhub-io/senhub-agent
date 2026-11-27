@@ -29,6 +29,10 @@ import (
 //   - a same_as edge from the new identity to the old one, so both timelines
 //     stay joinable forever without anything being rewritten.
 //
+// The alias must leave one cycle BEFORE the delete: the consumer never
+// resolves a same_as whose target identity is already retired, so a delete
+// first would leave the histories unjoined forever.
+//
 // Unconditional includes a fresh install where the old entity never existed:
 // their engine resolves the identity first and returns without doing anything
 // when nothing matches, and an orphan alias parks in their reconciliation
@@ -40,12 +44,10 @@ type RekeyAnnouncer struct {
 	legacyID   map[string]any
 	newType    string
 	newID      map[string]any
-	// announced counts emissions. The delete repeats for the first few cycles
-	// rather than firing once at startup: PublishEvent is best-effort and drops
-	// under backpressure, and at process start the entity pump may not have
-	// subscribed yet, so a single shot can vanish in silence. Repetition is free
-	// because the consumer's delete is idempotent by contract — written that way
-	// for a producer that restarts.
+	// announced counts cycles. The delete starts at cycle 2 so the alias leaves
+	// one cycle ahead of it, then repeats because PublishEvent is best-effort
+	// and a single shot can vanish in silence; the consumer's delete is
+	// idempotent by contract.
 	announced atomic.Int32
 	// checked records that the marker of an earlier start was looked for; it
 	// only latches once a marker store is active, so a look made before
@@ -187,8 +189,10 @@ func NewRekeyAnnouncerWithIDs(legacyType string, legacyID map[string]any, newTyp
 	}
 }
 
-// Announce publishes the delete of the old identity. Call it once per
-// observation cycle; it stops on its own after RekeyAnnounceCycles.
+// Announce publishes the delete of the old identity, one cycle after the alias
+// started leaving, so the consumer can still resolve the same_as against a
+// live target. Call it once per observation cycle; it stops on its own after
+// the alias has run for RekeyAnnounceCycles+1 cycles.
 func (r *RekeyAnnouncer) Announce() {
 	if r == nil {
 		return
@@ -198,10 +202,10 @@ func (r *RekeyAnnouncer) Announce() {
 		return
 	}
 	n := r.announced.Add(1)
-	if n > RekeyAnnounceCycles {
+	if n > RekeyAnnounceCycles+1 || n == 1 {
 		return
 	}
-	if n == RekeyAnnounceCycles {
+	if n == RekeyAnnounceCycles+1 {
 		defer r.writeMarker()
 	}
 	PublishEvent(Event{
@@ -223,7 +227,7 @@ func (r *RekeyAnnouncer) SameAs() (Relation, bool) {
 		return Relation{}, false
 	}
 	r.checkMarker()
-	if r.suppressed.Load() || r.announced.Load() > RekeyAnnounceCycles {
+	if r.suppressed.Load() || r.announced.Load() > RekeyAnnounceCycles+1 {
 		return Relation{}, false
 	}
 	return Relation{
