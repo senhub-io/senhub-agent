@@ -189,6 +189,13 @@ mistake.
   record still being assembled is not part of the saved position: after
   a crash it is read again, not lost. Plan deduplication downstream if
   exact-once matters.
+- **A hard stop can lose the last records.** The saved position moves
+  once a record is handed to the outputs, not once an output has sent
+  it. A `kill -9`, an out-of-memory kill or a power cut can therefore
+  lose the records read in the few seconds before it: they were in the
+  agent's memory, on their way to the output, and the position was
+  already past them. A normal stop, a restart or an update sends them
+  first, and an export the backend refuses is kept on disk.
 - **Event-driven.** No polling cycle: records ship as lines are
   written.
 - **Start position.** Default is tail-from-now. Set
