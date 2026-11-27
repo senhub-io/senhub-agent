@@ -51,16 +51,21 @@ func TestLogsQueueAck_BackoffGapsOnInjectedClock(t *testing.T) {
 		if got := next(); got != time.Duration(w)*time.Second {
 			t.Fatalf("gap %d = %v, want %ds", i, got, w)
 		}
+		if i == len(want)-1 {
+			break
+		}
 		fire <- time.Time{} // the probe runs and fails
 	}
 
+	// The backend is back before the last armed probe fires.
 	r.exp.setDown(false)
-	if got := next(); got != replayMaxDelay {
-		t.Fatalf("armed %v before the recovery probe", got)
-	}
 	fire <- time.Time{} // acknowledged: the queue empties
-	if got := next(); got != replayMaxDelay {
-		t.Errorf("idle gap after a drained queue = %v, want %v", got, replayMaxDelay)
+	// A drained queue arms no clock: the idle agent waits for the next
+	// queued batch instead of waking every minute to find nothing.
+	select {
+	case d := <-asked:
+		t.Errorf("a drained queue armed a %v clock, want none", d)
+	case <-time.After(300 * time.Millisecond):
 	}
 	if r.pendingRecords() != 0 {
 		t.Fatalf("%d records left after recovery", r.pendingRecords())

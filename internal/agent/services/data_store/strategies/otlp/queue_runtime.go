@@ -412,14 +412,14 @@ func (r *replayLoop) armed(delay time.Duration) time.Duration {
 func (r *replayLoop) loop() {
 	defer r.wg.Done()
 	delay := r.firstDelay
+	// tick is armed once per state change, so a stray wake never pushes
+	// the pending probe back. An empty queue arms nothing: every queued
+	// batch kicks the loop, so an idle agent does not wake to find nothing.
+	var tick <-chan time.Time
 	if n, _ := r.pending(); n > 0 {
 		r.probing.Store(true)
-	} else {
-		delay = r.maxDelay
+		tick = r.after(r.armed(delay))
 	}
-	// tick is armed once per state change, so a stray wake never pushes
-	// the pending probe back.
-	tick := r.after(r.armed(delay))
 	for {
 		select {
 		case <-r.quit:
@@ -450,10 +450,10 @@ func (r *replayLoop) loop() {
 		if n, _ := r.pending(); n > 0 {
 			r.probing.Store(true)
 			delay = nextReplayDelay(delay, r.firstDelay, r.maxDelay, err != nil)
+			tick = r.after(r.armed(delay))
 		} else {
 			r.probing.Store(false)
-			delay = r.maxDelay
+			tick = nil
 		}
-		tick = r.after(r.armed(delay))
 	}
 }
