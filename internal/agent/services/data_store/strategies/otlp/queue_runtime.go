@@ -454,6 +454,12 @@ func (r *replayLoop) loop() {
 		} else {
 			r.probing.Store(false)
 			tick = nil
+			// A batch queued while probing was still true sent no kick:
+			// look once more now that a kick would get through.
+			if n, _ := r.pending(); n > 0 && r.probing.CompareAndSwap(false, true) {
+				delay = r.firstDelay
+				tick = r.after(r.armed(delay))
+			}
 		}
 	}
 }
