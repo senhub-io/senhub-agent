@@ -127,11 +127,13 @@ func TestWalkRaw_ErrorStatusIsAnError(t *testing.T) {
 	}
 }
 
-func TestBulkWalk_ErrorStatusIsAnError(t *testing.T) {
+// The metric rail keeps reading an error-status as an empty column: a device
+// that answers genErr for a MIB it does not carry must not fail the cycle.
+func TestBulkWalk_ErrorStatusStaysAnEmptyColumn(t *testing.T) {
 	cl := newTestWalkClient(t, startWalkResponder(t))
-	_, err := cl.BulkWalk("1.3.6.1.2.1.1.5")
-	if err == nil {
-		t.Fatal("expected non-nil error for genErr error-status, got nil")
+	binds, err := cl.BulkWalk("1.3.6.1.2.1.1.5")
+	if err != nil || len(binds) != 0 {
+		t.Fatalf("BulkWalk = %d binds, err %v; want an empty column and no error", len(binds), err)
 	}
 }
 

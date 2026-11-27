@@ -121,7 +121,7 @@ func (c *gosnmpClient) Get(oids []string) ([]snmpVarBind, error) {
 }
 
 func (c *gosnmpClient) BulkWalk(baseOID string) ([]snmpVarBind, error) {
-	pdus, err := c.bulkWalkChecked(baseOID)
+	pdus, err := c.handle.BulkWalkAll("." + baseOID)
 	if err != nil {
 		return nil, fmt.Errorf("snmp bulkwalk %s: %w", baseOID, err)
 	}
@@ -135,7 +135,11 @@ func (c *gosnmpClient) BulkWalk(baseOID string) ([]snmpVarBind, error) {
 // WalkRaw mirrors BulkWalk but keeps every SYNTAX undecoded, for the
 // topology rail. It does not filter non-numeric binds.
 func (c *gosnmpClient) WalkRaw(baseOID string) ([]snmpRawBind, error) {
-	pdus, err := c.bulkWalkChecked(baseOID)
+	walk := c.handle.BulkWalkAll
+	if identityWalks[baseOID] {
+		walk = func(string) ([]gosnmp.SnmpPDU, error) { return c.bulkWalkChecked(baseOID) }
+	}
+	pdus, err := walk("." + baseOID)
 	if err != nil {
 		return nil, fmt.Errorf("snmp walkraw %s: %w", baseOID, err)
 	}
@@ -144,6 +148,18 @@ func (c *gosnmpClient) WalkRaw(baseOID string) ([]snmpRawBind, error) {
 		out = append(out, snmpRawBind{OID: snmpcore.TrimLeadingDot(pdu.Name), Type: pdu.Type, Value: pdu.Value})
 	}
 	return out, nil
+}
+
+// identityWalks are the subtrees the device identity is read from. On them an
+// error-status must read as a failed read, so the identity hold applies; on
+// any other table a device that answers genErr for a MIB it does not carry
+// keeps reading as an empty table, as before.
+var identityWalks = map[string]bool{
+	oidSysNameBase:          true,
+	oidSysObjectIDBase:      true,
+	oidSnmpEngineIDBase:     true,
+	oidEntPhysicalClass:     true,
+	oidEntPhysicalSerialNum: true,
 }
 
 // bulkWalkChecked walks like gosnmp.BulkWalkAll but fails on a response that
