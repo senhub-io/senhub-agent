@@ -435,6 +435,7 @@ func statIdentity(path string) (os.FileInfo, error) {
 func (p *FileTailProbe) scanAndTail() {
 	p.restartStalledTails()
 	issues := map[string]string{}
+	kept := map[string]bool{}
 	for _, pattern := range p.config.Paths {
 		matches, err := filepath.Glob(pattern)
 		if err != nil {
@@ -456,6 +457,7 @@ func (p *FileTailProbe) scanAndTail() {
 			if err != nil {
 				abs = pattern
 			}
+			kept[abs] = true
 			p.mu.Lock()
 			p.awaiting[abs] = true
 			p.mu.Unlock()
@@ -466,11 +468,13 @@ func (p *FileTailProbe) scanAndTail() {
 			if err != nil {
 				abs = m
 			}
+			kept[abs] = true
 			if err := p.startTail(abs); err != nil {
 				issues[abs] = err.Error()
 			}
 		}
 	}
+	p.dropVanishedTails(kept)
 	p.recordIssues(issues)
 }
 
@@ -672,6 +676,9 @@ type tailState struct {
 	mu            sync.Mutex
 	opened        os.FileInfo
 	mismatchSince time.Time
+	// vanishedSince records when the path stopped existing, so a deleted
+	// glob match is dropped only after stallGrace, not on a single miss.
+	vanishedSince time.Time
 	// movedSeen is set by a rotation check that found another file at the
 	// path; a second check that finds it again restarts the tail.
 	movedSeen     bool
@@ -1279,6 +1286,73 @@ func (p *FileTailProbe) forgetDeadTail(file string, ts *tailState, cause error) 
 	delete(p.tailing, file)
 	p.fileEmitted.Delete(file)
 	p.warn().Err(cause).Str("file", file).Msg("tail ended; retrying on next rescan")
+}
+
+// dropVanishedTails stops tails whose path is no longer covered by any
+// pattern and no longer exists on disk. A literal path stays followed even
+// when missing, because some rotations delete then recreate the file; only
+// glob matches that disappeared are abandoned after stallGrace.
+func (p *FileTailProbe) dropVanishedTails(kept map[string]bool) {
+	var drop []string
+	p.mu.Lock()
+	for file, ts := range p.tailing {
+		if kept[file] {
+			ts.mu.Lock()
+			ts.vanishedSince = time.Time{}
+			ts.mu.Unlock()
+			continue
+		}
+		if _, err := os.Stat(file); err == nil || !os.IsNotExist(err) {
+			ts.mu.Lock()
+			ts.vanishedSince = time.Time{}
+			ts.mu.Unlock()
+			continue
+		}
+		ts.mu.Lock()
+		if ts.vanishedSince.IsZero() {
+			ts.vanishedSince = time.Now()
+			ts.mu.Unlock()
+			continue
+		}
+		vanished := time.Since(ts.vanishedSince) >= p.stallGrace
+		ts.mu.Unlock()
+		if vanished {
+			drop = append(drop, file)
+		}
+	}
+	states := make([]*tailState, len(drop))
+	for i, file := range drop {
+		states[i] = p.tailing[file]
+	}
+	p.mu.Unlock()
+	for i, file := range drop {
+		p.stopVanishedTail(file, states[i])
+	}
+}
+
+// stopVanishedTail ends the tail of a deleted file and forgets it with its
+// counter. Its bookmark entry stays: a file that comes back with the same
+// first bytes resumes where it was.
+func (p *FileTailProbe) stopVanishedTail(file string, ts *tailState) {
+	p.mu.Lock()
+	if p.stopped || p.tailing[file] != ts {
+		p.mu.Unlock()
+		return
+	}
+	delete(p.tailing, file)
+	delete(p.polling, file)
+	p.mu.Unlock()
+	// superseded stays false: the tail must still publish any multiline
+	// record it holds, like a naturally ended tail.
+	ts.t.Kill(nil)
+	timer := time.NewTimer(consumeExitTimeout)
+	defer timer.Stop()
+	select {
+	case <-ts.done:
+	case <-timer.C:
+	}
+	p.fileEmitted.Delete(file)
+	p.info().Str("file", file).Msg("followed file was deleted; no longer followed")
 }
 
 func (p *FileTailProbe) publish(pc ParserConfig, line string, readTime time.Time, probeName, file string) {
