@@ -173,7 +173,11 @@ otlp:
                                   # empty = no checkpoint, queues in the state
                                   # directory (see "Logs, metrics and traces
                                   # survive an outage")
-    interval: 30s                 # default 30s
+    interval: 30s                 # default 30s: how often the checkpoint is
+                                  # written (atomic rewrite with fsync, even when
+                                  # nothing changed); raise it on a host where
+                                  # disk writes matter, at the cost of older
+                                  # values restored after a crash
     # Disk cap for the logs dead-letter queue, which holds batches
     # the receiver could not take during an outage. Past it the
     # oldest batches are evicted. 0 keeps the default.
