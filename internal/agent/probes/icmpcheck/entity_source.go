@@ -79,14 +79,12 @@ func (p *ICMPCheckProbe) entityForResult(res pingResult) (entity.Entity, bool) {
 		return entity.Entity{}, false
 	}
 
-	attrs := map[string]any{}
-	if p.entitySrc.hostID != "" {
-		attrs["senhub.check.probe_host.id"] = p.entitySrc.hostID
-	}
+	// No observer attribute: the address is shared by every agent that
+	// pings it, so one would flap between them. The observer rides the
+	// monitors edge from the agent's service.instance.
 	return entity.Entity{
-		Type:       "network.address",
-		ID:         map[string]any{"network.address": addr.String()},
-		Attributes: attrs,
+		Type: "network.address",
+		ID:   map[string]any{"network.address": addr.String()},
 	}, true
 }
 

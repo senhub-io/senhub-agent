@@ -31,7 +31,6 @@ func TestBuildEntityObservation(t *testing.T) {
 		wantRelations int
 		wantType      string
 		wantID        map[string]any
-		wantAttr      string
 	}{
 		{
 			name:    "loopback target emits nothing",
@@ -46,7 +45,6 @@ func TestBuildEntityObservation(t *testing.T) {
 			wantRelations: 1,
 			wantType:      "network.address",
 			wantID:        map[string]any{"network.address": "192.0.2.10"},
-			wantAttr:      "host-1",
 		},
 		{
 			name:          "remote hostname resolved emits canonical IP identity",
@@ -56,7 +54,6 @@ func TestBuildEntityObservation(t *testing.T) {
 			wantRelations: 1,
 			wantType:      "network.address",
 			wantID:        map[string]any{"network.address": "192.0.2.20"},
-			wantAttr:      "host-1",
 		},
 		{
 			name:          "empty agent id emits no monitors relation",
@@ -66,7 +63,6 @@ func TestBuildEntityObservation(t *testing.T) {
 			wantRelations: 0,
 			wantType:      "network.address",
 			wantID:        map[string]any{"network.address": "192.0.2.10"},
-			wantAttr:      "host-1",
 		},
 	}
 
@@ -90,8 +86,10 @@ func TestBuildEntityObservation(t *testing.T) {
 			if ent.ID["network.address"] != tc.wantID["network.address"] {
 				t.Errorf("network.address = %v, want %v", ent.ID["network.address"], tc.wantID["network.address"])
 			}
-			if got := ent.Attributes["senhub.check.probe_host.id"]; got != tc.wantAttr {
-				t.Errorf("probe_host.id attr = %v, want %v", got, tc.wantAttr)
+			// The address is shared by every agent that pings it: an
+			// observer attribute would flap between them (ent#815).
+			if len(ent.Attributes) != 0 {
+				t.Errorf("address attributes = %v, want none", ent.Attributes)
 			}
 
 			if tc.wantRelations == 0 {
