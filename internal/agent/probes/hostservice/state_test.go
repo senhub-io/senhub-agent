@@ -14,3 +14,46 @@ func TestOnlyARunningServiceCountsAsRunning(t *testing.T) {
 		}
 	}
 }
+
+func TestStatusSystemd(t *testing.T) {
+	for _, tc := range []struct {
+		activeState string
+		want        string
+	}{
+		{"active", "running"},
+		{"reloading", "running"},
+		{"refreshing", "running"},
+		{"inactive", "stopped"},
+		{"maintenance", "stopped"},
+		{"activating", "starting"},
+		{"deactivating", "stopping"},
+		{"failed", "failed"},
+		{"", "unknown"},
+		{"maintenance-mode", "unknown"},
+	} {
+		if got := StatusSystemd(tc.activeState); got != tc.want {
+			t.Errorf("StatusSystemd(%q) = %q, want %q", tc.activeState, got, tc.want)
+		}
+	}
+}
+
+func TestStatusWindows(t *testing.T) {
+	for _, tc := range []struct {
+		scmState int
+		want     string
+	}{
+		{1, "stopped"},
+		{2, "starting"},
+		{5, "starting"},
+		{3, "stopping"},
+		{6, "stopping"},
+		{4, "running"},
+		{7, "paused"},
+		{0, "unknown"},
+		{8, "unknown"},
+	} {
+		if got := StatusWindows(tc.scmState); got != tc.want {
+			t.Errorf("StatusWindows(%d) = %q, want %q", tc.scmState, got, tc.want)
+		}
+	}
+}

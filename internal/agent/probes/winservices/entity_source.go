@@ -3,6 +3,7 @@ package winservices
 import (
 	"sync"
 
+	"senhub-agent.go/internal/agent/probes/hostservice"
 	"senhub-agent.go/internal/agent/services/entity"
 )
 
@@ -78,6 +79,7 @@ func buildHostServiceEntity(hostID, hostName string, s serviceState) (entity.Ent
 	attrs := map[string]any{
 		"host.service.manager": hostServiceManagerWindows,
 	}
+	attrs[hostservice.StatusKey] = hostservice.StatusWindows(s.state)
 	if hostName != "" {
 		attrs["host.name"] = hostName
 	}

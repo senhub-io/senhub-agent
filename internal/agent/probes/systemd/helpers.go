@@ -11,11 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"senhub-agent.go/internal/agent/probes/hostservice"
-
 	dbus "github.com/coreos/go-systemd/v22/dbus"
 
 	"senhub-agent.go/internal/agent/probes/dbcommon"
+	"senhub-agent.go/internal/agent/probes/hostservice"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/data_store"
 	"senhub-agent.go/internal/agent/tags"
@@ -263,4 +262,28 @@ func buildDatapoints(u dbus.UnitStatus, ts time.Time, nRestarts *float64, hostID
 	}
 
 	return points
+}
+
+// addInstalledUnits appends a synthetic UnitStatus for every enabled unit
+// file that is not currently loaded, so that a stopped automatic-start
+// service still shows up as inactive rather than disappearing.
+func addInstalledUnits(all []dbus.UnitStatus, files []dbus.UnitFile, states map[string]string) []dbus.UnitStatus {
+	loaded := make(map[string]struct{}, len(all))
+	for _, u := range all {
+		loaded[u.Name] = struct{}{}
+	}
+	for _, f := range files {
+		name := filepath.Base(f.Path)
+		if _, ok := loaded[name]; ok {
+			continue
+		}
+		all = append(all, dbus.UnitStatus{
+			Name:        name,
+			LoadState:   "not-found",
+			ActiveState: "inactive",
+			SubState:    "dead",
+		})
+		states[name] = f.Type
+	}
+	return all
 }

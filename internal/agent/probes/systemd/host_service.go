@@ -1,6 +1,9 @@
 package systemd
 
-import "senhub-agent.go/internal/agent/services/entity"
+import (
+	"senhub-agent.go/internal/agent/probes/hostservice"
+	"senhub-agent.go/internal/agent/services/entity"
+)
 
 const (
 	systemdManager = "systemd"
@@ -30,6 +33,7 @@ func buildHostServiceEntity(hostID, hostName string, u hostServiceUnit) (entity.
 			"host.service.manager":    systemdManager,
 			"host.service.start_mode": u.UnitFileState,
 			"host.name":               hostName,
+			hostservice.StatusKey:     hostservice.StatusSystemd(u.ActiveState),
 		},
 	}
 	rel := entity.Relation{

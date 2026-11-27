@@ -422,3 +422,24 @@ func TestBuildDatapoints_DetailState(t *testing.T) {
 		t.Error("detail=state emitted more than active_state")
 	}
 }
+
+func TestAddInstalledUnits(t *testing.T) {
+	all := []dbus.UnitStatus{{Name: "a.service", ActiveState: "active"}}
+	files := []dbus.UnitFile{
+		{Path: "/etc/systemd/system/multi-user.target.wants/a.service", Type: "enabled"},
+		{Path: "/usr/lib/systemd/system/b.service", Type: "enabled"},
+	}
+	states := map[string]string{}
+
+	got := addInstalledUnits(all, files, states)
+
+	if len(got) != 2 {
+		t.Fatalf("got %d units, want 2", len(got))
+	}
+	if got[1].Name != "b.service" || got[1].ActiveState != "inactive" {
+		t.Errorf("added unit = %+v, want b.service inactive", got[1])
+	}
+	if states["b.service"] != "enabled" {
+		t.Errorf("states[b.service] = %q, want enabled", states["b.service"])
+	}
+}

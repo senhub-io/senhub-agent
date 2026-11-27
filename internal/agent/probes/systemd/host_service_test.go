@@ -54,3 +54,27 @@ func TestLegacyServiceInstanceID(t *testing.T) {
 		t.Fatalf("legacyServiceInstanceID = %q, want %q", got, want)
 	}
 }
+
+func TestBuildHostServiceEntityCarriesStatus(t *testing.T) {
+	for _, tc := range []struct {
+		activeState string
+		want        string
+	}{
+		{"failed", "failed"},
+		{"", "unknown"},
+	} {
+		u := hostServiceUnit{
+			Name:          "a.service",
+			ActiveState:   tc.activeState,
+			UnitFileState: "enabled",
+		}
+		ent, _ := buildHostServiceEntity("host-1", "host-1", u)
+		got, ok := ent.Attributes["status"]
+		if !ok {
+			t.Fatalf("ActiveState %q: status attribute missing", tc.activeState)
+		}
+		if got != tc.want {
+			t.Errorf("ActiveState %q: status = %v, want %q", tc.activeState, got, tc.want)
+		}
+	}
+}
