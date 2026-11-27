@@ -4,7 +4,7 @@ Dashboards deployed via Grafana's file-based provisioning. Drop into
 the Grafana host's provisioned dashboards directory; the running
 Grafana picks them up within ~10 s (default `updateIntervalSeconds`).
 
-## Catalog v1 — 23 dashboards
+## Catalog v1 — 34 dashboards
 
 ### Linux host (7)
 
@@ -53,6 +53,24 @@ Grafana picks them up within ~10 s (default `updateIntervalSeconds`).
 | `netscaler-appliance-ssl.json` | SenHub NetScaler — Appliance & SSL   | `senhub-netscaler-appliance-ssl` |
 | `citrix-sessions-logons.json`  | SenHub Citrix VDI — Sessions & Logons | `senhub-citrix-sessions-logons` |
 | `citrix-capacity-health.json`  | SenHub Citrix VDI — Capacity & Health | `senhub-citrix-capacity-health` |
+
+### IBM i (6)
+
+| File | Dashboard | UID |
+|---|---|---|
+| `ibmi-overview.json` | SenHub IBM i — Overview | `senhub-ibmi-overview` |
+| `ibmi-jobs.json` | SenHub IBM i — Jobs | `senhub-ibmi-jobs` |
+| `ibmi-storage.json` | SenHub IBM i — Storage | `senhub-ibmi-storage` |
+| `ibmi-database.json` | SenHub IBM i — Database | `senhub-ibmi-database` |
+| `ibmi-network.json` | SenHub IBM i — Network | `senhub-ibmi-network` |
+| `ibmi-security.json` | SenHub IBM i — Security | `senhub-ibmi-security` |
+
+### Databases (2)
+
+| File | Dashboard | UID |
+|---|---|---|
+| `mysql-overview.json` | SenHub MySQL / MariaDB — Overview | `senhub-mysql-overview` |
+| `postgresql-overview.json` | SenHub PostgreSQL — Overview | `senhub-postgresql-overview` |
 
 ### Proxmox VE (1)
 
