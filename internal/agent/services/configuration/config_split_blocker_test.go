@@ -9,9 +9,10 @@ import (
 
 func TestMonolithicSplitBlocker(t *testing.T) {
 	tests := []struct {
-		name    string
-		setup   func(t *testing.T, dir string)
-		wantErr bool
+		name      string
+		multiFile bool
+		setup     func(t *testing.T, dir string)
+		wantErr   bool
 	}{
 		{
 			name: "monolithic file alone blocks nothing",
@@ -35,7 +36,8 @@ func TestMonolithicSplitBlocker(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "multi-file layout never blocks",
+			name:      "multi-file layout never blocks",
+			multiFile: true,
 			setup: func(t *testing.T, dir string) {
 				t.Helper()
 				writeFragment(t, filepath.Join(dir, "probes.d", "10-mine.yaml"), "- name: mine\n  type: cpu\n")
@@ -46,9 +48,8 @@ func TestMonolithicSplitBlocker(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			monolithic := tc.name != "multi-file layout never blocks"
 			content := monolithicHTTPConfig
-			if !monolithic {
+			if tc.multiFile {
 				content = "agent:\n  licence: test\n"
 			}
 			configPath := filepath.Join(dir, "agent.yaml")

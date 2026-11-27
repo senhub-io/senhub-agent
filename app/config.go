@@ -461,7 +461,7 @@ func checkConfig(configPath string) checkOutcome {
 			fmt.Printf("  [WARN] the agent cannot split %s into probes.d/ and strategies.d/: %v\n", filepath.Base(configPath), blocker)
 			warnings++
 		} else {
-			fmt.Printf("  [INFO] %s is in the single-file layout; the agent splits it into probes.d/ and strategies.d/ at its next start\n", filepath.Base(configPath))
+			fmt.Printf("  [INFO] %s is in the single-file layout; the agent splits it into probes.d/ and strategies.d/ at its next start (if it stays so, the start log says why: \"Monolithic config not split\")\n", filepath.Base(configPath))
 		}
 	}
 
