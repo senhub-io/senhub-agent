@@ -306,13 +306,15 @@ func CollectHealth(cfg configuration.ConfigurationData, start time.Time) extensi
 	for _, p := range cfg.Probes {
 		rs := agentstate.GetProbeRunState(p.ID())
 		ph := extension.ProbeHealth{
-			Name:      p.Name,
-			Enabled:   p.IsEnabled(),
-			Running:   rs.Running,
-			Health:    rs.Health,
-			LastError: rs.LastError,
-			StartedAt: rs.StartedAt,
-			LastCycle: rs.LastCycle,
+			Name:        p.Name,
+			Enabled:     p.IsEnabled(),
+			Running:     rs.Running,
+			Health:      rs.Health,
+			LastError:   rs.LastError,
+			TargetDown:  rs.TargetDown,
+			TargetError: rs.TargetError,
+			StartedAt:   rs.StartedAt,
+			LastCycle:   rs.LastCycle,
 		}
 		if ph.Enabled && ph.Health == "failed" {
 			health.Healthy = false

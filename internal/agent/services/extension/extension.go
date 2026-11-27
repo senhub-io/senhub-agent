@@ -243,6 +243,11 @@ type ProbeHealth struct {
 	// running and has not failed to start.
 	Health    string
 	LastError string
+	// TargetDown is true when the last check the probe published found
+	// its target failing, with TargetError holding the failure class;
+	// the probe itself still runs.
+	TargetDown  bool
+	TargetError string
 	// StartedAt is when the probe joined the running set; zero when it
 	// is not running.
 	StartedAt time.Time

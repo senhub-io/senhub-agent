@@ -112,6 +112,27 @@ var probeCycles = map[string]probeCycle{}
 // set, so a remote health report can say since when a probe has run.
 var probeStartedAt = map[string]time.Time{}
 
+// probeTargetState is the last check outcome a probe published, kept apart
+// from its health.
+type probeTargetState struct {
+	down   bool
+	reason string
+}
+
+// probeTarget holds the last check outcome each probe published.
+var probeTarget = map[string]probeTargetState{}
+
+// RecordProbeTarget records the last check outcome a probe published; a
+// passing check clears the reason.
+func RecordProbeTarget(probeID string, down bool, reason string) {
+	probeStateMu.Lock()
+	defer probeStateMu.Unlock()
+	if !down {
+		reason = ""
+	}
+	probeTarget[probeID] = probeTargetState{down: down, reason: reason}
+}
+
 // RecordProbeCycle notes that the probe handed points datapoints to the
 // outputs just now. Called by ProbePoller for each delivery.
 func RecordProbeCycle(probeID string, points int) {
@@ -285,6 +306,11 @@ func SetActiveProbes(probeIDs []string) {
 			delete(probeCycles, id)
 		}
 	}
+	for id := range probeTarget {
+		if _, alive := newSet[id]; !alive {
+			delete(probeTarget, id)
+		}
+	}
 	pruneProbeKindLocked(newSet)
 }
 
@@ -342,6 +368,11 @@ type ProbeRunState struct {
 	// LastError is the message of the last failed cycle while Health is
 	// "failed"; empty otherwise.
 	LastError string
+	// TargetDown is true when the last check the probe published found
+	// its target failing, with TargetError holding the failure class;
+	// the probe itself still runs.
+	TargetDown  bool
+	TargetError string
 	// LastCycle is when the probe last handed datapoints to the outputs
 	// and LastPoints how many; zero until it has.
 	LastCycle  time.Time
@@ -367,6 +398,7 @@ func GetProbeRunState(probeID string) ProbeRunState {
 	}
 	_, eventDriven := probeEventDriven[probeID]
 	state := ProbeRunState{Running: true, EventDriven: eventDriven, LastCycle: probeCycles[probeID].at, LastPoints: probeCycles[probeID].points, StartedAt: probeStartedAt[probeID]}
+	state.TargetDown, state.TargetError = probeTarget[probeID].down, probeTarget[probeID].reason
 	switch probeHealth[probeID] {
 	case probeHealthOK:
 		state.Health = "ok"

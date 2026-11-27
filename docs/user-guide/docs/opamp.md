@@ -209,6 +209,21 @@ The agent answers each message with `applied` or `failed` and a reason: `signatu
 
 Without `license_from_server`, the agent ignores what the server sends and keeps its local licence. A site without any outbound flow uses the same files: `license activate` for the licence and `license revocations import` for the list (see [CLI](cli.md#license)).
 
+## Health reported to the server
+
+The agent reports one health component per probe, `probe:<name>`, and one per output, `output:<name>`. A component is healthy when it runs; its status says more:
+
+| Status | Healthy | Meaning |
+|---|---|---|
+| `running` | yes | The probe runs and its last check, if it makes one, passed. |
+| `target_down` | yes | The probe runs, but the last check it published found its target failing. `last_error` gives the failure class: `target_down`, `timeout`, `auth_denied`, `tls_error`, `config_error`, `protocol_error` or `permission_denied`, followed by `(N checks failing)` when several targets fail. |
+| `starting` | yes | The probe has not completed its first collection yet. |
+| `disabled` | yes | The probe is disabled in the configuration. |
+| `failed` | no | The probe runs but its last collection failed; `last_error` gives the error. |
+| `retrying` | no | The probe could not start and the agent retries it; `last_error` gives the reason. |
+
+A target that is down does not make the probe unhealthy: the agent still runs it and reports the outage as data (`up = 0`, `senhub.probe.check.result`). `target_down` comes from probes that publish `senhub.probe.check.result`: active checks, databases, brokers and application probes. An output is `running`, `degraded` while its exports fail, or `failed` when it could not start.
+
 ## State and persistence
 
 The applied overlay and its replay floor are stored in the agent's state directory: `/var/lib/senhub-agent` on Linux, `%ProgramData%\SenHub` on Windows, or `$SENHUB_STATE_DIR`. An agent run outside its service as a non-root user must set `SENHUB_STATE_DIR` to a writable directory, or the overlay is not persisted.

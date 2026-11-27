@@ -305,6 +305,8 @@ alias ProbeHealth = senhub-agent.go/internal/agent/services/extension.ProbeHealt
   field Name string
   field Running bool
   field StartedAt time.Time
+  field TargetDown bool
+  field TargetError string
 func RedactSecrets(s string) string
 func Register(e senhub-agent.go/probesdk/extension.Extension)
 alias Service = senhub-agent.go/internal/agent/services/extension.Service
@@ -761,6 +763,8 @@ type senhub-agent.go/internal/agent/services/extension.ProbeHealth struct
   field Name string
   field Running bool
   field StartedAt time.Time
+  field TargetDown bool
+  field TargetError string
 type senhub-agent.go/internal/agent/services/extension.Service interface
   imethod Shutdown(ctx context.Context) error
   imethod Start(ctx context.Context) error

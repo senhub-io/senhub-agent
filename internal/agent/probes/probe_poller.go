@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"senhub-agent.go/internal/agent/periodic_scheduler"
+	"senhub-agent.go/internal/agent/probes/dbcommon"
 	"senhub-agent.go/internal/agent/probes/types"
 	"senhub-agent.go/internal/agent/services/agentstate"
 	"senhub-agent.go/internal/agent/services/configuration"
@@ -408,6 +409,9 @@ func (p *ProbePoller) collect(runCtx context.Context) error {
 	span.SetStatus(codes.Ok, "")
 	p.recordHealth(nil)
 	p.recordDelivery(len(data))
+	if seen, down, reason := checkOutcome(data); seen {
+		agentstate.RecordProbeTarget(p.ProbeId, down, reason)
+	}
 
 	data = p.withIdentityTags(data)
 
@@ -698,4 +702,30 @@ func (p *ProbePoller) Shutdown(ctx context.Context) error {
 		p.unregisterEntitySource = nil
 	}
 	return p.scheduler.Shutdown(ctx)
+}
+
+// checkOutcome inspects a delivery for check-result datapoints and reports
+// whether any were seen, whether at least one found the target failing,
+// and the failure class of the first failing one.
+func checkOutcome(data []datapoint.DataPoint) (seen, down bool, reason string) {
+	failing := 0
+	for i := range data {
+		if data[i].Name != dbcommon.CheckResultMetric {
+			continue
+		}
+		seen = true
+		v := data[i].Value
+		if v == 0 {
+			continue
+		}
+		failing++
+		if !down {
+			down = true
+			reason = dbcommon.CheckResult(int(v)).String()
+		}
+	}
+	if failing > 1 {
+		reason = fmt.Sprintf("%s (%d checks failing)", reason, failing)
+	}
+	return seen, down, reason
 }
