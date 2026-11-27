@@ -1350,6 +1350,9 @@ func (p *FileTailProbe) stopVanishedTail(file string, ts *tailState) {
 	select {
 	case <-ts.done:
 	case <-timer.C:
+		// A reader stuck past the wait must not write the bookmark of a
+		// file recreated at the same path in the meantime.
+		ts.superseded.Store(true)
 	}
 	p.fileEmitted.Delete(file)
 	p.info().Str("file", file).Msg("followed file was deleted; no longer followed")
