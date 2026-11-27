@@ -3,6 +3,7 @@ package snmppoll
 import (
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/netip"
 	"sort"
 	"strconv"
@@ -2042,7 +2043,7 @@ func (s *snmpEntitySource) IdentityCollisions() uint64 {
 	return s.identityCollisions.Load()
 }
 
-// claimDeviceID records the resolved device id for s.cfg.Target and, on a
+// claimDeviceID records the resolved device id for s.cfg.Target and port and, on a
 // collision with a different target, increments the collision counter and logs
 // once per colliding pair. Call this immediately after resolveDeviceID(self) in
 // sweep.
@@ -2050,7 +2051,8 @@ func (s *snmpEntitySource) claimDeviceID(id string, self deviceIdentity, now tim
 	if s.registry == nil || id == "" {
 		return
 	}
-	other, collided, firstWarn := s.registry.claimID(id, s.cfg.Target, self, now)
+	claimTarget := net.JoinHostPort(s.cfg.Target, strconv.Itoa(int(s.cfg.Port)))
+	other, collided, firstWarn := s.registry.claimID(id, claimTarget, self, now)
 	if !collided {
 		return
 	}

@@ -319,3 +319,62 @@ func TestSelfAttrs_RawIdentityParts(t *testing.T) {
 		t.Error("an unusable chassis MAC must not be published")
 	}
 }
+
+func claimTestSource(t *testing.T, reg *polledRegistry, port uint16) *snmpEntitySource {
+	t.Helper()
+	s := newEntitySource(&config{Target: "192.0.2.30", Port: port}, testLogger(t))
+	s.registry = reg
+	return s
+}
+
+func TestClaimDeviceID_SameHostTwoPortsAreTwoTargets(t *testing.T) {
+	now := time.Now()
+	reg := newPolledRegistry()
+	a := claimTestSource(t, reg, 161)
+	b := claimTestSource(t, reg, 1161)
+	id := "engine:800102"
+	a.claimDeviceID(id, deviceIdentity{SysName: "agent-a"}, now)
+	b.claimDeviceID(id, deviceIdentity{SysName: "agent-b"}, now)
+	if got := b.IdentityCollisions(); got != 1 {
+		t.Fatalf("two devices behind one address on two ports resolving to one id must collide, got %d", got)
+	}
+}
+
+func TestClaimDeviceID_SameHostTwoPortsDistinctIDsDoNotCollide(t *testing.T) {
+	now := time.Now()
+	reg := newPolledRegistry()
+	a := claimTestSource(t, reg, 161)
+	b := claimTestSource(t, reg, 1161)
+	a.claimDeviceID("engine:800102", deviceIdentity{SysName: "agent-a"}, now)
+	b.claimDeviceID("engine:800103", deviceIdentity{SysName: "agent-b"}, now)
+	if got := a.IdentityCollisions() + b.IdentityCollisions(); got != 0 {
+		t.Fatalf("distinct ids must not collide, got %d", got)
+	}
+}
+
+func TestClaimDeviceID_SameHostSamePortIsOneClaimer(t *testing.T) {
+	now := time.Now()
+	reg := newPolledRegistry()
+	a := claimTestSource(t, reg, 161)
+	b := claimTestSource(t, reg, 161)
+	id := "engine:800102"
+	a.claimDeviceID(id, deviceIdentity{SysName: "agent-a"}, now)
+	b.claimDeviceID(id, deviceIdentity{SysName: "agent-b"}, now)
+	if got := b.IdentityCollisions(); got != 0 {
+		t.Fatalf("one target re-claiming its own id is not a collision, got %d", got)
+	}
+}
+
+func TestClaimDeviceID_DifferentHostSamePortStillCollides(t *testing.T) {
+	now := time.Now()
+	reg := newPolledRegistry()
+	a := claimTestSource(t, reg, 161)
+	b := newEntitySource(&config{Target: "192.0.2.31", Port: 161}, testLogger(t))
+	b.registry = reg
+	id := "engine:800102"
+	a.claimDeviceID(id, deviceIdentity{SysName: "agent-a"}, now)
+	b.claimDeviceID(id, deviceIdentity{SysName: "agent-b"}, now)
+	if got := b.IdentityCollisions(); got != 1 {
+		t.Fatalf("different hosts resolving to one id must collide, got %d", got)
+	}
+}
