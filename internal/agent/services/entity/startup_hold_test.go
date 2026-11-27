@@ -7,81 +7,110 @@ import (
 )
 
 // Startup hold (#625). A source that has not answered once yet (a slow first
-// scan after a restart) must not let a partial first report go out: the
-// consumer would drop that source's relations, then re-create them minutes
-// later. The first report therefore waits, bounded in time, until every
-// registered source has answered at least once.
+// scan after a restart) must not let the agent's service.instance go out
+// without that source's relations: the consumer would drop them, then
+// re-create them minutes later. The service.instance alone waits, bounded in
+// time; every other entity keeps its heartbeat.
 
-func TestDetector_FirstReportWaitsForASourceThatHasNotAnsweredYet(t *testing.T) {
-	var mu sync.Mutex
-	var events []Event
-	tr := NewTracker(func(ev Event) {
-		mu.Lock()
-		defer mu.Unlock()
-		events = append(events, ev)
-	}, 0)
+const holdAgentID = "agent-7f3a"
+
+// monitoredByAgent is a source's view: a database the agent monitors.
+func monitoredByAgent() Observation {
+	o := monitoredDB()
+	o.Relations = append(o.Relations, Relation{
+		Type:     "monitors",
+		FromType: TypeServiceInstance,
+		FromID:   map[string]any{"service.instance.id": holdAgentID},
+		ToType:   "db",
+		ToID:     dbTargetID,
+	})
+	return o
+}
+
+type eventLog struct {
+	mu     sync.Mutex
+	events []Event
+}
+
+func (l *eventLog) add(ev Event) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.events = append(l.events, ev)
+}
+
+// take returns the events published since the last call.
+func (l *eventLog) take() []Event {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	out := l.events
+	l.events = nil
+	return out
+}
+
+func findEntity(events []Event, typ string) *Entity {
+	for _, ev := range events {
+		if ev.Entity != nil && ev.Entity.Type == typ {
+			return ev.Entity
+		}
+	}
+	return nil
+}
+
+func hasRelationship(e *Entity, typ, target string) bool {
+	for _, r := range e.Relationships {
+		if r.Type == typ && r.TargetType == target {
+			return true
+		}
+	}
+	return false
+}
+
+func TestDetector_AgentInstanceWaitsForASourceThatHasNotAnsweredYet(t *testing.T) {
+	log := &eventLog{}
+	tr := NewTracker(log.add, 0)
 	d := newReasonDetector()
-	src := &fakeSource{obs: monitoredDB(), ok: false}
+	src := &fakeSource{obs: monitoredByAgent(), ok: false}
 	unregister := RegisterSource(src)
 	defer unregister()
 	t0 := time.Unix(1780272000, 0).UTC()
 
 	d.reconcile(tr, t0)
-	mu.Lock()
-	if len(events) != 0 {
-		mu.Unlock()
-		t.Fatalf("first report held while a source never answered: got %d events, want 0", len(events))
+	first := log.take()
+	if findEntity(first, "host") == nil {
+		t.Fatal("the host must keep its heartbeat during the hold")
 	}
-	mu.Unlock()
+	if svc := findEntity(first, TypeServiceInstance); svc != nil {
+		t.Fatalf("service.instance sent before the source answered, with %d relationships", len(svc.Relationships))
+	}
 
-	src.set(monitoredDB(), true)
+	src.set(monitoredByAgent(), true)
 	d.reconcile(tr, t0.Add(time.Minute))
-	mu.Lock()
-	defer mu.Unlock()
-	hasDB := false
-	for _, ev := range events {
-		if ev.Entity != nil && ev.Entity.Type == "db" {
-			hasDB = true
-		}
+	svc := findEntity(log.take(), TypeServiceInstance)
+	if svc == nil {
+		t.Fatal("service.instance not sent once every source answered")
 	}
-	if !hasDB {
-		t.Fatalf("expected the db entity once the source answered, got %d events", len(events))
+	if !hasRelationship(svc, "monitors", "db") {
+		t.Fatalf("service.instance relationships = %+v, want the source's monitors edge", svc.Relationships)
 	}
 }
 
-func TestDetector_FirstReportGoesOutAfterTheHoldEvenIfASourceNeverAnswers(t *testing.T) {
-	var mu sync.Mutex
-	var events []Event
-	tr := NewTracker(func(ev Event) {
-		mu.Lock()
-		defer mu.Unlock()
-		events = append(events, ev)
-	}, 0)
+func TestDetector_AgentInstanceGoesOutAfterTheHoldEvenIfASourceNeverAnswers(t *testing.T) {
+	log := &eventLog{}
+	tr := NewTracker(log.add, 0)
 	d := newReasonDetector()
-	src := &fakeSource{obs: monitoredDB(), ok: false}
+	src := &fakeSource{obs: monitoredByAgent(), ok: false}
 	unregister := RegisterSource(src)
 	defer unregister()
 	t0 := time.Unix(1780272000, 0).UTC()
 
-	d.reconcile(tr, t0)
-	d.reconcile(tr, t0.Add(time.Minute))
-	mu.Lock()
-	if len(events) != 0 {
-		mu.Unlock()
-		t.Fatalf("report held for the first two ticks: got %d events, want 0", len(events))
-	}
-	mu.Unlock()
-
-	d.reconcile(tr, t0.Add(2*time.Minute))
-	mu.Lock()
-	defer mu.Unlock()
-	hasHost := false
-	for _, ev := range events {
-		if ev.Entity != nil && ev.Entity.Type == "host" {
-			hasHost = true
+	for i := 0; i < startupHoldTicks; i++ {
+		d.reconcile(tr, t0.Add(time.Duration(i)*time.Minute))
+		if svc := findEntity(log.take(), TypeServiceInstance); svc != nil {
+			t.Fatalf("tick %d: service.instance sent during the hold", i)
 		}
 	}
-	if !hasHost {
-		t.Fatalf("expected the foundation (host) after the hold expired, got %d events", len(events))
+	d.reconcile(tr, t0.Add(startupHoldTicks*time.Minute))
+	if findEntity(log.take(), TypeServiceInstance) == nil {
+		t.Fatal("service.instance still held after the bound")
 	}
 }

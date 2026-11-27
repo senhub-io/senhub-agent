@@ -51,19 +51,19 @@ func ReportInterval() time.Duration {
 // gone and its entities expire through the normal delete path.
 const lastGoodTTL = 15 * time.Minute
 
+// At startup the agent's service.instance waits at most startupHoldTicks ticks
+// for a source that has not answered yet: its relation set is the union of
+// what every source claims, so a partial first report makes the consumer drop
+// the late source's relations. Two ticks stay far below the announced
+// liveness window (livenessSlackFactor ticks).
+const startupHoldTicks = 2
+
 // HostIdentityFunc resolves the current host identity. It may fail (e.g. the
 // OS host info is briefly unavailable); the detector skips that cycle.
 type HostIdentityFunc func() (HostIdentity, error)
 
 // AgentIdentityFunc resolves the agent's own identity. It does not fail —
 // the agent key and build version are known once configured.
-// At startup the first report waits at most startupHoldTicks ticks for a
-// source that has not answered yet: an entity's relation set is the union of
-// what every source claims, so a partial first report makes the consumer drop
-// the late source's relations. Two ticks stay far below the announced
-// liveness window (livenessSlackFactor ticks).
-const startupHoldTicks = 2
-
 type AgentIdentityFunc func() AgentIdentity
 
 // Detector drives Lot 1 emission: on a fixed cadence it observes the host
@@ -331,9 +331,12 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 		reasons[entityKey(unanchored[i].Type, unanchored[i].ID)] = ReasonParentRemoved
 	}
 	// A source that has never answered yet would leave its relations out of
-	// the union and have the consumer retract them: hold the first report.
+	// the agent's service.instance, the entity every source attaches to, and
+	// have the consumer retract them: hold that entity only. Every other
+	// entity keeps its heartbeat, so a hold after an outage cannot push them
+	// past their liveness window.
 	if pending && ts.Sub(d.startedAt) < startupHoldTicks*d.interval {
-		return
+		kept = withoutAgentInstance(kept, a.InstanceID)
 	}
 	t.Reconcile(stateEvents(kept, ts, interval), ts, reasons)
 }
@@ -367,4 +370,17 @@ func (d *Detector) reportSlowCadence(id uint64, src Source) {
 	}
 	d.warnedCadence[id] = c
 	d.onSlowCadence(c)
+}
+
+// withoutAgentInstance returns entities without the agent's own
+// service.instance.
+func withoutAgentInstance(entities []Entity, instanceID string) []Entity {
+	out := make([]Entity, 0, len(entities))
+	for _, e := range entities {
+		if e.Type == TypeServiceInstance && e.ID["service.instance.id"] == instanceID {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }
