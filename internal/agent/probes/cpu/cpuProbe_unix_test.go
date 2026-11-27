@@ -3,6 +3,7 @@
 package cpu
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -190,6 +191,13 @@ func TestUnixCollector_PerCoreFromDeltas(t *testing.T) {
 			expectedOK: true,
 		},
 		{
+			name:       "a core without ticks is skipped, not the others",
+			prev:       []cpu.TimesStat{core(10, 90), core(50, 50)},
+			curr:       []cpu.TimesStat{core(20, 180), core(50, 50)},
+			expected:   []float64{10, math.NaN()},
+			expectedOK: true,
+		},
+		{
 			name:       "length mismatch",
 			prev:       []cpu.TimesStat{core(10, 90), core(50, 50)},
 			curr:       []cpu.TimesStat{core(20, 90)},
@@ -215,6 +223,12 @@ func TestUnixCollector_PerCoreFromDeltas(t *testing.T) {
 				t.Fatalf("len = %d, expected %d", len(got), len(tc.expected))
 			}
 			for i := range got {
+				if math.IsNaN(tc.expected[i]) {
+					if !math.IsNaN(got[i]) {
+						t.Fatalf("core %d = %v, want skipped (NaN)", i, got[i])
+					}
+					continue
+				}
 				if got[i] != tc.expected[i] {
 					t.Fatalf("core %d = %v, expected %v", i, got[i], tc.expected[i])
 				}
