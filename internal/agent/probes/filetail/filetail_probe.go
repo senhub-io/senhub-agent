@@ -1250,16 +1250,17 @@ read:
 	}
 
 	// Channel closed (tail stopped): flush any pending multiline record
-	// and persist the final offset.
+	// and persist the final offset, unless superseded: the tail that
+	// replaces this one reads the held record again from its start.
+	cause := t.Wait()
+	if ts.superseded.Load() {
+		return
+	}
 	if held := asm.Flush(); len(held) > 0 {
 		for _, logical := range held {
 			p.publish(p.config.Parser, logical, time.Now(), probeName, file)
 		}
 		ts.committed.Store(lastOffset)
-	}
-	cause := t.Wait()
-	if ts.superseded.Load() {
-		return
 	}
 	persist()
 	p.forgetDeadTail(file, ts, cause)
