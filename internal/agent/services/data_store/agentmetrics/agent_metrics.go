@@ -52,6 +52,9 @@ type AgentMetricsSnapshot struct {
 	// Build info — emitted as a gauge of value 1 with version+commit labels.
 	BuildVersion string
 	BuildCommit  string
+	// OSInfo holds os.version, os.build_id and os.description. They change
+	// on every OS update, so they ride on build_info, never on every series.
+	OSInfo map[string]string
 }
 
 // BuildAgentRecords produces the otelmapper.OtelRecord set for the agent's own
@@ -891,7 +894,11 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 		if snap.BuildCommit != "" {
 			buildAttrs["commit"] = snap.BuildCommit
 		}
+		for k, v := range snap.OSInfo {
+			buildAttrs[k] = v
+		}
 		records = append(records, otelmapper.OtelRecord{
+
 			Name: "senhub.agent.build_info",
 			// Empty unit: by Prometheus convention, *_info metrics carry
 			// metadata via labels and have no unit suffix. Compatible with

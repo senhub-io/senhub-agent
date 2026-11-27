@@ -143,11 +143,34 @@ func TestBuildAgentRecords_BuildInfoEmittedWhenSet(t *testing.T) {
 	}
 }
 
+func TestBuildAgentRecords_BuildInfoCarriesOSInfo(t *testing.T) {
+	snap := AgentMetricsSnapshot{
+		StartTime:    time.Now(),
+		BuildVersion: "1.2.3",
+		OSInfo:       map[string]string{"os.build_id": "6.8.0-45"},
+	}
+	recs := BuildAgentRecords(snap)
+	var buildRec *otelmapper.OtelRecord
+	for i := range recs {
+		if recs[i].Name == "senhub.agent.build_info" {
+			buildRec = &recs[i]
+			break
+		}
+	}
+	if buildRec == nil {
+		t.Fatal("senhub.agent.build_info record missing")
+	}
+	if buildRec.Attributes["os.build_id"] != "6.8.0-45" {
+		t.Errorf("os.build_id label: got %q, want 6.8.0-45", buildRec.Attributes["os.build_id"])
+	}
+}
+
 func TestBuildAgentRecords_OmitBuildInfoWhenEmpty(t *testing.T) {
 	snap := AgentMetricsSnapshot{StartTime: time.Now()}
 	recs := BuildAgentRecords(snap)
 	for _, r := range recs {
 		if r.Name == "senhub.agent.build_info" {
+
 			t.Errorf("build.info should not be emitted when version+commit are empty")
 		}
 	}

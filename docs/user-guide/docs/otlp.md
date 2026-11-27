@@ -550,6 +550,7 @@ group series and logs into entities. Defaults:
   agent key: one per agent, stable for as long as the key is, as the
   OpenTelemetry semantic conventions recommend
 - `service.version` = the agent build version (when known), on logs and traces only. Metrics leave it out, and their scope carries no version: a backend such as VictoriaMetrics turns resource and scope attributes into labels of every series, so a version there would recreate every series at each upgrade. The version is on `senhub.agent.build.info`, one series.
+- `os.version`, `os.build_id` (the kernel version) and `os.description`, on logs and traces only, for the same reason: an OS or kernel update would recreate every series of the host. Metrics carry `os.type` and `os.name`; the three changing values are labels of `senhub.agent.build_info`, one series.
 
 Any additional key/value pair under `resource:` is passed through
 verbatim — useful for `k8s.*`, `cloud.*`, `host.*`, or your own

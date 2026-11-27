@@ -65,8 +65,13 @@ type OTLPSyncStrategy struct {
 	// series and broke each rate() across it. The version stays on logs and
 	// traces, where it creates no series, and on senhub.agent.build.info.
 	metricsResource *resource.Resource
+	// osInfo holds the volatile OS attributes (os.version, os.build_id,
+	// os.description) stripped from metricsResource; they are carried only
+	// by senhub.agent.build_info so upgrades do not recreate every series.
+	osInfo map[string]string
 
 	// globalTagKeys is the set of agent-level global_tag keys. They are
+
 	// carried on the Resource, so they are stripped from per-metric
 	// attributes before export to avoid duplicating them on every series
 	// (issue #202).
@@ -274,7 +279,8 @@ func NewOTLPSyncStrategy(
 		registry:    transformers.SharedRegistry(baseLogger),
 
 		resource:        buildResource(cfg.Resource, cliArgs.Version, hostAttrs, globalTags),
-		metricsResource: buildResource(cfg.Resource, "", hostAttrs, globalTags),
+		metricsResource: buildResource(cfg.Resource, "", withoutVolatileOSAttrs(hostAttrs), globalTags),
+		osInfo:          volatileOSAttrs(hostAttrs),
 		globalTagKeys:   globalTagKeys,
 		globalTags:      globalTags,
 		memLimiter:      ml,
@@ -610,7 +616,9 @@ func (s *OTLPSyncStrategy) pushPeriodic(parent context.Context) {
 		ProbesHealthy: probesHealthy,
 		BuildVersion:  cliArgs.Version,
 		BuildCommit:   cliArgs.CommitHash,
+		OSInfo:        s.osInfo,
 	})
+
 	s.doPush(parent, agentRecords)
 }
 

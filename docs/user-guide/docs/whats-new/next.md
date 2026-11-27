@@ -2,6 +2,8 @@
 
 Nothing released yet since 0.7.1. Changes land here as they are merged.
 
+- **Before you upgrade (OTLP): an OS update no longer recreates every series.** The metrics no longer carry `os.version`, `os.build_id` and `os.description`, which a backend such as VictoriaMetrics turned into labels of every series: each kernel or OS update created new series for the whole host, re-armed its alerts and broke every `rate()` across it. Logs and traces keep them, and `senhub.agent.build_info` carries them as labels. A query that filters metrics on `os_version` or `os_build_id` should join on `senhub_agent_build_info` instead. Series stored before the upgrade keep these labels, so each host's series start again once at this update.
+
 - **Linux and macOS: first CPU and network points right after a restart.** When the agent stopped cleanly, the cpu and network probes keep their last readings, so the first points are published with the first collection after a restart or an update instead of one interval later. After a reboot or a crash they still wait one interval, as before.
 
 - **Linux: no absurd network rate after an interface reset.** When an interface counter went backwards (interface reset, driver reloaded, a 32-bit counter wrapping), the network probe published a rate of about 10^19 for that cycle. It now skips the rates of that interface for that cycle and starts again from the new value.

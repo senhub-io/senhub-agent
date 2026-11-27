@@ -117,3 +117,85 @@ func TestBuildResource_OperatorOverridesHostAttr(t *testing.T) {
 		}
 	}
 }
+
+func TestWithoutVolatileOSAttrs_KeepsHostIdentity(t *testing.T) {
+	in := map[string]string{
+		"host.id":        "8f14e45f",
+		"host.name":      "edge-01",
+		"os.type":        "linux",
+		"os.name":        "Ubuntu",
+		"os.version":     "22.04",
+		"os.build_id":    "6.8.0-45",
+		"os.description": "Ubuntu 22.04.3 LTS",
+	}
+	want := map[string]string{
+		"host.id":   "8f14e45f",
+		"host.name": "edge-01",
+		"os.type":   "linux",
+		"os.name":   "Ubuntu",
+	}
+	got := withoutVolatileOSAttrs(in)
+	if len(got) != len(want) {
+		t.Fatalf("got %d attrs, want %d: %v", len(got), len(want), got)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("%s=%q, want %q", k, got[k], v)
+		}
+	}
+	for _, k := range volatileOSKeys {
+		if _, ok := got[k]; ok {
+			t.Errorf("volatile key %q must be absent", k)
+		}
+	}
+	orig := map[string]string{
+		"host.id":        "8f14e45f",
+		"host.name":      "edge-01",
+		"os.type":        "linux",
+		"os.name":        "Ubuntu",
+		"os.version":     "22.04",
+		"os.build_id":    "6.8.0-45",
+		"os.description": "Ubuntu 22.04.3 LTS",
+	}
+	if len(in) != len(orig) {
+		t.Fatalf("input mutated: %v", in)
+	}
+	for k, v := range orig {
+		if in[k] != v {
+			t.Errorf("input mutated at %s: got %q, want %q", k, in[k], v)
+		}
+	}
+	vol := volatileOSAttrs(in)
+	wantVol := map[string]string{
+		"os.version":     "22.04",
+		"os.build_id":    "6.8.0-45",
+		"os.description": "Ubuntu 22.04.3 LTS",
+	}
+	if len(vol) != len(wantVol) {
+		t.Fatalf("volatileOSAttrs got %d attrs, want %d: %v", len(vol), len(wantVol), vol)
+	}
+	for k, v := range wantVol {
+		if vol[k] != v {
+			t.Errorf("volatileOSAttrs %s=%q, want %q", k, vol[k], v)
+		}
+	}
+}
+
+func TestBuildResource_StripsVolatileOSAttrs(t *testing.T) {
+	in := map[string]string{
+		"host.id":        "8f14e45f",
+		"host.name":      "edge-01",
+		"os.type":        "linux",
+		"os.name":        "Ubuntu",
+		"os.version":     "22.04",
+		"os.build_id":    "6.8.0-45",
+		"os.description": "Ubuntu 22.04.3 LTS",
+	}
+	res := buildResource(ResourceConfig{}, "", withoutVolatileOSAttrs(in), nil)
+	for _, kv := range res.Attributes() {
+		switch string(kv.Key) {
+		case "os.version", "os.build_id", "os.description":
+			t.Errorf("volatile key %q leaked into metrics resource", kv.Key)
+		}
+	}
+}

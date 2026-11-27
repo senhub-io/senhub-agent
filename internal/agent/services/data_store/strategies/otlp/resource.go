@@ -75,3 +75,42 @@ func buildResource(cfg ResourceConfig, version string, hostAttrs, globalTags map
 	// key names we use.
 	return resource.NewSchemaless(attrs...)
 }
+
+// volatileOSKeys are resource attributes that change on every OS or kernel
+// upgrade. A backend such as VictoriaMetrics turns resource attributes into
+// labels of every series, so these values would recreate every series of the
+// machine on each upgrade and break every rate() across it.
+var volatileOSKeys = []string{"os.version", "os.build_id", "os.description"}
+
+// withoutVolatileOSAttrs returns a copy of hostAttrs without the volatile OS
+// keys, so they never end up as labels on every series. It never mutates the
+// input and returns nil for a nil input.
+func withoutVolatileOSAttrs(hostAttrs map[string]string) map[string]string {
+	if hostAttrs == nil {
+		return nil
+	}
+	out := make(map[string]string, len(hostAttrs))
+	for k, v := range hostAttrs {
+		out[k] = v
+	}
+	for _, k := range volatileOSKeys {
+		delete(out, k)
+	}
+	return out
+}
+
+// volatileOSAttrs returns only the volatile OS keys that are present and
+// non-empty, so they can ride on senhub.agent.build_info instead of every
+// series. It returns nil when none are available.
+func volatileOSAttrs(hostAttrs map[string]string) map[string]string {
+	var out map[string]string
+	for _, k := range volatileOSKeys {
+		if v, ok := hostAttrs[k]; ok && v != "" {
+			if out == nil {
+				out = map[string]string{}
+			}
+			out[k] = v
+		}
+	}
+	return out
+}
