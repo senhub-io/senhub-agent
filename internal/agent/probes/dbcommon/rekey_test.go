@@ -31,6 +31,14 @@ func TestRekeyAnnouncer_RetiresTheOldIdentityAndAliasesIt(t *testing.T) {
 	ch := entity.SubscribeEvents(8)
 	defer entity.UnsubscribeEvents(ch)
 
+	// The alias leaves alone on the first cycle; the delete follows on the
+	// next, so the consumer can still resolve the alias (ent#712).
+	a.Announce()
+	select {
+	case ev := <-ch:
+		t.Fatalf("published a %v on the first cycle, want nothing before the alias went out", ev.Kind)
+	default:
+	}
 	a.Announce()
 
 	select {
