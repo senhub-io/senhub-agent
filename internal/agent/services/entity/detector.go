@@ -57,6 +57,13 @@ type HostIdentityFunc func() (HostIdentity, error)
 
 // AgentIdentityFunc resolves the agent's own identity. It does not fail —
 // the agent key and build version are known once configured.
+// At startup the first report waits at most startupHoldTicks ticks for a
+// source that has not answered yet: an entity's relation set is the union of
+// what every source claims, so a partial first report makes the consumer drop
+// the late source's relations. Two ticks stay far below the announced
+// liveness window (livenessSlackFactor ticks).
+const startupHoldTicks = 2
+
 type AgentIdentityFunc func() AgentIdentity
 
 // Detector drives Lot 1 emission: on a fixed cadence it observes the host
@@ -87,6 +94,9 @@ type Detector struct {
 	// observation reported with ok=true, so a transient failure serves
 	// stale-but-real topology instead of an empty set (audit D3).
 	lastGood map[uint64]cachedObservation
+	// startedAt anchors the startup hold: the instant of the first
+	// reconcile cycle.
+	startedAt time.Time
 }
 
 type cachedObservation struct {
@@ -217,6 +227,9 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 	if a.InstanceID == "" {
 		return
 	}
+	if d.startedAt.IsZero() {
+		d.startedAt = ts
+	}
 	// Tick at d.interval; emit a slacked Interval (livenessSlackOverReEmit× the
 	// effective re-emission cadence, = livenessSlackFactor× the tick) so a late
 	// heartbeat does not expire a live entity on the consumer (#454).
@@ -237,9 +250,15 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 	reasons := map[string]string{}
 	regs := registeredSources()
 	live := make(map[uint64]bool, len(regs))
+	var pending bool
 	for _, r := range regs {
 		live[r.id] = true
 		o, ok := r.src.Observe()
+		if !ok {
+			if _, answered := d.lastGood[r.id]; !answered {
+				pending = true
+			}
+		}
 		if dep, isD := sourceAs[DepartureSource](r.src); isD {
 			for _, e := range d.lastGood[r.id].obs.Entities {
 				if reason := dep.DepartureReason(e); reason != "" {
@@ -310,6 +329,11 @@ func (d *Detector) reconcile(t *Tracker, ts time.Time) {
 	kept, unanchored := dropOrphanEntities(entities, d.onOrphanEntity)
 	for i := range unanchored {
 		reasons[entityKey(unanchored[i].Type, unanchored[i].ID)] = ReasonParentRemoved
+	}
+	// A source that has never answered yet would leave its relations out of
+	// the union and have the consumer retract them: hold the first report.
+	if pending && ts.Sub(d.startedAt) < startupHoldTicks*d.interval {
+		return
 	}
 	t.Reconcile(stateEvents(kept, ts, interval), ts, reasons)
 }
