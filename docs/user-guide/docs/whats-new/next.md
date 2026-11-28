@@ -14,7 +14,16 @@ Nothing released yet since 0.7.1. Changes land here as they are merged.
       output_queue_writers: true
   ```
 
-- **Before you upgrade (PRTG): a sensor whose target is down turns Warning.** A probe that runs but whose last check failed, an `http_check` on a closed port or a database refusing the login, now shows the failure everywhere instead of green: the PRTG sensor turns Warning with the cause as its text (`Target down: timeout`); the Nagios answer is WARNING with the cause, or keeps CRITICAL with the cause added when every target is down; `senhub-agent status` lists the probe as `target_down` with the cause and the agent as `degraded`; the console names the cause; and the new `senhub.agent.probes.target_down` series counts such probes. Sensors that were green with a failing target turn Warning after the upgrade. Set `prtg.target_down_warning: false` in the HTTP output to keep them as before.
+- **Before you upgrade (PRTG): a sensor whose target is down turns Warning.** A probe that runs but whose last check failed, an `http_check` on a closed port or a database refusing the login, now shows the failure everywhere instead of green: the PRTG sensor turns Warning with the cause as its text (`Target down: timeout`); the Nagios answer is WARNING with the cause, or keeps CRITICAL with the cause added when every target is down; `senhub-agent status` lists the probe as `target_down` with the cause and the agent as `degraded`; the console names the cause; and the new `senhub.agent.probes.target_down` series counts such probes. Sensors that were green with a failing target turn Warning after the upgrade, and stay so until the device answers again. To keep them as before, turn the option off in the `http` output, in `strategies.d/00-http.yaml`, at the same level as `port`:
+
+  ```yaml
+  http:
+    port: 8080
+    prtg:
+      target_down_warning: false
+  ```
+
+  With a single `agent.yaml` (legacy layout), it goes under the output's `params`, in a `prtg:` block.
 
 - **No version check at start when automatic updates are off.** At each start the agent asked the update registry whether a newer version existed, even with `auto_update.enabled: false`, only to log the answer. It now skips this check unless automatic updates are on, in the file or by a fleet server directive. `senhub-agent update --list` still checks by hand.
 
