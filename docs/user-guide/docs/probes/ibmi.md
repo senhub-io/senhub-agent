@@ -88,7 +88,7 @@ Monitor several LPARs with separate probe instances:
 
 <!-- schema:params:start -->
 <!-- Generated from the probe's schema. Run `make docs-params` after changing it. -->
-<!-- sha256:731b1690e06be61fdba19265a4f5f0c8fe4230584dab5d0fd1da8e5157b6ad47 -->
+<!-- sha256:1527931df4c70a2a2b78dac82e72522667fc583685804a06aa23b149b46357e2 -->
 
 | Parameter | Must set | Default | Description |
 |---|---|---|---|
@@ -108,6 +108,8 @@ Monitor several LPARs with separate probe instances:
 | `message_queues[].library` | No | `QSYS` | Library of the queue |
 | `message_queues[].min_severity` | No | `0` | Messages below this severity are not relayed |
 | `history_log_min_severity` | No | `30` | History log (QHST) messages below this severity (0-99) are not collected; the default 30 keeps warnings and above (OTel WARN), 0 keeps every message for a full audit, and a busy partition logs thousands of messages a minute |
+| `journal_receiver_series` | No | `false` | Send the size, threshold, entry and pending-transaction series of each attached journal receiver; off, only the attached-receivers total is sent |
+| `output_queue_writers` | No | `false` | Send the writers series of each non-empty output queue; the file counts are always sent |
 | `environment` | No | - | Deployment environment name carried by the partition entity. Example: `production` |
 | `db_instance_name` | No | - | Identity override of the Db2 for i entity; empty derives it from the relational database name |
 
@@ -240,7 +242,7 @@ message remains visible there through the jobs-by-status count.
 | `senhub.ibmi.journal.active` | `1` | `ibmi.journal.name` | Journal active state |
 | `senhub.ibmi.journal.receivers_size` | `By` | `ibmi.journal.name` | Total attached-receiver size |
 | `senhub.ibmi.journal.remote_lag` | `s` | `ibmi.journal.name` | Estimated remote-journal lag |
-| `senhub.ibmi.journal_receiver.size` | `By` | `ibmi.receiver.name` | Journal receiver size |
+| `senhub.ibmi.journal_receiver.size` | `By` | `ibmi.receiver.name` | Journal receiver size; sent only with `journal_receiver_series: true` |
 | `senhub.ibmi.journal_receiver.attached` | `{receiver}` | - | Attached receivers total |
 
 ## Network — TCP, listeners, interfaces, HTTP
@@ -487,7 +489,7 @@ series' tags.
 | `senhub.ibmi.output_queue.files` | `ibmi.output_queue.files_count` | Spool Files — {queue_name} | # | Spooled files waiting in this output queue |
 | `senhub.ibmi.output_queue.spooled_files` | `ibmi.output_queue.spooled_files_total` | Spooled Files Total | # | Spooled files across every output queue |
 | `senhub.ibmi.output_queue.nonempty` | `ibmi.output_queue.nonempty_total` | Output Queues Non-empty | # | Output queues holding at least one spooled file |
-| `senhub.ibmi.output_queue.writers` | `ibmi.output_queue.writers_count` | Output Queue Writers — {queue_name} | # | Writers started against this output queue |
+| `senhub.ibmi.output_queue.writers` | `ibmi.output_queue.writers_count` | Output Queue Writers — {queue_name} | # | Writers started against this output queue; sent only with `output_queue_writers: true` |
 | `senhub.ibmi.spooled_file.count` | `ibmi.spooled_file.total` | Spooled Files | # | Spooled files the scan returned |
 | `senhub.ibmi.spooled_file.oldest_age` | `ibmi.spooled_file.oldest_age_seconds` | Oldest Spool Age | s | Age of the oldest spooled file; output nobody collects accumulates here and consumes ASP |
 | `senhub.ibmi.spooled_file.by_status` | `ibmi.spooled_file.count_by_status` | Spooled Files {status} | # | Spooled files in this status |
@@ -521,11 +523,11 @@ series' tags.
 | `senhub.ibmi.journal.remote_lag_maximum` | `ibmi.journal.remote_lag_maximum_seconds` | Remote Journal Max Lag — {journal} | s | Longest time a remote journal of this journal has been behind |
 | `senhub.ibmi.journal.by_state` | `ibmi.journal.count_by_state` | Journals {state} | # | Journals in this state |
 | `senhub.ibmi.journal.count` | `ibmi.journal.total` | Journals Total | # | Journals defined on the partition |
-| `senhub.ibmi.journal_receiver.size` | `ibmi.journal_receiver.size_kb` | Receiver Size — {receiver} | KB | Size of this journal receiver |
+| `senhub.ibmi.journal_receiver.size` | `ibmi.journal_receiver.size_kb` | Receiver Size — {receiver} | KB | Size of this journal receiver; sent only with `journal_receiver_series: true` |
 | `senhub.ibmi.journal_receiver.attached` | `ibmi.journal_receiver.attached_total` | Attached Receivers | # | Journal receivers currently attached |
-| `senhub.ibmi.journal_receiver.threshold` | `ibmi.journal_receiver.threshold_kb` | Receiver Threshold — {receiver} | KB | Size at which the system raises the receiver threshold message, as configured — not a measurement |
-| `senhub.ibmi.journal_receiver.entries` | `ibmi.journal_receiver.entries_count` | Receiver Entries — {receiver} | # | Journal entries held by this attached receiver |
-| `senhub.ibmi.journal_receiver.pending_transactions` | `ibmi.journal_receiver.pending_transactions` | Receiver Pending Transactions — {receiver} | # | Transactions still open against this attached receiver |
+| `senhub.ibmi.journal_receiver.threshold` | `ibmi.journal_receiver.threshold_kb` | Receiver Threshold — {receiver} | KB | Size at which the system raises the receiver threshold message, as configured — not a measurement; sent only with `journal_receiver_series: true` |
+| `senhub.ibmi.journal_receiver.entries` | `ibmi.journal_receiver.entries_count` | Receiver Entries — {receiver} | # | Journal entries held by this attached receiver; sent only with `journal_receiver_series: true` |
+| `senhub.ibmi.journal_receiver.pending_transactions` | `ibmi.journal_receiver.pending_transactions` | Receiver Pending Transactions — {receiver} | # | Transactions still open against this attached receiver; sent only with `journal_receiver_series: true` |
 | `senhub.ibmi.tcp.connections.established` | `ibmi.tcp.connections_established` | TCP Connections Established | # | TCP connections currently established |
 | `senhub.ibmi.tcp.active_opens` | `ibmi.tcp.active_opens_total` | TCP Active Opens | # | Connections the partition opened since the TCP stack started |
 | `senhub.ibmi.tcp.passive_opens` | `ibmi.tcp.passive_opens_total` | TCP Passive Opens | # | Connections the partition accepted since the TCP stack started |

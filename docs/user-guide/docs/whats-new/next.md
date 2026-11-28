@@ -2,6 +2,16 @@
 
 Nothing released yet since 0.7.1. Changes land here as they are merged.
 
+- **Before you upgrade (IBM i): per-receiver journal series and per-queue writer series are off by default.** On a partition with many journals and output queues these series made up a large share of the probe's series. The `journal_receiver` collector now sends only `ibmi.journal_receiver.attached_total` unless `journal_receiver_series: true` is set; the size, threshold, entry and pending-transaction series of each receiver come back with it. The `output_queue` collector no longer sends `ibmi.output_queue.writers_count` unless `output_queue_writers: true` is set; the file counts per queue and the totals are unchanged. To keep the series you had, add these keys to the probe:
+
+  ```yaml
+  - name: ibmi-prod
+    type: ibmi
+    params:
+      journal_receiver_series: true
+      output_queue_writers: true
+  ```
+
 - **Before you upgrade (PRTG): a sensor whose target is down turns Warning.** A probe that runs but whose last check failed, an `http_check` on a closed port or a database refusing the login, now shows the failure everywhere instead of green: the PRTG sensor turns Warning with the cause as its text (`Target down: timeout`); the Nagios answer is WARNING with the cause, or keeps CRITICAL with the cause added when every target is down; `senhub-agent status` lists the probe as `target_down` with the cause and the agent as `degraded`; the console names the cause; and the new `senhub.agent.probes.target_down` series counts such probes. Sensors that were green with a failing target turn Warning after the upgrade. Set `prtg.target_down_warning: false` in the HTTP output to keep them as before.
 
 - **No version check at start when automatic updates are off.** At each start the agent asked the update registry whether a newer version existed, even with `auto_update.enabled: false`, only to log the answer. It now skips this check unless automatic updates are on, in the file or by a fleet server directive. `senhub-agent update --list` still checks by hand.
