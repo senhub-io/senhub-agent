@@ -341,10 +341,29 @@ func (a agent) Start(ctx context.Context) error {
 	return nil
 }
 
+// startupVersionCheckWanted reports whether the startup version check
+// should run: only when automatic updates are on, either by a server
+// directive in force or, without one, in the local configuration.
+func startupVersionCheckWanted(fileEnabled bool, d *auto_update.Directive) bool {
+	if d != nil {
+		return d.Auto
+	}
+	return fileEnabled
+}
+
 // checkForNewVersionAtStartup logs if a newer release is available on
 // the configured update URL. Diagnostic only — the active upgrade is
-// driven by the auto-updater service (when enabled in config).
+// driven by the auto-updater service. Skipped when automatic updates
+// are off; `senhub-agent update --list` checks by hand.
 func (a agent) checkForNewVersionAtStartup() {
+	var fileEnabled bool
+	if a.localConfiguration != nil {
+		fileEnabled = a.localConfiguration.GetAutoUpdateConfig().Enabled
+	}
+	if !startupVersionCheckWanted(fileEnabled, auto_update.CurrentDirective()) {
+		a.logger.Debug().Msg("Version check at start skipped: automatic updates are off")
+		return
+	}
 	if a.updater == nil {
 		// No updater configured — instantiate a one-shot dry-run
 		// checker so we can still log drift.

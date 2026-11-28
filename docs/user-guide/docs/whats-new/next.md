@@ -2,6 +2,8 @@
 
 Nothing released yet since 0.7.1. Changes land here as they are merged.
 
+- **No version check at start when automatic updates are off.** At each start the agent asked the update registry whether a newer version existed, even with `auto_update.enabled: false`, only to log the answer. It now skips this check unless automatic updates are on, in the file or by a fleet server directive. `senhub-agent update --list` still checks by hand.
+
 - **OpAMP (Enterprise): a fleet server sees a check whose target is down.** A probe whose target was unreachable, an `http_check` on a closed port for example, was reported as `running`, so the server showed it healthy. The probe's health component now has the status `target_down` while the last check it published fails, with the failure class in `last_error` (`target_down`, `timeout`, `auth_denied`...). It stays healthy: the probe runs, and the outage is in its data. See [OpAMP remote management](../opamp.md#health-reported-to-the-server).
 
 - **Alert packs fire on an OTLP-only fleet, and the TLS expiry rules work.** The host and SNMP interface rules, and the slow HTTP check rule, queried only the `senhub_` names of the agent's `/metrics` endpoint; pushed by OTLP into VictoriaMetrics, those metrics have no prefix, so the rules never fired. They now query both names. The TLS expiry rules read a series that does not exist: they now read `senhub_httpcheck_tls_expiry_seconds`, in seconds, at the same 30- and 7-day thresholds. Alert summaries name the target with the labels the series carry (`httpcheck_target`, `icmp_target`, `tcpdial_target`, `dns_question_name`, `snmp_target`, `network_interface_index`) instead of labels that were always empty. Reload the files from `packs/alerts/vmalert/` to pick this up.
