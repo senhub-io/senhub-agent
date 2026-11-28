@@ -908,7 +908,7 @@ metrics:
     unit: "#"
     category: "spool"
     multi_instance_labels: ["queue_library", "queue_name"]
-    description: "Writers started against this output queue"
+    description: "Writers started against this output queue; sent only with output_queue_writers: true"
     otel:
       name: senhub.ibmi.output_queue.writers
       unit: "{writer}"
@@ -1383,7 +1383,7 @@ metrics:
     unit: "KB"
     category: "database"
     multi_instance_labels: ["receiver", "receiver_library"]
-    description: "Size of this journal receiver"
+    description: "Size of this journal receiver; sent only with journal_receiver_series: true"
     otel:
       name: senhub.ibmi.journal_receiver.size
       unit: "By"
@@ -1409,7 +1409,7 @@ metrics:
     unit: "KB"
     category: "database"
     multi_instance_labels: ["receiver", "receiver_library"]
-    description: "Size at which the system raises the receiver threshold message, as configured — not a measurement"
+    description: "Size at which the system raises the receiver threshold message, as configured — not a measurement; sent only with journal_receiver_series: true"
     otel:
       name: senhub.ibmi.journal_receiver.threshold
       unit: "By"
@@ -1424,7 +1424,7 @@ metrics:
     unit: "#"
     category: "database"
     multi_instance_labels: ["receiver", "receiver_library"]
-    description: "Journal entries held by this attached receiver"
+    description: "Journal entries held by this attached receiver; sent only with journal_receiver_series: true"
     otel:
       name: senhub.ibmi.journal_receiver.entries
       unit: "{entry}"
@@ -1439,7 +1439,7 @@ metrics:
     unit: "#"
     category: "database"
     multi_instance_labels: ["receiver", "receiver_library"]
-    description: "Transactions still open against this attached receiver"
+    description: "Transactions still open against this attached receiver; sent only with journal_receiver_series: true"
     otel:
       name: senhub.ibmi.journal_receiver.pending_transactions
       unit: "{transaction}"
