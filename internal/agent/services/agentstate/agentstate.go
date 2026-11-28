@@ -447,3 +447,17 @@ func GetProbeCounts() (total, healthy int) {
 	}
 	return total, healthy
 }
+
+// GetProbeTargetDownCount returns how many running probes last published
+// a failing check: they run, and what they watch does not answer.
+func GetProbeTargetDownCount() int {
+	probeStateMu.RLock()
+	defer probeStateMu.RUnlock()
+	count := 0
+	for id := range activeProbeIDs {
+		if probeTarget[id].down {
+			count++
+		}
+	}
+	return count
+}

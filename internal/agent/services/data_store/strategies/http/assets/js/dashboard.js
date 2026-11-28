@@ -181,7 +181,7 @@
                 const why = (t) => '<span class="why">' + short(t, 160) + '</span>';
                 let state;
                 if (s === 'failing') state = pill('err', 'failing') + why(p.last_error || p.reason || 'collection failed');
-                else if (s === 'target-down') state = pill('err', 'target down') + why('collecting, and ' + (p.target_metric || 'its up metric') + ' reads 0');
+                else if (s === 'target-down') state = pill('err', 'target down') + why(p.target_error ? 'collecting, last check failed: ' + p.target_error : 'collecting, and ' + (p.target_metric || 'its up metric') + ' reads 0');
                 else if (s === 'running') state = pill('ok', 'running');
                 else if (s === 'disabled') state = pill('off', 'disabled');
                 else if (s === 'locked') state = pill('pro', 'license needed') + why(p.reason || 'not authorized');

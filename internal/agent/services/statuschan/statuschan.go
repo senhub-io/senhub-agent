@@ -187,6 +187,7 @@ func Snapshot(svc *status.StatusService) status.SystemStatus {
 	sort.Strings(names)
 	probes := make([]status.ProbeStatus, 0, len(names))
 	failed := 0
+	targetDown := 0
 	for _, name := range names {
 		rs := running[name]
 		p := status.ProbeStatus{Name: name, Status: "active", LastError: rs.LastError, MetricsCount: rs.LastPoints, LastUpdate: rs.LastCycle}
@@ -196,11 +197,15 @@ func Snapshot(svc *status.StatusService) status.SystemStatus {
 			failed++
 		case rs.Health != "ok":
 			p.Status = "inactive"
+		case rs.TargetDown:
+			p.Status = "target_down"
+			p.LastError = rs.TargetError
+			targetDown++
 		}
 		probes = append(probes, p)
 	}
 	st.Probes = probes
-	st.Health = healthFor(st.Health, len(probes), failed)
+	st.Health = healthFor(st.Health, len(probes), failed, targetDown)
 
 	for name, f := range agentstate.GetStrategyFailures() {
 		st.StrategyFailures = append(st.StrategyFailures, status.StrategyFailure{Strategy: name, Reason: f.Reason, Detail: f.Detail})
@@ -227,16 +232,19 @@ func updateInfoFrom(s agentstate.UpdateSetting) *status.UpdateInfo {
 	}
 }
 
-func healthFor(base status.HealthInfo, total, failed int) status.HealthInfo {
+func healthFor(base status.HealthInfo, total, failed, targetDown int) status.HealthInfo {
 	switch {
-	case failed == 0:
+	case failed == 0 && targetDown == 0:
 		return base
-	case failed >= total/2:
+	case failed > 0 && failed >= total/2:
 		base.Status = "unhealthy"
 		base.Message = fmt.Sprintf("%d of %d probes have errors", failed, total)
-	default:
+	case failed > 0:
 		base.Status = "degraded"
 		base.Message = fmt.Sprintf("%d probe(s) have errors", failed)
+	default:
+		base.Status = "degraded"
+		base.Message = fmt.Sprintf("%d probe(s) report their target down", targetDown)
 	}
 	return base
 }

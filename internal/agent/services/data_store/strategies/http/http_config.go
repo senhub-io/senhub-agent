@@ -44,7 +44,16 @@ type ConfigurationManager struct {
 	// lookups are not on a PRTG core, and a sensor whose channel
 	// references a missing lookup turns Warning (PE272).
 	prtgCheckResultChannel bool
+
+	// prtgTargetDownWarning turns the sensor of a probe whose last check
+	// failed Warning, with the cause as its text
+	// (params["prtg"]["target_down_warning"]).
+	prtgTargetDownWarning bool
 }
+
+// defaultPRTGTargetDownWarning is the value of prtg.target_down_warning
+// when the configuration does not set it.
+const defaultPRTGTargetDownWarning = true
 
 // NewConfigurationManager creates a new configuration manager
 func NewConfigurationManager(agentConfig configuration.AgentConfiguration, params map[string]interface{}, logger *logger.ModuleLogger) *ConfigurationManager {
@@ -151,10 +160,14 @@ func (cm *ConfigurationManager) loadConfiguration() {
 	}
 
 	cm.prtgCheckResultChannel = false
+	cm.prtgTargetDownWarning = defaultPRTGTargetDownWarning
 	if prtgParam, exists := cm.params["prtg"]; exists {
 		if prtgCfg, ok := prtgParam.(map[string]interface{}); ok {
 			if v, ok := prtgCfg["check_result_channel"].(bool); ok {
 				cm.prtgCheckResultChannel = v
+			}
+			if v, ok := prtgCfg["target_down_warning"].(bool); ok {
+				cm.prtgTargetDownWarning = v
 			}
 		}
 	}
@@ -436,4 +449,10 @@ func (cm *ConfigurationManager) IsPrometheusExposeHostMetrics() bool {
 // Result channel. Default: false.
 func (cm *ConfigurationManager) IsPRTGCheckResultChannel() bool {
 	return cm.prtgCheckResultChannel
+}
+
+// IsPRTGTargetDownWarning reports whether a probe whose last check failed
+// turns its PRTG sensor Warning (prtg.target_down_warning).
+func (cm *ConfigurationManager) IsPRTGTargetDownWarning() bool {
+	return cm.prtgTargetDownWarning
 }

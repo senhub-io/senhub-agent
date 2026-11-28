@@ -299,6 +299,7 @@ func (f *CLIFormatter) FormatProbeStatuses(probes []ProbeStatus) string {
 	// Summary line
 	activeCount := 0
 	errorCount := 0
+	targetDownCount := 0
 	totalMetrics := 0
 
 	for _, probe := range probes {
@@ -306,12 +307,15 @@ func (f *CLIFormatter) FormatProbeStatuses(probes []ProbeStatus) string {
 			activeCount++
 		} else if probe.Status == "error" {
 			errorCount++
+		} else if probe.Status == "target_down" {
+			targetDownCount++
 		}
 		totalMetrics += probe.MetricsCount
 	}
 
-	output.WriteString(fmt.Sprintf("Total: %d probes (%d active, %d errors)\n",
-		len(probes), activeCount, errorCount))
+	output.WriteString(fmt.Sprintf("Total: %d probes (%d active, %d errors, %d target down)\n",
+		len(probes), activeCount, errorCount, targetDownCount))
+
 	output.WriteString(fmt.Sprintf("Metrics: %d total\n\n", totalMetrics))
 
 	// Individual probe details
@@ -500,6 +504,9 @@ func (f *CLIFormatter) getProbeIcon(status string) string {
 		return "⏸️"
 	case "error":
 		return "❌"
+	case "target_down":
+		return "⚠️"
+
 	default:
 		return "❓"
 	}

@@ -92,12 +92,12 @@ func init() {
 		"min_tls_version", "nagios_checks_count", "nagios_version", "name",
 		"port", "probe", "probe_name", "probe_type", "probes", "prometheus", "protocol",
 		"prtg", "read_only", "schema", "server_configured", "settings", "tags", "target", "tls",
-		"tls_min_version", "total_metrics", "unit", "url",
+		"target_down_warning", "tls_min_version", "total_metrics", "unit", "url",
 	}, nil)
 
 	// The sub-blocks the http strategy reads key by key
 	// (ConfigurationManager.parseParams).
-	data_store.RegisterKnownBlockParams("http", "prtg", []string{"check_result_channel"})
+	data_store.RegisterKnownBlockParams("http", "prtg", []string{"check_result_channel", "target_down_warning"})
 	data_store.RegisterKnownBlockParams("http", "prometheus", []string{"include_probe_tags", "expose_host_metrics"})
 	// cipher_suites is written by config init (configuration.TLSConfig)
 	// even though nothing reads it; a generated file must not warn.

@@ -51,6 +51,9 @@ type configuredProbe struct {
 	TargetUp *bool `json:"target_up,omitempty"`
 	// TargetMetric names the series TargetUp was read from.
 	TargetMetric string `json:"target_metric,omitempty"`
+	// TargetError is the class of the last failing check (timeout,
+	// auth_denied, ...), set while the probe reports its target down.
+	TargetError string `json:"target_error,omitempty"`
 }
 
 type configuredProbesResponse struct {
@@ -128,6 +131,7 @@ func (h *HTTPSyncStrategy) handleConfiguredProbes(w http.ResponseWriter, r *http
 			Authorized:   true,
 		}
 		if st, seen := stats[p.Name]; seen {
+
 			entry.MetricsCount = st.MetricsCount
 			if !st.LastUpdate.IsZero() {
 				t := st.LastUpdate
@@ -135,6 +139,11 @@ func (h *HTTPSyncStrategy) handleConfiguredProbes(w http.ResponseWriter, r *http
 			}
 			entry.TargetUp = st.TargetUp
 			entry.TargetMetric = st.TargetMetric
+		}
+		if state.Running && state.TargetDown {
+			down := false
+			entry.TargetUp = &down
+			entry.TargetError = state.TargetError
 		}
 		known := ps
 		if !hasSpec {

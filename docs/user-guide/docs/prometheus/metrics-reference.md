@@ -26,6 +26,7 @@ the OTLP receiver counters once that probe has received traffic.
 | `senhub_agent_probes_active` | gauge | Probes that have emitted ≥1 datapoint in cache window | – |
 | `senhub_agent_probe_count` | gauge | Configured probes currently running | – |
 | `senhub_agent_probes_healthy` | gauge | Probes reporting `IsHealthy() == true` | – |
+| `senhub_agent_probes_target_down` | gauge | Running probes whose last check found the target failing; they still count as healthy | – |
 | `senhub_agent_collect_errors_total` | counter | Probe collection errors since start, per probe type and failure reason | `probe`, `reason` |
 | `senhub_agent_collect_in_flight` | gauge | Probe collections running at this instant | – |
 | `senhub_agent_collect_lag_seconds` | gauge | Maximum of the actual start of a collection minus its planned start, over the window since the previous read by the same reader (scrape or push), per probe instance | `probe_name`, `probe_type` |

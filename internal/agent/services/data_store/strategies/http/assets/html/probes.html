@@ -418,7 +418,7 @@
       let state = '';
       if (s === 'running') state = '<span class="pill ok"><span class="dot ok"></span>running</span>';
       else if (s === 'failing') state = '<span class="pill err"><span class="dot err"></span>failing</span>' + ((p.last_error || p.reason) ? '<span class="why">' + esc(p.last_error || p.reason) + '</span>' : '');
-      else if (s === 'target-down') state = '<span class="pill err"><span class="dot err"></span>target down</span><span class="why">collecting, and ' + esc(p.target_metric || 'its up metric') + ' reads 0</span>';
+      else if (s === 'target-down') state = '<span class="pill err"><span class="dot err"></span>target down</span><span class="why">' + (p.target_error ? 'collecting, last check failed: ' + esc(p.target_error) : 'collecting, and ' + esc(p.target_metric || 'its up metric') + ' reads 0') + '</span>';
       else if (s === 'starting') state = '<span class="pill warn"><span class="dot warn"></span>starting</span>';
       else if (s === 'disabled') state = '<span class="pill off">disabled</span>';
       else if (p.tier !== 'pro') state = '<span class="pill off" title="' + esc(p.reason || '') + '">not on this platform</span>' + (p.reason ? '<span class="locked-why">' + esc(p.reason) + '</span>' : '');
@@ -597,7 +597,7 @@
       if (state === 'failing' || state === 'target-down') {
         const text = state === 'failing'
           ? (p.last_error || p.reason || 'collection failed')
-          : `Collecting, and ${p.target_metric || 'its up metric'} reads 0.`;
+          : (p.target_error ? `Collecting, last check failed: ${p.target_error}.` : `Collecting, and ${p.target_metric || 'its up metric'} reads 0.`);
         bannerHtml = `<div class="banner err" style="overflow-wrap:anywhere">${esc(text)}</div>`;
       } else if (state === 'locked') {
         bannerHtml = `<div class="banner warn" style="overflow-wrap:anywhere">${esc(p.reason || 'Not authorized.')}</div>`;

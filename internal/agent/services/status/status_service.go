@@ -94,7 +94,7 @@ type ConnectionInfo struct {
 // ProbeStatus represents individual probe status
 type ProbeStatus struct {
 	Name         string    `json:"name"`
-	Status       string    `json:"status"` // "active", "inactive", "error"
+	Status       string    `json:"status"` // "active", "inactive", "error", "target_down"
 	MetricsCount int       `json:"metrics_count"`
 	LastUpdate   time.Time `json:"last_update,omitempty"`
 	LastError    string    `json:"last_error,omitempty"`

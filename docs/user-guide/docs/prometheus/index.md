@@ -176,6 +176,7 @@ traffic.
 | `senhub_agent_probes_active` | gauge | Probes that have emitted ≥1 datapoint in the cache window |
 | `senhub_agent_probe_count` | gauge | Configured probes currently running |
 | `senhub_agent_probes_healthy` | gauge | Probes reporting `IsHealthy() == true` |
+| `senhub_agent_probes_target_down` | gauge | Running probes whose last check found the target failing; they still count as healthy |
 | `senhub_agent_collect_errors_total` | counter | Probe collection errors since start, with `probe` (type) and `reason` (collect/timeout/route) labels |
 | `senhub_agent_transformer_fallback_total` | counter | Datapoints processed without a transformer definition (no unit injection or corrections) |
 | `senhub_agent_http_requests_total` | counter | HTTP requests served, with `endpoint` label (route template) |

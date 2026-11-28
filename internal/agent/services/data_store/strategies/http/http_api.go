@@ -61,7 +61,13 @@ func (a *APIManager) writePRTGResponse(w http.ResponseWriter, probeName string, 
 	w.Header().Set("Content-Type", "application/json")
 
 	if len(channels) > 0 {
-		if err := json.NewEncoder(w).Encode(PRTGResponse{PRTG: PRTGResult{Result: channels}}); err != nil {
+		state, known := agentstate.ProbeRunStateByName(probeName)
+		warn := defaultPRTGTargetDownWarning
+		if a.strategy.configManager != nil {
+			warn = a.strategy.configManager.IsPRTGTargetDownWarning()
+		}
+		result := withTargetDown(PRTGResult{Result: channels}, state, known, warn)
+		if err := json.NewEncoder(w).Encode(PRTGResponse{PRTG: result}); err != nil {
 			a.logger.Error().Err(err).Msg("Failed to encode response")
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		}

@@ -32,6 +32,7 @@ func init() {
 			}},
 			{Key: "prtg", Kind: spec.KindBlock, Group: "prtg", Fields: []spec.ParamSpec{
 				{Key: "check_result_channel", Kind: spec.KindBool, Default: false, Description: "Add the Check Result and unresolved-target channels and show service channels through their lookup; install the SenHub lookup files on the PRTG core first"},
+				{Key: "target_down_warning", Kind: spec.KindBool, Default: true, Description: "Turn the sensor of a probe whose last check failed Warning, with the cause as the sensor text; needs no lookup file"},
 			}},
 		},
 	})

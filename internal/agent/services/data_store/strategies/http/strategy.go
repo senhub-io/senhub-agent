@@ -95,6 +95,7 @@ type PRTGResponse struct {
 // PRTGResult contains the array of channels for PRTG
 type PRTGResult struct {
 	Result []PRTGChannel `json:"result"`
+	Text   string        `json:"text,omitempty"`
 }
 
 // PRTGChannel represents a single metric channel for PRTG
@@ -110,6 +111,7 @@ type PRTGChannel struct {
 	LimitMinError   float64 `json:"limitminerror,omitempty"`
 	LimitErrorMsg   string  `json:"limiterrormsg,omitempty"`
 	ValueLookup     string  `json:"valuelookup,omitempty"`
+	Warning         int     `json:"warning,omitempty"`
 }
 
 // MetricFilter represents query parameters for filtering metrics

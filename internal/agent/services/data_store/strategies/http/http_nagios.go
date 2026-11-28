@@ -74,6 +74,8 @@ func (n *NagiosManager) HandleNagiosMetricsGET(w http.ResponseWriter, r *http.Re
 
 	// Generate simple probe-based Nagios response
 	response := n.strategy.metricsProcessor.GenerateSimpleNagiosResponse(probeNameLower, filteredMetrics)
+	state, known := agentstate.ProbeRunStateByName(probeNameLower)
+	response = withNagiosTargetDown(response, probeNameLower, state, known)
 
 	w.Header().Set("Content-Type", "text/plain")
 	if response.Status >= 2 {

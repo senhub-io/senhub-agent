@@ -125,6 +125,14 @@ func BuildAgentRecords(snap AgentMetricsSnapshot) []otelmapper.OtelRecord {
 				"collection happens via a callback rather than a scheduler) are " +
 				"NOT counted as healthy until they explicitly publish their state.",
 		},
+		{
+			Name:        "senhub.agent.probes.target_down",
+			Unit:        "{probe}",
+			Type:        "gauge",
+			Attributes:  map[string]string{},
+			Value:       float64(agentstate.GetProbeTargetDownCount()),
+			Description: "Number of running probes whose last check found the target failing. Such a probe still counts in senhub.agent.probes.healthy: it runs, and what it watches does not answer.",
+		},
 		// Read directly from agentstate (like the OTLP counters below)
 		// rather than through the snapshot, so every exposition bridge
 		// picks it up without plumbing changes. Nonzero means a probe is

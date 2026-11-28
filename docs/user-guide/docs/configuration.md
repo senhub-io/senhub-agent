@@ -311,6 +311,7 @@ storage:
 | `endpoints` | none | Enabled endpoint types. There is no default: an endpoint answers only when it is listed. The installer writes `["prtg", "web", "nagios", "prometheus"]` |
 | `max_cache_size` | `50000` | Maximum number of distinct series the shared metric cache holds. Past it new series are refused and counted, rather than growing memory without bound — the cache is also fed by `otlp_receiver` and `prometheus_scrape`, whose series sets come from senders you do not control. `0` means unbounded |
 | `prtg.check_result_channel` | `false` | Adds the Check Result channel (`senhub.probe.check.result`) and the unresolved-target channel (`senhub.probe.check.target.unresolved`) to PRTG sensors. Service channels (`host.service.running`) never use a lookup, with or without it. Leave it off unless the SenHub lookup files are installed on the PRTG core: a channel naming a lookup the core does not have turns the whole sensor Warning (PE272). See [Installing PRTG value lookups](web-interface.md#installing-prtg-value-lookups) |
+| `prtg.target_down_warning` | `true` | Turns the sensor of a probe whose last check failed (an `http_check` on a closed port, a database refusing the login) Warning, with the cause as the sensor text, for example `Target down: timeout`. It needs no lookup file. Set it to `false` to keep such sensors green, as before 0.7.2 |
 
 ### Available Endpoint Types
 

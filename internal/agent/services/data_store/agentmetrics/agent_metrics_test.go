@@ -53,8 +53,9 @@ func TestBuildAgentRecords_AlwaysIncludesCoreMetrics(t *testing.T) {
 	// plus senhub.agent.entity.attribute.conflicts and .duplicates.merged;
 	// plus senhub.agent.self_logs.published and .dropped;
 	// plus the four queue series of each signal that keeps a request queue;
-	// plus `senhub.agent.otlp.throttled`, one series per signal from 0.
-	want := 35 + 6 + 2 + 2*len(agentstate.OTLPSignals) + len(agentstate.OTLPDropReasons) + 4*len(agentstate.OTLPQueuedSignals)
+	// plus `senhub.agent.otlp.throttled`, one series per signal from 0;
+	// plus senhub.agent.probes.target_down.
+	want := 36 + 6 + 2 + 2*len(agentstate.OTLPSignals) + len(agentstate.OTLPDropReasons) + 4*len(agentstate.OTLPQueuedSignals)
 	if len(recs) != want {
 		t.Fatalf("expected %d records (no build info, no http requests, no collect errors, no checkpoint errors), got %d", want, len(recs))
 	}
