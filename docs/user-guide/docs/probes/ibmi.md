@@ -293,7 +293,7 @@ message remains visible there through the jobs-by-status count.
 | `senhub.ibmi.collector.failure` | `{collection}` | `ibmi.collector` | Failed collections per collector (counter) |
 | `senhub.ibmi.collector.last_duration` | `s` | `ibmi.collector` | Duration of the last collection |
 | `senhub.ibmi.collector.last_success_timestamp` | `s` | `ibmi.collector` | Unix timestamp of the last successful collection |
-| `senhub.ibmi.collector.rows_left_out` | `{row}` | `ibmi.collector` | Rows a capped collector matched beyond its 200-row cap and did not read; sent for `asp`, `memory_pool`, `subsystem` and `msgw_job` |
+| `senhub.ibmi.collector.rows_left_out` | `{row}` | `ibmi.collector` | Rows a capped collector matched beyond its 200-row cap and did not read; sent for each capped collector: `asp`, `memory_pool`, `subsystem`, `msgw_job`, `disk_status`, `http_server`, `jvm`, `license`, `media_library`, `watch_info`, `netstat_listener` and `journal_receiver` |
 
 !!! note "Events as logs"
     The `message_queue` (QSYSOPR), `history_log` (QHST) and `audit_journal`
