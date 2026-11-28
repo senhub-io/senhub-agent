@@ -2826,6 +2826,20 @@ metrics:
     tag_to_attribute:
       collector: ibmi.collector
 
+  - name: "ibmi.collector.rows_left_out"
+    channel: "ibmi_collector_rows_left_out"
+    display_name: "Collector Rows Left Out — {collector}"
+    unit: "#"
+    category: "health"
+    multi_instance_labels: ["collector"]
+    description: "Rows this collector's query matched beyond its 200-row cap in the last run, and did not read; 0 when nothing was left out"
+    otel:
+      name: senhub.ibmi.collector.rows_left_out
+      unit: "{row}"
+      type: gauge
+    tag_to_attribute:
+      collector: ibmi.collector
+
   - name: "ibmi.collector.window_lag"
     channel: "ibmi_collector_window_lag"
     display_name: "Collector Window Lag — {collector}"
